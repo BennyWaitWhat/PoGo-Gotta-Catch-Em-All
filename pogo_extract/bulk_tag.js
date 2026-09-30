@@ -382,6 +382,45 @@ rpc.exports = {
         return {ok:false, err:"not found"};
     },
 
+    /* How many cached tags carry exactly this name (2026-09-30: a verify-miss retry in tag_ops.create_tag made TWO
+       'Evolve for UL'). findTagIdByName returns the FIRST match, so with a duplicate name every write is ambiguous. */
+    countTagsByName: function(instanceStr, tagName) {
+        if (!init()) return {ok:false, err:state.err};
+        var inst = ptr(instanceStr);
+        var iter = Memory.alloc(Process.pointerSize); iter.writePointer(ptr(0));
+        var m, getCount=null, getBinding=null;
+        while ((m = fns.cGM(taggingServiceClass, iter)) && !m.isNull()) {
+            var nm = fns.mGN(m).readCString();
+            if (nm === "get_NumberOfTags") getCount = m;
+            if (nm === "GetCachedTagToPokemonBindingForIndex") getBinding = m;
+        }
+        if (!getCount || !getBinding) return {ok:false, err:"missing methods"};
+        var exc = Memory.alloc(Process.pointerSize); exc.writePointer(ptr(0));
+        var ret = fns.rI(getCount, inst, ptr(0), exc);
+        if (!exc.readPointer().isNull()) return {ok:false, err:"count exc"};
+        var count = ret.add(0x10).readS32();
+        var n = 0, addrs = [];
+        for (var i = 0; i < count; i++) {
+            var idxBuf = Memory.alloc(4); idxBuf.writeS32(i);
+            var args = Memory.alloc(Process.pointerSize); args.writePointer(idxBuf);
+            var exc2 = Memory.alloc(Process.pointerSize); exc2.writePointer(ptr(0));
+            var bindingPtr = fns.rI(getBinding, inst, args, exc2);
+            if (!exc2.readPointer().isNull() || bindingPtr.isNull()) continue;
+            try {
+                var tagProto = bindingPtr.add(0x10).readPointer();
+                if (tagProto.isNull()) continue;
+                var nameStrPtr = tagProto.add(0x40).readPointer();
+                if (nameStrPtr.isNull()) continue;
+                var len = nameStrPtr.add(0x10).readS32();
+                if (len <= 0 || len > 100) continue;
+                var chars = [];
+                for (var ci = 0; ci < len; ci++) chars.push(String.fromCharCode(nameStrPtr.add(0x14 + ci*2).readU16()));
+                if (chars.join('') === tagName) { n++; addrs.push(tagProto.toString()); }
+            } catch(e) {}
+        }
+        return {ok:true, count:n, addrs:addrs};
+    },
+
     /* Look up pokemon proto pointer by uid from internal index. */
     findPokemonProto: function(uidLow, uidHigh) {
         if (!init()) return {ok:false, err:state.err};

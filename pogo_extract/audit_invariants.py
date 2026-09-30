@@ -1822,7 +1822,7 @@ TAG_WRITE_FUNCS = TAG_ADD_FUNCS | TAG_REMOVE_FUNCS | {'create_tag'}
 #            cannot ADD a mon to the release pile, which is the question this invariant asks)
 #   CREATE   addTagOnInstance:1466  addTagTest:2068  addTagVerified:1906 -- a tag DEFINITION with no
 #            members; the python primitive create_tag is treated the same way, as neither direction
-#   READ     the remaining 30
+#   READ     the remaining 31 (countTagsByName, 2026-09-30: the duplicate-name guard)
 # Names are canonicalised (lowercased, underscores dropped) because frida exposes JS camelCase to
 # python as snake_case, so the same export appears as bulkTagMany and bulk_tag_many.
 def _canon(n):
@@ -1833,7 +1833,7 @@ _BT_ADD = {_canon(x) for x in ('bulkTagMany', 'bulkApplyChanges', 'bulkTagSingle
                                'tagOne')}
 _BT_REMOVE = {_canon(x) for x in ('bulkUntagOne', 'setPokemonTagsNull')}
 _BT_SAFE = {_canon(x) for x in (
-    'addTagOnInstance', 'addTagTest', 'addTagVerified', 'countTags', 'discoverMethods',
+    'addTagOnInstance', 'addTagTest', 'addTagVerified', 'countTags', 'countTagsByName', 'discoverMethods',
     'dumpCapturedList', 'dumpRepeatedField', 'enumerateTagProtos', 'extractAllTagIds',
     'extractRuntimeFlags', 'findAllInstances', 'findPokemonProto', 'findRealInstance',
     'findTagIdByName', 'getAllTagsTest', 'getCaptured', 'getListClassForSetTags',

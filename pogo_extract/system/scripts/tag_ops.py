@@ -301,13 +301,39 @@ def ensure_ready(sess, svc, bt, max_wait=60):
         attempt += 1
 
 
+class DuplicateTagName(RuntimeError):
+    """2+ tags on the phone carry one name. find_tag_id_by_name returns the FIRST, so a write could land on either copy."""
+
+
+# (2026-09-30) poll this long for a tag an AddTag just created before EVER sending a second AddTag for it
+VERIFY_WINDOW_S = 30.0
+
+
+def _dup_guard(bt, svc, name):
+    """Raise DuplicateTagName when 2+ tags carry `name` (13:51 on 2026-09-30: two 'Evolve for UL', one empty -- the
+    members went to one, prune's verify read the other, and the post-push reconcile blocked retire / Remote Trade /
+    order). An older bulk_tag.js without countTagsByName: logged, never guessed."""
+    try:
+        r = bt.exports_sync.count_tags_by_name(svc, name) or {}
+    except Exception as exc:
+        log.warning("create_tag: cannot count the tags named %r (%s) -- duplicate guard skipped", name, exc)
+        return
+    if r.get("ok") and int(r.get("count") or 0) > 1:
+        raise DuplicateTagName(
+            "%d tags on the phone are named %r (%s): a write would land on either copy. Remove the empty copy with "
+            "`python system/scripts/safe_nuke_tags.py --empty-duplicates \"%s\"`"
+            % (r["count"], name, ", ".join(r.get("addrs") or []), name))
+
+
 def create_tag(bt, svc, name, color, attempts=5):
     """Create a tag or return its proto address if it already exists.
 
     1. find_tag_id_by_name -- if found, return immediately.
     2. add_tag_on_instance -- fire the AddTag RPC.
     3. Poll find_tag_id_by_name with exponential backoff to confirm
-       the server materialised the tag.
+       the server materialised the tag -- for up to VERIFY_WINDOW_S before
+       another AddTag is ever sent (a slow cache is not a failed AddTag).
+    4. Refuse (DuplicateTagName) when 2+ tags carry the name.
 
     Args:
         bt:       Loaded bulk_tag.js Frida script.
@@ -330,6 +356,7 @@ def create_tag(bt, svc, name, color, attempts=5):
     r = bt.exports_sync.find_tag_id_by_name(svc, name)
     if r.get("ok"):
         log.info("create_tag: '%s' already exists @ %s", name, r["tagProtoAddr"])
+        _dup_guard(bt, svc, name)
         return r["tagProtoAddr"]
 
     last_err = None
@@ -347,14 +374,22 @@ def create_tag(bt, svc, name, color, attempts=5):
             _sleep_backoff(attempt)
             continue
 
-        # Give the server time to register the new tag, then verify.
-        _sleep_backoff(attempt)
-        r = bt.exports_sync.find_tag_id_by_name(svc, name)
+        # Give the server time to register the new tag, then verify. A MISS IS NOT A FAILURE (2026-09-30 13:51: 'Evolve
+        # for UL' was not in the client cache 3 s after its AddTag; the retry sent a SECOND AddTag and the phone got two
+        # tags of that name). An AddTag that returned without throwing is polled for VERIFY_WINDOW_S first.
+        t_end, k = time.time() + VERIFY_WINDOW_S, attempt
+        while True:
+            _sleep_backoff(k)
+            r = bt.exports_sync.find_tag_id_by_name(svc, name)
+            if r.get("ok") or time.time() >= t_end:
+                break
+            k += 1
         if r.get("ok"):
             log.info(
                 "create_tag: '%s' confirmed @ %s (attempt %d)",
                 name, r["tagProtoAddr"], attempt + 1,
             )
+            _dup_guard(bt, svc, name)
             return r["tagProtoAddr"]
         last_err = r.get("err", "find returned not-ok")
         log.warning(

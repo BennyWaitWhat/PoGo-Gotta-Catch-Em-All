@@ -115,6 +115,11 @@ def run_on_session(sess, pid, a, retired, empty_files, own=False):
         script = pg.get_script_with_helpers(sess, snt.JS)
         tags = snt.enumerate_tags(script, svc)
         census = snt.tag_census(tags)
+        _dups = snt.duplicate_names(tags)     # (2026-09-30) a by-name census hides one copy of a duplicated name
+        if _dups:
+            print('duplicate tag names on the device, not touched here: %s (safe_nuke_tags.py --empty-duplicates)'
+                  % ', '.join('%r x%d' % (n, len(v)) for n, v in sorted(_dups.items())))
+            census = {n: v for n, v in census.items() if n not in _dups}
         # EMPTY MANAGED SHELLS (2026-09-09, same user complaint): a vocabulary tag nobody qualifies for right now
         # (Safety Hold after its hold cleared) is a 0-member entry in the in-game list. prune never creates a tag
         # for an empty want, so deleting the shell is symmetric: the day someone qualifies, prune recreates it.
