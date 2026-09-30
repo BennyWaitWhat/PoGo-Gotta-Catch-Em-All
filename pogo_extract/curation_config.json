@@ -1,0 +1,10 @@
+{
+  "prefs": {
+    "sort": "iv_desc",
+    "show_protected": true,
+    "include_xxs": false
+  },
+  "staged_global_caps": {},
+  "staged_species_caps": {},
+  "sprite_base_cdn": "https://raw.githubusercontent.com/PokeMiners/pogo_assets/master/Images/Pokemon/"
+}

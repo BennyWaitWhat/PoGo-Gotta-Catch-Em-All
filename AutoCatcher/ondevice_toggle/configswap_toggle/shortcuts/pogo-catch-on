@@ -1,0 +1,5 @@
+#!/data/data/com.termux/files/usr/bin/sh
+# Force ON: gadget -> script mode (catch.js) + relaunch PoGo. Idempotent.
+OUT=$(su -c '/data/local/tmp/re.zyg.fri/pogo-catch.sh on' 2>&1)
+echo "$OUT"
+command -v termux-toast >/dev/null 2>&1 && termux-toast -g middle "$(echo "$OUT" | head -n1)"

@@ -1,0 +1,39 @@
+{
+ "ok": true,
+ "line": "SELFCHECK ok | since 06:02:29: 41 gyms 509 stops seen, raw==live 550/550, gym state fresh 41/41, raw<=10min 550/550, same-read 1/1, team events 21 | last reply 7s ago | legacy raw stale 9 | js full 554 fail 0, gym 779 fail 0",
+ "fails": [],
+ "warns": [],
+ "info": {
+  "last_reply": "2026-09-25 06:12:29",
+  "last_reply_age_s": 7,
+  "since": "2026-09-25 06:02:29",
+  "raw_pending": 0,
+  "canary": "45ff68a59fed487a96433cc566bed0b4.16",
+  "js": {
+   "fulls": 554,
+   "full_fail": 0,
+   "gyms": 779,
+   "gym_fail": 0,
+   "gym_nogd": 0
+  },
+  "legacy_raw_stale": 9,
+  "seed_only": 1216,
+  "older_60min": 1721,
+  "lure_older_30min": 27,
+  "not_collected": {
+   "spawns": "2026-09-25 03:36:27",
+   "weather": "2026-09-25 03:36",
+   "nearby": null,
+   "raid": 0,
+   "displays": 0
+  },
+  "gyms_state_2min": 41,
+  "window_forts": 550,
+  "window_gyms": 41,
+  "window_stops": 509,
+  "window_raw": 550,
+  "same_read_rows": 1,
+  "team_events": 21
+ },
+ "checked_at": "2026-09-25 06:12:36"
+}

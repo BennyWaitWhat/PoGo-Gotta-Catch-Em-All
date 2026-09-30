@@ -1,0 +1,8 @@
+{
+    "interaction": {
+        "type": "script",
+        "path": "/data/local/tmp/re.zyg.fri/catch.js",
+        "on_change": "reload"
+    },
+    "runtime": "qjs"
+}

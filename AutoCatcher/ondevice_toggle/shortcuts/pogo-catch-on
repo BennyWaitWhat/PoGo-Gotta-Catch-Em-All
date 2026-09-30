@@ -1,0 +1,6 @@
+#!/data/data/com.termux/files/usr/bin/sh
+# pogo-catch-on — force the auto-catcher ON (creates the marker catch.js polls).
+MARK=/data/local/tmp/re.zyg.fri/catch.on
+su -c "touch $MARK && chmod 666 $MARK"
+echo "PoGo auto-catch: ON"
+command -v termux-toast >/dev/null 2>&1 && termux-toast -g middle "PoGo auto-catch: ON"

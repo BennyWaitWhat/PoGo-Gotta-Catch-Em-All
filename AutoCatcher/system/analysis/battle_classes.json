@@ -1,0 +1,2710 @@
+{
+ "read_at": "2026-09-25 04:26:00",
+ "pid": 9501,
+ "classes": [
+  {
+   "image": "holo-game.dll",
+   "name": "Niantic.Holoholo.Combat.CombatInput.CombatFastAttackButton",
+   "parent": "UnityEngine.MonoBehaviour"
+  },
+  {
+   "image": "holo-game.dll",
+   "name": "Niantic.Holoholo.Battle.BattleCameraController",
+   "parent": "UnityEngine.MonoBehaviour"
+  },
+  {
+   "image": "holo-game.dll",
+   "name": "Niantic.Holoholo.Battle.BattleDamageConstants",
+   "parent": "System.Object"
+  },
+  {
+   "image": "holo-game.dll",
+   "name": "Niantic.Holoholo.Battle.IBattleConditions",
+   "parent": ""
+  },
+  {
+   "image": "holo-game.dll",
+   "name": "Niantic.Holoholo.Battle.BattleConditions",
+   "parent": "System.Object"
+  },
+  {
+   "image": "holo-game.dll",
+   "name": "Niantic.Holoholo.Battle.BattleDamageService",
+   "parent": "System.Object"
+  },
+  {
+   "image": "holo-game.dll",
+   "name": "Niantic.Holoholo.Battle.AttackOutcome",
+   "parent": "System.Enum"
+  },
+  {
+   "image": "holo-game.dll",
+   "name": "Niantic.Holoholo.Battle.IBattleDamageService",
+   "parent": ""
+  },
+  {
+   "image": "holo-game.dll",
+   "name": "Niantic.Holoholo.Battle.BattleFlickGesture",
+   "parent": "TouchScript.Gestures.Gesture"
+  },
+  {
+   "image": "holo-game.dll",
+   "name": "Niantic.Holoholo.Battle.BattleFrame",
+   "parent": "System.Object"
+  },
+  {
+   "image": "holo-game.dll",
+   "name": "Niantic.Holoholo.Battle.QueuedActionResult",
+   "parent": "System.Enum"
+  },
+  {
+   "image": "holo-game.dll",
+   "name": "Niantic.Holoholo.Battle.BattleFrameObservableService",
+   "parent": "Niantic.Holoholo.Services.ObservableService`1"
+  },
+  {
+   "image": "holo-game.dll",
+   "name": "Niantic.Holoholo.Battle.IBattleFrameObservableService",
+   "parent": ""
+  },
+  {
+   "image": "holo-game.dll",
+   "name": "Niantic.Holoholo.Battle.BattleGestureHandler",
+   "parent": "UnityEngine.MonoBehaviour"
+  },
+  {
+   "image": "holo-game.dll",
+   "name": "Niantic.Holoholo.Battle.BattleLog",
+   "parent": "System.Object"
+  },
+  {
+   "image": "holo-game.dll",
+   "name": "Niantic.Holoholo.Battle.BattleLogObservableService",
+   "parent": "Niantic.Holoholo.Services.ObservableService`1"
+  },
+  {
+   "image": "holo-game.dll",
+   "name": "Niantic.Holoholo.Battle.IBattleLogObservableService",
+   "parent": ""
+  },
+  {
+   "image": "holo-game.dll",
+   "name": "Niantic.Holoholo.Battle.BattleParty",
+   "parent": "System.Object"
+  },
+  {
+   "image": "holo-game.dll",
+   "name": "Niantic.Holoholo.Battle.BattlePartyService",
+   "parent": "System.Object"
+  },
+  {
+   "image": "holo-game.dll",
+   "name": "Niantic.Holoholo.Battle.IBattlePartyService",
+   "parent": ""
+  },
+  {
+   "image": "holo-game.dll",
+   "name": "Niantic.Holoholo.Battle.BattleNameplate",
+   "parent": "UnityEngine.MonoBehaviour"
+  },
+  {
+   "image": "holo-game.dll",
+   "name": "Niantic.Holoholo.Battle.BattlePokemon",
+   "parent": "UnityEngine.MonoBehaviour"
+  },
+  {
+   "image": "holo-game.dll",
+   "name": "Niantic.Holoholo.Battle.CharacterSequenceAnimator",
+   "parent": "UnityEngine.MonoBehaviour"
+  },
+  {
+   "image": "holo-game.dll",
+   "name": "Niantic.Holoholo.Battle.EnemyBattlePokemon",
+   "parent": "Niantic.Holoholo.Battle.BattlePokemon"
+  },
+  {
+   "image": "holo-game.dll",
+   "name": "Niantic.Holoholo.Battle.FriendlyBattlePokemon",
+   "parent": "Niantic.Holoholo.Battle.BattlePokemon"
+  },
+  {
+   "image": "holo-game.dll",
+   "name": "Niantic.Holoholo.Battle.FriendlyBattlePokemonPool",
+   "parent": "UnityEngine.MonoBehaviour"
+  },
+  {
+   "image": "holo-game.dll",
+   "name": "Niantic.Holoholo.Battle.IFriendlyBattlePokemonPool",
+   "parent": ""
+  },
+  {
+   "image": "holo-game.dll",
+   "name": "Niantic.Holoholo.Battle.PlayerBattlePokemon",
+   "parent": "Niantic.Holoholo.Battle.BattlePokemon"
+  },
+  {
+   "image": "holo-game.dll",
+   "name": "Niantic.Holoholo.Battle.BattleServerConnectionService",
+   "parent": "UnityEngine.MonoBehaviour"
+  },
+  {
+   "image": "holo-game.dll",
+   "name": "Niantic.Holoholo.Battle.BattleServerResponse",
+   "parent": "System.Object"
+  },
+  {
+   "image": "holo-game.dll",
+   "name": "Niantic.Holoholo.Battle.IBattleServerConnectionService",
+   "parent": ""
+  },
+  {
+   "image": "holo-game.dll",
+   "name": "Niantic.Holoholo.Battle.BattleSyncedStats",
+   "parent": "System.Object"
+  },
+  {
+   "image": "holo-game.dll",
+   "name": "Niantic.Holoholo.Battle.StatDelta",
+   "parent": "System.ValueType"
+  },
+  {
+   "image": "holo-game.dll",
+   "name": "Niantic.Holoholo.Battle.Stat",
+   "parent": "System.Object"
+  },
+  {
+   "image": "holo-game.dll",
+   "name": "Niantic.Holoholo.Battle.TrainerBattleSyncedStats",
+   "parent": "System.Object"
+  },
+  {
+   "image": "holo-game.dll",
+   "name": "Niantic.Holoholo.Battle.PokemonBattleSyncedStats",
+   "parent": "System.Object"
+  },
+  {
+   "image": "holo-game.dll",
+   "name": "Niantic.Holoholo.Battle.IBattleTempBoostService",
+   "parent": ""
+  },
+  {
+   "image": "holo-game.dll",
+   "name": "Niantic.Holoholo.Battle.BattleTempBoostService",
+   "parent": "UnityEngine.MonoBehaviour"
+  },
+  {
+   "image": "holo-game.dll",
+   "name": "Niantic.Holoholo.Battle.BattleTimingService",
+   "parent": "UnityEngine.MonoBehaviour"
+  },
+  {
+   "image": "holo-game.dll",
+   "name": "Niantic.Holoholo.Battle.IBattleTimingService",
+   "parent": ""
+  },
+  {
+   "image": "holo-game.dll",
+   "name": "Niantic.Holoholo.Battle.BattleStatus",
+   "parent": "System.Enum"
+  },
+  {
+   "image": "holo-game.dll",
+   "name": "Niantic.Holoholo.Battle.BattleProtoExtensions",
+   "parent": "System.Object"
+  },
+  {
+   "image": "holo-game.dll",
+   "name": "Niantic.Holoholo.Battle.IBattleRpcService",
+   "parent": ""
+  },
+  {
+   "image": "holo-game.dll",
+   "name": "Niantic.Holoholo.Battle.BattleContext",
+   "parent": "System.Enum"
+  },
+  {
+   "image": "holo-game.dll",
+   "name": "Niantic.Holoholo.Battle.IIbfcEligibilityService",
+   "parent": ""
+  },
+  {
+   "image": "holo-game.dll",
+   "name": "Niantic.Holoholo.Battle.IbfcEligibilityService",
+   "parent": "System.Object"
+  },
+  {
+   "image": "holo-game.dll",
+   "name": "Niantic.Holoholo.Battle.PlayerBattleActions",
+   "parent": "System.Object"
+  },
+  {
+   "image": "holo-game.dll",
+   "name": "Niantic.Holoholo.Battle.AttackRing",
+   "parent": "UnityEngine.MonoBehaviour"
+  },
+  {
+   "image": "holo-game.dll",
+   "name": "Niantic.Holoholo.Battle.EnemyAlertIndicator",
+   "parent": "UnityEngine.MonoBehaviour"
+  },
+  {
+   "image": "holo-game.dll",
+   "name": "Niantic.Holoholo.Battle.BattleAbilityButton",
+   "parent": "Niantic.Holoholo.MonoBehaviourScope"
+  },
+  {
+   "image": "holo-game.dll",
+   "name": "Niantic.Holoholo.Battle.BattleCountdown",
+   "parent": "UnityEngine.MonoBehaviour"
+  },
+  {
+   "image": "holo-game.dll",
+   "name": "Niantic.Holoholo.Battle.BattleItemButton",
+   "parent": "Niantic.Holoholo.DisposableMonoBehaviourScope"
+  },
+  {
+   "image": "holo-game.dll",
+   "name": "Niantic.Holoholo.Battle.BattleLogDisplay",
+   "parent": "UnityEngine.MonoBehaviour"
+  },
+  {
+   "image": "holo-game.dll",
+   "name": "Niantic.Holoholo.Battle.BattleLogEntry",
+   "parent": "UnityEngine.MonoBehaviour"
+  },
+  {
+   "image": "holo-game.dll",
+   "name": "Niantic.Holoholo.Battle.BattleTimerController",
+   "parent": "UnityEngine.MonoBehaviour"
+  },
+  {
+   "image": "holo-game.dll",
+   "name": "Niantic.Holoholo.Battle.ChargeAttackDisplay",
+   "parent": "Niantic.Holoholo.MonoBehaviourScope"
+  },
+  {
+   "image": "holo-game.dll",
+   "name": "Niantic.Holoholo.Battle.GoSequence",
+   "parent": "UnityEngine.MonoBehaviour"
+  },
+  {
+   "image": "holo-game.dll",
+   "name": "Niantic.Holoholo.Battle.IGymBattleUI",
+   "parent": ""
+  },
+  {
+   "image": "holo-game.dll",
+   "name": "Niantic.Holoholo.Battle.GymBattleUI",
+   "parent": "Niantic.Holoholo.NUI.GuiController"
+  },
+  {
+   "image": "holo-game.dll",
+   "name": "Niantic.Holoholo.Battle.NoPokemonLeftDisplay",
+   "parent": "UnityEngine.MonoBehaviour"
+  },
+  {
+   "image": "holo-game.dll",
+   "name": "Niantic.Holoholo.Battle.PlayerCountUI",
+   "parent": "Niantic.Holoholo.MonoBehaviourScope"
+  },
+  {
+   "image": "holo-game.dll",
+   "name": "Niantic.Holoholo.Battle.SurrenderButton",
+   "parent": "UnityEngine.MonoBehaviour"
+  },
+  {
+   "image": "holo-game.dll",
+   "name": "Niantic.Holoholo.Battle.SwapButton",
+   "parent": "UnityEngine.MonoBehaviour"
+  },
+  {
+   "image": "holo-game.dll",
+   "name": "Niantic.Holoholo.Battle.SwapUI",
+   "parent": "UnityEngine.MonoBehaviour"
+  },
+  {
+   "image": "holo-game.dll",
+   "name": "Niantic.Holoholo.Battle.TapHighlight",
+   "parent": "UnityEngine.MonoBehaviour"
+  },
+  {
+   "image": "holo-game.dll",
+   "name": "Niantic.Holoholo.Battle.ChargeFillUI",
+   "parent": "System.Object"
+  },
+  {
+   "image": "holo-game.dll",
+   "name": "Niantic.Holoholo.Battle.SharedChargeAttackDisplayData",
+   "parent": "UnityEngine.ScriptableObject"
+  },
+  {
+   "image": "holo-game.dll",
+   "name": "Niantic.Holoholo.Battle.ArenaVFXData",
+   "parent": "System.Object"
+  },
+  {
+   "image": "holo-game.dll",
+   "name": "Niantic.Holoholo.Battle.ArenaVFXController",
+   "parent": "UnityEngine.MonoBehaviour"
+  },
+  {
+   "image": "holo-game.dll",
+   "name": "Niantic.Holoholo.Battle.ModelOffSetData",
+   "parent": "UnityEngine.ScriptableObject"
+  },
+  {
+   "image": "holo-game.dll",
+   "name": "Niantic.Holoholo.Battle.GymBattleRpcService",
+   "parent": "UnityEngine.MonoBehaviour"
+  },
+  {
+   "image": "holo-game.dll",
+   "name": "Niantic.Holoholo.Gym.AttackAffector",
+   "parent": "UnityEngine.MonoBehaviour"
+  },
+  {
+   "image": "holo-game.dll",
+   "name": "Niantic.Holoholo.Gym.BattlePrepPartyDynoScrollRect",
+   "parent": "Niantic.Holoholo.UI.DynoScrollRect`3"
+  },
+  {
+   "image": "holo-game.dll",
+   "name": "Niantic.Holoholo.Gym.BattlePrepPartyPanel",
+   "parent": "Niantic.Holoholo.DisposableMonoBehaviourScope"
+  },
+  {
+   "image": "holo-game.dll",
+   "name": "Niantic.Holoholo.Gym.IBattlePrepUiBase",
+   "parent": ""
+  },
+  {
+   "image": "holo-game.dll",
+   "name": "Niantic.Holoholo.Gym.BattlePrepUiBase",
+   "parent": "Niantic.Holoholo.NUI.GuiController"
+  },
+  {
+   "image": "holo-game.dll",
+   "name": "Niantic.Holoholo.Gym.CombatPrepPartyDynoScrollRect",
+   "parent": "Niantic.Holoholo.UI.DynoScrollRect`3"
+  },
+  {
+   "image": "holo-game.dll",
+   "name": "Niantic.Holoholo.Gym.CombatPrepPartyPanel",
+   "parent": "Niantic.Holoholo.Gym.BattlePrepPartyPanel"
+  },
+  {
+   "image": "holo-game.dll",
+   "name": "Niantic.Holoholo.Gym.IBattlePrepPartyDynoScrollRectContext",
+   "parent": ""
+  },
+  {
+   "image": "holo-game.dll",
+   "name": "Niantic.Holoholo.Gym.BattleState",
+   "parent": "Niantic.Zeppelin.GameStates.GameState"
+  },
+  {
+   "image": "holo-game.dll",
+   "name": "Niantic.Holoholo.Gym.BattleStateInstaller",
+   "parent": "Zenject.MonoInstaller"
+  },
+  {
+   "image": "holo-game.dll",
+   "name": "Niantic.Holoholo.Gym.GymBattlePrepUIController",
+   "parent": "Niantic.Holoholo.Gym.BattlePrepUiBase"
+  },
+  {
+   "image": "holo-game.dll",
+   "name": "Niantic.Holoholo.Gym.GymApproachCharacterPlacer",
+   "parent": "UnityEngine.MonoBehaviour"
+  },
+  {
+   "image": "holo-game.dll",
+   "name": "Niantic.Holoholo.Gym.GymApproachCharacterPlacerAttractor",
+   "parent": "Niantic.Holoholo.Gym.GymApproachCharacterPlacer"
+  },
+  {
+   "image": "holo-game.dll",
+   "name": "Niantic.Holoholo.Gym.GymBattleInstaller",
+   "parent": "Zenject.MonoInstaller"
+  },
+  {
+   "image": "holo-game.dll",
+   "name": "Niantic.Holoholo.Gym.IGymBattleIntroGuiController",
+   "parent": ""
+  },
+  {
+   "image": "holo-game.dll",
+   "name": "Niantic.Holoholo.Gym.IGymBattleIntroGuiControllerFactory",
+   "parent": ""
+  },
+  {
+   "image": "holo-game.dll",
+   "name": "Niantic.Holoholo.Gym.GymBattleIntroGuiController",
+   "parent": "Niantic.Holoholo.NUI.GuiController"
+  },
+  {
+   "image": "holo-game.dll",
+   "name": "Niantic.Holoholo.Gym.GymBattleIntroState",
+   "parent": "Niantic.Zeppelin.GameStates.GameState"
+  },
+  {
+   "image": "holo-game.dll",
+   "name": "Niantic.Holoholo.Gym.GymBattleLaunchData",
+   "parent": "System.Object"
+  },
+  {
+   "image": "holo-game.dll",
+   "name": "Niantic.Holoholo.Gym.IGymBattleLauncherState",
+   "parent": ""
+  },
+  {
+   "image": "holo-game.dll",
+   "name": "Niantic.Holoholo.Gym.GymBattleLauncherStateShim",
+   "parent": "Niantic.Zeppelin.GameStates.StateLogic.StateShim`2"
+  },
+  {
+   "image": "holo-game.dll",
+   "name": "Niantic.Holoholo.Gym.GymBattleLauncherState",
+   "parent": "System.Object"
+  },
+  {
+   "image": "holo-game.dll",
+   "name": "Niantic.Holoholo.Gym.GymBattleSceneTransition",
+   "parent": "Niantic.Holoholo.SceneStack.SceneTransition"
+  },
+  {
+   "image": "holo-game.dll",
+   "name": "Niantic.Holoholo.Gym.BattleResultsExit",
+   "parent": "System.Enum"
+  },
+  {
+   "image": "holo-game.dll",
+   "name": "Niantic.Holoholo.Gym.IGymBattleState",
+   "parent": ""
+  },
+  {
+   "image": "holo-game.dll",
+   "name": "Niantic.Holoholo.Gym.GymBattleState",
+   "parent": "Niantic.Holoholo.Gym.BattleState"
+  },
+  {
+   "image": "holo-game.dll",
+   "name": "Niantic.Holoholo.Gym.Battle.IGymBattleContinueGuiController",
+   "parent": ""
+  },
+  {
+   "image": "holo-game.dll",
+   "name": "Niantic.Holoholo.Gym.Battle.IGymBattleContinueGuiControllerFactory",
+   "parent": ""
+  },
+  {
+   "image": "holo-game.dll",
+   "name": "Niantic.Holoholo.Gym.Battle.GymBattleContinueGuiController",
+   "parent": "Niantic.Holoholo.NUI.GuiController"
+  },
+  {
+   "image": "holo-game.dll",
+   "name": "Niantic.Holoholo.Gym.Battle.OpponentPokemonRenderView",
+   "parent": "UnityEngine.MonoBehaviour"
+  },
+  {
+   "image": "holo-game.dll",
+   "name": "Niantic.Holoholo.Gym.Battle.GymBattleDefeatGuiController",
+   "parent": "Niantic.Holoholo.NUI.GuiController"
+  },
+  {
+   "image": "holo-game.dll",
+   "name": "Niantic.Holoholo.Gym.Battle.GymBattleResultsCameraController",
+   "parent": "UnityEngine.MonoBehaviour"
+  },
+  {
+   "image": "holo-game.dll",
+   "name": "Niantic.Holoholo.Gym.Battle.GymBattleResultsState",
+   "parent": "Niantic.Zeppelin.GameStates.GameState"
+  },
+  {
+   "image": "holo-game.dll",
+   "name": "Niantic.Holoholo.Gym.Battle.MotivationCpChangeController",
+   "parent": "Niantic.Holoholo.NUI.GuiController"
+  },
+  {
+   "image": "holo-game.dll",
+   "name": "Niantic.Holoholo.Gym.Battle.IGymBattleVictoryGuiController",
+   "parent": ""
+  },
+  {
+   "image": "holo-game.dll",
+   "name": "Niantic.Holoholo.Gym.Battle.GymBattleVictoryGuiController",
+   "parent": "Niantic.Holoholo.NUI.GuiController"
+  },
+  {
+   "image": "holo-game.dll",
+   "name": "Niantic.Holoholo.Gym.Approach.ApproachCameraController",
+   "parent": "UnityEngine.MonoBehaviour"
+  },
+  {
+   "image": "holo-game.dll",
+   "name": "Niantic.Holoholo.Gym.Approach.GymApproachAvatarUI",
+   "parent": "UnityEngine.MonoBehaviour"
+  },
+  {
+   "image": "holo-game.dll",
+   "name": "Niantic.Holoholo.Gym.Approach.GymApproachDetailsCameraController",
+   "parent": "UnityEngine.MonoBehaviour"
+  },
+  {
+   "image": "holo-game.dll",
+   "name": "Niantic.Holoholo.Gym.Approach.GymApproachDetailsGuiController",
+   "parent": "Niantic.Holoholo.NUI.GuiController"
+  },
+  {
+   "image": "holo-game.dll",
+   "name": "Niantic.Holoholo.Gym.Approach.IGymApproachDetailsRemoteViewInfoGuiController",
+   "parent": ""
+  },
+  {
+   "image": "holo-game.dll",
+   "name": "Niantic.Holoholo.Gym.Approach.GymApproachDetailsRemoteViewInfoGuiController",
+   "parent": "Niantic.Holoholo.NUI.GuiController"
+  },
+  {
+   "image": "holo-game.dll",
+   "name": "Niantic.Holoholo.Gym.Approach.IGymApproachDetailsState",
+   "parent": ""
+  },
+  {
+   "image": "holo-game.dll",
+   "name": "Niantic.Holoholo.Gym.Approach.GymApproachDetailsState",
+   "parent": "Niantic.Zeppelin.GameStates.GameState"
+  },
+  {
+   "image": "holo-game.dll",
+   "name": "Niantic.Holoholo.Gym.Approach.IGymFeedBerryGuiController",
+   "parent": ""
+  },
+  {
+   "image": "holo-game.dll",
+   "name": "Niantic.Holoholo.Gym.Approach.GymFeedBerryGuiController",
+   "parent": "Niantic.Holoholo.UI.Items.FeedItemGuiBase"
+  },
+  {
+   "image": "holo-game.dll",
+   "name": "Niantic.Holoholo.Gym.Approach.GymApproachGuiController",
+   "parent": "Niantic.Holoholo.NUI.GuiController"
+  },
+  {
+   "image": "holo-game.dll",
+   "name": "Niantic.Holoholo.Gym.Approach.IGymApproachMotivationUI",
+   "parent": ""
+  },
+  {
+   "image": "holo-game.dll",
+   "name": "Niantic.Holoholo.Gym.Approach.GymApproachMotivationUI",
+   "parent": "UnityEngine.MonoBehaviour"
+  },
+  {
+   "image": "holo-game.dll",
+   "name": "Niantic.Holoholo.Gym.Approach.GymLockoutButton",
+   "parent": "UnityEngine.MonoBehaviour"
+  },
+  {
+   "image": "holo-game.dll",
+   "name": "Niantic.Holoholo.Gym.Approach.GymApproachCharacter",
+   "parent": "UnityEngine.MonoBehaviour"
+  },
+  {
+   "image": "holo-game.dll",
+   "name": "Niantic.Holoholo.Gym.Approach.IGymApproachCharacter",
+   "parent": ""
+  },
+  {
+   "image": "holo-game.dll",
+   "name": "Niantic.Holoholo.Gym.Approach.IGymApproachStage",
+   "parent": ""
+  },
+  {
+   "image": "holo-game.dll",
+   "name": "Niantic.Holoholo.Gym.Approach.GymApproachStage",
+   "parent": "UnityEngine.MonoBehaviour"
+  },
+  {
+   "image": "holo-game.dll",
+   "name": "Niantic.Holoholo.Gym.Approach.GymApproachInput",
+   "parent": "UnityEngine.MonoBehaviour"
+  },
+  {
+   "image": "holo-game.dll",
+   "name": "Niantic.Holoholo.Gym.Approach.IGymApproachLayers",
+   "parent": ""
+  },
+  {
+   "image": "holo-game.dll",
+   "name": "Niantic.Holoholo.Gym.Approach.GymApproachLayers",
+   "parent": "Niantic.Holoholo.NUI.GuiController"
+  },
+  {
+   "image": "holo-game.dll",
+   "name": "Niantic.Holoholo.Gym.Approach.IGymApproachState",
+   "parent": ""
+  },
+  {
+   "image": "holo-game.dll",
+   "name": "Niantic.Holoholo.Gym.Approach.GymApproachState",
+   "parent": "Niantic.Zeppelin.GameStates.GameState"
+  },
+  {
+   "image": "holo-game.dll",
+   "name": "Niantic.Holoholo.Gym.Approach.IGymApproachSpinnerState",
+   "parent": ""
+  },
+  {
+   "image": "holo-game.dll",
+   "name": "Niantic.Holoholo.Gym.Approach.GymApproachSpinnerState",
+   "parent": "Niantic.Zeppelin.GameStates.GameState"
+  },
+  {
+   "image": "holo-game.dll",
+   "name": "Niantic.Holoholo.Gym.Approach.IGymItemSpinner",
+   "parent": ""
+  },
+  {
+   "image": "holo-game.dll",
+   "name": "Niantic.Holoholo.Gym.Approach.GymItemSpinner",
+   "parent": "Niantic.Holoholo.Pokestop.MapPokestopMode"
+  },
+  {
+   "image": "holo-game.dll",
+   "name": "Niantic.Holoholo.Gym.Approach.IGymSpinnerInteractionGuiController",
+   "parent": ""
+  },
+  {
+   "image": "holo-game.dll",
+   "name": "Niantic.Holoholo.Gym.Approach.IGymSpinnerInteractionGuiControllerFactory",
+   "parent": ""
+  },
+  {
+   "image": "holo-game.dll",
+   "name": "Niantic.Holoholo.Gym.Approach.GymSpinnerInteractionGuiController",
+   "parent": "Niantic.Holoholo.NUI.GuiController"
+  },
+  {
+   "image": "holo-game.dll",
+   "name": "Niantic.Holoholo.Gym.Approach.ITeamBonusToastGuiController",
+   "parent": ""
+  },
+  {
+   "image": "holo-game.dll",
+   "name": "Niantic.Holoholo.Gym.Approach.TeamBonusToastGuiController",
+   "parent": "Niantic.Holoholo.NUI.GuiController"
+  },
+  {
+   "image": "holo-game.dll",
+   "name": "Niantic.Holoholo.Map.Notifications.GymBattleFriendshipIncrementNotification",
+   "parent": "Niantic.Holoholo.Map.Notifications.MergeableClientInboxNotification"
+  },
+  {
+   "image": "holo-game.dll",
+   "name": "Niantic.Holoholo.Map.Notifications.GymBattleFriendshipIncrementSource",
+   "parent": "System.Object"
+  },
+  {
+   "image": "holo-protos.dll",
+   "name": "Holoholo.Rpc.BattleInputBufferPriorityList",
+   "parent": "System.Object"
+  },
+  {
+   "image": "holo-protos.dll",
+   "name": "Holoholo.Rpc.GymBattleSettingsProto",
+   "parent": "System.Object"
+  },
+  {
+   "image": "holo-protos.dll",
+   "name": "Holoholo.Rpc.BattleInputBufferSettingsProto",
+   "parent": "System.Object"
+  },
+  {
+   "image": "holo-protos.dll",
+   "name": "Holoholo.Rpc.GymBattleProto",
+   "parent": "System.Object"
+  },
+  {
+   "image": "holo-protos.dll",
+   "name": "Holoholo.Rpc.GymStartSessionProto",
+   "parent": "System.Object"
+  },
+  {
+   "image": "holo-protos.dll",
+   "name": "Holoholo.Rpc.GymStartSessionOutProto",
+   "parent": "System.Object"
+  },
+  {
+   "image": "holo-protos.dll",
+   "name": "Holoholo.Rpc.GymBattleAttackProto",
+   "parent": "System.Object"
+  },
+  {
+   "image": "holo-protos.dll",
+   "name": "Holoholo.Rpc.GymBattleAttackOutProto",
+   "parent": "System.Object"
+  },
+  {
+   "image": "holo-protos.dll",
+   "name": "Holoholo.Rpc.WithWinGymBattleStatusProto",
+   "parent": "System.Object"
+  },
+  {
+   "image": "holo-game-vnext-battle.dll",
+   "name": "Niantic.Holoholo.VNext.BattleCameraVNextController",
+   "parent": "UnityEngine.MonoBehaviour"
+  },
+  {
+   "image": "holo-game-vnext-battle.dll",
+   "name": "Niantic.Holoholo.VNext.IBattleGameModeInterface",
+   "parent": ""
+  },
+  {
+   "image": "holo-game-vnext-battle.dll",
+   "name": "Niantic.Holoholo.VNext.BattleGameModeInterface",
+   "parent": "System.Object"
+  },
+  {
+   "image": "holo-game-vnext-battle.dll",
+   "name": "Niantic.Holoholo.VNext.BattleGestureHandlerVNext",
+   "parent": "UnityEngine.MonoBehaviour"
+  },
+  {
+   "image": "holo-game-vnext-battle.dll",
+   "name": "Niantic.Holoholo.VNext.BattlePokemonVNext",
+   "parent": "UnityEngine.MonoBehaviour"
+  },
+  {
+   "image": "holo-game-vnext-battle.dll",
+   "name": "Niantic.Holoholo.VNext.EnemyBattlePokemonVNext",
+   "parent": "Niantic.Holoholo.VNext.BattlePokemonVNext"
+  },
+  {
+   "image": "holo-game-vnext-battle.dll",
+   "name": "Niantic.Holoholo.VNext.FriendlyBattlePokemonVNext",
+   "parent": "Niantic.Holoholo.VNext.BattlePokemonVNext"
+  },
+  {
+   "image": "holo-game-vnext-battle.dll",
+   "name": "Niantic.Holoholo.VNext.FriendlyBattlePokemonVNextPool",
+   "parent": "System.Object"
+  },
+  {
+   "image": "holo-game-vnext-battle.dll",
+   "name": "Niantic.Holoholo.VNext.IFriendlyBattlePokemonVNextPool",
+   "parent": ""
+  },
+  {
+   "image": "holo-game-vnext-battle.dll",
+   "name": "Niantic.Holoholo.VNext.PlayerBattlePokemonVNext",
+   "parent": "Niantic.Holoholo.VNext.BattlePokemonVNext"
+  },
+  {
+   "image": "holo-game-vnext-battle.dll",
+   "name": "Niantic.Holoholo.VNext.PlayerPokemonNextModelHeightOffSetData",
+   "parent": "UnityEngine.ScriptableObject"
+  },
+  {
+   "image": "holo-game-vnext-battle.dll",
+   "name": "Niantic.Holoholo.VNext.RaidBossPokemonVNext",
+   "parent": "Niantic.Holoholo.VNext.EnemyBattlePokemonVNext"
+  },
+  {
+   "image": "holo-game-vnext-battle.dll",
+   "name": "Niantic.Holoholo.VNext.IBattlePokemonManager",
+   "parent": ""
+  },
+  {
+   "image": "holo-game-vnext-battle.dll",
+   "name": "Niantic.Holoholo.VNext.IBattleStage",
+   "parent": ""
+  },
+  {
+   "image": "holo-game-vnext-battle.dll",
+   "name": "Niantic.Holoholo.VNext.BattleTempBoostVNextService",
+   "parent": "UnityEngine.MonoBehaviour"
+  },
+  {
+   "image": "holo-game-vnext-battle.dll",
+   "name": "Niantic.Holoholo.VNext.PlayerBattleActionsVNext",
+   "parent": "System.Object"
+  },
+  {
+   "image": "holo-game-vnext-battle.dll",
+   "name": "Niantic.Holoholo.VNext.IRaidBattleStage",
+   "parent": ""
+  },
+  {
+   "image": "holo-game-vnext-battle.dll",
+   "name": "Niantic.Holoholo.VNext.IRaidBattleStageFactory",
+   "parent": ""
+  },
+  {
+   "image": "holo-game-vnext-battle.dll",
+   "name": "Niantic.Holoholo.VNext.RaidBattleStage",
+   "parent": "UnityEngine.MonoBehaviour"
+  },
+  {
+   "image": "holo-game-vnext-battle.dll",
+   "name": "Niantic.Holoholo.VNext.BattleAbilityTriggerEventHandler",
+   "parent": "System.Object"
+  },
+  {
+   "image": "holo-game-vnext-battle.dll",
+   "name": "Niantic.Holoholo.VNext.BattleActorAbilityEventHandler",
+   "parent": "System.Object"
+  },
+  {
+   "image": "holo-game-vnext-battle.dll",
+   "name": "Niantic.Holoholo.VNext.BattleAttackBoostEventHandler",
+   "parent": "System.Object"
+  },
+  {
+   "image": "holo-game-vnext-battle.dll",
+   "name": "Niantic.Holoholo.VNext.BattleAttackEventHandler",
+   "parent": "System.Object"
+  },
+  {
+   "image": "holo-game-vnext-battle.dll",
+   "name": "Niantic.Holoholo.VNext.BattleAttackTelegraphEventHandler",
+   "parent": "System.Object"
+  },
+  {
+   "image": "holo-game-vnext-battle.dll",
+   "name": "Niantic.Holoholo.VNext.BattleCinematicEventHandler",
+   "parent": "System.Object"
+  },
+  {
+   "image": "holo-game-vnext-battle.dll",
+   "name": "Niantic.Holoholo.VNext.BattleConsensusEventHandler",
+   "parent": "System.Object"
+  },
+  {
+   "image": "holo-game-vnext-battle.dll",
+   "name": "Niantic.Holoholo.VNext.BattleCountdownEventHandler",
+   "parent": "System.Object"
+  },
+  {
+   "image": "holo-game-vnext-battle.dll",
+   "name": "Niantic.Holoholo.VNext.BattleDodgeEventHandler",
+   "parent": "System.Object"
+  },
+  {
+   "image": "holo-game-vnext-battle.dll",
+   "name": "Niantic.Holoholo.VNext.BattleDodgeSuccessEventHandler",
+   "parent": "System.Object"
+  },
+  {
+   "image": "holo-game-vnext-battle.dll",
+   "name": "Niantic.Holoholo.VNext.BattleEndEventHandler",
+   "parent": "System.Object"
+  },
+  {
+   "image": "holo-game-vnext-battle.dll",
+   "name": "Niantic.Holoholo.VNext.IBattleEventProcessor",
+   "parent": ""
+  },
+  {
+   "image": "holo-game-vnext-battle.dll",
+   "name": "Niantic.Holoholo.VNext.BattleEventProcessor",
+   "parent": "System.Object"
+  },
+  {
+   "image": "holo-game-vnext-battle.dll",
+   "name": "Niantic.Holoholo.VNext.BattleFastMovePredictionOverrideEventHandler",
+   "parent": "System.Object"
+  },
+  {
+   "image": "holo-game-vnext-battle.dll",
+   "name": "Niantic.Holoholo.VNext.BattleFlinchEventHandler",
+   "parent": "System.Object"
+  },
+  {
+   "image": "holo-game-vnext-battle.dll",
+   "name": "Niantic.Holoholo.VNext.BattleHolisticCountdownEventHandler",
+   "parent": "System.Object"
+  },
+  {
+   "image": "holo-game-vnext-battle.dll",
+   "name": "Niantic.Holoholo.VNext.BattleItemEventHandler",
+   "parent": "System.Object"
+  },
+  {
+   "image": "holo-game-vnext-battle.dll",
+   "name": "Niantic.Holoholo.VNext.BattleJoinEventHandler",
+   "parent": "System.Object"
+  },
+  {
+   "image": "holo-game-vnext-battle.dll",
+   "name": "Niantic.Holoholo.VNext.BattleLogMessageEventHandler",
+   "parent": "System.Object"
+  },
+  {
+   "image": "holo-game-vnext-battle.dll",
+   "name": "Niantic.Holoholo.VNext.BattleQuitEventHandler",
+   "parent": "System.Object"
+  },
+  {
+   "image": "holo-game-vnext-battle.dll",
+   "name": "Niantic.Holoholo.VNext.BattleShieldEventHandler",
+   "parent": "System.Object"
+  },
+  {
+   "image": "holo-game-vnext-battle.dll",
+   "name": "Niantic.Holoholo.VNext.BattleSidelineActionEventHandler",
+   "parent": "System.Object"
+  },
+  {
+   "image": "holo-game-vnext-battle.dll",
+   "name": "Niantic.Holoholo.VNext.BattleStatChangeEventHandler",
+   "parent": "System.Object"
+  },
+  {
+   "image": "holo-game-vnext-battle.dll",
+   "name": "Niantic.Holoholo.VNext.BattleSwapEventHandler",
+   "parent": "System.Object"
+  },
+  {
+   "image": "holo-game-vnext-battle.dll",
+   "name": "Niantic.Holoholo.VNext.BattleTransformEventHandler",
+   "parent": "System.Object"
+  },
+  {
+   "image": "holo-game-vnext-battle.dll",
+   "name": "Niantic.Holoholo.VNext.IRaidBattleAnimationSequencer",
+   "parent": ""
+  },
+  {
+   "image": "holo-game-vnext-battle.dll",
+   "name": "Niantic.Holoholo.VNext.RaidBattleAnimationSequencer",
+   "parent": "UnityEngine.MonoBehaviour"
+  },
+  {
+   "image": "holo-game-vnext-battle.dll",
+   "name": "Niantic.Holoholo.VNext.RaidBattleAssetManager",
+   "parent": "System.Object"
+  },
+  {
+   "image": "holo-game-vnext-battle.dll",
+   "name": "Niantic.Holoholo.VNext.RaidBattleGestureHandler",
+   "parent": "Niantic.Holoholo.VNext.BattleGestureHandlerVNext"
+  },
+  {
+   "image": "holo-game-vnext-battle.dll",
+   "name": "Niantic.Holoholo.VNext.RaidBattleLifecycleService",
+   "parent": "System.Object"
+  },
+  {
+   "image": "holo-game-vnext-battle.dll",
+   "name": "Niantic.Holoholo.VNext.IRaidBattlePokemonManager",
+   "parent": ""
+  },
+  {
+   "image": "holo-game-vnext-battle.dll",
+   "name": "Niantic.Holoholo.VNext.RaidBattlePokemonManager",
+   "parent": "UnityEngine.MonoBehaviour"
+  },
+  {
+   "image": "holo-game-vnext-battle.dll",
+   "name": "Niantic.Holoholo.VNext.RaidBattleStarter",
+   "parent": "System.Object"
+  },
+  {
+   "image": "holo-game-vnext-battle.dll",
+   "name": "Niantic.Holoholo.VNext.IRaidBattleVNextState",
+   "parent": ""
+  },
+  {
+   "image": "holo-game-vnext-battle.dll",
+   "name": "Niantic.Holoholo.VNext.RaidBattleVNextStateShim",
+   "parent": "Niantic.Zeppelin.GameStates.StateLogic.StateShim`2"
+  },
+  {
+   "image": "holo-game-vnext-battle.dll",
+   "name": "Niantic.Holoholo.VNext.RaidBattleVNextState",
+   "parent": "UnityEngine.MonoBehaviour"
+  },
+  {
+   "image": "holo-game-vnext-battle.dll",
+   "name": "Niantic.Holoholo.VNext.BaseBattleCinematicSequenceManager",
+   "parent": "Niantic.Holoholo.DisposableMonoBehaviourScope"
+  },
+  {
+   "image": "holo-game-vnext-battle.dll",
+   "name": "Niantic.Holoholo.VNext.BaseBattleGuiManager",
+   "parent": "Niantic.Holoholo.NUI.GuiController"
+  },
+  {
+   "image": "holo-game-vnext-battle.dll",
+   "name": "Niantic.Holoholo.VNext.BattleCharacterStateExt",
+   "parent": "System.Object"
+  },
+  {
+   "image": "holo-game-vnext-battle.dll",
+   "name": "Niantic.Holoholo.VNext.BattleCommunicationService",
+   "parent": "System.Object"
+  },
+  {
+   "image": "holo-game-vnext-battle.dll",
+   "name": "Niantic.Holoholo.VNext.BattleDirector",
+   "parent": "Niantic.Holoholo.Services.ObservableService`1"
+  },
+  {
+   "image": "holo-game-vnext-battle.dll",
+   "name": "Niantic.Holoholo.VNext.BattleEventProtoExt",
+   "parent": "System.Object"
+  },
+  {
+   "image": "holo-game-vnext-battle.dll",
+   "name": "Niantic.Holoholo.VNext.BattleStateExt",
+   "parent": "System.Object"
+  },
+  {
+   "image": "holo-game-vnext-battle.dll",
+   "name": "Niantic.Holoholo.VNext.BattleStateVNextInstaller",
+   "parent": "Zenject.MonoInstaller"
+  },
+  {
+   "image": "holo-game-vnext-battle.dll",
+   "name": "Niantic.Holoholo.VNext.BattleStatusLegacyExt",
+   "parent": "System.Object"
+  },
+  {
+   "image": "holo-game-vnext-battle.dll",
+   "name": "Niantic.Holoholo.VNext.BattleVNextCrashCrashRecoveryService",
+   "parent": "System.Object"
+  },
+  {
+   "image": "holo-game-vnext-battle.dll",
+   "name": "Niantic.Holoholo.VNext.BattleVNextCrashRecoveryRpcService",
+   "parent": "System.Object"
+  },
+  {
+   "image": "holo-game-vnext-battle.dll",
+   "name": "Niantic.Holoholo.VNext.BattleAbilityButtonVNext",
+   "parent": "Niantic.Holoholo.MonoBehaviourScope"
+  },
+  {
+   "image": "holo-game-vnext-battle.dll",
+   "name": "Niantic.Holoholo.VNext.BattleItemButtonVNext",
+   "parent": "Niantic.Holoholo.MonoBehaviourScope"
+  },
+  {
+   "image": "holo-game-vnext-battle.dll",
+   "name": "Niantic.Holoholo.VNext.BattleNameplateVNext",
+   "parent": "Niantic.Holoholo.MonoBehaviourScope"
+  },
+  {
+   "image": "holo-game-vnext-battle.dll",
+   "name": "Niantic.Holoholo.VNext.ChargeAttackDisplayOverlay",
+   "parent": "UnityEngine.MonoBehaviour"
+  },
+  {
+   "image": "holo-game-vnext-battle.dll",
+   "name": "Niantic.Holoholo.VNext.ChargeAttackDisplayVNext",
+   "parent": "UnityEngine.MonoBehaviour"
+  },
+  {
+   "image": "holo-game-vnext-battle.dll",
+   "name": "Niantic.Holoholo.VNext.IChargeAttackGroupVNext",
+   "parent": ""
+  },
+  {
+   "image": "holo-game-vnext-battle.dll",
+   "name": "Niantic.Holoholo.VNext.IChargeAttackGroupVNextFactory",
+   "parent": ""
+  },
+  {
+   "image": "holo-game-vnext-battle.dll",
+   "name": "Niantic.Holoholo.VNext.ChargeAttackGroupVNext",
+   "parent": "Niantic.Holoholo.UI.UIWidgets.UIWidget`1"
+  },
+  {
+   "image": "holo-game-vnext-battle.dll",
+   "name": "Niantic.Holoholo.VNext.IGymBattleUIVNext",
+   "parent": ""
+  },
+  {
+   "image": "holo-game-vnext-battle.dll",
+   "name": "Niantic.Holoholo.VNext.GymBattleUIVNext",
+   "parent": "Niantic.Holoholo.NUI.GuiController"
+  },
+  {
+   "image": "holo-game-interfaces.dll",
+   "name": "Niantic.Holoholo.Gym.Approach.IGymApproachAvatarUI",
+   "parent": ""
+  },
+  {
+   "image": "holo-game-interfaces.dll",
+   "name": "Niantic.Holoholo.Battle.IBattleToastSource",
+   "parent": ""
+  },
+  {
+   "image": "holo-game-interfaces.dll",
+   "name": "Niantic.Holoholo.Battle.IChargeAttackDisplay",
+   "parent": ""
+  },
+  {
+   "image": "holo-game-interfaces.dll",
+   "name": "Niantic.Holoholo.Battle.ITapHighlight",
+   "parent": ""
+  },
+  {
+   "image": "holo-game-interfaces.dll",
+   "name": "Niantic.Holoholo.VNext.IBattleCommunicationService",
+   "parent": ""
+  },
+  {
+   "image": "holo-game-interfaces.dll",
+   "name": "Niantic.Holoholo.VNext.IBattleDebugLogService",
+   "parent": ""
+  },
+  {
+   "image": "holo-game-interfaces.dll",
+   "name": "Niantic.Holoholo.VNext.IBattleDirector",
+   "parent": ""
+  },
+  {
+   "image": "holo-game-interfaces.dll",
+   "name": "Niantic.Holoholo.VNext.IBattleTempBoostVNextService",
+   "parent": ""
+  },
+  {
+   "image": "holo-game-interfaces.dll",
+   "name": "Niantic.Holoholo.VNext.IBattleVNextCrashRecoveryRpcService",
+   "parent": ""
+  },
+  {
+   "image": "holo-game-interfaces.dll",
+   "name": "Niantic.Holoholo.VNext.IBattleVNextCrashRecoveryService",
+   "parent": ""
+  },
+  {
+   "image": "holo-game-interfaces.dll",
+   "name": "Niantic.Holoholo.VNext.ICombatVNextLauncherState",
+   "parent": ""
+  },
+  {
+   "image": "holo-game-interfaces.dll",
+   "name": "Niantic.Holoholo.VNext.CombatVNextLauncherStateShim",
+   "parent": "Niantic.Zeppelin.GameStates.StateLogic.StateShim`2"
+  },
+  {
+   "image": "holo-game-interfaces.dll",
+   "name": "Niantic.Holoholo.VNext.IRaidBattleAssetManager",
+   "parent": ""
+  },
+  {
+   "image": "holo-game-interfaces.dll",
+   "name": "Niantic.Holoholo.VNext.IRaidBattleLifecycleService",
+   "parent": ""
+  },
+  {
+   "image": "holo-game-interfaces.dll",
+   "name": "Niantic.Holoholo.VNext.IRaidBattleStarter",
+   "parent": ""
+  },
+  {
+   "image": "holo-game-interfaces.dll",
+   "name": "Niantic.Holoholo.Services.ClientInboxService.IGymBattleFriendshipIncrementNotificationData",
+   "parent": ""
+  },
+  {
+   "image": "holo-game-shared-types.dll",
+   "name": "Niantic.Holoholo.VNext.BattlePosition",
+   "parent": "System.ValueType"
+  },
+  {
+   "image": "holo-game-shared-types.dll",
+   "name": "Niantic.Holoholo.VNext.BattlePredictedPositionState",
+   "parent": "System.Object"
+  },
+  {
+   "image": "holo-game-shared-types.dll",
+   "name": "Niantic.Holoholo.VNext.BattleCharacterState",
+   "parent": "System.Object"
+  },
+  {
+   "image": "holo-game-shared-types.dll",
+   "name": "Niantic.Holoholo.VNext.BattleActorState",
+   "parent": "Niantic.Holoholo.VNext.BattleCharacterState"
+  },
+  {
+   "image": "holo-game-shared-types.dll",
+   "name": "Niantic.Holoholo.VNext.BattlePokemonState",
+   "parent": "Niantic.Holoholo.VNext.BattleCharacterState"
+  },
+  {
+   "image": "holo-game-shared-types.dll",
+   "name": "Niantic.Holoholo.VNext.BattleFieldActorState",
+   "parent": "Niantic.Holoholo.VNext.BattleCharacterState"
+  },
+  {
+   "image": "holo-game-shared-types.dll",
+   "name": "Niantic.Holoholo.VNext.BattleDirectorPlayerActionStatus",
+   "parent": "System.Enum"
+  },
+  {
+   "image": "holo-game-shared-types.dll",
+   "name": "Niantic.Holoholo.VNext.BattleDirectorConfig",
+   "parent": "System.Object"
+  },
+  {
+   "image": "holo-game-shared-types.dll",
+   "name": "Niantic.Holoholo.VNext.BattleLobby",
+   "parent": "System.Object"
+  },
+  {
+   "image": "holo-game-shared-types.dll",
+   "name": "Niantic.Holoholo.VNext.BattlePokemonProtoExt",
+   "parent": "System.Object"
+  },
+  {
+   "image": "holo-game-shared-types.dll",
+   "name": "Niantic.Holoholo.VNext.BattleState",
+   "parent": "System.Object"
+  },
+  {
+   "image": "holo-game-shared-types.dll",
+   "name": "Niantic.Holoholo.VNext.BattleStatus",
+   "parent": "System.Enum"
+  },
+  {
+   "image": "holo-game-shared-types.dll",
+   "name": "Niantic.Holoholo.VNext.BattleConditions",
+   "parent": "System.Object"
+  },
+  {
+   "image": "holo-game-shared-types.dll",
+   "name": "Niantic.Holoholo.VNext.BattleStateSharedExt",
+   "parent": "System.Object"
+  },
+  {
+   "image": "holo-game-shared-types.dll",
+   "name": "Niantic.Holoholo.VNext.BattleStatusExt",
+   "parent": "System.Object"
+  },
+  {
+   "image": "holo-game-shared-types.dll",
+   "name": "Niantic.Holoholo.VNext.BattleTimeUtil",
+   "parent": "System.Object"
+  },
+  {
+   "image": "holo-game-shared-types.dll",
+   "name": "Niantic.Holoholo.VNext.BattleTurnAction",
+   "parent": "System.Object"
+  }
+ ],
+ "detail": {
+  "Niantic.Holoholo.Combat.CombatInput.CombatFastAttackButton": {
+   "methods": [
+    "bosw/0",
+    "OnTap/0",
+    ".ctor/0"
+   ],
+   "fields": [
+    "dlyo@32",
+    "m_CancellationTokenSource@24"
+   ]
+  },
+  "Niantic.Holoholo.Battle.IGymBattleUI": {
+   "methods": [
+    "StartBattle/0",
+    "HideHeader/0",
+    "ShowNameplates/0",
+    "HideNameplates/0",
+    "HideEnemyNameplate/0",
+    "SetupTimer/4",
+    "get_BattleTimer/0",
+    "get_BattleLogDisplay/0",
+    "get_SurrenderButton/0",
+    "get_BattleCountdown/0",
+    "get_EnemyNameplate/0",
+    "get_ChargeAttack1Display/0",
+    "get_ChargeAttack2Display/0"
+   ],
+   "fields": []
+  },
+  "Niantic.Holoholo.Battle.GymBattleUI": {
+   "methods": [
+    "get_BattleTimer/0",
+    "set_BattleTimer/1",
+    "get_BattleCountdown/0",
+    "get_EnemyNameplate/0",
+    "get_ChargeAttack1Display/0",
+    "get_ChargeAttack2Display/0",
+    "get_BattleLogDisplay/0",
+    "get_SurrenderButton/0",
+    "Initialize/1",
+    "bwja/1",
+    "HandleOpen/0",
+    "HandleOpenComplete/0",
+    "HandleDismiss/0",
+    "HandleDismissComplete/0",
+    "PressBackButton/0",
+    "StartBattle/0",
+    "HideHeader/0",
+    "ShowNameplates/0",
+    "HideNameplates/0",
+    "HideEnemyNameplate/0",
+    "SetupTimer/4",
+    "bwjb/2",
+    ".ctor/0",
+    ".cctor/0"
+   ],
+   "fields": [
+    "dsww@240",
+    "dswx@248",
+    "dswy@256",
+    "surrenderButton@264",
+    "battleItemButton@272",
+    "battleAbilityButton@280",
+    "headerContainer@288",
+    "playerNameplate@296",
+    "enemyNameplate@304",
+    "playerFloatingNameplate@312",
+    "enemyFloatingNameplate@320",
+    "battleCountdown@328",
+    "swapUI@336",
+    "chargeAttackRoot@344",
+    "battleTimerRootTransform@352",
+    "battleLogRoot@360",
+    "enemyAlertIndicator@368",
+    "partyPlayPoweredAttackAnimator@376",
+    "partyPlayRaidBossAttackPivot@384",
+    "<BattleTimer>k__BackingField@392",
+    "dswz@400",
+    "dsxa@408",
+    "dsxb@416",
+    "customBackButtonEvent@32",
+    "customBackButtonAction@40",
+    "hideWorldMapBehindGui@48",
+    "hidesPreviousGuis@49",
+    "canvasComponent@56",
+    "cachedRootCanvasGroup@64",
+    "lookedForRaycaster@72",
+    "cachedRootRaycaster@80",
+    "openCompleted@88",
+    "OutOfScope@96",
+    "VisibilityUpdated@104",
+    "currentState@112",
+    "Dismissed@120",
+    "layer@128",
+    "depth@132",
+    "overrideSortingOrder@136",
+    "customSortingOrder@140",
+    "_isVisible@144",
+    "inputEventService@152",
+    "guiLayerService@160",
+    "cameraRig@168",
+    "scheduler@176",
+    "transitionsBlockInput@184",
+    "backButtonResponse@188",
+    "layerRegistrationReceipt@192",
+    "visibilityRegistrationReceipt@200",
+    "backButtonListenerReceipt@208",
+    "worldMapRenderingPausedReceipt@216",
+    "backButtonAction@224",
+    "transitions@232",
+    "m_CancellationTokenSource@24"
+   ]
+  },
+  "Niantic.Holoholo.Battle.GymBattleRpcService": {
+   "methods": [
+    "add_OnGymBadgeUpdated/1",
+    "remove_OnGymBadgeUpdated/1",
+    "SendStartBattleRpc/4",
+    "SendBattleUpdateRpc/5",
+    ".ctor/0"
+   ],
+   "fields": [
+    "dtae@32",
+    "dtaf@40",
+    "dtag@48",
+    "OnGymBadgeUpdated@56",
+    "m_CancellationTokenSource@24"
+   ]
+  },
+  "Niantic.Holoholo.Gym.GymBattlePrepUIController": {
+   "methods": [
+    "HandleOpen/0",
+    "get_EnemyPokemonTeam/0",
+    "Initialize/1",
+    "bzks/1",
+    "bzkt/0",
+    "ExitPressed/0",
+    "Cleanup/0",
+    "bzku/1",
+    "Battle/0",
+    "OnClickInventory/0",
+    "get_EnemyTypeForTip/0",
+    "get_EnemyPokemonForTip/0",
+    "bzkv/0",
+    ".ctor/0",
+    "bzkw/1",
+    "bzkx/1",
+    "bzky/0"
+   ],
+   "fields": [
+    "defenderLineupRoot@352",
+    "itemBagSound@360",
+    "battleButton@368",
+    "dvxm@376",
+    "dvxn@384",
+    "dvxo@392",
+    "dvxp@400",
+    "dvxq@408",
+    "dvxr@416",
+    "dvxs@424",
+    "dvxt@432",
+    "playerService@240",
+    "inputEventService@248",
+    "pokemonInventoryGuiServiceInj@256",
+    "weatherLocationService@264",
+    "gameMaster@272",
+    "battlePartyService@280",
+    "soundFxService@288",
+    "ibfcEligibilityService@296",
+    "dismissSfx@304",
+    "favoritePokemonMultiplier@312",
+    "dynoScrollRect@320",
+    "_scrollRectMovement@328",
+    "_numPlayerPokemon@332",
+    "_isMegaEnhancedRaid@336",
+    "BattleContext@340",
+    "PokemonInventoryOpened@344",
+    "customBackButtonEvent@32",
+    "customBackButtonAction@40",
+    "hideWorldMapBehindGui@48",
+    "hidesPreviousGuis@49",
+    "canvasComponent@56",
+    "cachedRootCanvasGroup@64",
+    "lookedForRaycaster@72",
+    "cachedRootRaycaster@80",
+    "openCompleted@88",
+    "OutOfScope@96",
+    "VisibilityUpdated@104",
+    "currentState@112",
+    "Dismissed@120",
+    "layer@128",
+    "depth@132",
+    "overrideSortingOrder@136",
+    "customSortingOrder@140",
+    "_isVisible@144",
+    "inputEventService@152",
+    "guiLayerService@160",
+    "cameraRig@168",
+    "scheduler@176",
+    "transitionsBlockInput@184",
+    "backButtonResponse@188",
+    "layerRegistrationReceipt@192",
+    "visibilityRegistrationReceipt@200",
+    "backButtonListenerReceipt@208",
+    "worldMapRenderingPausedReceipt@216",
+    "backButtonAction@224",
+    "transitions@232",
+    "m_CancellationTokenSource@24"
+   ]
+  },
+  "Niantic.Holoholo.Gym.GymBattleInstaller": {
+   "methods": [
+    "InstallBindings/0",
+    ".ctor/0"
+   ],
+   "fields": [
+    "gymBattleState@40",
+    "battleResultsState@48",
+    "battleIntroState@56",
+    "gymBattleRpcService@64",
+    "gymBattleIntroGui@72",
+    "gymBattleContinueGui@80",
+    "motivationCpChange@88",
+    "gymBattleVictoryGui@96",
+    "gymBattleDefeatGui@104",
+    "<Container>k__BackingField@32",
+    "m_CancellationTokenSource@24"
+   ]
+  },
+  "Niantic.Holoholo.Gym.IGymBattleIntroGuiController": {
+   "methods": [],
+   "fields": []
+  },
+  "Niantic.Holoholo.Gym.IGymBattleIntroGuiControllerFactory": {
+   "methods": [],
+   "fields": []
+  },
+  "Niantic.Holoholo.Gym.GymBattleIntroGuiController": {
+   "methods": [
+    "Initialize/2",
+    "HandleOpen/0",
+    "HandleOpenComplete/0",
+    "HandleDismiss/0",
+    "HandleDismissComplete/0",
+    "bzns/3",
+    "bznt/7",
+    "bznu/2",
+    "bznv/0",
+    "bznw/6",
+    "bznx/6",
+    ".ctor/0"
+   ],
+   "fields": [
+    "autoDismissTime@240",
+    "pokemonTexelDensity@244",
+    "playerPokemonRotation@248",
+    "defenderPokemonRotation@252",
+    "playerPokemonImage@256",
+    "defenderPokemonImage@264",
+    "avatarTexelDensity@272",
+    "playerAvatarNode@280",
+    "defenderAvatarNode@288",
+    "playerAvatarImage@296",
+    "defenderAvatarImage@304",
+    "playerAvatarCamera@312",
+    "defenderAvatarCamera@320",
+    "playerPokemonNameLabel@328",
+    "defenderPokemonNameLabel@336",
+    "playerPokemonCpLabel@344",
+    "defenderPokemonCpLabel@352",
+    "playerPokemonBattlesWonLabel@360",
+    "defenderPokemonBattlesWonLabel@368",
+    "playerPokemonType1Image@376",
+    "playerPokemonType2Image@384",
+    "defenderPokemonType1Image@392",
+    "defenderPokemonType2Image@400",
+    "playerNameLabel@408",
+    "defenderNameLabel@416",
+    "playerLevelLabel@424",
+    "defenderLevelLabel@432",
+    "bgImagePlayer@440",
+    "bgImageDefender@448",
+    "teamData@456",
+    "dvzh@464",
+    "dvzi@472",
+    "dvzj@480",
+    "dvzk@488",
+    "dvzl@496",
+    "dvzm@504",
+    "dvzn@512",
+    "dvzq@520",
+    "dvzr@528",
+    "dvzs@536",
+    "dvzt@544",
+    "dvzu@552",
+    "customBackButtonEvent@32",
+    "customBackButtonAction@40",
+    "hideWorldMapBehindGui@48",
+    "hidesPreviousGuis@49",
+    "canvasComponent@56",
+    "cachedRootCanvasGroup@64",
+    "lookedForRaycaster@72",
+    "cachedRootRaycaster@80",
+    "openCompleted@88",
+    "OutOfScope@96",
+    "VisibilityUpdated@104",
+    "currentState@112",
+    "Dismissed@120",
+    "layer@128",
+    "depth@132",
+    "overrideSortingOrder@136",
+    "customSortingOrder@140",
+    "_isVisible@144",
+    "inputEventService@152",
+    "guiLayerService@160",
+    "cameraRig@168",
+    "scheduler@176",
+    "transitionsBlockInput@184",
+    "backButtonResponse@188",
+    "layerRegistrationReceipt@192",
+    "visibilityRegistrationReceipt@200",
+    "backButtonListenerReceipt@208",
+    "worldMapRenderingPausedReceipt@216",
+    "backButtonAction@224",
+    "transitions@232",
+    "m_CancellationTokenSource@24"
+   ]
+  },
+  "Niantic.Holoholo.Gym.GymBattleIntroState": {
+   "methods": [
+    "RunIntro/2",
+    "ExitState/0",
+    "bzoe/0",
+    "bzof/0",
+    "bzog/0",
+    ".ctor/0"
+   ],
+   "fields": [
+    "screenFlashDuration@84",
+    "dvzv@88",
+    "dvzw@96",
+    "dvzx@104",
+    "dvzy@112",
+    "dvzz@120",
+    "dwaa@128",
+    "dwab@136",
+    "dwac@144",
+    "dwad@152",
+    "dwae@153",
+    "dwaf@160",
+    "StateEntered@32",
+    "StateExited@40",
+    "StateBecameLeaf@48",
+    "stateFactory@56",
+    "<ChildState>k__BackingField@64",
+    "<ParentState>k__BackingField@72",
+    "<IsActiveState>k__BackingField@80",
+    "m_CancellationTokenSource@24"
+   ]
+  },
+  "Niantic.Holoholo.Gym.GymBattleLaunchData": {
+   "methods": [
+    ".ctor/0"
+   ],
+   "fields": [
+    "FortId@16",
+    "PlayerTeam@24",
+    "Defender@32",
+    "StartTimeMs@40",
+    "GymAssetObject@48"
+   ]
+  },
+  "Niantic.Holoholo.Gym.IGymBattleLauncherState": {
+   "methods": [],
+   "fields": []
+  },
+  "Niantic.Holoholo.Gym.GymBattleLauncherStateShim": {
+   "methods": [
+    ".ctor/0"
+   ],
+   "fields": [
+    "<Data>k__BackingField@104",
+    "Logic@88",
+    "stateFactory@96",
+    "StateEntered@32",
+    "StateExited@40",
+    "StateBecameLeaf@48",
+    "stateFactory@56",
+    "<ChildState>k__BackingField@64",
+    "<ParentState>k__BackingField@72",
+    "<IsActiveState>k__BackingField@80",
+    "m_CancellationTokenSource@24"
+   ]
+  },
+  "Niantic.Holoholo.Gym.GymBattleLauncherState": {
+   "methods": [
+    "EnterState/2",
+    "ExitState/0",
+    ".ctor/0"
+   ],
+   "fields": [
+    "dwag@16"
+   ]
+  },
+  "Niantic.Holoholo.Gym.GymBattleSceneTransition": {
+   "methods": [
+    "zrt/0",
+    "zru/0",
+    "zrv/0",
+    ".ctor/0"
+   ],
+   "fields": [
+    "dwah@56",
+    "dwai@64",
+    "dwaj@72",
+    "cxmy@40",
+    "cxmz@48",
+    "OutOfScope@32",
+    "m_CancellationTokenSource@24"
+   ]
+  },
+  "Niantic.Holoholo.Gym.IGymBattleState": {
+   "methods": [
+    "get_UpdatedGymBadge/0",
+    "get_PlayerPokemon/0",
+    "get_DefenderPokemon/0",
+    "ExitBattleResultsState/2"
+   ],
+   "fields": []
+  },
+  "Niantic.Holoholo.Gym.GymBattleState": {
+   "methods": [
+    "get_UpdatedGymBadge/0",
+    "set_UpdatedGymBadge/1",
+    "get_PlayerPokemon/0",
+    "get_DefenderPokemon/0",
+    "get_PlayerBattleActions/0",
+    "get_GameContext/0",
+    "EnterState/0",
+    "ExitState/0",
+    "StartGymBattle/1",
+    "ExitBattleResultsState/2",
+    "InstantiateBattlePokemon/0",
+    "bzou/1",
+    "bzov/1",
+    "bzow/1",
+    "bzox/1",
+    "bzoy/1",
+    "bzoz/1",
+    "bzpa/2",
+    "bzpb/2",
+    "bzpc/2",
+    ".ctor/0",
+    "bzpd/1",
+    "bzpe/0",
+    "bzpf/1",
+    "bzpg/1",
+    "bzph/0",
+    "bzpi/1",
+    "bzpj/0",
+    "bzpk/0",
+    "bzpl/0"
+   ],
+   "fields": [
+    "dwau@408",
+    "dwav@416",
+    "dwaw@424",
+    "dwax@432",
+    "dway@440",
+    "dwaz@448",
+    "dwba@456",
+    "dwbb@464",
+    "dwbc@472",
+    "dwbd@480",
+    "dwbe@488",
+    "dwbf@496",
+    "dwbg@504",
+    "<UpdatedGymBadge>k__BackingField@512",
+    "gymRootController@88",
+    "cameraRig@96",
+    "inputLayerStack@104",
+    "battleCameraController@112",
+    "pokemonBundleCache@120",
+    "pokemonCryBundleCache@128",
+    "friendlyBattlePokemonPool@136",
+    "tapHighlightFactory@144",
+    "gestureHandler@152",
+    "playerPokemon@160",
+    "enemyPokemonFactory@168",
+    "friendlyPokemonFactory@176",
+    "battleFrameObservableService@184",
+    "battleTempBoostService@192",
+    "playerService@200",
+    "musicService@208",
+    "inputService@216",
+    "gameMasterData@224",
+    "battleMusicReference@232",
+    "delayBeforeSpawningPlayer@240",
+    "delayBeforeSpawningEnemy@244",
+    "delayBeforeResults@248",
+    "friendlyPokemonAngularOffsets@256",
+    "timerColor1@264",
+    "timerColor2@280",
+    "battleStateModelOffSet@296",
+    "<battleGestureHandler>k__BackingField@304",
+    "inputReceipt@312",
+    "tapHighlight@320",
+    "frameObservationReceipt@328",
+    "disableInputReceipt@336",
+    "<playerBattlePokemon>k__BackingField@344",
+    "<enemyBattlePokemon>k__BackingField@352",
+    "friendlyBattlePokemon@360",
+    "<playerBattleActions>k__BackingField@368",
+    "totalExpAwarded@376",
+    "roundNumber@380",
+    "cachedPlayerTeam@384",
+    "assetRequests@392",
+    "audioAssetRequests@400",
+    "StateEntered@32",
+    "StateExited@40",
+    "StateBecameLeaf@48",
+    "stateFactory@56",
+    "<ChildState>k__BackingField@64",
+    "<ParentState>k__BackingField@72",
+    "<IsActiveState>k__BackingField@80",
+    "m_CancellationTokenSource@24"
+   ]
+  },
+  "Niantic.Holoholo.Gym.Battle.IGymBattleContinueGuiController": {
+   "methods": [
+    "add_OnContinueBattle/1",
+    "remove_OnContinueBattle/1",
+    "add_OnLeaveBattle/1",
+    "remove_OnLeaveBattle/1",
+    "Initialize/2"
+   ],
+   "fields": []
+  },
+  "Niantic.Holoholo.Gym.Battle.IGymBattleContinueGuiControllerFactory": {
+   "methods": [],
+   "fields": []
+  },
+  "Niantic.Holoholo.Gym.Battle.GymBattleContinueGuiController": {
+   "methods": [
+    "add_OnContinueBattle/1",
+    "remove_OnContinueBattle/1",
+    "add_OnLeaveBattle/1",
+    "remove_OnLeaveBattle/1",
+    "HandleOpen/0",
+    "HandleOpenComplete/0",
+    "HandleDismiss/0",
+    "HandleDismissComplete/0",
+    "Initialize/2",
+    "LeaveBattle/0",
+    "ContinueToNextBattle/0",
+    "bzzm/1",
+    "bzzn/1",
+    ".ctor/0",
+    "bzzo/0"
+   ],
+   "fields": [
+    "opponentPokemonView@240",
+    "countdownSecondsText@248",
+    "dwkx@256",
+    "OnContinueBattle@264",
+    "OnLeaveBattle@272",
+    "customBackButtonEvent@32",
+    "customBackButtonAction@40",
+    "hideWorldMapBehindGui@48",
+    "hidesPreviousGuis@49",
+    "canvasComponent@56",
+    "cachedRootCanvasGroup@64",
+    "lookedForRaycaster@72",
+    "cachedRootRaycaster@80",
+    "openCompleted@88",
+    "OutOfScope@96",
+    "VisibilityUpdated@104",
+    "currentState@112",
+    "Dismissed@120",
+    "layer@128",
+    "depth@132",
+    "overrideSortingOrder@136",
+    "customSortingOrder@140",
+    "_isVisible@144",
+    "inputEventService@152",
+    "guiLayerService@160",
+    "cameraRig@168",
+    "scheduler@176",
+    "transitionsBlockInput@184",
+    "backButtonResponse@188",
+    "layerRegistrationReceipt@192",
+    "visibilityRegistrationReceipt@200",
+    "backButtonListenerReceipt@208",
+    "worldMapRenderingPausedReceipt@216",
+    "backButtonAction@224",
+    "transitions@232",
+    "m_CancellationTokenSource@24"
+   ]
+  },
+  "Niantic.Holoholo.Gym.Battle.GymBattleDefeatGuiController": {
+   "methods": [
+    "Initialize/1",
+    "HandleOpen/0",
+    "HandleOpenComplete/0",
+    "HandleDismiss/0",
+    "HandleDismissComplete/0",
+    ".ctor/0"
+   ],
+   "fields": [
+    "autoContinueSeconds@240",
+    "defeatScreenRoot@248",
+    "timeUpScreenRoot@256",
+    "customBackButtonEvent@32",
+    "customBackButtonAction@40",
+    "hideWorldMapBehindGui@48",
+    "hidesPreviousGuis@49",
+    "canvasComponent@56",
+    "cachedRootCanvasGroup@64",
+    "lookedForRaycaster@72",
+    "cachedRootRaycaster@80",
+    "openCompleted@88",
+    "OutOfScope@96",
+    "VisibilityUpdated@104",
+    "currentState@112",
+    "Dismissed@120",
+    "layer@128",
+    "depth@132",
+    "overrideSortingOrder@136",
+    "customSortingOrder@140",
+    "_isVisible@144",
+    "inputEventService@152",
+    "guiLayerService@160",
+    "cameraRig@168",
+    "scheduler@176",
+    "transitionsBlockInput@184",
+    "backButtonResponse@188",
+    "layerRegistrationReceipt@192",
+    "visibilityRegistrationReceipt@200",
+    "backButtonListenerReceipt@208",
+    "worldMapRenderingPausedReceipt@216",
+    "backButtonAction@224",
+    "transitions@232",
+    "m_CancellationTokenSource@24"
+   ]
+  },
+  "Niantic.Holoholo.Gym.Battle.GymBattleResultsCameraController": {
+   "methods": [
+    "get_CameraZoomSeconds/0",
+    "get_CameraTiltSeconds/0",
+    "get_AttackerMoveSeconds/0",
+    "OnStart/1",
+    "OnStop/0",
+    "MoveInterferingAttacker/2",
+    "ZoomCameraOnDefender/1",
+    "TiltCameraSkyward/0",
+    "CalculateZoomedCameraPosition/1",
+    "caag/3",
+    "caah/5",
+    "caai/3",
+    ".ctor/0"
+   ],
+   "fields": [
+    "cameraZoomSeconds@32",
+    "cameraZoomCurve@40",
+    "cameraZoomDistanceRatio@48",
+    "cameraZoomHeightRatio@52",
+    "cameraTiltSeconds@56",
+    "cameraTiltCurve@64",
+    "cameraTiltDegrees@72",
+    "attackerMoveSeconds@76",
+    "attackerMoveCurve@80",
+    "dwlp@88",
+    "dwlq@96",
+    "dwlr@104",
+    "dwls@112",
+    "dwlt@120",
+    "m_CancellationTokenSource@24"
+   ]
+  },
+  "Niantic.Holoholo.Gym.Battle.GymBattleResultsState": {
+   "methods": [
+    "EnterState/0",
+    "ExitState/0",
+    "Initialize/1",
+    "cabi/0",
+    "cabj/0",
+    "cabk/0",
+    "cabl/0",
+    "cabm/0",
+    "cabn/0",
+    "cabo/0",
+    "cabp/0",
+    "cabq/0",
+    "cabr/0",
+    "cabs/0",
+    "cabt/0",
+    "cabu/0",
+    "cabv/0",
+    "cabw/0",
+    ".ctor/0"
+   ],
+   "fields": [
+    "cameraController@88",
+    "dramaticFaintSeconds@96",
+    "cpDrainWaitSeconds@100",
+    "autoContinueSeconds@104",
+    "dwmh@112",
+    "dwmi@120",
+    "dwmj@128",
+    "dwmk@136",
+    "dwml@144",
+    "dwmm@152",
+    "dwmn@160",
+    "dwmo@168",
+    "dwmp@176",
+    "dwmq@184",
+    "dwmr@192",
+    "dwms@200",
+    "dwmt@208",
+    "StateEntered@32",
+    "StateExited@40",
+    "StateBecameLeaf@48",
+    "stateFactory@56",
+    "<ChildState>k__BackingField@64",
+    "<ParentState>k__BackingField@72",
+    "<IsActiveState>k__BackingField@80",
+    "m_CancellationTokenSource@24"
+   ]
+  },
+  "Niantic.Holoholo.Gym.Battle.IGymBattleVictoryGuiController": {
+   "methods": [
+    "Initialize/2"
+   ],
+   "fields": []
+  },
+  "Niantic.Holoholo.Gym.Battle.GymBattleVictoryGuiController": {
+   "methods": [
+    "Initialize/2",
+    "HandleOpen/0",
+    "HandleOpenComplete/0",
+    "HandleDismiss/0",
+    "HandleDismissComplete/0",
+    "cacg/1",
+    "cach/3",
+    "caci/5",
+    "cacj/2",
+    "cack/0",
+    ".ctor/0"
+   ],
+   "fields": [
+    "autoDismissTime@240",
+    "defeatedGymSubtitle@248",
+    "friendAvatarIconsLayout@256",
+    "friendAvatarIconContainerPrototype@264",
+    "moreFriends@272",
+    "moreFriendsNumber@280",
+    "moreFriendsLabel@288",
+    "pokemonTexelDensity@296",
+    "playerPokemonRotation@300",
+    "playerPokemonImage@304",
+    "avatarTexelDensity@312",
+    "playerAvatarNode@320",
+    "playerAvatarImage@328",
+    "playerAvatarCamera@336",
+    "avatarsRoot@344",
+    "dwmz@352",
+    "dwna@360",
+    "dwnb@368",
+    "dwnc@376",
+    "dwnd@384",
+    "customBackButtonEvent@32",
+    "customBackButtonAction@40",
+    "hideWorldMapBehindGui@48",
+    "hidesPreviousGuis@49",
+    "canvasComponent@56",
+    "cachedRootCanvasGroup@64",
+    "lookedForRaycaster@72",
+    "cachedRootRaycaster@80",
+    "openCompleted@88",
+    "OutOfScope@96",
+    "VisibilityUpdated@104",
+    "currentState@112",
+    "Dismissed@120",
+    "layer@128",
+    "depth@132",
+    "overrideSortingOrder@136",
+    "customSortingOrder@140",
+    "_isVisible@144",
+    "inputEventService@152",
+    "guiLayerService@160",
+    "cameraRig@168",
+    "scheduler@176",
+    "transitionsBlockInput@184",
+    "backButtonResponse@188",
+    "layerRegistrationReceipt@192",
+    "visibilityRegistrationReceipt@200",
+    "backButtonListenerReceipt@208",
+    "worldMapRenderingPausedReceipt@216",
+    "backButtonAction@224",
+    "transitions@232",
+    "m_CancellationTokenSource@24"
+   ]
+  },
+  "Niantic.Holoholo.Map.Notifications.GymBattleFriendshipIncrementNotification": {
+   "methods": [
+    "DoDisplay/0",
+    ".ctor/0"
+   ],
+   "fields": [
+    "ejpy@40",
+    "rpcService@16",
+    "Data@24",
+    "<Displayed>k__BackingField@32"
+   ]
+  },
+  "Niantic.Holoholo.Map.Notifications.GymBattleFriendshipIncrementSource": {
+   "methods": [
+    "cmbh/0",
+    ".ctor/0",
+    "cmbi/1"
+   ],
+   "fields": [
+    "ejtq@16",
+    "ejtr@24",
+    "ejts@32",
+    "ejtt@40"
+   ]
+  },
+  "Holoholo.Rpc.BattleInputBufferPriorityList": {
+   "methods": [
+    "get_Descriptor/0",
+    ".ctor/0",
+    ".ctor/1",
+    "Clone/0",
+    "Equals/1",
+    "Equals/1",
+    "GetHashCode/0",
+    "ToString/0",
+    "WriteTo/1",
+    "jqa/1",
+    "CalculateSize/0",
+    "MergeFrom/1",
+    "MergeFrom/1",
+    "jqb/1",
+    ".cctor/0"
+   ],
+   "fields": [
+    "EventPriority@16",
+    "PriorityEventTypeList@24",
+    "BufferBlockingEventTypeList@32",
+    "InputBlockExceptionList@40"
+   ]
+  },
+  "Holoholo.Rpc.GymBattleSettingsProto": {
+   "methods": [
+    "get_Descriptor/0",
+    ".ctor/0",
+    ".ctor/1",
+    "Clone/0",
+    "Equals/1",
+    "Equals/1",
+    "GetHashCode/0",
+    "ToString/0",
+    "WriteTo/1",
+    "kvu/1",
+    "CalculateSize/0",
+    "MergeFrom/1",
+    "MergeFrom/1",
+    "kvv/1",
+    ".cctor/0"
+   ],
+   "fields": [
+    "EnergyPerSec@16",
+    "DodgeEnergyCost@20",
+    "RetargetSeconds@24",
+    "EnemyAttackInterval@28",
+    "AttackServerInterval@32",
+    "RoundDurationSeconds@36",
+    "BonusTimePerAllySeconds@40",
+    "MaximumAttackersPerBattle@44",
+    "SameTypeAttackBonusMultiplier@48",
+    "MaximumEnergy@52",
+    "EnergyDeltaPerHealthLost@56",
+    "DodgeDurationMs@60",
+    "MinimumPlayerLevel@64",
+    "SwapDurationMs@68",
+    "DodgeDamageReductionPercent@72",
+    "MinimumRaidPlayerLevel@76",
+    "ShadowPokemonAttackBonusMultiplier@80",
+    "ShadowPokemonDefenseBonusMultiplier@84",
+    "PurifiedPokemonAttackMultiplierVsShadow@88",
+    "BossEnergyRegenerationPerHealthLost@92"
+   ]
+  },
+  "Holoholo.Rpc.BattleInputBufferSettingsProto": {
+   "methods": [
+    "get_Descriptor/0",
+    ".ctor/0",
+    ".ctor/1",
+    "Clone/0",
+    "Equals/1",
+    "Equals/1",
+    "GetHashCode/0",
+    "ToString/0",
+    "WriteTo/1",
+    "lza/1",
+    "CalculateSize/0",
+    "MergeFrom/1",
+    "MergeFrom/1",
+    "lzb/1",
+    ".cctor/0"
+   ],
+   "fields": [
+    "RaidsInputBufferPriorityList@16",
+    "BreadInputBufferPriorityList@24",
+    "CombatInputBufferPriorityList@32"
+   ]
+  },
+  "Holoholo.Rpc.GymBattleProto": {
+   "methods": [
+    "get_Descriptor/0",
+    ".ctor/0",
+    ".ctor/1",
+    "Clone/0",
+    "Equals/1",
+    "Equals/1",
+    "GetHashCode/0",
+    "ToString/0",
+    "WriteTo/1",
+    "mja/1",
+    "CalculateSize/0",
+    "MergeFrom/1",
+    "MergeFrom/1",
+    "mjb/1",
+    ".cctor/0"
+   ],
+   "fields": [
+    "BattleId@16",
+    "CompletedMs@24",
+    "IncrementedGymBattleFriends@32"
+   ]
+  },
+  "Holoholo.Rpc.GymBattleAttackProto": {
+   "methods": [
+    "get_Descriptor/0",
+    ".ctor/0",
+    ".ctor/1",
+    "Clone/0",
+    "Equals/1",
+    "Equals/1",
+    "GetHashCode/0",
+    "ToString/0",
+    "WriteTo/1",
+    "mkz/1",
+    "CalculateSize/0",
+    "MergeFrom/1",
+    "MergeFrom/1",
+    "mla/1",
+    ".cctor/0"
+   ],
+   "fields": [
+    "GymId@16",
+    "BattleId@24",
+    "AttackerActions@32",
+    "LastRetrievedAction@40",
+    "PlayerLatDegrees@48",
+    "PlayerLngDegrees@56",
+    "TimestampMs@64"
+   ]
+  },
+  "Holoholo.Rpc.GymBattleAttackOutProto": {
+   "methods": [
+    "get_Descriptor/0",
+    ".ctor/0",
+    ".ctor/1",
+    "Clone/0",
+    "Equals/1",
+    "Equals/1",
+    "GetHashCode/0",
+    "ToString/0",
+    "WriteTo/1",
+    "mlc/1",
+    "CalculateSize/0",
+    "MergeFrom/1",
+    "MergeFrom/1",
+    "mld/1",
+    ".cctor/0"
+   ],
+   "fields": [
+    "Result@16",
+    "BattleUpdate@24",
+    "GymBadge@32"
+   ]
+  },
+  "Holoholo.Rpc.WithWinGymBattleStatusProto": {
+   "methods": [
+    "get_Descriptor/0",
+    ".ctor/0",
+    ".ctor/1",
+    "Clone/0",
+    "Equals/1",
+    "Equals/1",
+    "GetHashCode/0",
+    "ToString/0",
+    "WriteTo/1",
+    "nuf/1",
+    "CalculateSize/0",
+    "MergeFrom/1",
+    "MergeFrom/1",
+    "nug/1",
+    ".cctor/0"
+   ],
+   "fields": []
+  },
+  "Niantic.Holoholo.VNext.IBattleGameModeInterface": {
+   "methods": [
+    "get_ActiveStage/0",
+    "set_ActiveStage/1",
+    "get_ActivePokemonManager/0",
+    "set_ActivePokemonManager/1",
+    "get_ActiveMinigameManager/0",
+    "set_ActiveMinigameManager/1",
+    "get_ActiveCombatCinematicSequenceManager/0",
+    "set_ActiveCombatCinematicSequenceManager/1",
+    "get_IsMultiAttackVfxEnabled/0",
+    "set_IsMultiAttackVfxEnabled/1",
+    "get_IsUsingAllyPosition/0",
+    "set_IsUsingAllyPosition/1"
+   ],
+   "fields": []
+  },
+  "Niantic.Holoholo.VNext.BattleGameModeInterface": {
+   "methods": [
+    "get_ActiveStage/0",
+    "set_ActiveStage/1",
+    "get_ActivePokemonManager/0",
+    "set_ActivePokemonManager/1",
+    "get_ActiveMinigameManager/0",
+    "set_ActiveMinigameManager/1",
+    "get_ActiveCombatCinematicSequenceManager/0",
+    "set_ActiveCombatCinematicSequenceManager/1",
+    "get_IsMultiAttackVfxEnabled/0",
+    "set_IsMultiAttackVfxEnabled/1",
+    "get_IsUsingAllyPosition/0",
+    "set_IsUsingAllyPosition/1",
+    ".ctor/0"
+   ],
+   "fields": [
+    "<ActiveStage>k__BackingField@16",
+    "<ActivePokemonManager>k__BackingField@24",
+    "<ActiveMinigameManager>k__BackingField@32",
+    "<ActiveCombatCinematicSequenceManager>k__BackingField@40",
+    "<IsMultiAttackVfxEnabled>k__BackingField@48",
+    "<IsUsingAllyPosition>k__BackingField@49"
+   ]
+  },
+  "Niantic.Holoholo.VNext.BattleDirector": {
+   "methods": [
+    "add_OutOfScope/1",
+    "remove_OutOfScope/1",
+    "get_CurrentState/0",
+    "get_HasBattleStarted/0",
+    "set_HasBattleStarted/1",
+    "get_BattleDirectorConfig/0",
+    "set_BattleDirectorConfig/1",
+    "get_BattleId/0",
+    "get_InputBlocked/0",
+    "get_EventResiliencyEnabled/0",
+    "ObserveHighPriority/1",
+    "RequestClockSync/1",
+    "InitializeBattle/4",
+    "cpmr/1",
+    "cpms/0",
+    "cpmt/1",
+    "cpmu/0",
+    "cpmv/1",
+    "cpmw/1",
+    "cpmx/1",
+    "cpmy/1",
+    "cpmz/1",
+    "cpna/1",
+    "cpnb/1",
+    "cpnc/1",
+    "cpnd/1",
+    "cpne/1",
+    "cpnf/1",
+    "TrySubmitPlayerAction/2",
+    "cpng/1",
+    "cpnh/1",
+    "cpni/5",
+    "cpnj/3",
+    "cpnk/1",
+    "cpnl/1",
+    "cpnm/0",
+    "cpnn/0",
+    "cpno/3",
+    "cpnp/1",
+    "cpnq/1",
+    "cpnr/3",
+    "cpns/2",
+    "cpnt/1",
+    "cpnu/2",
+    "cpnv/1",
+    "cpnw/1",
+    "cpnx/1",
+    "cpny/0",
+    "cpnz/0",
+    "Dispose/0",
+    "cpoa/0",
+    "cpob/1",
+    "cpoc/0",
+    "cpod/1",
+    ".ctor/0",
+    "cpoe/0"
+   ],
+   "fields": [
+    "enlb@80",
+    "enlc@88",
+    "enld@96",
+    "enle@104",
+    "enlf@112",
+    "enlg@120",
+    "enlh@128",
+    "enli@136",
+    "enlj@144",
+    "enlk@152",
+    "enll@160",
+    "OutOfScope@168",
+    "enlm@176",
+    "enln@184",
+    "enlo@192",
+    "enlp@200",
+    "enlq@208",
+    "enlr@209",
+    "enls@212",
+    "enlt@216",
+    "enlu@224",
+    "enlv@232",
+    "enlw@240",
+    "enlx@248",
+    "enly@256",
+    "<CurrentState>k__BackingField@264",
+    "<HasBattleStarted>k__BackingField@272",
+    "<BattleDirectorConfig>k__BackingField@280",
+    "enlz@288",
+    "enma@296",
+    "enmb@304",
+    "enmc@312",
+    "enmd@320",
+    "enme@328",
+    "enmf@336",
+    "enmg@344",
+    "enmh@352",
+    "enmi@360",
+    "enmj@368",
+    "enmk@376",
+    "enml@384",
+    "enmm@385",
+    "enmn@386",
+    "enmo@387",
+    "enmp@388",
+    "enmq@392",
+    "enmr@400",
+    "enms@408",
+    "enmt@416",
+    "observed@32",
+    "observedSet@40",
+    "subscribers@48",
+    "oneTimeSubscribers@56",
+    "notifyingSubscribers@64",
+    "resetAfterNotify@72",
+    "isNotifying@73",
+    "m_CancellationTokenSource@24"
+   ]
+  },
+  "Niantic.Holoholo.VNext.IGymBattleUIVNext": {
+   "methods": [
+    "StartBattle/0",
+    "HideHeader/0",
+    "ShowNameplates/0",
+    "HideNameplates/0",
+    "HideEnemyNameplate/0",
+    "SetupTimer/4",
+    "SetTimerVisible/1",
+    "get_BattleTimer/0",
+    "get_BattleLogDisplay/0",
+    "get_SurrenderButton/0",
+    "get_BattleCountdown/0",
+    "get_EnemyNameplate/0",
+    "get_ChargeAttack1Display/0",
+    "get_ChargeAttack2Display/0",
+    "get_SpecialAttackDisplay/0",
+    "UpdateUiMode/1",
+    "UpdateConsensusMode/1",
+    "get_StunMessage/0",
+    "SetStunMessage/1",
+    "PlayPreCoordinatedModeBossShieldSequence/1",
+    "PlayEnterCoordinatedModeSequence/1",
+    "PlayExitCoordinatedModeSequence/2",
+    "PlayPostCoordinatedModeBossShieldSequence/1",
+    "get_UsingDebugGuiMode/0",
+    "set_UsingDebugGuiMode/1"
+   ],
+   "fields": []
+  },
+  "Niantic.Holoholo.VNext.GymBattleUIVNext": {
+   "methods": [
+    "cpvj/0",
+    "get_BattleTimer/0",
+    "set_BattleTimer/1",
+    "get_BattleCountdown/0",
+    "get_EnemyNameplate/0",
+    "get_ChargeAttack1Display/0",
+    "get_ChargeAttack2Display/0",
+    "get_SpecialAttackDisplay/0",
+    "get_StunMessage/0",
+    "get_BattleLogDisplay/0",
+    "get_SurrenderButton/0",
+    "get_UsingDebugGuiMode/0",
+    "set_UsingDebugGuiMode/1",
+    "Initialize/1",
+    "cpvk/1",
+    "cpvl/2",
+    "cpvm/1",
+    "cpvn/1",
+    "cpvo/1",
+    "cpvp/1",
+    "cpvq/1",
+    "cpvr/0",
+    "HandleOpen/0",
+    "HandleOpenComplete/0",
+    "HandleDismiss/0",
+    "HandleDismissComplete/0",
+    "PressBackButton/0",
+    "MegaShieldPressed/0",
+    "StartBattle/0",
+    "HideHeader/0",
+    "ShowNameplates/0",
+    "HideNameplates/0",
+    "HideEnemyNameplate/0",
+    "SetupTimer/4",
+    "cpvs/1",
+    "SetTimerVisible/1",
+    "cpvt/4",
+    "UpdateUiMode/1",
+    "SetStunMessage/1",
+    "PlayPreCoordinatedModeBossShieldSequence/1",
+    "PlayEnterCoordinatedModeSequence/1",
+    "PlayExitCoordinatedModeSequence/2",
+    "PlayPostCoordinatedModeBossShieldSequence/1",
+    "UpdateConsensusMode/1",
+    "cpvu/1",
+    "cpvv/1",
+    "cpvw/4",
+    ".ctor/0",
+    ".cctor/0"
+   ],
+   "fields": [
+    "ensx@240",
+    "ensy@248",
+    "ensz@256",
+    "enta@264",
+    "entb@272",
+    "entc@280",
+    "entd@288",
+    "ente@296",
+    "entf@304",
+    "entg@312",
+    "enth@320",
+    "container@328",
+    "surrenderButton@336",
+    "battleItemButton@344",
+    "battleAbilityButton@352",
+    "headerContainer@360",
+    "playerNameplate@368",
+    "enemyNameplate@376",
+    "playerFloatingNameplate@384",
+    "enemyFloatingNameplate@392",
+    "battleCountdown@400",
+    "swapUI@408",
+    "chargeAttackRoot@416",
+    "bottomButtonPivot@424",
+    "defaultMoveOverflowOffset@432",
+    "chargeMoveOverflowOffset@436",
+    "gradientRect@440",
+    "defaultGradientHeight@448",
+    "chargeMoveGradientHeight@452",
+    "battleTimerRootTransform@456",
+    "battleLogRoot@464",
+    "enemyAlertIndicator@472",
+    "partyPlayPoweredAttackAnimator@480",
+    "partyPlayRaidBossAttackPivot@488",
+    "defaultModeGuiModeCanvasGroups@496",
+    "stunModeGuiModeCanvasGroups@504",
+    "uiFadeOutTimeSeconds@512",
+    "uiFadeInterimDelayTimeSeconds@516",
+    "uiFadeInTimeSeconds@520",
+    "stunMessage@528",
+    "<BattleTimer>k__BackingField@536",
+    "enti@544",
+    "entj@552",
+    "entk@560",
+    "entl@568",
+    "entm@576",
+    "entn@584",
+    "ento@592",
+    "<UsingDebugGuiMode>k__BackingField@593",
+    "entq@596",
+    "entr@600",
+    "customBackButtonEvent@32",
+    "customBackButtonAction@40",
+    "hideWorldMapBehindGui@48",
+    "hidesPreviousGuis@49",
+    "canvasComponent@56",
+    "cachedRootCanvasGroup@64",
+    "lookedForRaycaster@72",
+    "cachedRootRaycaster@80",
+    "openCompleted@88",
+    "OutOfScope@96",
+    "VisibilityUpdated@104",
+    "currentState@112",
+    "Dismissed@120",
+    "layer@128",
+    "depth@132",
+    "overrideSortingOrder@136",
+    "customSortingOrder@140",
+    "_isVisible@144",
+    "inputEventService@152",
+    "guiLayerService@160",
+    "cameraRig@168",
+    "scheduler@176",
+    "transitionsBlockInput@184",
+    "backButtonResponse@188",
+    "layerRegistrationReceipt@192",
+    "visibilityRegistrationReceipt@200",
+    "backButtonListenerReceipt@208",
+    "worldMapRenderingPausedReceipt@216",
+    "backButtonAction@224",
+    "transitions@232",
+    "m_CancellationTokenSource@24"
+   ]
+  },
+  "Niantic.Holoholo.VNext.IBattleDirector": {
+   "methods": [
+    "get_BattleId/0",
+    "get_CurrentState/0",
+    "get_InputBlocked/0",
+    "get_HasBattleStarted/0",
+    "set_HasBattleStarted/1",
+    "get_BattleDirectorConfig/0",
+    "get_EventResiliencyEnabled/0",
+    "InitializeBattle/4",
+    "TrySubmitPlayerAction/2",
+    "ObserveHighPriority/1",
+    "RequestClockSync/1"
+   ],
+   "fields": []
+  },
+  "Niantic.Holoholo.Services.ClientInboxService.IGymBattleFriendshipIncrementNotificationData": {
+   "methods": [],
+   "fields": []
+  },
+  "Niantic.Holoholo.VNext.BattleDirectorPlayerActionStatus": {
+   "methods": [],
+   "fields": [
+    "value__@16"
+   ]
+  },
+  "Niantic.Holoholo.VNext.BattleDirectorConfig": {
+   "methods": [
+    "SetTimeoutFieldsFromClientBattleConfigProto/1",
+    "SetAnimationFieldsFromBattleAnimationConfigProto/1",
+    "SetSubmitTurnEnabledFromClientBattleConfigProto/1",
+    "SetPreResponseInputBlockTimeDurationFromClientBattleConfigProto/1",
+    ".ctor/0"
+   ],
+   "fields": [
+    "AttackInputBlockedNumTurnSet@16",
+    "AttackPredictionDenySet@24",
+    "BadNetworkWarningThresholdTurns@32",
+    "BattleAnimationConfig@40",
+    "BattleEndTimeoutThresholdMS@48",
+    "CinematicTypesRequirePreOverwriteProcessing@56",
+    "DeadNetworkDisconnectThresholdTurns@64",
+    "DodgeNumTurns@72",
+    "DodgePositionPredictionMaxAgeTurns@80",
+    "EnableDodgePositionPrediction@88",
+    "EnableDelayedAcceptedSwapPrediction@89",
+    "EnableLateQueuedCinematicProcessing@90",
+    "EnableCinematicEventDuplicateActorIdComparison@91",
+    "EnableActorIdFlyInCinematicReplay@92",
+    "EnableOverwrittenCinematicBuffer@93",
+    "IncrementalCmMinigameScoreUpdatesEnabled@94",
+    "IncrementalShieldMinigameScoreUpdatesEnabled@95",
+    "InputBufferPriorityList@96",
+    "IsSubmitActionTurnEnabled@104",
+    "LockVFXCharacterScale@105",
+    "NoOpponentConnectionDisconnectThresholdTurns@112",
+    "PredictUiSwapOnChargeMoveBehavior@120",
+    "PreResponseInputBlockingBehavior@124",
+    "PreResponseInputBlockTimeDurationMs@128",
+    "SidelineActionNumTurns@136",
+    "UseSubmittedActionTurnForActionBlocking@144",
+    "SwappingFastMovePredictionSuppressionMaxNumTurns@152",
+    "UsePreUpdateTimeTracking@160"
+   ]
+  }
+ }
+}

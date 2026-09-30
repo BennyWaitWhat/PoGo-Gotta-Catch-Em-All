@@ -1,0 +1,37 @@
+# ROOT .gitignore -- WHITELIST (git root = Phone Maintenance/). This folder also holds Benny's NON-PoGo phone work
+# (root/Magisk, Threads, tether, dumps): all of it stays out. Only the PoGo trees and the repo's own files go in.
+# Code + docs live in git; the game DATA lives on the phone (tools/pogo_data.py + data_manifest.txt).
+/*
+
+# the repo's own files
+!/.gitignore
+!/.gitattributes
+!/README.md
+!/docs/
+!/cloud/
+!/tools/
+!/data_manifest.txt
+!/wf_master.json
+
+# the PoGo trees (each has its own .gitignore)
+!/pogo_extract/
+!/AutoCatcher/
+
+# PokeGenie tooling: the scripts only (its data, ~590 MB, stays out)
+!/pokegenie_work/
+/pokegenie_work/*
+!/pokegenie_work/*.py
+
+# .claude/: the cloud SessionStart hook + the cull skill. NOT launch.json, settings.local.json, locks, agents/, workspaces.
+# (git cannot re-include a file under an ignored dir, so each level is opened, emptied, then the wanted child re-added)
+!/.claude/
+/.claude/*
+!/.claude/settings.json
+!/.claude/hooks/
+!/.claude/skills/
+/.claude/skills/*
+!/.claude/skills/cull/
+
+# never, at any depth
+__pycache__/
+*.pyc

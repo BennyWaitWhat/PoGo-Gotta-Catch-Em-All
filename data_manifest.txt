@@ -1,0 +1,52 @@
+# data_manifest.txt -- WHAT tools/pogo_data.py keeps on the phone (/data/local/tmp/pogo_data), one tarball per [group].
+# Paths are repo-relative globs ("**" = any depth). "| newest N" keeps the N latest by mtime. "!pattern" excludes.
+# Anything git tracks is never packed (a pull cannot roll code back). Each group has one OWNER session, who pushes it;
+# every session may pull any group. "-cold" groups are never pulled by default (big, rarely needed).
+# NEVER add secrets: *.xml at pogo_extract/ (Pokemod/Niantic prefs), nia_secret_*, *.keystore, game_limits.json,
+# pogo_extract/system/analysis/pokemod/ (a captured refresh token). The phone already holds the originals.
+
+[inventory]                                     # owner: Pokemon Inventory (the cull). ~40 MB packed.
+pogo_extract/pokemon.db
+pogo_extract/*.json
+pogo_extract/*.txt
+pogo_extract/*.csv
+pogo_extract/*.html
+pogo_extract/system/analysis/*.json
+pogo_extract/system/analysis/*.jsonl
+pogo_extract/system/analysis/*.txt
+pogo_extract/system/analysis/*.html
+pogo_extract/system/analysis/tagsets/**
+pogo_extract/system/analysis/pvpoke_rankings/**
+pogo_extract/system/analysis/dossiers/**
+pogo_extract/system/tags/**
+pogo_extract/system/scripts/rank_tables.pkl
+pogo_extract/pvpoke_gamemaster.json.downloaded
+pogo_extract/.db_snapshots/* | newest 6
+pogo_extract/accounts/*/pokemon.db
+pogo_extract/accounts/*/*.json
+pogo_extract/accounts/*/*.txt
+pogo_extract/accounts/*/system/**
+!pogo_extract/**/*secret*
+!pogo_extract/**/*token*
+!pogo_extract/**/*.xml
+
+[inventory-cold]                                # owner: Pokemon Inventory. Every snapshot + the pre-switch archive.
+pogo_extract/.db_snapshots/*
+pogo_extract/accounts/*/.db_snapshots/*
+pogo_extract/archive_main_account_20260926/**
+
+[catcher]                                       # owner: AutoCatcher. Studies, map data, caches its tools read.
+AutoCatcher/system/analysis/*.jsonl
+AutoCatcher/system/analysis/map_full.json
+AutoCatcher/system/analysis/map_density.json
+AutoCatcher/system/analysis/game_constants.json
+AutoCatcher/system/analysis/pogo_map_data.js
+AutoCatcher/system/analysis/singleton_cache.json
+AutoCatcher/system/map/manhattan_ways.json
+AutoCatcher/system/map/*.pkl
+AutoCatcher/system/map/*.db
+!AutoCatcher/system/analysis/game_limits.json
+
+[gym]                                           # owner: Gym Battle. Runner state and studies.
+AutoCatcher/tools/gym_state/**
+!AutoCatcher/tools/gym_state/runner_inbox/**

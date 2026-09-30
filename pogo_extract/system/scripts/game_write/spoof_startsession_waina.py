@@ -1,0 +1,77 @@
+"""TEST the real lever: rewrite the emulated device's kind POKEMON_GO_PLUS -> WAINA at session start,
+so PoGo+server treat VGP3 as a Go Plus + and honor WainaPreferences.Ball=ULTRA. Hooks
+PgpService.StartSession(ScannedWearableDevice, bool), finds the DeviceKind field on the device arg,
+logs its current value and overwrites it with WAINA. Also sets WainaPreferences.Ball=3.
+User must RECONNECT VGP3 during the window so StartSession re-fires spoofed. SAFE: single int write
+in-hook, no recursion. Reverts on detach (reconnect again to restore basic kind)."""
+import sys, os, time
+sys.stdout.reconfigure(encoding="utf-8", errors="backslashreplace")
+HERE = os.path.dirname(os.path.abspath(__file__))
+ROOT = os.path.normpath(os.path.join(HERE, os.pardir, os.pardir, os.pardir))
+sys.path.insert(0, ROOT)
+import pogo_il2cpp as pg  # noqa: E402
+
+WAINA = 3
+HOLD = 240
+
+JS = r"""
+var H=null;
+function H_(){ if(H)return H; var il=Process.findModuleByName("libil2cpp.so");var e={};il.enumerateExports().forEach(function(x){if(x.name.indexOf("il2cpp_")===0)e[x.name]=x.address;});
+ function b(n,r,a){return e[n]?new NativeFunction(e[n],r,a):null;}
+ H={dG:b("il2cpp_domain_get","pointer",[]),dGA:b("il2cpp_domain_get_assemblies","pointer",["pointer","pointer"]),aGI:b("il2cpp_assembly_get_image","pointer",["pointer"]),iGN:b("il2cpp_image_get_name","pointer",["pointer"]),iGCC:b("il2cpp_image_get_class_count","uint32",["pointer"]),iGC:b("il2cpp_image_get_class","pointer",["pointer","uint32"]),CGN:b("il2cpp_class_get_name","pointer",["pointer"]),cFN:b("il2cpp_class_from_name","pointer",["pointer","pointer","pointer"]),cMN:b("il2cpp_class_get_method_from_name","pointer",["pointer","pointer","int"]),cGF:b("il2cpp_class_get_fields","pointer",["pointer","pointer"]),fGN:b("il2cpp_field_get_name","pointer",["pointer"]),fGO:b("il2cpp_field_get_offset","uint32",["pointer"]),fGT:b("il2cpp_field_get_type","pointer",["pointer"]),tGN:b("il2cpp_type_get_name","pointer",["pointer"]),tA:b("il2cpp_thread_attach","pointer",["pointer"])};
+ H.tA(H.dG());return H;}
+function img(name){var h=H_();var sp=Memory.alloc(4);var a=h.dGA(h.dG(),sp);var n=sp.readS32();for(var i=0;i<n;i++){var im=h.aGI(a.add(i*Process.pointerSize).readPointer());if(h.iGN(im).readCString()===name)return im;}return null;}
+function findClass(imageName,clsName){var h=H_();var im=img(imageName);if(!im)return null;var cnt=h.iGCC(im);for(var i=0;i<cnt;i++){var k=h.iGC(im,i);if(k.isNull())continue;try{if(h.CGN(k).readCString()===clsName)return k;}catch(e){}}return null;}
+function kindOffOf(cls){var h=H_();var it=Memory.alloc(Process.pointerSize);it.writePointer(ptr(0));var f;while((f=h.cGF(cls,it))&&!f.isNull()){try{var ty=h.tGN(h.fGT(f)).readCString();if(ty.indexOf("DeviceKind")>=0)return h.fGO(f);}catch(e){}}return -1;}
+function kp(k){var b=[];var t=ptr(k);for(var i=0;i<8;i++){var v=t.and(0xff).toInt32();b.push((v<16?"0":"")+v.toString(16));t=t.shr(8);}return b.join(" ");}
+var log=[],kindOff=-1,WAINA=3;
+rpc.exports.setup=function(waina){
+ WAINA=waina;var h=H_();var out=[];
+ var swd=findClass("holo-game.dll","ScannedWearableDevice");
+ if(!swd){out.push("ScannedWearableDevice: NOT FOUND");return out;}
+ kindOff=kindOffOf(swd);out.push("ScannedWearableDevice.DeviceKind @0x"+(kindOff>=0?kindOff.toString(16):"??"));
+ var ps=findClass("holo-game.dll","PgpService");
+ var m=ps?h.cMN(ps,Memory.allocUtf8String("StartSession"),2):null;
+ if(!m||m.isNull()){out.push("StartSession: NOT FOUND");return out;}
+ var ad=m.readPointer();
+ if(!ad.isNull()&&kindOff>=0){Interceptor.attach(ad,{onEnter:function(a){try{var dev=a[1];if(dev.isNull())return;var cur=dev.add(kindOff).readS32();log.push("StartSession dev.kind was "+cur+" -> set "+WAINA);dev.add(kindOff).writeS32(WAINA);}catch(e){log.push("hook err "+e);}}});out.push("StartSession HOOKED");}
+ // WainaPreferences.Ball -> 3
+ var wp=findClass("holo-protos.dll","WainaPreferences");var nset=0;
+ if(wp){var pat=kp(wp);Process.enumerateRanges("rw-").forEach(function(r){if(r.file||r.size<256||r.size>134217728)return;try{var hs=Memory.scanSync(r.base,r.size,pat);for(var i=0;i<hs.length;i++){var p=hs[i].address;try{var v=p.add(0x10).readS32();if(v>=1&&v<=2){p.add(0x10).writeS32(3);nset++;}}catch(e){}}}catch(e){}});}
+ out.push("WainaPreferences.Ball=3 on "+nset);
+ return out;
+};
+rpc.exports.log=function(){return log;};
+"""
+
+
+def main():
+    sess, pid = pg.get_session()
+    print("attached", pid)
+    try:
+        sc = sess.create_script(JS); sc.on("message", lambda m, d: None); sc.load()
+        st = sc.exports_sync.setup(WAINA)
+        print("setup:")
+        for s in st:
+            print("  ", s)
+        print(f"\n*** WAINA spoof armed for {HOLD}s ***")
+        print("  1) RECONNECT VGP3 (toggle the device off then on) so StartSession re-fires")
+        print("  2) Try to catch a few — note: does it still auto-catch?")
+        print("  3) Watch your ULTRA ball count")
+        time.sleep(HOLD)
+        lg = sc.exports_sync.log()
+        print(f"\nStartSession fired {len(lg)} time(s):")
+        for s in lg:
+            print("  ", s)
+        if not lg:
+            print("  (StartSession never fired — you didn't reconnect VGP3, or it's hooked differently)")
+        print("\nspoof released. Report: did it auto-catch, and did ULTRA drop or POKE?")
+        sess.detach()
+    finally:
+        try:
+            sess.detach()
+        except Exception:
+            pass
+
+
+main()

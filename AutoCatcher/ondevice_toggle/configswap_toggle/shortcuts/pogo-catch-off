@@ -1,0 +1,6 @@
+#!/data/data/com.termux/files/usr/bin/sh
+# Force OFF: gadget -> listen mode (:27047) + relaunch PoGo. Hands control back
+# to the desktop catcher. Idempotent.
+OUT=$(su -c '/data/local/tmp/re.zyg.fri/pogo-catch.sh off' 2>&1)
+echo "$OUT"
+command -v termux-toast >/dev/null 2>&1 && termux-toast -g middle "$(echo "$OUT" | head -n1)"

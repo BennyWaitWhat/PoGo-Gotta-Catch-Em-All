@@ -1,0 +1,4 @@
+# BYTE-EXACT everywhere: two audit gates hash raw file bytes (engine_sha256, pile_sha256), so no line-ending conversion
+# on any checkout (PC core.autocrlf=true or Linux). Phone-side shell scripts are always LF (Android sh chokes on CRLF).
+* -text
+*.sh text eol=lf

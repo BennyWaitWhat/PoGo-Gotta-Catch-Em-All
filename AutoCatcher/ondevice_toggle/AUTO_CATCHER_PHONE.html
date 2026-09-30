@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Auto-Catcher — On-Phone Toggle</title>
+<style>
+  :root{--bg:#0e1116;--card:#171c26;--card2:#1f2632;--ink:#e7edf5;--mut:#9aa7b8;--accent:#ffcb05;--blue:#2a75bb;--green:#3ad29f;--red:#ff6b6b;}
+  *{box-sizing:border-box}
+  body{margin:0;background:linear-gradient(180deg,#0b0e13,#0e1116);color:var(--ink);font:16px/1.6 -apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;padding:0 0 60px}
+  header{background:linear-gradient(120deg,#13203a,#1a1530);padding:34px 22px 26px;border-bottom:1px solid #2a3140}
+  h1{margin:0 0 6px;font-size:25px}
+  h1 .b{color:var(--accent)}
+  .sub{color:var(--mut);font-size:15px}
+  main{max-width:820px;margin:0 auto;padding:0 18px}
+  .card{background:var(--card);border:1px solid #2a3140;border-radius:14px;padding:18px 20px;margin:18px 0;box-shadow:0 2px 14px rgba(0,0,0,.25)}
+  h2{font-size:18px;margin:2px 0 12px;display:flex;align-items:center;gap:9px}
+  h2 .ic{width:26px;height:26px;border-radius:7px;background:var(--card2);display:inline-flex;align-items:center;justify-content:center;font-size:15px}
+  code,kbd{background:#0b0f16;border:1px solid #2a3140;border-radius:6px;padding:1px 6px;font:13px/1.5 ui-monospace,SFMono-Regular,Consolas,monospace;color:#cfe3ff}
+  pre{background:#0b0f16;border:1px solid #2a3140;border-radius:10px;padding:12px 14px;overflow:auto;font:12.5px/1.55 ui-monospace,Consolas,monospace;color:#cfe3ff}
+  .pill{display:inline-block;padding:2px 10px;border-radius:999px;font-size:12px;font-weight:600}
+  .on{background:rgba(58,210,159,.16);color:var(--green);border:1px solid rgba(58,210,159,.4)}
+  .off{background:rgba(154,167,184,.14);color:var(--mut);border:1px solid #3a4150}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  @media(max-width:620px){.grid{grid-template-columns:1fr}}
+  .step{display:flex;gap:13px;margin:13px 0}
+  .num{flex:0 0 30px;height:30px;border-radius:50%;background:var(--blue);color:#fff;font-weight:700;display:flex;align-items:center;justify-content:center}
+  .mut{color:var(--mut)}
+  .ok{color:var(--green);font-weight:600}
+  .warn{border-left:3px solid var(--accent);background:rgba(255,203,5,.06);padding:10px 14px;border-radius:0 8px 8px 0;margin:12px 0}
+  .bad{border-left:3px solid var(--red);background:rgba(255,107,107,.06);padding:10px 14px;border-radius:0 8px 8px 0;margin:12px 0}
+  table{width:100%;border-collapse:collapse;font-size:14px}
+  td,th{border-bottom:1px solid #2a3140;padding:8px 6px;text-align:left;vertical-align:top}
+  th{color:var(--mut);font-weight:600}
+  .notif{background:#0c1118;border:1px solid #2a3140;border-radius:12px;padding:12px 14px;margin:8px 0;max-width:360px}
+  .notif .t{font-weight:700}
+  .notif .c{color:var(--mut);font-size:13px;margin:2px 0 9px}
+  .btn{display:inline-block;border-radius:7px;padding:6px 16px;font-weight:700;font-size:13px;letter-spacing:.4px}
+  .btn.green{background:rgba(58,210,159,.16);color:var(--green);border:1px solid rgba(58,210,159,.45)}
+  .btn.red{background:rgba(255,107,107,.13);color:var(--red);border:1px solid rgba(255,107,107,.4)}
+  small{color:var(--mut)}
+</style>
+</head>
+<body>
+<header>
+  <h1>Pokémon GO <span class="b">Auto-Catcher</span> — runs on your phone</h1>
+  <div class="sub">No desktop. No Tailscale. No me. Tap a button, walk out the door.</div>
+</header>
+<main>
+
+  <div class="card">
+    <h2><span class="ic">✅</span>What changed</h2>
+    <p>The catcher used to live on the desktop: <b>Python + the <code>frida</code> library</b> ran <i>on the PC</i> and reached your phone's in-game gadget over the network. Nothing about it was magic — it was just those two pieces.</p>
+    <p>So I built <b>those same two pieces directly inside your phone's Termux</b>: I compiled <code>frida&nbsp;17.9.11</code> on-device (against Frida's official Android core devkit) and run the <i>exact</i> catcher there, pointed at the loopback gadget <code>127.0.0.1:27047</code>. The desktop is now completely out of the loop.</p>
+    <p class="ok">Verified live: it connects, finds every singleton with zero faults, throws Excellent, re-throws on break-out, feeds berries, tracks server-banked stardust — and catches. All on the phone.</p>
+  </div>
+
+  <div class="card">
+    <h2><span class="ic">🎯</span>How to use it</h2>
+    <div class="step"><div class="num">1</div><div>Open <b>Pokémon GO</b> and get to the map (so spawns are around you).</div></div>
+    <div class="step"><div class="num">2</div><div>Swipe down the <b>notification shade</b>. You'll see the toggle:</div></div>
+
+    <div class="grid" style="margin:6px 0 10px">
+      <div class="notif">
+        <div class="t">⚪ Auto-Catcher: OFF</div>
+        <div class="c">Open Pokémon GO, then tap TURN ON.</div>
+        <span class="btn green">TURN ON</span>
+      </div>
+      <div class="notif">
+        <div class="t">🎯 Auto-Catcher: ON</div>
+        <div class="c">Catching nearby Pokémon. Tap TURN OFF to stop.</div>
+        <span class="btn red">TURN OFF</span>
+      </div>
+    </div>
+
+    <div class="step"><div class="num">3</div><div>Tap <span class="btn green" style="padding:2px 10px">TURN ON</span>. It starts catching. Tap <span class="btn red" style="padding:2px 10px">TURN OFF</span> when you're done.</div></div>
+    <p class="mut">The notification is persistent (it re-appears after a reboot), so the toggle is always one swipe away.</p>
+  </div>
+
+  <div class="card">
+    <h2><span class="ic">⚙️</span>What it does each throw</h2>
+    <table>
+      <tr><th>Feature</th><th>Behaviour</th></tr>
+      <tr><td>Throw quality</td><td>Randomized <b>Excellent</b> (radius 0.02–0.12, jittered so it isn't robotic)</td></tr>
+      <tr><td>No escapes</td><td>Pokémon won't attack / move / jump while the throw lands</td></tr>
+      <tr><td>Break-out</td><td><b>Re-throws</b> automatically (FIFO queue, up to 4 balls)</td></tr>
+      <tr><td>Berries</td><td>Razz/Golden feeding wired in (Pinap currently <b>off</b>)</td></tr>
+      <tr><td>Stardust</td><td>Reads the <b>server-backed</b> balance; every catch is credited (verified diff = 0)</td></tr>
+      <tr><td>Ball use</td><td>Poké → Great → Ultra as available</td></tr>
+      <tr><td>Resilience</td><td>Self-reconnects if PoGo restarts; one instance only</td></tr>
+    </table>
+  </div>
+
+  <div class="card">
+    <h2><span class="ic">🧠</span>How it works under the hood</h2>
+    <pre>[ Pokémon GO ]  in-process Frida gadget, LISTEN mode on 127.0.0.1:27047
+       │  (loopback — never leaves the phone)
+[ Termux ]  python3.13  +  frida 17.9.11 (compiled on-device)
+       │  attaches to "Gadget", runs the catch script + liveness walk
+[ Toggle ]  a notification button → catcher_ctl.sh start|stop
+       │  start: launches the catcher under Termux's service
+       └  stop : kills it cleanly (gadget frees)</pre>
+    <p>The liveness GC-walk (which faulted when it ran inside the game's render thread) is safe here for the same reason it was safe on the desktop: it runs on a <b>Frida RPC thread</b>, off the render thread. The phone is just hosting the Frida client locally now.</p>
+  </div>
+
+  <div class="card">
+    <h2><span class="ic">📂</span>Where everything lives</h2>
+    <table>
+      <tr><th>Path (in Termux home)</th><th>What</th></tr>
+      <tr><td><code>~/pogo/…/catch_phone.py</code></td><td>On-device launcher (attaches to the local gadget)</td></tr>
+      <tr><td><code>~/pogo/…/catch_loop_fast.py</code></td><td>The catcher itself (unchanged from desktop)</td></tr>
+      <tr><td><code>~/pogo/catcher_ctl.sh</code></td><td>Toggle brain — <code>start | stop | toggle | status</code></td></tr>
+      <tr><td><code>~/pogo/run_catch.sh</code></td><td>Runner (sets env, launches the catcher)</td></tr>
+      <tr><td><code>~/applibs/</code></td><td>App-readable copies of 168 native libs (frida deps)</td></tr>
+      <tr><td><code>~/.termux/boot/10-catcher-toggle.sh</code></td><td>Re-posts the toggle on reboot (Termux:Boot)</td></tr>
+      <tr><td><code>~/pogo/…/catch_loop.log</code></td><td>Live run log + telemetry</td></tr>
+    </table>
+  </div>
+
+  <div class="card">
+    <h2><span class="ic">🛟</span>Troubleshooting</h2>
+    <p><b>Button does nothing?</b> Make sure Pokémon GO is actually open first. Or start it from a Termux session directly:</p>
+    <pre>~/pogo/catcher_ctl.sh start     # turn on
+~/pogo/catcher_ctl.sh stop      # turn off
+~/pogo/catcher_ctl.sh status    # ON / OFF</pre>
+    <p><b>Watch it work:</b> <code>tail -f ~/pogo/system/analysis/pokemod/catch_loop.log</code></p>
+    <div class="bad"><b>Don't run <code>pkg upgrade</code> in Termux.</b> The Termux package manager uses symlinks, and on this Android the app can't execute symlinks — that's the whole reason the build was hard. An upgrade re-creates them and would break <code>python</code>/<code>frida</code>/notifications. If it ever happens, re-run the repair scripts in <code>ondevice_toggle/</code> (<code>fix_bin.sh</code>, <code>fix_libexec.sh</code>, <code>build_applibs.sh</code>).</div>
+    <div class="warn">It catches whatever spawns near your avatar, including things you might want to keep — your existing tag/keep rules and the cull tooling still apply separately. The catcher only catches; it never transfers.</div>
+  </div>
+
+  <p style="text-align:center;color:#5d6b7e;"><small>Built on-device · frida 17.9.11 · Termux · 2026-06-04</small></p>
+</main>
+</body>
+</html>

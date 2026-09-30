@@ -1,0 +1,9 @@
+#!/data/data/com.termux/files/usr/bin/sh
+# pogo-catch-status — report ON/OFF + tail the catcher log so you can see catches
+# entirely on-device (no PC). The log is written by catch.js to catch.log.
+MARK=/data/local/tmp/re.zyg.fri/catch.on
+LOG=/data/local/tmp/re.zyg.fri/catch.log
+
+if su -c "[ -f $MARK ]"; then echo "PoGo auto-catch: ON"; else echo "PoGo auto-catch: OFF"; fi
+echo "---- last 25 log lines ----"
+su -c "[ -f $LOG ] && tail -n 25 $LOG || echo '(no log yet — launch PoGo at least once)'"

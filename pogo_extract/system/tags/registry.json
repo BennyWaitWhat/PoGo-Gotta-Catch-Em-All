@@ -1,0 +1,223 @@
+{
+ "_state": "REGENERATED 2026-09-09 from granular_tags.registry() -- SOURCE OF TRUTH is granular_tags.py (LEGACY_TAGS + all_tags()); RETIRED_TAGS lists what was dropped on 2026-09-09 (22 tags: redundant with each other or with the native filter chips). Exempt (unmanaged) live tags: Armored ML, Armored Release, Armored Trade, Armored UL, Evolve Shiny.",
+ "tags": [
+  {
+   "name": "Adventure Effect",
+   "file": "Adventure_Effect.txt",
+   "color": 0,
+   "legacy": false
+  },
+  {
+   "name": "Evo GL Rank 1",
+   "file": "Evo_GL_Rank_1.txt",
+   "color": 1,
+   "legacy": false
+  },
+  {
+   "name": "Evo GL Rank 2-5",
+   "file": "Evo_GL_Rank_2-5.txt",
+   "color": 2,
+   "legacy": false
+  },
+  {
+   "name": "Evo UL Rank 1",
+   "file": "Evo_UL_Rank_1.txt",
+   "color": 3,
+   "legacy": false
+  },
+  {
+   "name": "Evo UL Rank 2-5",
+   "file": "Evo_UL_Rank_2-5.txt",
+   "color": 4,
+   "legacy": false
+  },
+  {
+   "name": "Evolve Next",
+   "file": "Evolve_Next.txt",
+   "color": 5,
+   "legacy": false
+  },
+  {
+   "name": "Evolve Twice",
+   "file": "Evolve_Twice.txt",
+   "color": 6,
+   "legacy": false
+  },
+  {
+   "name": "GL Rank 1",
+   "file": "GL_Rank_1.txt",
+   "color": 7,
+   "legacy": false
+  },
+  {
+   "name": "GL Rank 2-5",
+   "file": "GL_Rank_2-5.txt",
+   "color": 8,
+   "legacy": false
+  },
+  {
+   "name": "Hundo",
+   "file": "Hundo.txt",
+   "color": 1,
+   "legacy": true
+  },
+  {
+   "name": "Last Copy",
+   "file": "Last_Copy.txt",
+   "color": 1,
+   "legacy": false
+  },
+  {
+   "name": "Legacy Moves",
+   "file": "Legacy_Moves.txt",
+   "color": 3,
+   "legacy": true
+  },
+  {
+   "name": "Never Cull",
+   "file": "Never_Cull.txt",
+   "color": 3,
+   "legacy": false
+  },
+  {
+   "name": "Nundo",
+   "file": "Nundo.txt",
+   "color": 2,
+   "legacy": true
+  },
+  {
+   "name": "Paradox",
+   "file": "Paradox.txt",
+   "color": 5,
+   "legacy": false
+  },
+  {
+   "name": "PvP Spread",
+   "file": "PvP_Spread.txt",
+   "color": 6,
+   "legacy": false
+  },
+  {
+   "name": "Rare Other",
+   "file": "Rare_Other.txt",
+   "color": 7,
+   "legacy": false
+  },
+  {
+   "name": "Safety Hold",
+   "file": "Safety_Hold.txt",
+   "color": 8,
+   "legacy": false
+  },
+  {
+   "name": "Shiny #4+",
+   "file": "Shiny_#4+.txt",
+   "color": 0,
+   "legacy": false
+  },
+  {
+   "name": "Shiny - Only One",
+   "file": "Shiny_-_Only_One.txt",
+   "color": 1,
+   "legacy": false
+  },
+  {
+   "name": "Traded by E+F",
+   "file": "Traded_by_E+F.txt",
+   "color": 7,
+   "legacy": true
+  },
+  {
+   "name": "Transfer",
+   "file": "Transfer.txt",
+   "color": 1,
+   "legacy": true
+  },
+  {
+   "name": "UL Rank 1",
+   "file": "UL_Rank_1.txt",
+   "color": 3,
+   "legacy": false
+  },
+  {
+   "name": "UL Rank 2-5",
+   "file": "UL_Rank_2-5.txt",
+   "color": 4,
+   "legacy": false
+  },
+  {
+   "name": "Ultra Beast",
+   "file": "Ultra_Beast.txt",
+   "color": 5,
+   "legacy": false
+  },
+  {
+   "name": "Variant #1",
+   "file": "Variant_#1.txt",
+   "color": 6,
+   "legacy": false
+  },
+  {
+   "name": "Variant #2",
+   "file": "Variant_#2.txt",
+   "color": 7,
+   "legacy": false
+  },
+  {
+   "name": "Variant #3",
+   "file": "Variant_#3.txt",
+   "color": 8,
+   "legacy": false
+  },
+  {
+   "name": "Variant #4+",
+   "file": "Variant_#4+.txt",
+   "color": 0,
+   "legacy": false
+  },
+  {
+   "name": "XXL",
+   "file": "XXL.txt",
+   "color": 5,
+   "legacy": true
+  }
+ ],
+ "exempt": [
+  "Armored ML",
+  "Armored Release",
+  "Armored Trade",
+  "Armored UL",
+  "Evolve Shiny"
+ ],
+ "native_covered_reasons": [
+  "adventure_effect",
+  "location_card",
+  "rarity",
+  "shadow_best",
+  "shiny"
+ ],
+ "retired": {
+  "Evolve 1": "identical set to Evolve Next",
+  "Evolve 2": "identical set to Evolve Twice",
+  "XXL #1": "XXL #1 + XXL #2 was exactly XXL",
+  "XXL #2": "XXL #1 + XXL #2 was exactly XXL",
+  "Shadow Best GL": "merged into Shadow (4 tags were 92% the same mons)",
+  "Shadow Best UL": "merged into Shadow",
+  "Shadow IV #1": "merged into Shadow",
+  "Shadow IV #2": "merged into Shadow",
+  "Location Card #1-3": "merged into Location Card (ordinal trivia on a capped axis)",
+  "Location Card #4-6": "merged into Location Card",
+  "Best GL": "every species has a best copy: 1,124 chips that changed no decision",
+  "Best UL": "every species has a best copy: 813 chips that changed no decision",
+  "GL IV": "the GL Rank / Evo GL Rank tags say why a PvP keeper is kept",
+  "UL IV": "the UL Rank / Evo UL Rank tags say why a PvP keeper is kept",
+  "Mighty": "one member; the mon is still kept (rule 11) and labelled Never Cull",
+  "Legendary": "native Legendary chip (572) lists them; Transfer marks the fodder",
+  "Mythical": "native Mythical chip (40)",
+  "Location Card": "native Location Background + Special Background chips (293)",
+  "Event": "native Event chip + the two Background chips",
+  "Shiny #1": "native Shiny chip (1,481); Shiny - Only One and Shiny #4+ stay",
+  "Shiny #2-3": "native Shiny chip",
+  "Shadow": "native Shadow chip (240); the kept 224 are the shadows not in Transfer"
+ }
+}

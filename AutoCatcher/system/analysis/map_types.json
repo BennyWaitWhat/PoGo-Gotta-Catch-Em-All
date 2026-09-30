@@ -1,0 +1,1118 @@
+{
+ "ClientSpawnPointProto": {
+  "n": 0,
+  "sample": []
+ },
+ "ClientMapCellProto": {
+  "n": 216,
+  "sample": [
+   {
+    "S2CellId": "9926594272469975040",
+    "AsOfTimeMs": "1790320587144",
+    "Fort": [
+     {
+      "FortId": "7cb4b7e264ef411db0b8c1901e87d39a.16",
+      "Latitude": 40.762476,
+      "Longitude": -73.967831,
+      "Enabled": true,
+      "FortType": 1,
+      "Visited": true,
+      "PowerUpProgressPoints": 40,
+      "NextFortCloseMs": "-1",
+      "IsRouteEligible": true,
+      "FortVpsInfo": {
+       "VpsEnabledStatus": 3
+      },
+      "ArExperiencesAllowed": true
+     },
+     {
+      "FortId": "da5f5fbed8684f4e820e416954a70e68.16",
+      "Latitude": 40.762361,
+      "Longitude": -73.967205,
+      "Enabled": true,
+      "FortType": 1,
+      "Visited": true,
+      "NextFortCloseMs": "-1",
+      "IsRouteEligible": true,
+      "FortVpsInfo": {
+       "VpsEnabledStatus": 3
+      },
+      "ArExperiencesAllowed": true
+     },
+     {
+      "FortId": "2ec5d2c24e3d4631b25d083cd5d48aed.16",
+      "Latitude": 40.760422,
+      "Longitude": -73.968218,
+      "Enabled": true,
+      "FortType": 1,
+      "Visited": true,
+      "NextFortCloseMs": "-1",
+      "IsRouteEligible": true,
+      "FortVpsInfo": {
+       "AnchorPayload": "ChUIwIPb69j8qaVXEJzN9JTT2ez50AEYjMXL2JYyKigKFgiZg5bhqK3poKkBEJOT5YH0meXM6QESCQoAEgUlAACAPx0AAIA/MhIR3LlpjlthREAZeUmWCvh9UsA=",
+       "HintImageUrl": "https://lh3.googleusercontent.com/Ee6e1k22YFWqsTp7fxjMTkjhV-fc-OnrWdYg4zbmks2SzA6RNZl_zc53qhvTYW_cE-YQftCzHTtU6y_oRue-radSd95EAJCG7UKC9jpr",
+       "VpsEnabledStatus": 4,
+       "MeshMetadata": {
+        "ArBoundaries": [
+         {
+          "VerticesWithRelativePosition": [
+           "<HoloholoARBoundaryVertexProto>",
+           "<HoloholoARBoundaryVertexProto>",
+           "<HoloholoARBoundaryVertexProto>",
+           "<HoloholoARBoundaryVertexProto>"
+          ]
+         }
+        ]
+       },
+       "HintImageLat": 40.760795,
+       "HintImageLng": -73.968147,
+       "HintImagePosition": {
+        "X": -0.466338456,
+        "Y": -0.931743801,
+        "Z": 1.637443066
+       },
+       "HintImageRotation": {
+        "X": 0.116263223,
+        "Y": 0.230784427,
+        "Z": 0.96544538,
+        "W": 0.033713925
+       }
+      },
+      "ArExperiencesAllowed": true
+     },
+     {
+      "FortId": "63216462b41448b0ae1d8b6f93d062f1.16",
+      "Latitude": 40.76134,
+      "Longitude": -73.967802,
+      "Enabled": true,
+      "FortType": 1,
+      "Visited": true,
+      "NextFortCloseMs": "-1",
+      "IsRouteEligible": true,
+      "FortVpsInfo": {
+       "VpsEnabledStatus": 3
+      },
+      "ArExperiencesAllowed": true
+     },
+     {
+      "FortId": "2c045eec947c4de482d98905d753bce5.16",
+      "Latitude": 40.762157,
+      "Longitude": -73.967768,
+      "Enabled": true,
+      "FortType": 1,
+      "Visited": true,
+      "PowerUpProgressPoints": 30,
+      "NextFortCloseMs": "-1",
+      "IsRouteEligible": true,
+      "FortVpsInfo": {
+       "VpsEnabledStatus": 3
+      },
+      "ArExperiencesAllowed": true
+     },
+     {
+      "FortId": "f262742e7b763abaaeb2ed3833a0f647.16",
+      "Latitude": 40.762358,
+      "Longitude": -73.966115,
+      "Enabled": true,
+      "FortType": 1,
+      "GymDisplay": {
+       "LowestPokemonMotivation": 1,
+       "SlotsAvailable": 6
+      },
+      "Visited": true,
+      "NextFortCloseMs": "-1",
+      "IsRouteEligible": true,
+      "FortVpsInfo": {
+       "VpsEnabledStatus": 3
+      },
+      "ArExperiencesAllowed": true
+     },
+     {
+      "FortId": "e7384aecf82c468980cf549b50d3338c.16",
+      "Latitude": 40.760501,
+      "Longitude": -73.966816,
+      "Enabled": true,
+      "FortType": 1,
+      "Visited": true,
+      "NextFortCloseMs": "-1",
+      "IsRouteEligible": true,
+      "FortVpsInfo": {
+       "VpsEnabledStatus": 3
+      },
+      "ArExperiencesAllowed": true
+     },
+     {
+      "FortId": "b8d5857e68904f569b176dd78dba8668.11",
+      "Latitude": 40.761736,
+      "Longitude": -73.967426,
+      "Enabled": true,
+      "FortType": 1,
+      "GymDisplay": {
+       "LowestPokemonMotivation": 1,
+       "SlotsAvailable": 6
+      },
+      "Visited": true,
+      "NextFortCloseMs": "-1",
+      "IsRouteEligible": true,
+      "FortVpsInfo": {
+       "AnchorPayload": "ChQIpf/L9+74l6cOEJ7Ds9/35Ke2XhjF5sX6lTIqJgoUCPa1972cvfOlQhCxs5Wg+ZXrshISCQoAEgUlAACAPx0AAIA/MhIRVLIrS3phREAZcAyzhPB9UsA=",
+       "HintImageUrl": "https://lh3.googleusercontent.com/DoAGR_1OdHDClhibuR1Z0wECx-VsgPOZGhf3vzLjUEtZLkciL-JOdT4o64iFM-uHRFDBxVZcMYM0CikNuEWzA9CVbMAwdg7sekQn0xqq",
+       "VpsEnabledStatus": 4,
+       "MeshMetadata": {
+        "ArBoundaries": [
+         {
+          "VerticesWithRelativePosition": [
+           "<HoloholoARBoundaryVertexProto>",
+           "<HoloholoARBoundaryVertexProto>",
+           "<HoloholoARBoundaryVertexProto>",
+           "<HoloholoARBoundaryVertexProto>"
+          ]
+         }
+        ]
+       },
+       "HintImageLat": 40.76139,
+       "HintImageLng": -73.967712,
+       "HintImagePosition": {
+        "X": -2.602173405,
+        "Y": -0.230697615,
+        "Z": 13.600774715
+       },
+       "HintImageRotation": {
+        "X": -0.581385632,
+        "Y": 0.018894153,
+        "Z": 0.812150019,
+        "W": 0.04523388
+       }
+      },
+      "ArExperiencesAllowed": true
+     },
+     {
+      "FortId": "40cc481fae9643cbe2d857a4a73f0683",
+      "Latitude": 40.762394,
+      "Longitude": -73.965744,
+      "Team": 3,
+      "GuardPokemonId": 697,
+      "Enabled": true,
+      "GuardPokemonDisplay": {
+       "Gender": 1,
+       "DisplayId": "3152610608248328917"
+      },
+      "Closed": true,
+      "GymDisplay": {
+       "TotalGymCp": 17694,
+       "LowestPokemonMotivation": 0.883507848,
+       "OccupiedMillis": "1268941"
+      },
+      "SameTeamDeployLockoutEndMs": "1790319745723",
+      "PartnerId": "2144940858",
+      "IsExRaidEligible": true,
+      "NextFortCloseMs": "-1",
+      "ArExperiencesAllowed": true
+     },
+     {
+      "FortId": "a4f0f3ffa3fe38b090db158a412d6627.16",
+      "Latitude": 40.760279,
+      "Longitude": -73.965726,
+      "Enabled": true,
+      "FortType": 1,
+      "GymDisplay": {
+       "LowestPokemonMotivation": 1,
+       "SlotsAvailable": 6
+      },
+      "NextFortCloseMs": "-1",
+      "IsRouteEligible": true,
+      "FortVpsInfo": {
+       "VpsEnabledStatus": 3
+      },
+      "ArExperiencesAllowed": true
+     },
+     {
+      "FortId": "64aa413177b04494a4b0df164b5a30a2.16",
+      "Latitude": 40.760994,
+      "Longitude": -73.966814,
+      "Enabled": true,
+      "FortType": 1,
+      "Visited": true,
+      "NextFortCloseMs": "-1",
+      "IsRouteEligible": true,
+      "FortVpsInfo": {
+       "VpsEnabledStatus": 3
+      },
+      "ArExperiencesAllowed": true
+     }
+    ],
+    "Stations": [
+     {
+      "Id": "7605195bcb874a66bfdd47d489a76242.23",
+      "Lat": 40.76081,
+      "Lng": -73.965388,
+      "Name": "Just Shades",
+      "BattleDetails": {
+       "BreadBattleSeed": "8889953849922613230",
+       "BattleSpawnMs": "1790240400000",
+       "BattleWindowStartMs": "1790240400000",
+       "BattleWindowEndMs": "1790326800000",
+       "BattlePokemon": {
+        "pokemonId_": 144,
+        "stamina_": 17500,
+        "maxStamina_": 17500,
+        "move1_": 217,
+        "move2_": 39,
+        "individualAttack_": 15,
+        "individualDefense_": 15,
+        "individualStamina_": 15,
+        "cpMultiplier_": 0.7,
+        "pokemonDisplay_": {
+         "Gender": 3,
+         "Form": 716,
+         "DisplayId": "144",
+         "BreadModeEnum": 1
+        }
+       },
+       "BattleLevel": 5
+      },
+      "StartTimeMs": "1790240400000",
+      "EndTimeMs": "1790326800000"
+     }
+    ]
+   },
+   {
+    "S2CellId": "9926594343336935424",
+    "AsOfTimeMs": "1790320587144",
+    "Fort": [
+     {
+      "FortId": "044574318fa535a1b2834ef043dc134a.16",
+      "Latitude": 40.767873,
+      "Longitude": -73.980416,
+      "Enabled": true,
+      "FortType": 1,
+      "GymDisplay": {
+       "LowestPokemonMotivation": 1,
+       "SlotsAvailable": 6
+      },
+      "Visited": true,
+      "NextFortCloseMs": "-1",
+      "IsRouteEligible": true,
+      "FortVpsInfo": {
+       "VpsEnabledStatus": 3
+      },
+      "ArExperiencesAllowed": true
+     },
+     {
+      "FortId": "9a0fbeaef1dd451c9221436b66ecb920.12",
+      "Latitude": 40.76827,
+      "Longitude": -73.980977,
+      "Enabled": true,
+      "FortType": 1,
+      "Visited": true,
+      "PowerUpProgressPoints": 250,
+      "PowerUpLevelExpirationMs": "1639874502642",
+      "NextFortCloseMs": "-1",
+      "IsRouteEligible": true,
+      "FortVpsInfo": {
+       "VpsEnabledStatus": 3
+      },
+      "ArExperiencesAllowed": true
+     },
+     {
+      "FortId": "38c271f0222369d37064d8a95d1a546c",
+      "Latitude": 40.769146,
+      "Longitude": -73.98239,
+      "Enabled": true,
+      "FortType": 1,
+      "Visited": true,
+      "PartnerId": "2144940858",
+      "NextFortCloseMs": "-1",
+      "ArExperiencesAllowed": true
+     },
+     {
+      "FortId": "2cc86b2426c44552b37811d8156ae57d.16",
+      "Latitude": 40.768546,
+      "Longitude": -73.982407,
+      "Enabled": true,
+      "FortType": 1,
+      "ActiveFortModifier": [
+       "<unreadable>"
+      ],
+      "GymDisplay": {
+       "LowestPokemonMotivation": 1,
+       "SlotsAvailable": 6
+      },
+      "Visited": true,
+      "PokestopDisplays": [
+       {
+        "IncidentId": "9217318537627022526",
+        "IncidentStartMs": "1790319537741",
+        "IncidentExpirationMs": "1790321337741",
+        "IncidentDisplayType": 1,
+        "crrw": {
+         "Style": 1,
+         "Character": 26
+        },
+        "crrx": 10
+       }
+      ],
+      "PowerUpProgressPoints": 180,
+      "PowerUpLevelExpirationMs": "1670144014173",
+      "NextFortCloseMs": "-1",
+      "IsRouteEligible": true,
+      "FortVpsInfo": {
+       "VpsEnabledStatus": 3
+      },
+      "ArExperiencesAllowed": true
+     },
+     {
+      "FortId": "7122d01d30bc3d7e8dce0af07467eec8.16",
+      "Latitude": 40.767665,
+      "Longitude": -73.982471,
+      "Enabled": true,
+      "FortType": 1,
+      "GymDisplay": {
+       "LowestPokemonMotivation": 1,
+       "SlotsAvailable": 6
+      },
+      "Visited": true,
+      "NextFortCloseMs": "-1",
+      "IsRouteEligible": true,
+      "FortVpsInfo": {
+       "VpsEnabledStatus": 3
+      },
+      "ArExperiencesAllowed": true
+     },
+     {
+      "FortId": "fe1dc460c39b4e86aed551f49078a05d.16",
+      "Latitude": 40.769614,
+      "Longitude": -73.981487,
+      "Enabled": true,
+      "FortType": 1,
+      "Visited": true,
+      "NextFortCloseMs": "-1",
+      "IsRouteEligible": true,
+      "FortVpsInfo": {
+       "VpsEnabledStatus": 3
+      },
+      "ArExperiencesAllowed": true
+     },
+     {
+      "FortId": "72e13e92443a442b828406739b9c6750.12",
+      "Latitude": 40.768803,
+      "Longitude": -73.981737,
+      "Team": 2,
+      "GuardPokemonId": 242,
+      "Enabled": true,
+      "GuardPokemonDisplay": {
+       "Gender": 2,
+       "Form": 1328,
+       "WeatherBoostedCondition": 3,
+       "PokemonBadge": 1,
+       "DisplayId": "-3736158701075877092"
+      },
+      "Closed": true,
+      "GymDisplay": {
+       "TotalGymCp": 17422,
+       "LowestPokemonMotivation": 0.709659278,
+       "OccupiedMillis": "5676579"
+      },
+      "SameTeamDeployLockoutEndMs": "1790317966588",
+      "NextFortCloseMs": "-1",
+      "IsRouteEligible": true,
+      "FortVpsInfo": {
+       "AnchorPayload": "ChYI9ffIj9XUqqWKARCEr4jY/qXq1YMBGO3E3bT7MComChQIgMvahe/snqdYEK7dp5Wj1YbSaxIJCgASBSUAAIA/HQAAgD8yEhGXXEnhaWJEQBkoCKru035SwA==",
+       "HintImageUrl": "https://lh3.googleusercontent.com/NtFLUBhFplauq-8VCegV07uauknEjpJ6DlKEfc9vk63mCGbdYL0v3-kJa-AXBXWPbcPnj0tA4ZM-yZeldVNVR-q6doB1Rd8fnoXr6eY",
+       "VpsEnabledStatus": 4,
+       "MeshMetadata": {
+        "ArBoundaries": [
+         {
+          "VerticesWithRelativePosition": [
+           "<HoloholoARBoundaryVertexProto>",
+           "<HoloholoARBoundaryVertexProto>",
+           "<HoloholoARBoundaryVertexProto>",
+           "<HoloholoARBoundaryVertexProto>"
+          ]
+         }
+        ]
+       },
+       "HintImageLat": 40.768882,
+       "HintImageLng": -73.981872,
+       "HintImagePosition": {
+        "X": 4.074767923,
+        "Y": 0.066839151,
+        "Z": 1.05135882
+       },
+       "HintImageRotation": {
+        "X": 0.812606259,
+        "Y": -0.055479494,
+        "Z": -0.561453803,
+        "W": -0.146159918
+       }
+      },
+      "ArExperiencesAllowed": true
+     },
+     {
+      "FortId": "f2843406406c465cb0fbd1c80854d54f.16",
+      "Latitude": 40.768904,
+      "Longitude": -73.98264,
+      "Enabled": true,
+      "FortType": 1,
+      "Visited": true,
+      "NextFortCloseMs": "-1",
+      "IsRouteEligible": true,
+      "FortVpsInfo": {
+       "VpsEnabledStatus": 3
+      },
+      "ArExperiencesAllowed": true
+     },
+     {
+      "FortId": "f015baea80a046ed8d0a4d3a8ee54ca6.12",
+      "Latitude": 40.769419,
+      "Longitude": -73.981781,
+      "Enabled": true,
+      "FortType": 1,
+      "Visited": true,
+      "PowerUpProgressPoints": 250,
+      "PowerUpLevelExpirationMs": "1650127251386",
+      "NextFortCloseMs": "-1",
+      "IsRouteEligible": true,
+      "FortVpsInfo": {
+       "AnchorPayload": "ChUI7tbN7aOMv6cIEJaLz/PWiZSAjQEY9MOHsfswKiUKEwjhheOW5JjaIRCAxYGu95eF41USCQoAEgUlAACAPx0AAIA/MhIRTDHt/ntiREAZcji/wNR+UsA=",
+       "HintImageUrl": "https://lh3.googleusercontent.com/p9qMXC7DmOtGfxb_otXhL5QmCQN9PREDEidhavg2tSxGNl_GoiPJE716XxV4nOmsZnI7HtWoQTdCrTNvp3MGIspOvEgCQfWiKs1wypI",
+       "VpsEnabledStatus": 4,
+       "MeshMetadata": {
+        "ArBoundaries": [
+         {
+          "VerticesWithRelativePosition": [
+           "<HoloholoARBoundaryVertexProto>",
+           "<HoloholoARBoundaryVertexProto>",
+           "<HoloholoARBoundaryVertexProto>",
+           "<HoloholoARBoundaryVertexProto>"
+          ]
+         }
+        ]
+       },
+       "HintImageLat": 40.769485,
+       "HintImageLng": -73.981689,
+       "HintImagePosition": {
+        "X": -4.443724771,
+        "Y": -1.085692556,
+        "Z": -2.961964915
+       },
+       "HintImageRotation": {
+        "X": 0.557836676,
+        "Y": -0.078272678,
+        "Z": 0.824330785,
+        "W": 0.056306194
+       }
+      },
+      "ArExperiencesAllowed": true
+     },
+     {
+      "FortId": "7bcad78e177d4ba0b02a6579fdb37437.16",
+      "Latitude": 40.76733,
+      "Longitude": -73.980412,
+      "Enabled": true,
+      "FortType": 1,
+      "Visited": true,
+      "NextFortCloseMs": "-1",
+      "IsRouteEligible": true,
+      "FortVpsInfo": {
+       "VpsEnabledStatus": 3
+      },
+      "ArExperiencesAllowed": true
+     },
+     {
+      "FortId": "a2909afa874e4cae898cdec23aa1986d.16",
+      "Latitude": 40.76869,
+      "Longitude": -73.981217,
+      "Enabled": true,
+      "FortType": 1,
+      "GymDisplay": {
+       "LowestPokemonMotivation": 1,
+       "SlotsAvailable": 6
+      },
+      "Visited": true,
+      "NextFortCloseMs": "-1",
+      "IsRouteEligible": true,
+      "FortVpsInfo": {
+       "AnchorPayload": "ChYIrLO7noSq2aSzARC0/dCY7cewuNABGKLw3/CLMiooChYI4tjSl5fiyKbrARCEs66y9YWest0BEgkKABIFJQAAgD8dAACAPzISEf7HhqdkYkRAGQVFui7MflLA",
+       "HintImageUrl": "https://lh3.googleusercontent.com/pi0emgos0Y5VzXPUyCrf5GK0F_4Hknq634APVbQPrqFPz6Vm3pQCV2D_rRzlmenQisWvHhl8hF6yeJkRdkBx9n7vorAq4c8WgIvF_Q8A",
+       "VpsEnabledStatus": 4,
+       "MeshMetadata": {
+        "ArBoundaries": [
+         {
+          "VerticesWithRelativePosition": [
+           "<HoloholoARBoundaryVertexProto>",
+           "<HoloholoARBoundaryVertexProto>",
+           "<HoloholoARBoundaryVertexProto>",
+           "<HoloholoARBoundaryVertexProto>"
+          ]
+         }
+        ]
+       },
+       "HintImageLat": 40.768638,
+       "HintImageLng": -73.981101,
+       "HintImagePosition": {
+        "X": 1.350082974,
+        "Y": -0.427865518,
+        "Z": 0.672688131
+       },
+       "HintImageRotation": {
+        "X": 0.240601776,
+        "Y": -0.16623137,
+        "Z": 0.952274544,
+        "W": 0.087470619
+       }
+      },
+      "ArExperiencesAllowed": true
+     },
+     {
+      "FortId": "da8e6183c42e47d785849c677e56b0ba.12",
+      "Latitude": 40.768125,
+      "Longitude": -73.981912,
+      "Enabled": true,
+      "FortType": 1,
+      "Visited": true,
+      "NextFortCloseMs": "-1",
+      "IsRouteEligible": true,
+      "FortVpsInfo": {
+       "VpsEnabledStatus": 3
+      },
+      "ArExperiencesAllowed": true
+     },
+     {
+      "FortId": "63860227507c41c5853417ee5eaec39d.16",
+      "Latitude": 40.76743,
+      "Longitude": -73.982174,
+      "Enabled": true,
+      "FortType": 1,
+      "Visited": true,
+      "PowerUpProgressPoints": 130,
+      "PowerUpLevelExpirationMs": "1648546426682",
+      "NextFortCloseMs": "-1",
+      "IsRouteEligible": true,
+      "FortVpsInfo": {
+       "VpsEnabledStatus": 3
+      },
+      "ArExperiencesAllowed": true
+     },
+     {
+      "FortId": "e539f546b2144dcfa566eec45273cbd7.16",
+      "Latitude": 40.769476,
+      "Longitude": -73.982445,
+      "Enabled": true,
+      "FortType": 1,
+      "Visited": true,
+      "NextFortCloseMs": "-1",
+      "IsRouteEligible": true,
+      "FortVpsInfo": {
+       "VpsEnabledStatus": 3
+      },
+      "ArExperiencesAllowed": true
+     },
+     {
+      "FortId": "3e10e03d70a44590bdf7193e37e0c6b1.16",
+      "Latitude": 40.767534,
+      "Longitude": -73.981055,
+      "Enabled": true,
+      "FortType": 1,
+      "Visited": true,
+      "NextFortCloseMs": "-1",
+      "IsRouteEligible": true,
+      "FortVpsInfo": {
+       "VpsEnabledStatus": 3
+      },
+      "ArExperiencesAllowed": true
+     },
+     {
+      "FortId": "642ab8bb4a58ad598cd2469228b90675",
+      "Latitude": 40.76854255,
+      "Longitude": -73.98178138,
+      "Team": 2,
+      "GuardPokemonId": 248,
+      "Enabled": true,
+      "GuardPokemonDisplay": {
+       "Gender": 1,
+       "Form": 319,
+       "DisplayId": "2077193471"
+      },
+      "Closed": true,
+      "GymDisplay": {
+       "TotalGymCp": 12367,
+       "LowestPokemonMotivation": 0.693932652,
+       "OccupiedMillis": "5950025"
+      },
+      "SameTeamDeployLockoutEndMs": "1790317884462",
+      "PartnerId": "2144940858",
+      "IsExRaidEligible": true,
+      "NextFortCloseMs": "-1",
+      "ArExperiencesAllowed": true
+     }
+    ],
+    "Stations": [
+     {
+      "Id": "ee6f9632cd304f14a9fb188a4fcccb7d.23",
+      "Lat": 40.769072,
+      "Lng": -73.980497,
+      "Name": "Columbus Circle Massage Therapy, PLLC",
+      "BattleDetails": {
+       "BreadBattleSeed": "-5305571518891193743",
+       "BattleSpawnMs": "1790240400000",
+       "BattleWindowStartMs": "1790240400000",
+       "BattleWindowEndMs": "1790326800000",
+       "BattlePokemon": {
+        "pokemonId_": 145,
+        "stamina_": 13000,
+        "maxStamina_": 13000,
+        "move1_": 249,
+        "move2_": 42,
+        "individualAttack_": 15,
+        "individualDefense_": 15,
+        "individualStamina_": 15,
+        "cpMultiplier_": 0.7,
+        "pokemonDisplay_": {
+         "Gender": 3,
+         "Form": 773,
+         "DisplayId": "145",
+         "BreadModeEnum": 1
+        }
+       },
+       "BattleLevel": 5
+      },
+      "StartTimeMs": "1790240400000",
+      "EndTimeMs": "1790326800000"
+     }
+    ]
+   },
+   {
+    "S2CellId": "9926594369106739200",
+    "AsOfTimeMs": "1790320582016",
+    "Fort": [
+     {
+      "FortId": "db67ca94b5d33f91b4005d63b461f7dc.16",
+      "Latitude": 40.758292,
+      "Longitude": -73.976187,
+      "Enabled": true,
+      "FortType": 1,
+      "GymDisplay": {
+       "LowestPokemonMotivation": 1,
+       "SlotsAvailable": 6
+      },
+      "NextFortCloseMs": "-1",
+      "IsRouteEligible": true,
+      "FortVpsInfo": {
+       "VpsEnabledStatus": 3
+      },
+      "ArExperiencesAllowed": true
+     },
+     {
+      "FortId": "57e47169e5f2464a818642abf0c76653.16",
+      "Latitude": 40.757281,
+      "Longitude": -73.974827,
+      "Enabled": true,
+      "FortType": 1,
+      "Visited": true,
+      "NextFortCloseMs": "-1",
+      "IsRouteEligible": true,
+      "FortVpsInfo": {
+       "VpsEnabledStatus": 3
+      },
+      "ArExperiencesAllowed": true
+     },
+     {
+      "FortId": "8f5621b9c4f44b59812cdf4277683531.16",
+      "Latitude": 40.75848,
+      "Longitude": -73.975639,
+      "Enabled": true,
+      "FortType": 1,
+      "GymDisplay": {
+       "LowestPokemonMotivation": 1,
+       "SlotsAvailable": 6
+      },
+      "Visited": true,
+      "PokestopDisplays": [
+       {
+        "IncidentId": "6987964681411539413",
+        "IncidentStartMs": "1790319560993",
+        "IncidentExpirationMs": "1790321360993",
+        "IncidentDisplayType": 1,
+        "crrw": {
+         "Style": 1,
+         "Character": 48
+        },
+        "crrx": 10
+       }
+      ],
+      "NextFortCloseMs": "-1",
+      "IsRouteEligible": true,
+      "FortVpsInfo": {
+       "VpsEnabledStatus": 3
+      },
+      "ArExperiencesAllowed": true
+     },
+     {
+      "FortId": "20f83ac27ef337ef9d192996355bfaa8.16",
+      "Latitude": 40.758636,
+      "Longitude": -73.975901,
+      "Enabled": true,
+      "FortType": 1,
+      "GymDisplay": {
+       "LowestPokemonMotivation": 1,
+       "SlotsAvailable": 6
+      },
+      "NextFortCloseMs": "-1",
+      "IsRouteEligible": true,
+      "FortVpsInfo": {
+       "VpsEnabledStatus": 3
+      },
+      "ArExperiencesAllowed": true
+     },
+     {
+      "FortId": "92edfecad5204e03ad1efda608ef6214.12",
+      "Latitude": 40.758753,
+      "Longitude": -73.976836,
+      "Team": 2,
+      "GuardPokemonId": 376,
+      "Enabled": true,
+      "GuardPokemonDisplay": {
+       "Gender": 3,
+       "Form": 770,
+       "WeatherBoostedCondition": 5,
+       "DisplayId": "-5428344819820830629"
+      },
+      "Closed": true,
+      "GymDisplay": {
+       "TotalGymCp": 15575,
+       "LowestPokemonMotivation": 0.750468075,
+       "OccupiedMillis": "4311499"
+      },
+      "SameTeamDeployLockoutEndMs": "1790319330494",
+      "NextFortCloseMs": "-1",
+      "IsRouteEligible": true,
+      "FortVpsInfo": {
+       "VpsEnabledStatus": 3
+      },
+      "ArExperiencesAllowed": true
+     },
+     {
+      "FortId": "facc12c93f21ad8704e3fcc7ee2811fd",
+      "Latitude": 40.75696,
+      "Longitude": -73.9759,
+      "Enabled": true,
+      "FortType": 1,
+      "Visited": true,
+      "PartnerId": "2144940858",
+      "NextFortCloseMs": "-1",
+      "ArExperiencesAllowed": true
+     },
+     {
+      "FortId": "4890dce790b4c92f3a4e8ac2b71e0834",
+      "Latitude": 40.75657419,
+      "Longitude": -73.97493586,
+      "Enabled": true,
+      "FortType": 1,
+      "Visited": true,
+      "PartnerId": "2144940858",
+      "NextFortCloseMs": "-1",
+      "ArExperiencesAllowed": true
+     },
+     {
+      "FortId": "1f0e8d18ed87497ba1cf0e86607978ed.16",
+      "Latitude": 40.75758,
+      "Longitude": -73.975437,
+      "Enabled": true,
+      "FortType": 1,
+      "Visited": true,
+      "PowerUpProgressPoints": 100,
+      "PowerUpLevelExpirationMs": "1711891511016",
+      "NextFortCloseMs": "-1",
+      "IsRouteEligible": true,
+      "FortVpsInfo": {
+       "VpsEnabledStatus": 3
+      },
+      "ArExperiencesAllowed": true
+     },
+     {
+      "FortId": "b67c4da8eebb3646ae012be990586e05.16",
+      "Latitude": 40.756909,
+      "Longitude": -73.976976,
+      "Enabled": true,
+      "FortType": 1,
+      "GymDisplay": {
+       "LowestPokemonMotivation": 1,
+       "SlotsAvailable": 6
+      },
+      "NextFortCloseMs": "-1",
+      "IsRouteEligible": true,
+      "FortVpsInfo": {
+       "VpsEnabledStatus": 3
+      },
+      "ArExperiencesAllowed": true
+     },
+     {
+      "FortId": "cf1c926823af4cdc9e5697f334348d84.16",
+      "Latitude": 40.75651,
+      "Longitude": -73.975242,
+      "Enabled": true,
+      "FortType": 1,
+      "Visited": true,
+      "PokestopDisplays": [
+       {
+        "IncidentId": "7887001261387606428",
+        "IncidentStartMs": "1790317080464",
+        "IncidentExpirationMs": "1790320680464",
+        "IncidentDisplayType": 8
+       }
+      ],
+      "PowerUpProgressPoints": 150,
+      "PowerUpLevelExpirationMs": "1712143023334",
+      "NextFortCloseMs": "-1",
+      "IsRouteEligible": true,
+      "FortVpsInfo": {
+       "VpsEnabledStatus": 3
+      },
+      "ArExperiencesAllowed": true
+     },
+     {
+      "FortId": "c9aca5e8aad1416f8de9a48c8ca38052.16",
+      "Latitude": 40.757556,
+      "Longitude": -73.975946,
+      "Team": 3,
+      "GuardPokemonId": 395,
+      "Enabled": true,
+      "IsInBattle": true,
+      "GuardPokemonDisplay": {
+       "Gender": 1,
+       "Form": 1655,
+       "DisplayId": "3405369533681007334"
+      },
+      "Closed": true,
+      "GymDisplay": {
+       "TotalGymCp": 12304,
+       "LowestPokemonMotivation": 0.558349967,
+       "OccupiedMillis": "688152"
+      },
+      "SameTeamDeployLockoutEndMs": "1790320258072",
+      "PowerUpProgressPoints": 110,
+      "PowerUpLevelExpirationMs": "1709106469106",
+      "NextFortCloseMs": "-1",
+      "IsRouteEligible": true,
+      "FortVpsInfo": {
+       "VpsEnabledStatus": 3
+      },
+      "ArExperiencesAllowed": true
+     },
+     {
+      "FortId": "d07a816a3d7e457686162660819094d3.16",
+      "Latitude": 40.757528,
+      "Longitude": -73.976953,
+      "Enabled": true,
+      "FortType": 1,
+      "Visited": true,
+      "PowerUpProgressPoints": 250,
+      "PowerUpLevelExpirationMs": "1645285583063",
+      "NextFortCloseMs": "-1",
+      "IsRouteEligible": true,
+      "FortVpsInfo": {
+       "VpsEnabledStatus": 3
+      },
+      "ArExperiencesAllowed": true
+     },
+     {
+      "FortId": "8f3f9bc9b40049d78b0821496da0f364.16",
+      "Latitude": 40.758049,
+      "Longitude": -73.975256,
+      "Enabled": true,
+      "FortType": 1,
+      "ActiveFortModifier": [
+       "<unreadable>"
+      ],
+      "GymDisplay": {
+       "LowestPokemonMotivation": 1,
+       "SlotsAvailable": 6
+      },
+      "Visited": true,
+      "PowerUpProgressPoints": 20,
+      "NextFortCloseMs": "-1",
+      "IsRouteEligible": true,
+      "FortVpsInfo": {
+       "VpsEnabledStatus": 3
+      },
+      "ArExperiencesAllowed": true
+     }
+    ]
+   }
+  ]
+ },
+ "ClientWeatherProto": {
+  "n": 1,
+  "sample": [
+   {
+    "S2CellId": "-8520149688496685056",
+    "DisplayWeather": {
+     "CloudLevel": 2,
+     "WindLevel": 2,
+     "WindDirection": 18
+    },
+    "GameplayWeather": {
+     "GameplayCondition": 5
+    }
+   }
+  ]
+ },
+ "StationProto": {
+  "n": 44,
+  "sample": [
+   {
+    "Id": "e410088deb534afdbc2b5992463215de.23",
+    "Lat": 40.76327,
+    "Lng": -73.973549,
+    "Name": "Edwynn Houk Gallery",
+    "BattleDetails": {
+     "BreadBattleSeed": "4244491193090709251",
+     "BattleSpawnMs": "1790240400000",
+     "BattleWindowStartMs": "1790240400000",
+     "BattleWindowEndMs": "1790326800000",
+     "BattlePokemon": {
+      "pokemonId_": 280,
+      "stamina_": 1700,
+      "maxStamina_": 1700,
+      "move1_": 249,
+      "move2_": 60,
+      "individualAttack_": 15,
+      "individualDefense_": 15,
+      "individualStamina_": 15,
+      "cpMultiplier_": 0.15,
+      "pokemonDisplay_": {
+       "Gender": 1,
+       "Form": 292,
+       "DisplayId": "280",
+       "BreadModeEnum": 1
+      }
+     },
+     "BattleLevel": 1
+    },
+    "StartTimeMs": "1790240400000",
+    "EndTimeMs": "1790326800000"
+   },
+   {
+    "Id": "f2503375ee5b36fbbb9c518172c7f30d.16",
+    "Lat": 40.769234,
+    "Lng": -73.979812,
+    "Name": "Central Park South East Campsite - Caring",
+    "BattleDetails": {
+     "BreadBattleSeed": "1320464129391091351",
+     "BattleSpawnMs": "1785192761004",
+     "BattleWindowStartMs": "1790049600000",
+     "BattleWindowEndMs": "1816728761004",
+     "BattlePokemon": {
+      "pokemonId_": 146,
+      "stamina_": 20000,
+      "maxStamina_": 20000,
+      "move1_": 210,
+      "move2_": 103,
+      "individualAttack_": 15,
+      "individualDefense_": 15,
+      "individualStamina_": 15,
+      "cpMultiplier_": 0.7,
+      "pokemonDisplay_": {
+       "Gender": 3,
+       "Form": 836,
+       "DisplayId": "146",
+       "BreadModeEnum": 1
+      }
+     },
+     "BattleLevel": 5
+    },
+    "StartTimeMs": "1785192761004",
+    "EndTimeMs": "1816728761004",
+    "PlayerEditsDisabled": true
+   },
+   {
+    "Id": "c1cc6150004d357984cd74ca5131c775.16",
+    "Lat": 40.768978,
+    "Lng": -73.978439,
+    "Name": "Central Park South East Campsite - Passionate",
+    "BattleDetails": {
+     "BreadBattleSeed": "-357573921037908638",
+     "BattleSpawnMs": "1785192760955",
+     "BattleWindowStartMs": "1790049600000",
+     "BattleWindowEndMs": "1816728760955",
+     "BattlePokemon": {
+      "pokemonId_": 527,
+      "stamina_": 1700,
+      "maxStamina_": 1700,
+      "move1_": 235,
+      "move2_": 121,
+      "individualAttack_": 15,
+      "individualDefense_": 15,
+      "individualStamina_": 15,
+      "cpMultiplier_": 0.15,
+      "pokemonDisplay_": {
+       "Gender": 2,
+       "Form": 1985,
+       "DisplayId": "527",
+       "BreadModeEnum": 1
+      }
+     },
+     "BattleLevel": 1
+    },
+    "StartTimeMs": "1785192760955",
+    "EndTimeMs": "1816728760955",
+    "PlayerEditsDisabled": true
+   }
+  ]
+ },
+ "RaidInfoProto": {
+  "n": 0,
+  "sample": []
+ },
+ "PokestopIncidentDisplayProto": {
+  "n": 62,
+  "sample": [
+   {
+    "IncidentId": "5800530427957820265",
+    "IncidentStartMs": "1790320562156",
+    "IncidentExpirationMs": "1790322362156",
+    "IncidentDisplayType": 1,
+    "crrw": {
+     "Style": 1,
+     "Character": 35
+    },
+    "crrx": 10
+   },
+   {
+    "IncidentId": "5928466141436941628",
+    "IncidentStartMs": "1790319098223",
+    "IncidentExpirationMs": "1790320898223",
+    "IncidentDisplayType": 1,
+    "crrw": {
+     "Style": 1,
+     "Character": 25
+    },
+    "crrx": 10
+   },
+   {
+    "IncidentId": "-6352530748406782111",
+    "IncidentStartMs": "1790319900523",
+    "IncidentExpirationMs": "1790321700523",
+    "IncidentDisplayType": 1,
+    "crrw": {
+     "Style": 1,
+     "Character": 35
+    },
+    "crrx": 10
+   }
+  ]
+ },
+ "HyperlocalExperimentClientProto": {
+  "n": 0,
+  "sample": []
+ },
+ "EventMapObject": {
+  "n": 0,
+  "sample": []
+ },
+ "GymStateProto": {
+  "n": 0,
+  "sample": []
+ }
+}

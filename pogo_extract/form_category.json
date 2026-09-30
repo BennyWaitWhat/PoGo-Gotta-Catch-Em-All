@@ -1,0 +1,7427 @@
+{
+  "201_1": {
+    "species": "Unown",
+    "form_name": "UNOWN_A",
+    "category": "cosmetic"
+  },
+  "201_2": {
+    "species": "Unown",
+    "form_name": "UNOWN_B",
+    "category": "cosmetic"
+  },
+  "201_3": {
+    "species": "Unown",
+    "form_name": "UNOWN_C",
+    "category": "cosmetic"
+  },
+  "201_4": {
+    "species": "Unown",
+    "form_name": "UNOWN_D",
+    "category": "cosmetic"
+  },
+  "201_5": {
+    "species": "Unown",
+    "form_name": "UNOWN_E",
+    "category": "cosmetic"
+  },
+  "201_6": {
+    "species": "Unown",
+    "form_name": "UNOWN_F",
+    "category": "cosmetic"
+  },
+  "201_7": {
+    "species": "Unown",
+    "form_name": "UNOWN_G",
+    "category": "cosmetic"
+  },
+  "201_8": {
+    "species": "Unown",
+    "form_name": "UNOWN_H",
+    "category": "cosmetic"
+  },
+  "201_9": {
+    "species": "Unown",
+    "form_name": "UNOWN_I",
+    "category": "cosmetic"
+  },
+  "201_10": {
+    "species": "Unown",
+    "form_name": "UNOWN_J",
+    "category": "cosmetic"
+  },
+  "201_11": {
+    "species": "Unown",
+    "form_name": "UNOWN_K",
+    "category": "cosmetic"
+  },
+  "201_12": {
+    "species": "Unown",
+    "form_name": "UNOWN_L",
+    "category": "cosmetic"
+  },
+  "201_13": {
+    "species": "Unown",
+    "form_name": "UNOWN_M",
+    "category": "cosmetic"
+  },
+  "201_14": {
+    "species": "Unown",
+    "form_name": "UNOWN_N",
+    "category": "cosmetic"
+  },
+  "201_15": {
+    "species": "Unown",
+    "form_name": "UNOWN_O",
+    "category": "cosmetic"
+  },
+  "201_16": {
+    "species": "Unown",
+    "form_name": "UNOWN_P",
+    "category": "cosmetic"
+  },
+  "201_17": {
+    "species": "Unown",
+    "form_name": "UNOWN_Q",
+    "category": "cosmetic"
+  },
+  "201_18": {
+    "species": "Unown",
+    "form_name": "UNOWN_R",
+    "category": "cosmetic"
+  },
+  "201_19": {
+    "species": "Unown",
+    "form_name": "UNOWN_S",
+    "category": "cosmetic"
+  },
+  "201_20": {
+    "species": "Unown",
+    "form_name": "UNOWN_T",
+    "category": "cosmetic"
+  },
+  "201_21": {
+    "species": "Unown",
+    "form_name": "UNOWN_U",
+    "category": "cosmetic"
+  },
+  "201_22": {
+    "species": "Unown",
+    "form_name": "UNOWN_V",
+    "category": "cosmetic"
+  },
+  "201_23": {
+    "species": "Unown",
+    "form_name": "UNOWN_W",
+    "category": "cosmetic"
+  },
+  "201_24": {
+    "species": "Unown",
+    "form_name": "UNOWN_X",
+    "category": "cosmetic"
+  },
+  "201_25": {
+    "species": "Unown",
+    "form_name": "UNOWN_Y",
+    "category": "cosmetic"
+  },
+  "201_26": {
+    "species": "Unown",
+    "form_name": "UNOWN_Z",
+    "category": "cosmetic"
+  },
+  "201_27": {
+    "species": "Unown",
+    "form_name": "UNOWN_EXCLAMATION_POINT",
+    "category": "cosmetic"
+  },
+  "201_28": {
+    "species": "Unown",
+    "form_name": "UNOWN_QUESTION_MARK",
+    "category": "cosmetic"
+  },
+  "351_29": {
+    "species": "Castform",
+    "form_name": "CASTFORM_NORMAL",
+    "category": "default"
+  },
+  "351_30": {
+    "species": "Castform",
+    "form_name": "CASTFORM_SUNNY",
+    "category": "cosmetic"
+  },
+  "351_31": {
+    "species": "Castform",
+    "form_name": "CASTFORM_RAINY",
+    "category": "cosmetic"
+  },
+  "351_32": {
+    "species": "Castform",
+    "form_name": "CASTFORM_SNOWY",
+    "category": "cosmetic"
+  },
+  "386_33": {
+    "species": "Deoxys",
+    "form_name": "DEOXYS_NORMAL",
+    "category": "default"
+  },
+  "386_34": {
+    "species": "Deoxys",
+    "form_name": "DEOXYS_ATTACK",
+    "category": "cosmetic"
+  },
+  "386_35": {
+    "species": "Deoxys",
+    "form_name": "DEOXYS_DEFENSE",
+    "category": "cosmetic"
+  },
+  "386_36": {
+    "species": "Deoxys",
+    "form_name": "DEOXYS_SPEED",
+    "category": "cosmetic"
+  },
+  "327_37": {
+    "species": "Spinda",
+    "form_name": "SPINDA00",
+    "category": "cosmetic"
+  },
+  "327_38": {
+    "species": "Spinda",
+    "form_name": "SPINDA01",
+    "category": "cosmetic"
+  },
+  "327_39": {
+    "species": "Spinda",
+    "form_name": "SPINDA02",
+    "category": "cosmetic"
+  },
+  "327_40": {
+    "species": "Spinda",
+    "form_name": "SPINDA03",
+    "category": "cosmetic"
+  },
+  "327_41": {
+    "species": "Spinda",
+    "form_name": "SPINDA04",
+    "category": "cosmetic"
+  },
+  "327_42": {
+    "species": "Spinda",
+    "form_name": "SPINDA05",
+    "category": "cosmetic"
+  },
+  "327_43": {
+    "species": "Spinda",
+    "form_name": "SPINDA06",
+    "category": "cosmetic"
+  },
+  "327_44": {
+    "species": "Spinda",
+    "form_name": "SPINDA07",
+    "category": "cosmetic"
+  },
+  "19_45": {
+    "species": "Rattata",
+    "form_name": "RATTATA_NORMAL",
+    "category": "default"
+  },
+  "19_46": {
+    "species": "Rattata",
+    "form_name": "RATTATA_ALOLA",
+    "category": "regional"
+  },
+  "20_47": {
+    "species": "Raticate",
+    "form_name": "RATICATE_NORMAL",
+    "category": "default"
+  },
+  "20_48": {
+    "species": "Raticate",
+    "form_name": "RATICATE_ALOLA",
+    "category": "regional"
+  },
+  "26_49": {
+    "species": "Raichu",
+    "form_name": "RAICHU_NORMAL",
+    "category": "default"
+  },
+  "26_50": {
+    "species": "Raichu",
+    "form_name": "RAICHU_ALOLA",
+    "category": "regional"
+  },
+  "27_51": {
+    "species": "Sandshrew",
+    "form_name": "SANDSHREW_NORMAL",
+    "category": "default"
+  },
+  "27_52": {
+    "species": "Sandshrew",
+    "form_name": "SANDSHREW_ALOLA",
+    "category": "regional"
+  },
+  "28_53": {
+    "species": "Sandslash",
+    "form_name": "SANDSLASH_NORMAL",
+    "category": "default"
+  },
+  "28_54": {
+    "species": "Sandslash",
+    "form_name": "SANDSLASH_ALOLA",
+    "category": "regional"
+  },
+  "37_55": {
+    "species": "Vulpix",
+    "form_name": "VULPIX_NORMAL",
+    "category": "default"
+  },
+  "37_56": {
+    "species": "Vulpix",
+    "form_name": "VULPIX_ALOLA",
+    "category": "regional"
+  },
+  "38_57": {
+    "species": "Ninetales",
+    "form_name": "NINETALES_NORMAL",
+    "category": "default"
+  },
+  "38_58": {
+    "species": "Ninetales",
+    "form_name": "NINETALES_ALOLA",
+    "category": "regional"
+  },
+  "50_59": {
+    "species": "Diglett",
+    "form_name": "DIGLETT_NORMAL",
+    "category": "default"
+  },
+  "50_60": {
+    "species": "Diglett",
+    "form_name": "DIGLETT_ALOLA",
+    "category": "regional"
+  },
+  "51_61": {
+    "species": "Dugtrio",
+    "form_name": "DUGTRIO_NORMAL",
+    "category": "default"
+  },
+  "51_62": {
+    "species": "Dugtrio",
+    "form_name": "DUGTRIO_ALOLA",
+    "category": "regional"
+  },
+  "52_63": {
+    "species": "Meowth",
+    "form_name": "MEOWTH_NORMAL",
+    "category": "default"
+  },
+  "52_64": {
+    "species": "Meowth",
+    "form_name": "MEOWTH_ALOLA",
+    "category": "regional"
+  },
+  "53_65": {
+    "species": "Persian",
+    "form_name": "PERSIAN_NORMAL",
+    "category": "default"
+  },
+  "53_66": {
+    "species": "Persian",
+    "form_name": "PERSIAN_ALOLA",
+    "category": "regional"
+  },
+  "74_67": {
+    "species": "Geodude",
+    "form_name": "GEODUDE_NORMAL",
+    "category": "default"
+  },
+  "74_68": {
+    "species": "Geodude",
+    "form_name": "GEODUDE_ALOLA",
+    "category": "regional"
+  },
+  "75_69": {
+    "species": "Graveler",
+    "form_name": "GRAVELER_NORMAL",
+    "category": "default"
+  },
+  "75_70": {
+    "species": "Graveler",
+    "form_name": "GRAVELER_ALOLA",
+    "category": "regional"
+  },
+  "76_71": {
+    "species": "Golem",
+    "form_name": "GOLEM_NORMAL",
+    "category": "default"
+  },
+  "76_72": {
+    "species": "Golem",
+    "form_name": "GOLEM_ALOLA",
+    "category": "regional"
+  },
+  "88_73": {
+    "species": "Grimer",
+    "form_name": "GRIMER_NORMAL",
+    "category": "default"
+  },
+  "88_74": {
+    "species": "Grimer",
+    "form_name": "GRIMER_ALOLA",
+    "category": "regional"
+  },
+  "89_75": {
+    "species": "Muk",
+    "form_name": "MUK_NORMAL",
+    "category": "default"
+  },
+  "89_76": {
+    "species": "Muk",
+    "form_name": "MUK_ALOLA",
+    "category": "regional"
+  },
+  "103_77": {
+    "species": "Exeggutor",
+    "form_name": "EXEGGUTOR_NORMAL",
+    "category": "default"
+  },
+  "103_78": {
+    "species": "Exeggutor",
+    "form_name": "EXEGGUTOR_ALOLA",
+    "category": "regional"
+  },
+  "105_79": {
+    "species": "Marowak",
+    "form_name": "MAROWAK_NORMAL",
+    "category": "default"
+  },
+  "105_80": {
+    "species": "Marowak",
+    "form_name": "MAROWAK_ALOLA",
+    "category": "regional"
+  },
+  "479_81": {
+    "species": "Rotom",
+    "form_name": "ROTOM_NORMAL",
+    "category": "default"
+  },
+  "479_82": {
+    "species": "Rotom",
+    "form_name": "ROTOM_FROST",
+    "category": "cosmetic"
+  },
+  "479_83": {
+    "species": "Rotom",
+    "form_name": "ROTOM_FAN",
+    "category": "cosmetic"
+  },
+  "479_84": {
+    "species": "Rotom",
+    "form_name": "ROTOM_MOW",
+    "category": "cosmetic"
+  },
+  "479_85": {
+    "species": "Rotom",
+    "form_name": "ROTOM_WASH",
+    "category": "cosmetic"
+  },
+  "479_86": {
+    "species": "Rotom",
+    "form_name": "ROTOM_HEAT",
+    "category": "cosmetic"
+  },
+  "413_87": {
+    "species": "Wormadam",
+    "form_name": "WORMADAM_PLANT",
+    "category": "cosmetic"
+  },
+  "413_88": {
+    "species": "Wormadam",
+    "form_name": "WORMADAM_SANDY",
+    "category": "cosmetic"
+  },
+  "413_89": {
+    "species": "Wormadam",
+    "form_name": "WORMADAM_TRASH",
+    "category": "cosmetic"
+  },
+  "487_90": {
+    "species": "Giratina",
+    "form_name": "GIRATINA_ALTERED",
+    "category": "cosmetic"
+  },
+  "487_91": {
+    "species": "Giratina",
+    "form_name": "GIRATINA_ORIGIN",
+    "category": "cosmetic"
+  },
+  "492_92": {
+    "species": "Shaymin",
+    "form_name": "SHAYMIN_SKY",
+    "category": "cosmetic"
+  },
+  "492_93": {
+    "species": "Shaymin",
+    "form_name": "SHAYMIN_LAND",
+    "category": "cosmetic"
+  },
+  "421_94": {
+    "species": "Cherrim",
+    "form_name": "CHERRIM_OVERCAST",
+    "category": "cosmetic"
+  },
+  "421_95": {
+    "species": "Cherrim",
+    "form_name": "CHERRIM_SUNNY",
+    "category": "cosmetic"
+  },
+  "422_96": {
+    "species": "Shellos",
+    "form_name": "SHELLOS_WEST_SEA",
+    "category": "cosmetic"
+  },
+  "422_97": {
+    "species": "Shellos",
+    "form_name": "SHELLOS_EAST_SEA",
+    "category": "cosmetic"
+  },
+  "423_98": {
+    "species": "Gastrodon",
+    "form_name": "GASTRODON_WEST_SEA",
+    "category": "cosmetic"
+  },
+  "423_99": {
+    "species": "Gastrodon",
+    "form_name": "GASTRODON_EAST_SEA",
+    "category": "cosmetic"
+  },
+  "493_100": {
+    "species": "Arceus",
+    "form_name": "ARCEUS_NORMAL",
+    "category": "default"
+  },
+  "493_101": {
+    "species": "Arceus",
+    "form_name": "ARCEUS_FIGHTING",
+    "category": "cosmetic"
+  },
+  "493_102": {
+    "species": "Arceus",
+    "form_name": "ARCEUS_FLYING",
+    "category": "cosmetic"
+  },
+  "493_103": {
+    "species": "Arceus",
+    "form_name": "ARCEUS_POISON",
+    "category": "cosmetic"
+  },
+  "493_104": {
+    "species": "Arceus",
+    "form_name": "ARCEUS_GROUND",
+    "category": "cosmetic"
+  },
+  "493_105": {
+    "species": "Arceus",
+    "form_name": "ARCEUS_ROCK",
+    "category": "cosmetic"
+  },
+  "493_106": {
+    "species": "Arceus",
+    "form_name": "ARCEUS_BUG",
+    "category": "cosmetic"
+  },
+  "493_107": {
+    "species": "Arceus",
+    "form_name": "ARCEUS_GHOST",
+    "category": "cosmetic"
+  },
+  "493_108": {
+    "species": "Arceus",
+    "form_name": "ARCEUS_STEEL",
+    "category": "cosmetic"
+  },
+  "493_109": {
+    "species": "Arceus",
+    "form_name": "ARCEUS_FIRE",
+    "category": "cosmetic"
+  },
+  "493_110": {
+    "species": "Arceus",
+    "form_name": "ARCEUS_WATER",
+    "category": "cosmetic"
+  },
+  "493_111": {
+    "species": "Arceus",
+    "form_name": "ARCEUS_GRASS",
+    "category": "cosmetic"
+  },
+  "493_112": {
+    "species": "Arceus",
+    "form_name": "ARCEUS_ELECTRIC",
+    "category": "cosmetic"
+  },
+  "493_113": {
+    "species": "Arceus",
+    "form_name": "ARCEUS_PSYCHIC",
+    "category": "cosmetic"
+  },
+  "493_114": {
+    "species": "Arceus",
+    "form_name": "ARCEUS_ICE",
+    "category": "cosmetic"
+  },
+  "493_115": {
+    "species": "Arceus",
+    "form_name": "ARCEUS_DRAGON",
+    "category": "cosmetic"
+  },
+  "493_116": {
+    "species": "Arceus",
+    "form_name": "ARCEUS_DARK",
+    "category": "cosmetic"
+  },
+  "493_117": {
+    "species": "Arceus",
+    "form_name": "ARCEUS_FAIRY",
+    "category": "cosmetic"
+  },
+  "412_118": {
+    "species": "Burmy",
+    "form_name": "BURMY_PLANT",
+    "category": "cosmetic"
+  },
+  "412_119": {
+    "species": "Burmy",
+    "form_name": "BURMY_SANDY",
+    "category": "cosmetic"
+  },
+  "412_120": {
+    "species": "Burmy",
+    "form_name": "BURMY_TRASH",
+    "category": "cosmetic"
+  },
+  "327_121": {
+    "species": "Spinda",
+    "form_name": "SPINDA08",
+    "category": "cosmetic"
+  },
+  "327_122": {
+    "species": "Spinda",
+    "form_name": "SPINDA09",
+    "category": "cosmetic"
+  },
+  "582_123": {
+    "species": "Vanillite",
+    "form_name": "SPINDA10",
+    "category": "cosmetic"
+  },
+  "327_124": {
+    "species": "Spinda",
+    "form_name": "SPINDA11",
+    "category": "cosmetic"
+  },
+  "327_125": {
+    "species": "Spinda",
+    "form_name": "SPINDA12",
+    "category": "cosmetic"
+  },
+  "327_126": {
+    "species": "Spinda",
+    "form_name": "SPINDA13",
+    "category": "cosmetic"
+  },
+  "327_127": {
+    "species": "Spinda",
+    "form_name": "SPINDA14",
+    "category": "cosmetic"
+  },
+  "327_128": {
+    "species": "Spinda",
+    "form_name": "SPINDA15",
+    "category": "cosmetic"
+  },
+  "327_129": {
+    "species": "Spinda",
+    "form_name": "SPINDA16",
+    "category": "cosmetic"
+  },
+  "327_130": {
+    "species": "Spinda",
+    "form_name": "SPINDA17",
+    "category": "cosmetic"
+  },
+  "327_131": {
+    "species": "Spinda",
+    "form_name": "SPINDA18",
+    "category": "cosmetic"
+  },
+  "327_132": {
+    "species": "Spinda",
+    "form_name": "SPINDA19",
+    "category": "cosmetic"
+  },
+  "150_133": {
+    "species": "Mewtwo",
+    "form_name": "MEWTWO_A",
+    "category": "cosmetic"
+  },
+  "150_135": {
+    "species": "Mewtwo",
+    "form_name": "MEWTWO_NORMAL",
+    "category": "default"
+  },
+  "550_136": {
+    "species": "Basculin",
+    "form_name": "BASCULIN_RED_STRIPED",
+    "category": "cosmetic"
+  },
+  "550_137": {
+    "species": "Basculin",
+    "form_name": "BASCULIN_BLUE_STRIPED",
+    "category": "cosmetic"
+  },
+  "555_138": {
+    "species": "Darmanitan",
+    "form_name": "DARMANITAN_STANDARD",
+    "category": "cosmetic"
+  },
+  "555_139": {
+    "species": "Darmanitan",
+    "form_name": "DARMANITAN_ZEN",
+    "category": "cosmetic"
+  },
+  "641_140": {
+    "species": "Tornadus",
+    "form_name": "TORNADUS_INCARNATE",
+    "category": "cosmetic"
+  },
+  "641_141": {
+    "species": "Tornadus",
+    "form_name": "TORNADUS_THERIAN",
+    "category": "cosmetic"
+  },
+  "642_142": {
+    "species": "Thundurus",
+    "form_name": "THUNDURUS_INCARNATE",
+    "category": "cosmetic"
+  },
+  "642_143": {
+    "species": "Thundurus",
+    "form_name": "THUNDURUS_THERIAN",
+    "category": "cosmetic"
+  },
+  "645_144": {
+    "species": "Landorus",
+    "form_name": "LANDORUS_INCARNATE",
+    "category": "cosmetic"
+  },
+  "645_145": {
+    "species": "Landorus",
+    "form_name": "LANDORUS_THERIAN",
+    "category": "cosmetic"
+  },
+  "646_146": {
+    "species": "Kyurem",
+    "form_name": "KYUREM_NORMAL",
+    "category": "default"
+  },
+  "646_147": {
+    "species": "Kyurem",
+    "form_name": "KYUREM_BLACK",
+    "category": "cosmetic"
+  },
+  "646_148": {
+    "species": "Kyurem",
+    "form_name": "KYUREM_WHITE",
+    "category": "cosmetic"
+  },
+  "647_149": {
+    "species": "Keldeo",
+    "form_name": "KELDEO_ORDINARY",
+    "category": "cosmetic"
+  },
+  "647_150": {
+    "species": "Keldeo",
+    "form_name": "KELDEO_RESOLUTE",
+    "category": "cosmetic"
+  },
+  "648_151": {
+    "species": "Meloetta",
+    "form_name": "MELOETTA_ARIA",
+    "category": "cosmetic"
+  },
+  "648_152": {
+    "species": "Meloetta",
+    "form_name": "MELOETTA_PIROUETTE",
+    "category": "cosmetic"
+  },
+  "41_157": {
+    "species": "Zubat",
+    "form_name": "ZUBAT_NORMAL",
+    "category": "default"
+  },
+  "42_160": {
+    "species": "Golbat",
+    "form_name": "GOLBAT_NORMAL",
+    "category": "default"
+  },
+  "1_163": {
+    "species": "Bulbasaur",
+    "form_name": "BULBASAUR_NORMAL",
+    "category": "default"
+  },
+  "2_166": {
+    "species": "Ivysaur",
+    "form_name": "IVYSAUR_NORMAL",
+    "category": "default"
+  },
+  "3_169": {
+    "species": "Venusaur",
+    "form_name": "VENUSAUR_NORMAL",
+    "category": "default"
+  },
+  "4_172": {
+    "species": "Charmander",
+    "form_name": "CHARMANDER_NORMAL",
+    "category": "default"
+  },
+  "5_175": {
+    "species": "Charmeleon",
+    "form_name": "CHARMELEON_NORMAL",
+    "category": "default"
+  },
+  "6_178": {
+    "species": "Charizard",
+    "form_name": "CHARIZARD_NORMAL",
+    "category": "default"
+  },
+  "7_181": {
+    "species": "Squirtle",
+    "form_name": "SQUIRTLE_NORMAL",
+    "category": "default"
+  },
+  "8_184": {
+    "species": "Wartortle",
+    "form_name": "WARTORTLE_NORMAL",
+    "category": "default"
+  },
+  "9_187": {
+    "species": "Blastoise",
+    "form_name": "BLASTOISE_NORMAL",
+    "category": "default"
+  },
+  "147_190": {
+    "species": "Dratini",
+    "form_name": "DRATINI_NORMAL",
+    "category": "default"
+  },
+  "148_193": {
+    "species": "Dragonair",
+    "form_name": "DRAGONAIR_NORMAL",
+    "category": "default"
+  },
+  "149_196": {
+    "species": "Dragonite",
+    "form_name": "DRAGONITE_NORMAL",
+    "category": "default"
+  },
+  "143_199": {
+    "species": "Snorlax",
+    "form_name": "SNORLAX_NORMAL",
+    "category": "default"
+  },
+  "169_202": {
+    "species": "Crobat",
+    "form_name": "CROBAT_NORMAL",
+    "category": "default"
+  },
+  "258_205": {
+    "species": "Mudkip",
+    "form_name": "MUDKIP_NORMAL",
+    "category": "default"
+  },
+  "259_208": {
+    "species": "Marshtomp",
+    "form_name": "MARSHTOMP_NORMAL",
+    "category": "default"
+  },
+  "260_211": {
+    "species": "Swampert",
+    "form_name": "SWAMPERT_NORMAL",
+    "category": "default"
+  },
+  "96_214": {
+    "species": "Drowzee",
+    "form_name": "DROWZEE_NORMAL",
+    "category": "default"
+  },
+  "97_217": {
+    "species": "Hypno",
+    "form_name": "HYPNO_NORMAL",
+    "category": "default"
+  },
+  "104_224": {
+    "species": "Cubone",
+    "form_name": "CUBONE_NORMAL",
+    "category": "default"
+  },
+  "228_229": {
+    "species": "Houndour",
+    "form_name": "HOUNDOUR_NORMAL",
+    "category": "default"
+  },
+  "229_232": {
+    "species": "Houndoom",
+    "form_name": "HOUNDOOM_NORMAL",
+    "category": "default"
+  },
+  "60_235": {
+    "species": "Poliwag",
+    "form_name": "POLIWAG_NORMAL",
+    "category": "default"
+  },
+  "61_238": {
+    "species": "Poliwhirl",
+    "form_name": "POLIWHIRL_NORMAL",
+    "category": "default"
+  },
+  "62_241": {
+    "species": "Poliwrath",
+    "form_name": "POLIWRATH_NORMAL",
+    "category": "default"
+  },
+  "186_244": {
+    "species": "Politoed",
+    "form_name": "POLITOED_NORMAL",
+    "category": "default"
+  },
+  "123_247": {
+    "species": "Scyther",
+    "form_name": "SCYTHER_NORMAL",
+    "category": "default"
+  },
+  "212_250": {
+    "species": "Scizor",
+    "form_name": "SCIZOR_NORMAL",
+    "category": "default"
+  },
+  "129_253": {
+    "species": "Magikarp",
+    "form_name": "MAGIKARP_NORMAL",
+    "category": "default"
+  },
+  "130_256": {
+    "species": "Gyarados",
+    "form_name": "GYARADOS_NORMAL",
+    "category": "default"
+  },
+  "48_259": {
+    "species": "Venonat",
+    "form_name": "VENONAT_NORMAL",
+    "category": "default"
+  },
+  "49_262": {
+    "species": "Venomoth",
+    "form_name": "VENOMOTH_NORMAL",
+    "category": "default"
+  },
+  "43_265": {
+    "species": "Oddish",
+    "form_name": "ODDISH_NORMAL",
+    "category": "default"
+  },
+  "44_268": {
+    "species": "Gloom",
+    "form_name": "GLOOM_NORMAL",
+    "category": "default"
+  },
+  "45_271": {
+    "species": "Vileplume",
+    "form_name": "VILEPLUME_NORMAL",
+    "category": "default"
+  },
+  "182_274": {
+    "species": "Bellossom",
+    "form_name": "BELLOSSOM_NORMAL",
+    "category": "default"
+  },
+  "107_277": {
+    "species": "Hitmonchan",
+    "form_name": "HITMONCHAN_NORMAL",
+    "category": "default"
+  },
+  "58_280": {
+    "species": "Growlithe",
+    "form_name": "GROWLITHE_NORMAL",
+    "category": "default"
+  },
+  "59_283": {
+    "species": "Arcanine",
+    "form_name": "ARCANINE_NORMAL",
+    "category": "default"
+  },
+  "54_286": {
+    "species": "Psyduck",
+    "form_name": "PSYDUCK_NORMAL",
+    "category": "default"
+  },
+  "55_289": {
+    "species": "Golduck",
+    "form_name": "GOLDUCK_NORMAL",
+    "category": "default"
+  },
+  "280_292": {
+    "species": "Ralts",
+    "form_name": "RALTS_NORMAL",
+    "category": "default"
+  },
+  "281_295": {
+    "species": "Kirlia",
+    "form_name": "KIRLIA_NORMAL",
+    "category": "default"
+  },
+  "282_298": {
+    "species": "Gardevoir",
+    "form_name": "GARDEVOIR_NORMAL",
+    "category": "default"
+  },
+  "475_301": {
+    "species": "Gallade",
+    "form_name": "GALLADE_NORMAL",
+    "category": "default"
+  },
+  "63_304": {
+    "species": "Abra",
+    "form_name": "ABRA_NORMAL",
+    "category": "default"
+  },
+  "64_307": {
+    "species": "Kadabra",
+    "form_name": "KADABRA_NORMAL",
+    "category": "default"
+  },
+  "65_310": {
+    "species": "Alakazam",
+    "form_name": "ALAKAZAM_NORMAL",
+    "category": "default"
+  },
+  "246_313": {
+    "species": "Larvitar",
+    "form_name": "LARVITAR_NORMAL",
+    "category": "default"
+  },
+  "247_316": {
+    "species": "Pupitar",
+    "form_name": "PUPITAR_NORMAL",
+    "category": "default"
+  },
+  "248_319": {
+    "species": "Tyranitar",
+    "form_name": "TYRANITAR_NORMAL",
+    "category": "default"
+  },
+  "131_322": {
+    "species": "Lapras",
+    "form_name": "LAPRAS_NORMAL",
+    "category": "default"
+  },
+  "585_585": {
+    "species": "Deerling",
+    "form_name": "DEERLING_SPRING",
+    "category": "cosmetic"
+  },
+  "585_586": {
+    "species": "Deerling",
+    "form_name": "DEERLING_SUMMER",
+    "category": "cosmetic"
+  },
+  "585_587": {
+    "species": "Deerling",
+    "form_name": "DEERLING_AUTUMN",
+    "category": "cosmetic"
+  },
+  "585_588": {
+    "species": "Deerling",
+    "form_name": "DEERLING_WINTER",
+    "category": "cosmetic"
+  },
+  "586_589": {
+    "species": "Sawsbuck",
+    "form_name": "SAWSBUCK_SPRING",
+    "category": "cosmetic"
+  },
+  "586_590": {
+    "species": "Sawsbuck",
+    "form_name": "SAWSBUCK_SUMMER",
+    "category": "cosmetic"
+  },
+  "586_591": {
+    "species": "Sawsbuck",
+    "form_name": "SAWSBUCK_AUTUMN",
+    "category": "cosmetic"
+  },
+  "586_592": {
+    "species": "Sawsbuck",
+    "form_name": "SAWSBUCK_WINTER",
+    "category": "cosmetic"
+  },
+  "649_593": {
+    "species": "Genesect",
+    "form_name": "GENESECT_NORMAL",
+    "category": "default"
+  },
+  "649_594": {
+    "species": "Genesect",
+    "form_name": "GENESECT_SHOCK",
+    "category": "cosmetic"
+  },
+  "649_595": {
+    "species": "Genesect",
+    "form_name": "GENESECT_BURN",
+    "category": "cosmetic"
+  },
+  "649_596": {
+    "species": "Genesect",
+    "form_name": "GENESECT_CHILL",
+    "category": "cosmetic"
+  },
+  "649_597": {
+    "species": "Genesect",
+    "form_name": "GENESECT_DOUSE",
+    "category": "cosmetic"
+  },
+  "25_598": {
+    "species": "Pikachu",
+    "form_name": "PIKACHU_NORMAL",
+    "category": "default"
+  },
+  "265_600": {
+    "species": "Wurmple",
+    "form_name": "WURMPLE_NORMAL",
+    "category": "default"
+  },
+  "202_602": {
+    "species": "Wobbuffet",
+    "form_name": "WOBBUFFET_NORMAL",
+    "category": "default"
+  },
+  "331_610": {
+    "species": "Cacnea",
+    "form_name": "CACNEA_NORMAL",
+    "category": "default"
+  },
+  "332_613": {
+    "species": "Cacturne",
+    "form_name": "CACTURNE_NORMAL",
+    "category": "default"
+  },
+  "13_616": {
+    "species": "Weedle",
+    "form_name": "WEEDLE_NORMAL",
+    "category": "default"
+  },
+  "14_619": {
+    "species": "Kakuna",
+    "form_name": "KAKUNA_NORMAL",
+    "category": "default"
+  },
+  "15_622": {
+    "species": "Beedrill",
+    "form_name": "BEEDRILL_NORMAL",
+    "category": "default"
+  },
+  "273_625": {
+    "species": "Seedot",
+    "form_name": "SEEDOT_NORMAL",
+    "category": "default"
+  },
+  "274_628": {
+    "species": "Nuzleaf",
+    "form_name": "NUZLEAF_NORMAL",
+    "category": "default"
+  },
+  "275_631": {
+    "species": "Shiftry",
+    "form_name": "SHIFTRY_NORMAL",
+    "category": "default"
+  },
+  "126_634": {
+    "species": "Magmar",
+    "form_name": "MAGMAR_NORMAL",
+    "category": "default"
+  },
+  "467_637": {
+    "species": "Magmortar",
+    "form_name": "MAGMORTAR_NORMAL",
+    "category": "default"
+  },
+  "125_640": {
+    "species": "Electabuzz",
+    "form_name": "ELECTABUZZ_NORMAL",
+    "category": "default"
+  },
+  "466_643": {
+    "species": "Electivire",
+    "form_name": "ELECTIVIRE_NORMAL",
+    "category": "default"
+  },
+  "179_646": {
+    "species": "Mareep",
+    "form_name": "MAREEP_NORMAL",
+    "category": "default"
+  },
+  "180_649": {
+    "species": "Flaaffy",
+    "form_name": "FLAAFFY_NORMAL",
+    "category": "default"
+  },
+  "181_652": {
+    "species": "Ampharos",
+    "form_name": "AMPHAROS_NORMAL",
+    "category": "default"
+  },
+  "81_655": {
+    "species": "Magnemite",
+    "form_name": "MAGNEMITE_NORMAL",
+    "category": "default"
+  },
+  "82_658": {
+    "species": "Magneton",
+    "form_name": "MAGNETON_NORMAL",
+    "category": "default"
+  },
+  "462_661": {
+    "species": "Magnezone",
+    "form_name": "MAGNEZONE_NORMAL",
+    "category": "default"
+  },
+  "69_664": {
+    "species": "Bellsprout",
+    "form_name": "BELLSPROUT_NORMAL",
+    "category": "default"
+  },
+  "70_667": {
+    "species": "pid70",
+    "form_name": "WEEPINBELL_NORMAL",
+    "category": "default"
+  },
+  "71_670": {
+    "species": "Victreebel",
+    "form_name": "VICTREEBEL_NORMAL",
+    "category": "default"
+  },
+  "137_677": {
+    "species": "Porygon",
+    "form_name": "PORYGON_NORMAL",
+    "category": "default"
+  },
+  "233_680": {
+    "species": "Porygon2",
+    "form_name": "PORYGON2_NORMAL",
+    "category": "default"
+  },
+  "474_683": {
+    "species": "Porygon-Z",
+    "form_name": "PORYGON_Z_NORMAL",
+    "category": "cosmetic"
+  },
+  "387_688": {
+    "species": "Turtwig",
+    "form_name": "TURTWIG_NORMAL",
+    "category": "default"
+  },
+  "388_691": {
+    "species": "Grotle",
+    "form_name": "GROTLE_NORMAL",
+    "category": "default"
+  },
+  "389_694": {
+    "species": "Torterra",
+    "form_name": "TORTERRA_NORMAL",
+    "category": "default"
+  },
+  "23_697": {
+    "species": "Ekans",
+    "form_name": "EKANS_NORMAL",
+    "category": "default"
+  },
+  "24_700": {
+    "species": "Arbok",
+    "form_name": "ARBOK_NORMAL",
+    "category": "default"
+  },
+  "109_703": {
+    "species": "Koffing",
+    "form_name": "KOFFING_NORMAL",
+    "category": "default"
+  },
+  "110_706": {
+    "species": "Weezing",
+    "form_name": "WEEZING_NORMAL",
+    "category": "default"
+  },
+  "106_713": {
+    "species": "Hitmonlee",
+    "form_name": "HITMONLEE_NORMAL",
+    "category": "default"
+  },
+  "144_716": {
+    "species": "Articuno",
+    "form_name": "ARTICUNO_NORMAL",
+    "category": "default"
+  },
+  "200_719": {
+    "species": "Misdreavus",
+    "form_name": "MISDREAVUS_NORMAL",
+    "category": "default"
+  },
+  "429_722": {
+    "species": "Mismagius",
+    "form_name": "MISMAGIUS_NORMAL",
+    "category": "default"
+  },
+  "102_729": {
+    "species": "Exeggcute",
+    "form_name": "EXEGGCUTE_NORMAL",
+    "category": "default"
+  },
+  "318_734": {
+    "species": "Carvanha",
+    "form_name": "CARVANHA_NORMAL",
+    "category": "default"
+  },
+  "319_737": {
+    "species": "Sharpedo",
+    "form_name": "SHARPEDO_NORMAL",
+    "category": "default"
+  },
+  "138_740": {
+    "species": "Omanyte",
+    "form_name": "OMANYTE_NORMAL",
+    "category": "default"
+  },
+  "139_743": {
+    "species": "Omastar",
+    "form_name": "OMASTAR_NORMAL",
+    "category": "default"
+  },
+  "328_746": {
+    "species": "Trapinch",
+    "form_name": "TRAPINCH_NORMAL",
+    "category": "default"
+  },
+  "329_749": {
+    "species": "Vibrava",
+    "form_name": "VIBRAVA_NORMAL",
+    "category": "default"
+  },
+  "330_752": {
+    "species": "Flygon",
+    "form_name": "FLYGON_NORMAL",
+    "category": "default"
+  },
+  "371_755": {
+    "species": "Bagon",
+    "form_name": "BAGON_NORMAL",
+    "category": "default"
+  },
+  "372_758": {
+    "species": "Shelgon",
+    "form_name": "SHELGON_NORMAL",
+    "category": "default"
+  },
+  "373_761": {
+    "species": "Salamence",
+    "form_name": "SALAMENCE_NORMAL",
+    "category": "default"
+  },
+  "374_764": {
+    "species": "Beldum",
+    "form_name": "BELDUM_NORMAL",
+    "category": "default"
+  },
+  "375_767": {
+    "species": "Metang",
+    "form_name": "METANG_NORMAL",
+    "category": "default"
+  },
+  "376_770": {
+    "species": "Metagross",
+    "form_name": "METAGROSS_NORMAL",
+    "category": "default"
+  },
+  "145_773": {
+    "species": "Zapdos",
+    "form_name": "ZAPDOS_NORMAL",
+    "category": "default"
+  },
+  "32_776": {
+    "species": "Nidoran M",
+    "form_name": "NIDORAN_NORMAL",
+    "category": "default"
+  },
+  "30_779": {
+    "species": "Nidorina",
+    "form_name": "NIDORINA_NORMAL",
+    "category": "default"
+  },
+  "31_782": {
+    "species": "Nidoqueen",
+    "form_name": "NIDOQUEEN_NORMAL",
+    "category": "default"
+  },
+  "33_785": {
+    "species": "Nidorino",
+    "form_name": "NIDORINO_NORMAL",
+    "category": "default"
+  },
+  "34_788": {
+    "species": "Nidoking",
+    "form_name": "NIDOKING_NORMAL",
+    "category": "default"
+  },
+  "434_791": {
+    "species": "Stunky",
+    "form_name": "STUNKY_NORMAL",
+    "category": "default"
+  },
+  "435_794": {
+    "species": "Skuntank",
+    "form_name": "SKUNTANK_NORMAL",
+    "category": "default"
+  },
+  "215_797": {
+    "species": "Sneasel",
+    "form_name": "SNEASEL_NORMAL",
+    "category": "default"
+  },
+  "461_800": {
+    "species": "Weavile",
+    "form_name": "WEAVILE_NORMAL",
+    "category": "default"
+  },
+  "207_803": {
+    "species": "Gligar",
+    "form_name": "GLIGAR_NORMAL",
+    "category": "default"
+  },
+  "472_806": {
+    "species": "Gliscor",
+    "form_name": "GLISCOR_NORMAL",
+    "category": "default"
+  },
+  "66_809": {
+    "species": "Machop",
+    "form_name": "MACHOP_NORMAL",
+    "category": "default"
+  },
+  "67_812": {
+    "species": "Machoke",
+    "form_name": "MACHOKE_NORMAL",
+    "category": "default"
+  },
+  "68_815": {
+    "species": "Machamp",
+    "form_name": "MACHAMP_NORMAL",
+    "category": "default"
+  },
+  "390_818": {
+    "species": "Chimchar",
+    "form_name": "CHIMCHAR_NORMAL",
+    "category": "default"
+  },
+  "391_821": {
+    "species": "Monferno",
+    "form_name": "MONFERNO_NORMAL",
+    "category": "default"
+  },
+  "392_824": {
+    "species": "Infernape",
+    "form_name": "INFERNAPE_NORMAL",
+    "category": "default"
+  },
+  "213_827": {
+    "species": "Shuckle",
+    "form_name": "SHUCKLE_NORMAL",
+    "category": "default"
+  },
+  "359_830": {
+    "species": "Absol",
+    "form_name": "ABSOL_NORMAL",
+    "category": "default"
+  },
+  "303_833": {
+    "species": "Mawile",
+    "form_name": "MAWILE_NORMAL",
+    "category": "default"
+  },
+  "146_836": {
+    "species": "Moltres",
+    "form_name": "MOLTRES_NORMAL",
+    "category": "default"
+  },
+  "115_839": {
+    "species": "Kangaskhan",
+    "form_name": "KANGASKHAN_NORMAL",
+    "category": "default"
+  },
+  "111_846": {
+    "species": "Rhyhorn",
+    "form_name": "RHYHORN_NORMAL",
+    "category": "default"
+  },
+  "112_849": {
+    "species": "Rhydon",
+    "form_name": "RHYDON_NORMAL",
+    "category": "default"
+  },
+  "464_852": {
+    "species": "Rhyperior",
+    "form_name": "RHYPERIOR_NORMAL",
+    "category": "default"
+  },
+  "198_855": {
+    "species": "Murkrow",
+    "form_name": "MURKROW_NORMAL",
+    "category": "default"
+  },
+  "430_858": {
+    "species": "Honchkrow",
+    "form_name": "HONCHKROW_NORMAL",
+    "category": "default"
+  },
+  "443_861": {
+    "species": "Gible",
+    "form_name": "GIBLE_NORMAL",
+    "category": "default"
+  },
+  "444_864": {
+    "species": "Gabite",
+    "form_name": "GABITE_NORMAL",
+    "category": "default"
+  },
+  "445_867": {
+    "species": "Garchomp",
+    "form_name": "GARCHOMP_NORMAL",
+    "category": "default"
+  },
+  "98_870": {
+    "species": "Krabby",
+    "form_name": "KRABBY_NORMAL",
+    "category": "default"
+  },
+  "99_873": {
+    "species": "Kingler",
+    "form_name": "KINGLER_NORMAL",
+    "category": "default"
+  },
+  "90_876": {
+    "species": "Shellder",
+    "form_name": "SHELLDER_NORMAL",
+    "category": "default"
+  },
+  "91_879": {
+    "species": "Cloyster",
+    "form_name": "CLOYSTER_NORMAL",
+    "category": "default"
+  },
+  "449_888": {
+    "species": "Hippopotas",
+    "form_name": "HIPPOPOTAS_NORMAL",
+    "category": "default"
+  },
+  "450_891": {
+    "species": "Hippowdon",
+    "form_name": "HIPPOWDON_NORMAL",
+    "category": "default"
+  },
+  "25_894": {
+    "species": "Pikachu",
+    "form_name": "PIKACHU_FALL2019",
+    "category": "event"
+  },
+  "7_895": {
+    "species": "Squirtle",
+    "form_name": "SQUIRTLE_FALL2019",
+    "category": "event"
+  },
+  "4_896": {
+    "species": "Charmander",
+    "form_name": "CHARMANDER_FALL2019",
+    "category": "event"
+  },
+  "1_897": {
+    "species": "Bulbasaur",
+    "form_name": "BULBASAUR_FALL2019",
+    "category": "event"
+  },
+  "127_898": {
+    "species": "Pinsir",
+    "form_name": "PINSIR_NORMAL",
+    "category": "default"
+  },
+  "25_901": {
+    "species": "Pikachu",
+    "form_name": "PIKACHU_VS2019",
+    "category": "event"
+  },
+  "95_902": {
+    "species": "Onix",
+    "form_name": "ONIX_NORMAL",
+    "category": "default"
+  },
+  "208_905": {
+    "species": "Steelix",
+    "form_name": "STEELIX_NORMAL",
+    "category": "default"
+  },
+  "353_908": {
+    "species": "Shuppet",
+    "form_name": "SHUPPET_NORMAL",
+    "category": "default"
+  },
+  "354_911": {
+    "species": "Banette",
+    "form_name": "BANETTE_NORMAL",
+    "category": "default"
+  },
+  "355_914": {
+    "species": "Duskull",
+    "form_name": "DUSKULL_NORMAL",
+    "category": "default"
+  },
+  "356_917": {
+    "species": "Dusclops",
+    "form_name": "DUSCLOPS_NORMAL",
+    "category": "default"
+  },
+  "477_920": {
+    "species": "Dusknoir",
+    "form_name": "DUSKNOIR_NORMAL",
+    "category": "default"
+  },
+  "302_923": {
+    "species": "Sableye",
+    "form_name": "SABLEYE_NORMAL",
+    "category": "default"
+  },
+  "361_926": {
+    "species": "Snorunt",
+    "form_name": "SNORUNT_NORMAL",
+    "category": "default"
+  },
+  "362_929": {
+    "species": "Glalie",
+    "form_name": "GLALIE_NORMAL",
+    "category": "default"
+  },
+  "459_932": {
+    "species": "Snover",
+    "form_name": "SNOVER_NORMAL",
+    "category": "default"
+  },
+  "460_935": {
+    "species": "Abomasnow",
+    "form_name": "ABOMASNOW_NORMAL",
+    "category": "default"
+  },
+  "225_938": {
+    "species": "Delibird",
+    "form_name": "DELIBIRD_NORMAL",
+    "category": "default"
+  },
+  "234_941": {
+    "species": "Stantler",
+    "form_name": "STANTLER_NORMAL",
+    "category": "default"
+  },
+  "110_944": {
+    "species": "Weezing",
+    "form_name": "WEEZING_GALARIAN",
+    "category": "regional"
+  },
+  "263_945": {
+    "species": "Zigzagoon",
+    "form_name": "ZIGZAGOON_NORMAL",
+    "category": "default"
+  },
+  "263_946": {
+    "species": "Zigzagoon",
+    "form_name": "ZIGZAGOON_GALARIAN",
+    "category": "regional"
+  },
+  "264_947": {
+    "species": "Linoone",
+    "form_name": "LINOONE_NORMAL",
+    "category": "default"
+  },
+  "264_948": {
+    "species": "Linoone",
+    "form_name": "LINOONE_GALARIAN",
+    "category": "regional"
+  },
+  "25_949": {
+    "species": "Pikachu",
+    "form_name": "PIKACHU_COPY2019",
+    "category": "event"
+  },
+  "3_950": {
+    "species": "Venusaur",
+    "form_name": "VENUSAUR_COPY2019",
+    "category": "event"
+  },
+  "6_951": {
+    "species": "Charizard",
+    "form_name": "CHARIZARD_COPY2019",
+    "category": "event"
+  },
+  "9_952": {
+    "species": "Blastoise",
+    "form_name": "BLASTOISE_COPY2019",
+    "category": "event"
+  },
+  "10_953": {
+    "species": "Caterpie",
+    "form_name": "CATERPIE_NORMAL",
+    "category": "default"
+  },
+  "11_956": {
+    "species": "Metapod",
+    "form_name": "METAPOD_NORMAL",
+    "category": "default"
+  },
+  "12_959": {
+    "species": "Butterfree",
+    "form_name": "BUTTERFREE_NORMAL",
+    "category": "default"
+  },
+  "16_962": {
+    "species": "Pidgey",
+    "form_name": "PIDGEY_NORMAL",
+    "category": "default"
+  },
+  "17_965": {
+    "species": "Pidgeotto",
+    "form_name": "PIDGEOTTO_NORMAL",
+    "category": "default"
+  },
+  "18_968": {
+    "species": "Pidgeot",
+    "form_name": "PIDGEOT_NORMAL",
+    "category": "default"
+  },
+  "21_971": {
+    "species": "Spearow",
+    "form_name": "SPEAROW_NORMAL",
+    "category": "default"
+  },
+  "22_974": {
+    "species": "Fearow",
+    "form_name": "FEAROW_NORMAL",
+    "category": "default"
+  },
+  "35_981": {
+    "species": "Clefairy",
+    "form_name": "CLEFAIRY_NORMAL",
+    "category": "default"
+  },
+  "36_984": {
+    "species": "Clefable",
+    "form_name": "CLEFABLE_NORMAL",
+    "category": "default"
+  },
+  "39_987": {
+    "species": "Jigglypuff",
+    "form_name": "JIGGLYPUFF_NORMAL",
+    "category": "default"
+  },
+  "40_990": {
+    "species": "Wigglytuff",
+    "form_name": "WIGGLYTUFF_NORMAL",
+    "category": "default"
+  },
+  "46_993": {
+    "species": "Paras",
+    "form_name": "PARAS_NORMAL",
+    "category": "default"
+  },
+  "47_996": {
+    "species": "Parasect",
+    "form_name": "PARASECT_NORMAL",
+    "category": "default"
+  },
+  "56_999": {
+    "species": "Mankey",
+    "form_name": "MANKEY_NORMAL",
+    "category": "default"
+  },
+  "57_1002": {
+    "species": "Primeape",
+    "form_name": "PRIMEAPE_NORMAL",
+    "category": "default"
+  },
+  "72_1005": {
+    "species": "Tentacool",
+    "form_name": "TENTACOOL_NORMAL",
+    "category": "default"
+  },
+  "73_1008": {
+    "species": "Tentacruel",
+    "form_name": "TENTACRUEL_NORMAL",
+    "category": "default"
+  },
+  "77_1011": {
+    "species": "Ponyta",
+    "form_name": "PONYTA_NORMAL",
+    "category": "default"
+  },
+  "78_1014": {
+    "species": "Rapidash",
+    "form_name": "RAPIDASH_NORMAL",
+    "category": "default"
+  },
+  "79_1017": {
+    "species": "Slowpoke",
+    "form_name": "SLOWPOKE_NORMAL",
+    "category": "default"
+  },
+  "80_1020": {
+    "species": "Slowbro",
+    "form_name": "SLOWBRO_NORMAL",
+    "category": "default"
+  },
+  "83_1023": {
+    "species": "Farfetch'd",
+    "form_name": "FARFETCHD_NORMAL",
+    "category": "default"
+  },
+  "84_1026": {
+    "species": "Doduo",
+    "form_name": "DODUO_NORMAL",
+    "category": "default"
+  },
+  "85_1029": {
+    "species": "Dodrio",
+    "form_name": "DODRIO_NORMAL",
+    "category": "default"
+  },
+  "86_1032": {
+    "species": "Seel",
+    "form_name": "SEEL_NORMAL",
+    "category": "default"
+  },
+  "87_1035": {
+    "species": "Dewgong",
+    "form_name": "DEWGONG_NORMAL",
+    "category": "default"
+  },
+  "92_1038": {
+    "species": "Gastly",
+    "form_name": "GASTLY_NORMAL",
+    "category": "default"
+  },
+  "93_1041": {
+    "species": "Haunter",
+    "form_name": "HAUNTER_NORMAL",
+    "category": "default"
+  },
+  "94_1044": {
+    "species": "Gengar",
+    "form_name": "GENGAR_NORMAL",
+    "category": "default"
+  },
+  "100_1047": {
+    "species": "Voltorb",
+    "form_name": "VOLTORB_NORMAL",
+    "category": "default"
+  },
+  "101_1050": {
+    "species": "Electrode",
+    "form_name": "ELECTRODE_NORMAL",
+    "category": "default"
+  },
+  "108_1053": {
+    "species": "Lickitung",
+    "form_name": "LICKITUNG_NORMAL",
+    "category": "default"
+  },
+  "113_1056": {
+    "species": "Chansey",
+    "form_name": "CHANSEY_NORMAL",
+    "category": "default"
+  },
+  "114_1059": {
+    "species": "Tangela",
+    "form_name": "TANGELA_NORMAL",
+    "category": "default"
+  },
+  "116_1062": {
+    "species": "Horsea",
+    "form_name": "HORSEA_NORMAL",
+    "category": "default"
+  },
+  "117_1065": {
+    "species": "Seadra",
+    "form_name": "SEADRA_NORMAL",
+    "category": "default"
+  },
+  "118_1068": {
+    "species": "Goldeen",
+    "form_name": "GOLDEEN_NORMAL",
+    "category": "default"
+  },
+  "119_1071": {
+    "species": "Seaking",
+    "form_name": "SEAKING_NORMAL",
+    "category": "default"
+  },
+  "120_1074": {
+    "species": "Staryu",
+    "form_name": "STARYU_NORMAL",
+    "category": "default"
+  },
+  "121_1077": {
+    "species": "Starmie",
+    "form_name": "STARMIE_NORMAL",
+    "category": "default"
+  },
+  "122_1080": {
+    "species": "Mr. Mime",
+    "form_name": "MR_MIME_NORMAL",
+    "category": "cosmetic"
+  },
+  "124_1083": {
+    "species": "Jynx",
+    "form_name": "JYNX_NORMAL",
+    "category": "default"
+  },
+  "128_1086": {
+    "species": "Tauros",
+    "form_name": "TAUROS_NORMAL",
+    "category": "default"
+  },
+  "132_1089": {
+    "species": "Ditto",
+    "form_name": "DITTO_NORMAL",
+    "category": "default"
+  },
+  "133_1092": {
+    "species": "Eevee",
+    "form_name": "EEVEE_NORMAL",
+    "category": "default"
+  },
+  "134_1095": {
+    "species": "Vaporeon",
+    "form_name": "VAPOREON_NORMAL",
+    "category": "default"
+  },
+  "135_1098": {
+    "species": "Jolteon",
+    "form_name": "JOLTEON_NORMAL",
+    "category": "default"
+  },
+  "136_1101": {
+    "species": "Flareon",
+    "form_name": "FLAREON_NORMAL",
+    "category": "default"
+  },
+  "140_1104": {
+    "species": "Kabuto",
+    "form_name": "KABUTO_NORMAL",
+    "category": "default"
+  },
+  "141_1107": {
+    "species": "Kabutops",
+    "form_name": "KABUTOPS_NORMAL",
+    "category": "default"
+  },
+  "142_1110": {
+    "species": "Aerodactyl",
+    "form_name": "AERODACTYL_NORMAL",
+    "category": "default"
+  },
+  "151_1115": {
+    "species": "Mew",
+    "form_name": "MEW_NORMAL",
+    "category": "default"
+  },
+  "152_1118": {
+    "species": "Chikorita",
+    "form_name": "CHIKORITA_NORMAL",
+    "category": "default"
+  },
+  "153_1121": {
+    "species": "Bayleef",
+    "form_name": "BAYLEEF_NORMAL",
+    "category": "default"
+  },
+  "154_1124": {
+    "species": "Meganium",
+    "form_name": "MEGANIUM_NORMAL",
+    "category": "default"
+  },
+  "155_1127": {
+    "species": "Cyndaquil",
+    "form_name": "CYNDAQUIL_NORMAL",
+    "category": "default"
+  },
+  "156_1130": {
+    "species": "Quilava",
+    "form_name": "QUILAVA_NORMAL",
+    "category": "default"
+  },
+  "157_1133": {
+    "species": "Typhlosion",
+    "form_name": "TYPHLOSION_NORMAL",
+    "category": "default"
+  },
+  "158_1136": {
+    "species": "Totodile",
+    "form_name": "TOTODILE_NORMAL",
+    "category": "default"
+  },
+  "159_1139": {
+    "species": "Croconaw",
+    "form_name": "CROCONAW_NORMAL",
+    "category": "default"
+  },
+  "160_1142": {
+    "species": "Feraligatr",
+    "form_name": "FERALIGATR_NORMAL",
+    "category": "default"
+  },
+  "161_1145": {
+    "species": "Sentret",
+    "form_name": "SENTRET_NORMAL",
+    "category": "default"
+  },
+  "162_1148": {
+    "species": "Furret",
+    "form_name": "FURRET_NORMAL",
+    "category": "default"
+  },
+  "163_1151": {
+    "species": "Hoothoot",
+    "form_name": "HOOTHOOT_NORMAL",
+    "category": "default"
+  },
+  "164_1154": {
+    "species": "Noctowl",
+    "form_name": "NOCTOWL_NORMAL",
+    "category": "default"
+  },
+  "165_1157": {
+    "species": "Ledyba",
+    "form_name": "LEDYBA_NORMAL",
+    "category": "default"
+  },
+  "166_1160": {
+    "species": "Ledian",
+    "form_name": "LEDIAN_NORMAL",
+    "category": "default"
+  },
+  "167_1163": {
+    "species": "Spinarak",
+    "form_name": "SPINARAK_NORMAL",
+    "category": "default"
+  },
+  "168_1166": {
+    "species": "Ariados",
+    "form_name": "ARIADOS_NORMAL",
+    "category": "default"
+  },
+  "170_1169": {
+    "species": "Chinchou",
+    "form_name": "CHINCHOU_NORMAL",
+    "category": "default"
+  },
+  "171_1172": {
+    "species": "Lanturn",
+    "form_name": "LANTURN_NORMAL",
+    "category": "default"
+  },
+  "172_1175": {
+    "species": "Pichu",
+    "form_name": "PICHU_NORMAL",
+    "category": "default"
+  },
+  "173_1178": {
+    "species": "Cleffa",
+    "form_name": "CLEFFA_NORMAL",
+    "category": "default"
+  },
+  "174_1181": {
+    "species": "Igglybuff",
+    "form_name": "IGGLYBUFF_NORMAL",
+    "category": "default"
+  },
+  "175_1184": {
+    "species": "Togepi",
+    "form_name": "TOGEPI_NORMAL",
+    "category": "default"
+  },
+  "176_1187": {
+    "species": "Togetic",
+    "form_name": "TOGETIC_NORMAL",
+    "category": "default"
+  },
+  "177_1190": {
+    "species": "Natu",
+    "form_name": "NATU_NORMAL",
+    "category": "default"
+  },
+  "178_1193": {
+    "species": "Xatu",
+    "form_name": "XATU_NORMAL",
+    "category": "default"
+  },
+  "183_1196": {
+    "species": "Marill",
+    "form_name": "MARILL_NORMAL",
+    "category": "default"
+  },
+  "184_1199": {
+    "species": "Azumarill",
+    "form_name": "AZUMARILL_NORMAL",
+    "category": "default"
+  },
+  "185_1202": {
+    "species": "Sudowoodo",
+    "form_name": "SUDOWOODO_NORMAL",
+    "category": "default"
+  },
+  "187_1205": {
+    "species": "Hoppip",
+    "form_name": "HOPPIP_NORMAL",
+    "category": "default"
+  },
+  "188_1208": {
+    "species": "Skiploom",
+    "form_name": "SKIPLOOM_NORMAL",
+    "category": "default"
+  },
+  "189_1211": {
+    "species": "Jumpluff",
+    "form_name": "JUMPLUFF_NORMAL",
+    "category": "default"
+  },
+  "190_1214": {
+    "species": "Aipom",
+    "form_name": "AIPOM_NORMAL",
+    "category": "default"
+  },
+  "191_1217": {
+    "species": "Sunkern",
+    "form_name": "SUNKERN_NORMAL",
+    "category": "default"
+  },
+  "192_1220": {
+    "species": "Sunflora",
+    "form_name": "SUNFLORA_NORMAL",
+    "category": "default"
+  },
+  "193_1223": {
+    "species": "Yanma",
+    "form_name": "YANMA_NORMAL",
+    "category": "default"
+  },
+  "194_1226": {
+    "species": "Wooper",
+    "form_name": "WOOPER_NORMAL",
+    "category": "default"
+  },
+  "195_1229": {
+    "species": "Quagsire",
+    "form_name": "QUAGSIRE_NORMAL",
+    "category": "default"
+  },
+  "196_1232": {
+    "species": "Espeon",
+    "form_name": "ESPEON_NORMAL",
+    "category": "default"
+  },
+  "197_1235": {
+    "species": "Umbreon",
+    "form_name": "UMBREON_NORMAL",
+    "category": "default"
+  },
+  "199_1238": {
+    "species": "Slowking",
+    "form_name": "SLOWKING_NORMAL",
+    "category": "default"
+  },
+  "203_1241": {
+    "species": "Girafarig",
+    "form_name": "GIRAFARIG_NORMAL",
+    "category": "default"
+  },
+  "204_1244": {
+    "species": "Pineco",
+    "form_name": "PINECO_NORMAL",
+    "category": "default"
+  },
+  "205_1247": {
+    "species": "Forretress",
+    "form_name": "FORRETRESS_NORMAL",
+    "category": "default"
+  },
+  "206_1250": {
+    "species": "Dunsparce",
+    "form_name": "DUNSPARCE_NORMAL",
+    "category": "default"
+  },
+  "209_1253": {
+    "species": "Snubbull",
+    "form_name": "SNUBBULL_NORMAL",
+    "category": "default"
+  },
+  "210_1256": {
+    "species": "Granbull",
+    "form_name": "GRANBULL_NORMAL",
+    "category": "default"
+  },
+  "211_1259": {
+    "species": "Qwilfish",
+    "form_name": "QWILFISH_NORMAL",
+    "category": "default"
+  },
+  "214_1262": {
+    "species": "Heracross",
+    "form_name": "HERACROSS_NORMAL",
+    "category": "default"
+  },
+  "216_1265": {
+    "species": "Teddiursa",
+    "form_name": "TEDDIURSA_NORMAL",
+    "category": "default"
+  },
+  "217_1268": {
+    "species": "Ursaring",
+    "form_name": "URSARING_NORMAL",
+    "category": "default"
+  },
+  "218_1271": {
+    "species": "Slugma",
+    "form_name": "SLUGMA_NORMAL",
+    "category": "default"
+  },
+  "219_1274": {
+    "species": "Magcargo",
+    "form_name": "MAGCARGO_NORMAL",
+    "category": "default"
+  },
+  "220_1277": {
+    "species": "Swinub",
+    "form_name": "SWINUB_NORMAL",
+    "category": "default"
+  },
+  "221_1280": {
+    "species": "Piloswine",
+    "form_name": "PILOSWINE_NORMAL",
+    "category": "default"
+  },
+  "222_1283": {
+    "species": "Corsola",
+    "form_name": "CORSOLA_NORMAL",
+    "category": "default"
+  },
+  "223_1286": {
+    "species": "Remoraid",
+    "form_name": "REMORAID_NORMAL",
+    "category": "default"
+  },
+  "224_1289": {
+    "species": "Octillery",
+    "form_name": "OCTILLERY_NORMAL",
+    "category": "default"
+  },
+  "226_1292": {
+    "species": "Mantine",
+    "form_name": "MANTINE_NORMAL",
+    "category": "default"
+  },
+  "227_1295": {
+    "species": "Skarmory",
+    "form_name": "SKARMORY_NORMAL",
+    "category": "default"
+  },
+  "230_1298": {
+    "species": "Kingdra",
+    "form_name": "KINGDRA_NORMAL",
+    "category": "default"
+  },
+  "231_1301": {
+    "species": "Phanpy",
+    "form_name": "PHANPY_NORMAL",
+    "category": "default"
+  },
+  "232_1304": {
+    "species": "Donphan",
+    "form_name": "DONPHAN_NORMAL",
+    "category": "default"
+  },
+  "235_1307": {
+    "species": "Smeargle",
+    "form_name": "SMEARGLE_NORMAL",
+    "category": "default"
+  },
+  "236_1310": {
+    "species": "Tyrogue",
+    "form_name": "TYROGUE_NORMAL",
+    "category": "default"
+  },
+  "237_1313": {
+    "species": "Hitmontop",
+    "form_name": "HITMONTOP_NORMAL",
+    "category": "default"
+  },
+  "238_1316": {
+    "species": "Smoochum",
+    "form_name": "SMOOCHUM_NORMAL",
+    "category": "default"
+  },
+  "239_1319": {
+    "species": "Elekid",
+    "form_name": "ELEKID_NORMAL",
+    "category": "default"
+  },
+  "240_1322": {
+    "species": "Magby",
+    "form_name": "MAGBY_NORMAL",
+    "category": "default"
+  },
+  "241_1325": {
+    "species": "Miltank",
+    "form_name": "MILTANK_NORMAL",
+    "category": "default"
+  },
+  "242_1328": {
+    "species": "Blissey",
+    "form_name": "BLISSEY_NORMAL",
+    "category": "default"
+  },
+  "243_1331": {
+    "species": "Raikou",
+    "form_name": "RAIKOU_NORMAL",
+    "category": "default"
+  },
+  "244_1334": {
+    "species": "Entei",
+    "form_name": "ENTEI_NORMAL",
+    "category": "default"
+  },
+  "245_1337": {
+    "species": "Suicune",
+    "form_name": "SUICUNE_NORMAL",
+    "category": "default"
+  },
+  "249_1340": {
+    "species": "Lugia",
+    "form_name": "LUGIA_NORMAL",
+    "category": "default"
+  },
+  "250_1343": {
+    "species": "Ho-Oh",
+    "form_name": "HO_OH_NORMAL",
+    "category": "cosmetic"
+  },
+  "251_1346": {
+    "species": "Celebi",
+    "form_name": "CELEBI_NORMAL",
+    "category": "default"
+  },
+  "252_1349": {
+    "species": "Treecko",
+    "form_name": "TREECKO_NORMAL",
+    "category": "default"
+  },
+  "253_1352": {
+    "species": "Grovyle",
+    "form_name": "GROVYLE_NORMAL",
+    "category": "default"
+  },
+  "254_1355": {
+    "species": "Sceptile",
+    "form_name": "SCEPTILE_NORMAL",
+    "category": "default"
+  },
+  "255_1358": {
+    "species": "Torchic",
+    "form_name": "TORCHIC_NORMAL",
+    "category": "default"
+  },
+  "256_1361": {
+    "species": "Combusken",
+    "form_name": "COMBUSKEN_NORMAL",
+    "category": "default"
+  },
+  "257_1364": {
+    "species": "Blaziken",
+    "form_name": "BLAZIKEN_NORMAL",
+    "category": "default"
+  },
+  "261_1367": {
+    "species": "Poochyena",
+    "form_name": "POOCHYENA_NORMAL",
+    "category": "default"
+  },
+  "262_1370": {
+    "species": "Mightyena",
+    "form_name": "MIGHTYENA_NORMAL",
+    "category": "default"
+  },
+  "266_1379": {
+    "species": "Silcoon",
+    "form_name": "SILCOON_NORMAL",
+    "category": "default"
+  },
+  "267_1382": {
+    "species": "Beautifly",
+    "form_name": "BEAUTIFLY_NORMAL",
+    "category": "default"
+  },
+  "268_1385": {
+    "species": "Cascoon",
+    "form_name": "CASCOON_NORMAL",
+    "category": "default"
+  },
+  "269_1388": {
+    "species": "Dustox",
+    "form_name": "DUSTOX_NORMAL",
+    "category": "default"
+  },
+  "270_1391": {
+    "species": "Lotad",
+    "form_name": "LOTAD_NORMAL",
+    "category": "default"
+  },
+  "271_1394": {
+    "species": "Lombre",
+    "form_name": "LOMBRE_NORMAL",
+    "category": "default"
+  },
+  "272_1397": {
+    "species": "Ludicolo",
+    "form_name": "LUDICOLO_NORMAL",
+    "category": "default"
+  },
+  "276_1400": {
+    "species": "Taillow",
+    "form_name": "TAILLOW_NORMAL",
+    "category": "default"
+  },
+  "277_1403": {
+    "species": "Swellow",
+    "form_name": "SWELLOW_NORMAL",
+    "category": "default"
+  },
+  "278_1406": {
+    "species": "Wingull",
+    "form_name": "WINGULL_NORMAL",
+    "category": "default"
+  },
+  "279_1409": {
+    "species": "Pelipper",
+    "form_name": "PELIPPER_NORMAL",
+    "category": "default"
+  },
+  "283_1412": {
+    "species": "Surskit",
+    "form_name": "SURSKIT_NORMAL",
+    "category": "default"
+  },
+  "284_1415": {
+    "species": "Masquerain",
+    "form_name": "MASQUERAIN_NORMAL",
+    "category": "default"
+  },
+  "285_1418": {
+    "species": "Shroomish",
+    "form_name": "SHROOMISH_NORMAL",
+    "category": "default"
+  },
+  "286_1421": {
+    "species": "Breloom",
+    "form_name": "BRELOOM_NORMAL",
+    "category": "default"
+  },
+  "287_1424": {
+    "species": "Slakoth",
+    "form_name": "SLAKOTH_NORMAL",
+    "category": "default"
+  },
+  "288_1427": {
+    "species": "Vigoroth",
+    "form_name": "VIGOROTH_NORMAL",
+    "category": "default"
+  },
+  "289_1430": {
+    "species": "Slaking",
+    "form_name": "SLAKING_NORMAL",
+    "category": "default"
+  },
+  "290_1433": {
+    "species": "Nincada",
+    "form_name": "NINCADA_NORMAL",
+    "category": "default"
+  },
+  "291_1436": {
+    "species": "Ninjask",
+    "form_name": "NINJASK_NORMAL",
+    "category": "default"
+  },
+  "292_1439": {
+    "species": "Shedinja",
+    "form_name": "SHEDINJA_NORMAL",
+    "category": "default"
+  },
+  "293_1442": {
+    "species": "Whismur",
+    "form_name": "WHISMUR_NORMAL",
+    "category": "default"
+  },
+  "294_1445": {
+    "species": "Loudred",
+    "form_name": "LOUDRED_NORMAL",
+    "category": "default"
+  },
+  "295_1448": {
+    "species": "Exploud",
+    "form_name": "EXPLOUD_NORMAL",
+    "category": "default"
+  },
+  "296_1451": {
+    "species": "Makuhita",
+    "form_name": "MAKUHITA_NORMAL",
+    "category": "default"
+  },
+  "297_1454": {
+    "species": "Hariyama",
+    "form_name": "HARIYAMA_NORMAL",
+    "category": "default"
+  },
+  "298_1457": {
+    "species": "Azurill",
+    "form_name": "AZURILL_NORMAL",
+    "category": "default"
+  },
+  "299_1460": {
+    "species": "Nosepass",
+    "form_name": "NOSEPASS_NORMAL",
+    "category": "default"
+  },
+  "300_1463": {
+    "species": "Skitty",
+    "form_name": "SKITTY_NORMAL",
+    "category": "default"
+  },
+  "301_1466": {
+    "species": "Delcatty",
+    "form_name": "DELCATTY_NORMAL",
+    "category": "default"
+  },
+  "304_1469": {
+    "species": "Aron",
+    "form_name": "ARON_NORMAL",
+    "category": "default"
+  },
+  "305_1472": {
+    "species": "Lairon",
+    "form_name": "LAIRON_NORMAL",
+    "category": "default"
+  },
+  "306_1475": {
+    "species": "Aggron",
+    "form_name": "AGGRON_NORMAL",
+    "category": "default"
+  },
+  "307_1478": {
+    "species": "Meditite",
+    "form_name": "MEDITITE_NORMAL",
+    "category": "default"
+  },
+  "308_1481": {
+    "species": "Medicham",
+    "form_name": "MEDICHAM_NORMAL",
+    "category": "default"
+  },
+  "309_1484": {
+    "species": "Electrike",
+    "form_name": "ELECTRIKE_NORMAL",
+    "category": "default"
+  },
+  "310_1487": {
+    "species": "Manectric",
+    "form_name": "MANECTRIC_NORMAL",
+    "category": "default"
+  },
+  "311_1490": {
+    "species": "Plusle",
+    "form_name": "PLUSLE_NORMAL",
+    "category": "default"
+  },
+  "312_1493": {
+    "species": "Minun",
+    "form_name": "MINUN_NORMAL",
+    "category": "default"
+  },
+  "313_1496": {
+    "species": "Volbeat",
+    "form_name": "VOLBEAT_NORMAL",
+    "category": "default"
+  },
+  "314_1499": {
+    "species": "Illumise",
+    "form_name": "ILLUMISE_NORMAL",
+    "category": "default"
+  },
+  "315_1502": {
+    "species": "Roselia",
+    "form_name": "ROSELIA_NORMAL",
+    "category": "default"
+  },
+  "316_1505": {
+    "species": "Gulpin",
+    "form_name": "GULPIN_NORMAL",
+    "category": "default"
+  },
+  "317_1508": {
+    "species": "Swalot",
+    "form_name": "SWALOT_NORMAL",
+    "category": "default"
+  },
+  "320_1511": {
+    "species": "Wailmer",
+    "form_name": "WAILMER_NORMAL",
+    "category": "default"
+  },
+  "321_1514": {
+    "species": "Wailord",
+    "form_name": "WAILORD_NORMAL",
+    "category": "default"
+  },
+  "322_1517": {
+    "species": "Numel",
+    "form_name": "NUMEL_NORMAL",
+    "category": "default"
+  },
+  "323_1520": {
+    "species": "Camerupt",
+    "form_name": "CAMERUPT_NORMAL",
+    "category": "default"
+  },
+  "324_1523": {
+    "species": "Torkoal",
+    "form_name": "TORKOAL_NORMAL",
+    "category": "default"
+  },
+  "325_1526": {
+    "species": "Spoink",
+    "form_name": "SPOINK_NORMAL",
+    "category": "default"
+  },
+  "326_1529": {
+    "species": "Grumpig",
+    "form_name": "GRUMPIG_NORMAL",
+    "category": "default"
+  },
+  "333_1532": {
+    "species": "Swablu",
+    "form_name": "SWABLU_NORMAL",
+    "category": "default"
+  },
+  "334_1535": {
+    "species": "Altaria",
+    "form_name": "ALTARIA_NORMAL",
+    "category": "default"
+  },
+  "335_1538": {
+    "species": "Zangoose",
+    "form_name": "ZANGOOSE_NORMAL",
+    "category": "default"
+  },
+  "336_1541": {
+    "species": "Seviper",
+    "form_name": "SEVIPER_NORMAL",
+    "category": "default"
+  },
+  "337_1544": {
+    "species": "Lunatone",
+    "form_name": "LUNATONE_NORMAL",
+    "category": "default"
+  },
+  "338_1547": {
+    "species": "Solrock",
+    "form_name": "SOLROCK_NORMAL",
+    "category": "default"
+  },
+  "339_1550": {
+    "species": "Barboach",
+    "form_name": "BARBOACH_NORMAL",
+    "category": "default"
+  },
+  "340_1553": {
+    "species": "Whiscash",
+    "form_name": "WHISCASH_NORMAL",
+    "category": "default"
+  },
+  "341_1556": {
+    "species": "Corphish",
+    "form_name": "CORPHISH_NORMAL",
+    "category": "default"
+  },
+  "342_1559": {
+    "species": "Crawdaunt",
+    "form_name": "CRAWDAUNT_NORMAL",
+    "category": "default"
+  },
+  "343_1562": {
+    "species": "Baltoy",
+    "form_name": "BALTOY_NORMAL",
+    "category": "default"
+  },
+  "344_1565": {
+    "species": "Claydol",
+    "form_name": "CLAYDOL_NORMAL",
+    "category": "default"
+  },
+  "345_1568": {
+    "species": "Lileep",
+    "form_name": "LILEEP_NORMAL",
+    "category": "default"
+  },
+  "346_1571": {
+    "species": "Cradily",
+    "form_name": "CRADILY_NORMAL",
+    "category": "default"
+  },
+  "347_1574": {
+    "species": "Anorith",
+    "form_name": "ANORITH_NORMAL",
+    "category": "default"
+  },
+  "348_1577": {
+    "species": "Armaldo",
+    "form_name": "ARMALDO_NORMAL",
+    "category": "default"
+  },
+  "349_1580": {
+    "species": "Feebas",
+    "form_name": "FEEBAS_NORMAL",
+    "category": "default"
+  },
+  "350_1583": {
+    "species": "Milotic",
+    "form_name": "MILOTIC_NORMAL",
+    "category": "default"
+  },
+  "352_1586": {
+    "species": "Kecleon",
+    "form_name": "KECLEON_NORMAL",
+    "category": "default"
+  },
+  "357_1589": {
+    "species": "Tropius",
+    "form_name": "TROPIUS_NORMAL",
+    "category": "default"
+  },
+  "358_1592": {
+    "species": "Chimecho",
+    "form_name": "CHIMECHO_NORMAL",
+    "category": "default"
+  },
+  "360_1595": {
+    "species": "Wynaut",
+    "form_name": "WYNAUT_NORMAL",
+    "category": "default"
+  },
+  "363_1598": {
+    "species": "Spheal",
+    "form_name": "SPHEAL_NORMAL",
+    "category": "default"
+  },
+  "364_1601": {
+    "species": "Sealeo",
+    "form_name": "SEALEO_NORMAL",
+    "category": "default"
+  },
+  "365_1604": {
+    "species": "Walrein",
+    "form_name": "WALREIN_NORMAL",
+    "category": "default"
+  },
+  "366_1607": {
+    "species": "Clamperl",
+    "form_name": "CLAMPERL_NORMAL",
+    "category": "default"
+  },
+  "367_1610": {
+    "species": "Huntail",
+    "form_name": "HUNTAIL_NORMAL",
+    "category": "default"
+  },
+  "368_1613": {
+    "species": "Gorebyss",
+    "form_name": "GOREBYSS_NORMAL",
+    "category": "default"
+  },
+  "369_1616": {
+    "species": "Relicanth",
+    "form_name": "RELICANTH_NORMAL",
+    "category": "default"
+  },
+  "370_1619": {
+    "species": "Luvdisc",
+    "form_name": "LUVDISC_NORMAL",
+    "category": "default"
+  },
+  "377_1622": {
+    "species": "Regirock",
+    "form_name": "REGIROCK_NORMAL",
+    "category": "default"
+  },
+  "378_1625": {
+    "species": "Regice",
+    "form_name": "REGICE_NORMAL",
+    "category": "default"
+  },
+  "379_1628": {
+    "species": "Registeel",
+    "form_name": "REGISTEEL_NORMAL",
+    "category": "default"
+  },
+  "380_1631": {
+    "species": "Latias",
+    "form_name": "LATIAS_NORMAL",
+    "category": "default"
+  },
+  "381_1634": {
+    "species": "Latios",
+    "form_name": "LATIOS_NORMAL",
+    "category": "default"
+  },
+  "382_1637": {
+    "species": "Kyogre",
+    "form_name": "KYOGRE_NORMAL",
+    "category": "default"
+  },
+  "383_1640": {
+    "species": "Groudon",
+    "form_name": "GROUDON_NORMAL",
+    "category": "default"
+  },
+  "384_1643": {
+    "species": "Rayquaza",
+    "form_name": "RAYQUAZA_NORMAL",
+    "category": "default"
+  },
+  "385_1646": {
+    "species": "Jirachi",
+    "form_name": "JIRACHI_NORMAL",
+    "category": "default"
+  },
+  "393_1649": {
+    "species": "Piplup",
+    "form_name": "PIPLUP_NORMAL",
+    "category": "default"
+  },
+  "394_1652": {
+    "species": "Prinplup",
+    "form_name": "PRINPLUP_NORMAL",
+    "category": "default"
+  },
+  "395_1655": {
+    "species": "Empoleon",
+    "form_name": "EMPOLEON_NORMAL",
+    "category": "default"
+  },
+  "396_1658": {
+    "species": "Starly",
+    "form_name": "STARLY_NORMAL",
+    "category": "default"
+  },
+  "397_1661": {
+    "species": "Staravia",
+    "form_name": "STARAVIA_NORMAL",
+    "category": "default"
+  },
+  "398_1664": {
+    "species": "Staraptor",
+    "form_name": "STARAPTOR_NORMAL",
+    "category": "default"
+  },
+  "399_1667": {
+    "species": "Bidoof",
+    "form_name": "BIDOOF_NORMAL",
+    "category": "default"
+  },
+  "400_1670": {
+    "species": "Bibarel",
+    "form_name": "BIBAREL_NORMAL",
+    "category": "default"
+  },
+  "401_1673": {
+    "species": "Kricketot",
+    "form_name": "KRICKETOT_NORMAL",
+    "category": "default"
+  },
+  "402_1676": {
+    "species": "Kricketune",
+    "form_name": "KRICKETUNE_NORMAL",
+    "category": "default"
+  },
+  "403_1679": {
+    "species": "Shinx",
+    "form_name": "SHINX_NORMAL",
+    "category": "default"
+  },
+  "404_1682": {
+    "species": "Luxio",
+    "form_name": "LUXIO_NORMAL",
+    "category": "default"
+  },
+  "405_1685": {
+    "species": "Luxray",
+    "form_name": "LUXRAY_NORMAL",
+    "category": "default"
+  },
+  "406_1688": {
+    "species": "Budew",
+    "form_name": "BUDEW_NORMAL",
+    "category": "default"
+  },
+  "407_1691": {
+    "species": "Roserade",
+    "form_name": "ROSERADE_NORMAL",
+    "category": "default"
+  },
+  "408_1694": {
+    "species": "Cranidos",
+    "form_name": "CRANIDOS_NORMAL",
+    "category": "default"
+  },
+  "409_1697": {
+    "species": "Rampardos",
+    "form_name": "RAMPARDOS_NORMAL",
+    "category": "default"
+  },
+  "410_1700": {
+    "species": "Shieldon",
+    "form_name": "SHIELDON_NORMAL",
+    "category": "default"
+  },
+  "411_1703": {
+    "species": "Bastiodon",
+    "form_name": "BASTIODON_NORMAL",
+    "category": "default"
+  },
+  "412_1706": {
+    "species": "Burmy",
+    "form_name": "BURMY_NORMAL",
+    "category": "default"
+  },
+  "413_1709": {
+    "species": "Wormadam",
+    "form_name": "WORMADAM_NORMAL",
+    "category": "default"
+  },
+  "414_1712": {
+    "species": "Mothim",
+    "form_name": "MOTHIM_NORMAL",
+    "category": "default"
+  },
+  "415_1715": {
+    "species": "Combee",
+    "form_name": "COMBEE_NORMAL",
+    "category": "default"
+  },
+  "416_1718": {
+    "species": "Vespiquen",
+    "form_name": "VESPIQUEN_NORMAL",
+    "category": "default"
+  },
+  "417_1721": {
+    "species": "Pachirisu",
+    "form_name": "PACHIRISU_NORMAL",
+    "category": "default"
+  },
+  "418_1724": {
+    "species": "Buizel",
+    "form_name": "BUIZEL_NORMAL",
+    "category": "default"
+  },
+  "419_1727": {
+    "species": "Floatzel",
+    "form_name": "FLOATZEL_NORMAL",
+    "category": "default"
+  },
+  "420_1730": {
+    "species": "Cherubi",
+    "form_name": "CHERUBI_NORMAL",
+    "category": "default"
+  },
+  "421_1733": {
+    "species": "Cherrim",
+    "form_name": "CHERRIM_NORMAL",
+    "category": "default"
+  },
+  "422_1736": {
+    "species": "Shellos",
+    "form_name": "SHELLOS_NORMAL",
+    "category": "default"
+  },
+  "423_1739": {
+    "species": "Gastrodon",
+    "form_name": "GASTRODON_NORMAL",
+    "category": "default"
+  },
+  "424_1742": {
+    "species": "Ambipom",
+    "form_name": "AMBIPOM_NORMAL",
+    "category": "default"
+  },
+  "425_1745": {
+    "species": "Drifloon",
+    "form_name": "DRIFLOON_NORMAL",
+    "category": "default"
+  },
+  "426_1748": {
+    "species": "Drifblim",
+    "form_name": "DRIFBLIM_NORMAL",
+    "category": "default"
+  },
+  "427_1751": {
+    "species": "Buneary",
+    "form_name": "BUNEARY_NORMAL",
+    "category": "default"
+  },
+  "428_1754": {
+    "species": "Lopunny",
+    "form_name": "LOPUNNY_NORMAL",
+    "category": "default"
+  },
+  "431_1757": {
+    "species": "Glameow",
+    "form_name": "GLAMEOW_NORMAL",
+    "category": "default"
+  },
+  "432_1760": {
+    "species": "Purugly",
+    "form_name": "PURUGLY_NORMAL",
+    "category": "default"
+  },
+  "433_1763": {
+    "species": "Chingling",
+    "form_name": "CHINGLING_NORMAL",
+    "category": "default"
+  },
+  "436_1766": {
+    "species": "Bronzor",
+    "form_name": "BRONZOR_NORMAL",
+    "category": "default"
+  },
+  "437_1769": {
+    "species": "Bronzong",
+    "form_name": "BRONZONG_NORMAL",
+    "category": "default"
+  },
+  "438_1772": {
+    "species": "Bonsly",
+    "form_name": "BONSLY_NORMAL",
+    "category": "default"
+  },
+  "439_1775": {
+    "species": "Mime",
+    "form_name": "MIME_JR_NORMAL",
+    "category": "cosmetic"
+  },
+  "440_1778": {
+    "species": "Happiny",
+    "form_name": "HAPPINY_NORMAL",
+    "category": "default"
+  },
+  "441_1781": {
+    "species": "Chatot",
+    "form_name": "CHATOT_NORMAL",
+    "category": "default"
+  },
+  "442_1784": {
+    "species": "Spiritomb",
+    "form_name": "SPIRITOMB_NORMAL",
+    "category": "default"
+  },
+  "446_1787": {
+    "species": "Munchlax",
+    "form_name": "MUNCHLAX_NORMAL",
+    "category": "default"
+  },
+  "447_1790": {
+    "species": "Riolu",
+    "form_name": "RIOLU_NORMAL",
+    "category": "default"
+  },
+  "448_1793": {
+    "species": "Lucario",
+    "form_name": "LUCARIO_NORMAL",
+    "category": "default"
+  },
+  "451_1796": {
+    "species": "Skorupi",
+    "form_name": "SKORUPI_NORMAL",
+    "category": "default"
+  },
+  "452_1799": {
+    "species": "Drapion",
+    "form_name": "DRAPION_NORMAL",
+    "category": "default"
+  },
+  "453_1802": {
+    "species": "Croagunk",
+    "form_name": "CROAGUNK_NORMAL",
+    "category": "default"
+  },
+  "454_1805": {
+    "species": "Toxicroak",
+    "form_name": "TOXICROAK_NORMAL",
+    "category": "default"
+  },
+  "455_1808": {
+    "species": "Carnivine",
+    "form_name": "CARNIVINE_NORMAL",
+    "category": "default"
+  },
+  "456_1811": {
+    "species": "Finneon",
+    "form_name": "FINNEON_NORMAL",
+    "category": "default"
+  },
+  "457_1814": {
+    "species": "Lumineon",
+    "form_name": "LUMINEON_NORMAL",
+    "category": "default"
+  },
+  "458_1817": {
+    "species": "Mantyke",
+    "form_name": "MANTYKE_NORMAL",
+    "category": "default"
+  },
+  "463_1820": {
+    "species": "Lickilicky",
+    "form_name": "LICKILICKY_NORMAL",
+    "category": "default"
+  },
+  "465_1823": {
+    "species": "Tangrowth",
+    "form_name": "TANGROWTH_NORMAL",
+    "category": "default"
+  },
+  "468_1826": {
+    "species": "Togekiss",
+    "form_name": "TOGEKISS_NORMAL",
+    "category": "default"
+  },
+  "469_1829": {
+    "species": "Yanmega",
+    "form_name": "YANMEGA_NORMAL",
+    "category": "default"
+  },
+  "470_1832": {
+    "species": "Leafeon",
+    "form_name": "LEAFEON_NORMAL",
+    "category": "default"
+  },
+  "471_1835": {
+    "species": "Glaceon",
+    "form_name": "GLACEON_NORMAL",
+    "category": "default"
+  },
+  "473_1838": {
+    "species": "Mamoswine",
+    "form_name": "MAMOSWINE_NORMAL",
+    "category": "default"
+  },
+  "476_1841": {
+    "species": "Probopass",
+    "form_name": "PROBOPASS_NORMAL",
+    "category": "default"
+  },
+  "478_1844": {
+    "species": "Froslass",
+    "form_name": "FROSLASS_NORMAL",
+    "category": "default"
+  },
+  "480_1847": {
+    "species": "Uxie",
+    "form_name": "UXIE_NORMAL",
+    "category": "default"
+  },
+  "481_1850": {
+    "species": "Mesprit",
+    "form_name": "MESPRIT_NORMAL",
+    "category": "default"
+  },
+  "482_1853": {
+    "species": "Azelf",
+    "form_name": "AZELF_NORMAL",
+    "category": "default"
+  },
+  "483_1856": {
+    "species": "Dialga",
+    "form_name": "DIALGA_NORMAL",
+    "category": "default"
+  },
+  "484_1859": {
+    "species": "Palkia",
+    "form_name": "PALKIA_NORMAL",
+    "category": "default"
+  },
+  "485_1862": {
+    "species": "Heatran",
+    "form_name": "HEATRAN_NORMAL",
+    "category": "default"
+  },
+  "486_1865": {
+    "species": "Regigigas",
+    "form_name": "REGIGIGAS_NORMAL",
+    "category": "default"
+  },
+  "487_1868": {
+    "species": "Giratina",
+    "form_name": "GIRATINA_NORMAL",
+    "category": "default"
+  },
+  "488_1871": {
+    "species": "Cresselia",
+    "form_name": "CRESSELIA_NORMAL",
+    "category": "default"
+  },
+  "489_1874": {
+    "species": "Phione",
+    "form_name": "PHIONE_NORMAL",
+    "category": "default"
+  },
+  "490_1877": {
+    "species": "Manaphy",
+    "form_name": "MANAPHY_NORMAL",
+    "category": "default"
+  },
+  "491_1880": {
+    "species": "Darkrai",
+    "form_name": "DARKRAI_NORMAL",
+    "category": "default"
+  },
+  "492_1883": {
+    "species": "Shaymin",
+    "form_name": "SHAYMIN_NORMAL",
+    "category": "default"
+  },
+  "494_1886": {
+    "species": "Victini",
+    "form_name": "VICTINI_NORMAL",
+    "category": "default"
+  },
+  "495_1889": {
+    "species": "Snivy",
+    "form_name": "SNIVY_NORMAL",
+    "category": "default"
+  },
+  "496_1892": {
+    "species": "Servine",
+    "form_name": "SERVINE_NORMAL",
+    "category": "default"
+  },
+  "497_1895": {
+    "species": "Serperior",
+    "form_name": "SERPERIOR_NORMAL",
+    "category": "default"
+  },
+  "498_1898": {
+    "species": "Tepig",
+    "form_name": "TEPIG_NORMAL",
+    "category": "default"
+  },
+  "499_1901": {
+    "species": "Pignite",
+    "form_name": "PIGNITE_NORMAL",
+    "category": "default"
+  },
+  "500_1904": {
+    "species": "Emboar",
+    "form_name": "EMBOAR_NORMAL",
+    "category": "default"
+  },
+  "501_1907": {
+    "species": "Oshawott",
+    "form_name": "OSHAWOTT_NORMAL",
+    "category": "default"
+  },
+  "502_1910": {
+    "species": "Dewott",
+    "form_name": "DEWOTT_NORMAL",
+    "category": "default"
+  },
+  "503_1913": {
+    "species": "Samurott",
+    "form_name": "SAMUROTT_NORMAL",
+    "category": "default"
+  },
+  "504_1916": {
+    "species": "Patrat",
+    "form_name": "PATRAT_NORMAL",
+    "category": "default"
+  },
+  "505_1919": {
+    "species": "Watchog",
+    "form_name": "WATCHOG_NORMAL",
+    "category": "default"
+  },
+  "506_1922": {
+    "species": "Lillipup",
+    "form_name": "LILLIPUP_NORMAL",
+    "category": "default"
+  },
+  "507_1925": {
+    "species": "Herdier",
+    "form_name": "HERDIER_NORMAL",
+    "category": "default"
+  },
+  "508_1928": {
+    "species": "Stoutland",
+    "form_name": "STOUTLAND_NORMAL",
+    "category": "default"
+  },
+  "509_1931": {
+    "species": "Purrloin",
+    "form_name": "PURRLOIN_NORMAL",
+    "category": "default"
+  },
+  "510_1934": {
+    "species": "Liepard",
+    "form_name": "LIEPARD_NORMAL",
+    "category": "default"
+  },
+  "511_1937": {
+    "species": "Pansage",
+    "form_name": "PANSAGE_NORMAL",
+    "category": "default"
+  },
+  "512_1940": {
+    "species": "Simisage",
+    "form_name": "SIMISAGE_NORMAL",
+    "category": "default"
+  },
+  "513_1943": {
+    "species": "Pansear",
+    "form_name": "PANSEAR_NORMAL",
+    "category": "default"
+  },
+  "514_1946": {
+    "species": "Simisear",
+    "form_name": "SIMISEAR_NORMAL",
+    "category": "default"
+  },
+  "515_1949": {
+    "species": "Panpour",
+    "form_name": "PANPOUR_NORMAL",
+    "category": "default"
+  },
+  "516_1952": {
+    "species": "Simipour",
+    "form_name": "SIMIPOUR_NORMAL",
+    "category": "default"
+  },
+  "517_1955": {
+    "species": "Munna",
+    "form_name": "MUNNA_NORMAL",
+    "category": "default"
+  },
+  "518_1958": {
+    "species": "Musharna",
+    "form_name": "MUSHARNA_NORMAL",
+    "category": "default"
+  },
+  "519_1961": {
+    "species": "Pidove",
+    "form_name": "PIDOVE_NORMAL",
+    "category": "default"
+  },
+  "520_1964": {
+    "species": "Tranquill",
+    "form_name": "TRANQUILL_NORMAL",
+    "category": "default"
+  },
+  "521_1967": {
+    "species": "Unfezant",
+    "form_name": "UNFEZANT_NORMAL",
+    "category": "default"
+  },
+  "522_1970": {
+    "species": "Blitzle",
+    "form_name": "BLITZLE_NORMAL",
+    "category": "default"
+  },
+  "523_1973": {
+    "species": "Zebstrika",
+    "form_name": "ZEBSTRIKA_NORMAL",
+    "category": "default"
+  },
+  "524_1976": {
+    "species": "Roggenrola",
+    "form_name": "ROGGENROLA_NORMAL",
+    "category": "default"
+  },
+  "525_1979": {
+    "species": "Boldore",
+    "form_name": "BOLDORE_NORMAL",
+    "category": "default"
+  },
+  "526_1982": {
+    "species": "Gigalith",
+    "form_name": "GIGALITH_NORMAL",
+    "category": "default"
+  },
+  "527_1985": {
+    "species": "Woobat",
+    "form_name": "WOOBAT_NORMAL",
+    "category": "default"
+  },
+  "528_1988": {
+    "species": "Swoobat",
+    "form_name": "SWOOBAT_NORMAL",
+    "category": "default"
+  },
+  "529_1991": {
+    "species": "Drilbur",
+    "form_name": "DRILBUR_NORMAL",
+    "category": "default"
+  },
+  "530_1994": {
+    "species": "Excadrill",
+    "form_name": "EXCADRILL_NORMAL",
+    "category": "default"
+  },
+  "531_1997": {
+    "species": "Audino",
+    "form_name": "AUDINO_NORMAL",
+    "category": "default"
+  },
+  "532_2000": {
+    "species": "Timburr",
+    "form_name": "TIMBURR_NORMAL",
+    "category": "default"
+  },
+  "533_2003": {
+    "species": "Gurdurr",
+    "form_name": "GURDURR_NORMAL",
+    "category": "default"
+  },
+  "534_2006": {
+    "species": "Conkeldurr",
+    "form_name": "CONKELDURR_NORMAL",
+    "category": "default"
+  },
+  "535_2009": {
+    "species": "Tympole",
+    "form_name": "TYMPOLE_NORMAL",
+    "category": "default"
+  },
+  "536_2012": {
+    "species": "Palpitoad",
+    "form_name": "PALPITOAD_NORMAL",
+    "category": "default"
+  },
+  "537_2015": {
+    "species": "Seismitoad",
+    "form_name": "SEISMITOAD_NORMAL",
+    "category": "default"
+  },
+  "538_2018": {
+    "species": "Throh",
+    "form_name": "THROH_NORMAL",
+    "category": "default"
+  },
+  "539_2021": {
+    "species": "Sawk",
+    "form_name": "SAWK_NORMAL",
+    "category": "default"
+  },
+  "540_2024": {
+    "species": "Sewaddle",
+    "form_name": "SEWADDLE_NORMAL",
+    "category": "default"
+  },
+  "541_2027": {
+    "species": "Swadloon",
+    "form_name": "SWADLOON_NORMAL",
+    "category": "default"
+  },
+  "542_2030": {
+    "species": "Leavanny",
+    "form_name": "LEAVANNY_NORMAL",
+    "category": "default"
+  },
+  "543_2033": {
+    "species": "Venipede",
+    "form_name": "VENIPEDE_NORMAL",
+    "category": "default"
+  },
+  "544_2036": {
+    "species": "Whirlipede",
+    "form_name": "WHIRLIPEDE_NORMAL",
+    "category": "default"
+  },
+  "545_2039": {
+    "species": "Scolipede",
+    "form_name": "SCOLIPEDE_NORMAL",
+    "category": "default"
+  },
+  "546_2042": {
+    "species": "Cottonee",
+    "form_name": "COTTONEE_NORMAL",
+    "category": "default"
+  },
+  "547_2045": {
+    "species": "Whimsicott",
+    "form_name": "WHIMSICOTT_NORMAL",
+    "category": "default"
+  },
+  "548_2048": {
+    "species": "Petilil",
+    "form_name": "PETILIL_NORMAL",
+    "category": "default"
+  },
+  "549_2051": {
+    "species": "Lilligant",
+    "form_name": "LILLIGANT_NORMAL",
+    "category": "default"
+  },
+  "551_2054": {
+    "species": "Sandile",
+    "form_name": "SANDILE_NORMAL",
+    "category": "default"
+  },
+  "552_2057": {
+    "species": "Krokorok",
+    "form_name": "KROKOROK_NORMAL",
+    "category": "default"
+  },
+  "553_2060": {
+    "species": "Krookodile",
+    "form_name": "KROOKODILE_NORMAL",
+    "category": "default"
+  },
+  "554_2063": {
+    "species": "Darumaka",
+    "form_name": "DARUMAKA_NORMAL",
+    "category": "default"
+  },
+  "556_2066": {
+    "species": "Maractus",
+    "form_name": "MARACTUS_NORMAL",
+    "category": "default"
+  },
+  "557_2069": {
+    "species": "Dwebble",
+    "form_name": "DWEBBLE_NORMAL",
+    "category": "default"
+  },
+  "558_2072": {
+    "species": "Crustle",
+    "form_name": "CRUSTLE_NORMAL",
+    "category": "default"
+  },
+  "559_2075": {
+    "species": "Scraggy",
+    "form_name": "SCRAGGY_NORMAL",
+    "category": "default"
+  },
+  "560_2078": {
+    "species": "Scrafty",
+    "form_name": "SCRAFTY_NORMAL",
+    "category": "default"
+  },
+  "561_2081": {
+    "species": "Sigilyph",
+    "form_name": "SIGILYPH_NORMAL",
+    "category": "default"
+  },
+  "562_2084": {
+    "species": "Yamask",
+    "form_name": "YAMASK_NORMAL",
+    "category": "default"
+  },
+  "563_2087": {
+    "species": "Cofagrigus",
+    "form_name": "COFAGRIGUS_NORMAL",
+    "category": "default"
+  },
+  "564_2090": {
+    "species": "Tirtouga",
+    "form_name": "TIRTOUGA_NORMAL",
+    "category": "default"
+  },
+  "565_2093": {
+    "species": "Carracosta",
+    "form_name": "CARRACOSTA_NORMAL",
+    "category": "default"
+  },
+  "566_2096": {
+    "species": "Archen",
+    "form_name": "ARCHEN_NORMAL",
+    "category": "default"
+  },
+  "567_2099": {
+    "species": "Archeops",
+    "form_name": "ARCHEOPS_NORMAL",
+    "category": "default"
+  },
+  "568_2102": {
+    "species": "Trubbish",
+    "form_name": "TRUBBISH_NORMAL",
+    "category": "default"
+  },
+  "569_2105": {
+    "species": "Garbodor",
+    "form_name": "GARBODOR_NORMAL",
+    "category": "default"
+  },
+  "570_2108": {
+    "species": "Zorua",
+    "form_name": "ZORUA_NORMAL",
+    "category": "default"
+  },
+  "571_2111": {
+    "species": "Zoroark",
+    "form_name": "ZOROARK_NORMAL",
+    "category": "default"
+  },
+  "572_2114": {
+    "species": "Minccino",
+    "form_name": "MINCCINO_NORMAL",
+    "category": "default"
+  },
+  "573_2117": {
+    "species": "Cinccino",
+    "form_name": "CINCCINO_NORMAL",
+    "category": "default"
+  },
+  "574_2120": {
+    "species": "Gothita",
+    "form_name": "GOTHITA_NORMAL",
+    "category": "default"
+  },
+  "575_2123": {
+    "species": "Gothorita",
+    "form_name": "GOTHORITA_NORMAL",
+    "category": "default"
+  },
+  "576_2126": {
+    "species": "Gothitelle",
+    "form_name": "GOTHITELLE_NORMAL",
+    "category": "default"
+  },
+  "577_2129": {
+    "species": "Solosis",
+    "form_name": "SOLOSIS_NORMAL",
+    "category": "default"
+  },
+  "578_2132": {
+    "species": "Duosion",
+    "form_name": "DUOSION_NORMAL",
+    "category": "default"
+  },
+  "579_2135": {
+    "species": "Reuniclus",
+    "form_name": "REUNICLUS_NORMAL",
+    "category": "default"
+  },
+  "580_2138": {
+    "species": "Ducklett",
+    "form_name": "DUCKLETT_NORMAL",
+    "category": "default"
+  },
+  "581_2141": {
+    "species": "Swanna",
+    "form_name": "SWANNA_NORMAL",
+    "category": "default"
+  },
+  "582_2144": {
+    "species": "Vanillite",
+    "form_name": "VANILLITE_NORMAL",
+    "category": "default"
+  },
+  "583_2147": {
+    "species": "Vanillish",
+    "form_name": "VANILLISH_NORMAL",
+    "category": "default"
+  },
+  "584_2150": {
+    "species": "Vanilluxe",
+    "form_name": "VANILLUXE_NORMAL",
+    "category": "default"
+  },
+  "587_2153": {
+    "species": "Emolga",
+    "form_name": "EMOLGA_NORMAL",
+    "category": "default"
+  },
+  "588_2156": {
+    "species": "Karrablast",
+    "form_name": "KARRABLAST_NORMAL",
+    "category": "default"
+  },
+  "589_2159": {
+    "species": "Escavalier",
+    "form_name": "ESCAVALIER_NORMAL",
+    "category": "default"
+  },
+  "590_2162": {
+    "species": "Foongus",
+    "form_name": "FOONGUS_NORMAL",
+    "category": "default"
+  },
+  "591_2165": {
+    "species": "Amoonguss",
+    "form_name": "AMOONGUSS_NORMAL",
+    "category": "default"
+  },
+  "592_2168": {
+    "species": "Frillish",
+    "form_name": "FRILLISH_NORMAL",
+    "category": "default"
+  },
+  "593_2171": {
+    "species": "Jellicent",
+    "form_name": "JELLICENT_NORMAL",
+    "category": "default"
+  },
+  "594_2174": {
+    "species": "Alomomola",
+    "form_name": "ALOMOMOLA_NORMAL",
+    "category": "default"
+  },
+  "595_2177": {
+    "species": "Joltik",
+    "form_name": "JOLTIK_NORMAL",
+    "category": "default"
+  },
+  "596_2180": {
+    "species": "Galvantula",
+    "form_name": "GALVANTULA_NORMAL",
+    "category": "default"
+  },
+  "597_2183": {
+    "species": "Ferroseed",
+    "form_name": "FERROSEED_NORMAL",
+    "category": "default"
+  },
+  "598_2186": {
+    "species": "Ferrothorn",
+    "form_name": "FERROTHORN_NORMAL",
+    "category": "default"
+  },
+  "599_2189": {
+    "species": "Klink",
+    "form_name": "KLINK_NORMAL",
+    "category": "default"
+  },
+  "600_2192": {
+    "species": "Klang",
+    "form_name": "KLANG_NORMAL",
+    "category": "default"
+  },
+  "601_2195": {
+    "species": "Klinklang",
+    "form_name": "KLINKLANG_NORMAL",
+    "category": "default"
+  },
+  "602_2198": {
+    "species": "Tynamo",
+    "form_name": "TYNAMO_NORMAL",
+    "category": "default"
+  },
+  "603_2201": {
+    "species": "Eelektrik",
+    "form_name": "EELEKTRIK_NORMAL",
+    "category": "default"
+  },
+  "604_2204": {
+    "species": "Eelektross",
+    "form_name": "EELEKTROSS_NORMAL",
+    "category": "default"
+  },
+  "605_2207": {
+    "species": "Elgyem",
+    "form_name": "ELGYEM_NORMAL",
+    "category": "default"
+  },
+  "606_2210": {
+    "species": "Beheeyem",
+    "form_name": "BEHEEYEM_NORMAL",
+    "category": "default"
+  },
+  "607_2213": {
+    "species": "Litwick",
+    "form_name": "LITWICK_NORMAL",
+    "category": "default"
+  },
+  "608_2216": {
+    "species": "Lampent",
+    "form_name": "LAMPENT_NORMAL",
+    "category": "default"
+  },
+  "609_2219": {
+    "species": "Chandelure",
+    "form_name": "CHANDELURE_NORMAL",
+    "category": "default"
+  },
+  "610_2222": {
+    "species": "Axew",
+    "form_name": "AXEW_NORMAL",
+    "category": "default"
+  },
+  "611_2225": {
+    "species": "Fraxure",
+    "form_name": "FRAXURE_NORMAL",
+    "category": "default"
+  },
+  "612_2228": {
+    "species": "Haxorus",
+    "form_name": "HAXORUS_NORMAL",
+    "category": "default"
+  },
+  "613_2231": {
+    "species": "Cubchoo",
+    "form_name": "CUBCHOO_NORMAL",
+    "category": "default"
+  },
+  "614_2234": {
+    "species": "Beartic",
+    "form_name": "BEARTIC_NORMAL",
+    "category": "default"
+  },
+  "615_2237": {
+    "species": "Cryogonal",
+    "form_name": "CRYOGONAL_NORMAL",
+    "category": "default"
+  },
+  "616_2240": {
+    "species": "Shelmet",
+    "form_name": "SHELMET_NORMAL",
+    "category": "default"
+  },
+  "617_2243": {
+    "species": "Accelgor",
+    "form_name": "ACCELGOR_NORMAL",
+    "category": "default"
+  },
+  "618_2246": {
+    "species": "Stunfisk",
+    "form_name": "STUNFISK_NORMAL",
+    "category": "default"
+  },
+  "619_2249": {
+    "species": "Mienfoo",
+    "form_name": "MIENFOO_NORMAL",
+    "category": "default"
+  },
+  "620_2252": {
+    "species": "Mienshao",
+    "form_name": "MIENSHAO_NORMAL",
+    "category": "default"
+  },
+  "621_2255": {
+    "species": "Druddigon",
+    "form_name": "DRUDDIGON_NORMAL",
+    "category": "default"
+  },
+  "622_2258": {
+    "species": "Golett",
+    "form_name": "GOLETT_NORMAL",
+    "category": "default"
+  },
+  "623_2261": {
+    "species": "Golurk",
+    "form_name": "GOLURK_NORMAL",
+    "category": "default"
+  },
+  "624_2264": {
+    "species": "Pawniard",
+    "form_name": "PAWNIARD_NORMAL",
+    "category": "default"
+  },
+  "625_2267": {
+    "species": "Bisharp",
+    "form_name": "BISHARP_NORMAL",
+    "category": "default"
+  },
+  "626_2270": {
+    "species": "Bouffalant",
+    "form_name": "BOUFFALANT_NORMAL",
+    "category": "default"
+  },
+  "627_2273": {
+    "species": "Rufflet",
+    "form_name": "RUFFLET_NORMAL",
+    "category": "default"
+  },
+  "628_2276": {
+    "species": "Braviary",
+    "form_name": "BRAVIARY_NORMAL",
+    "category": "default"
+  },
+  "629_2279": {
+    "species": "Vullaby",
+    "form_name": "VULLABY_NORMAL",
+    "category": "default"
+  },
+  "630_2282": {
+    "species": "Mandibuzz",
+    "form_name": "MANDIBUZZ_NORMAL",
+    "category": "default"
+  },
+  "631_2285": {
+    "species": "Heatmor",
+    "form_name": "HEATMOR_NORMAL",
+    "category": "default"
+  },
+  "632_2288": {
+    "species": "Durant",
+    "form_name": "DURANT_NORMAL",
+    "category": "default"
+  },
+  "633_2291": {
+    "species": "Deino",
+    "form_name": "DEINO_NORMAL",
+    "category": "default"
+  },
+  "634_2294": {
+    "species": "Zweilous",
+    "form_name": "ZWEILOUS_NORMAL",
+    "category": "default"
+  },
+  "635_2297": {
+    "species": "Hydreigon",
+    "form_name": "HYDREIGON_NORMAL",
+    "category": "default"
+  },
+  "636_2300": {
+    "species": "Larvesta",
+    "form_name": "LARVESTA_NORMAL",
+    "category": "default"
+  },
+  "637_2303": {
+    "species": "Volcarona",
+    "form_name": "VOLCARONA_NORMAL",
+    "category": "default"
+  },
+  "638_2306": {
+    "species": "Cobalion",
+    "form_name": "COBALION_NORMAL",
+    "category": "default"
+  },
+  "639_2309": {
+    "species": "Terrakion",
+    "form_name": "TERRAKION_NORMAL",
+    "category": "default"
+  },
+  "640_2312": {
+    "species": "Virizion",
+    "form_name": "VIRIZION_NORMAL",
+    "category": "default"
+  },
+  "643_2315": {
+    "species": "Reshiram",
+    "form_name": "RESHIRAM_NORMAL",
+    "category": "default"
+  },
+  "644_2318": {
+    "species": "Zekrom",
+    "form_name": "ZEKROM_NORMAL",
+    "category": "default"
+  },
+  "808_2321": {
+    "species": "Meltan",
+    "form_name": "MELTAN_NORMAL",
+    "category": "default"
+  },
+  "809_2324": {
+    "species": "Melmetal",
+    "form_name": "MELMETAL_NORMAL",
+    "category": "default"
+  },
+  "870_2325": {
+    "species": "Falinks",
+    "form_name": "FALINKS_NORMAL",
+    "category": "default"
+  },
+  "812_2326": {
+    "species": "Rillaboom",
+    "form_name": "RILLABOOM_NORMAL",
+    "category": "default"
+  },
+  "265_2327": {
+    "species": "Wurmple",
+    "form_name": "WURMPLE_SPRING2020",
+    "category": "event"
+  },
+  "202_2328": {
+    "species": "Wobbuffet",
+    "form_name": "WOBBUFFET_SPRING2020",
+    "category": "event"
+  },
+  "20_2329": {
+    "species": "Raticate",
+    "form_name": "RATICATE_SPRING2020",
+    "category": "event"
+  },
+  "592_2330": {
+    "species": "Frillish",
+    "form_name": "FRILLISH_FEMALE",
+    "category": "cosmetic"
+  },
+  "593_2331": {
+    "species": "Jellicent",
+    "form_name": "JELLICENT_FEMALE",
+    "category": "cosmetic"
+  },
+  "25_2332": {
+    "species": "Pikachu",
+    "form_name": "PIKACHU_COSTUME2020",
+    "category": "event"
+  },
+  "149_2333": {
+    "species": "Dragonite",
+    "form_name": "DRAGONITE_COSTUME2020",
+    "category": "event"
+  },
+  "95_2334": {
+    "species": "Onix",
+    "form_name": "ONIX_COSTUME2020",
+    "category": "event"
+  },
+  "52_2335": {
+    "species": "Meowth",
+    "form_name": "MEOWTH_GALARIAN",
+    "category": "regional"
+  },
+  "77_2336": {
+    "species": "Ponyta",
+    "form_name": "PONYTA_GALARIAN",
+    "category": "regional"
+  },
+  "78_2337": {
+    "species": "Rapidash",
+    "form_name": "RAPIDASH_GALARIAN",
+    "category": "regional"
+  },
+  "83_2338": {
+    "species": "Farfetch'd",
+    "form_name": "FARFETCHD_GALARIAN",
+    "category": "regional"
+  },
+  "122_2339": {
+    "species": "Mr. Mime",
+    "form_name": "MR_MIME_GALARIAN",
+    "category": "regional"
+  },
+  "222_2340": {
+    "species": "Corsola",
+    "form_name": "CORSOLA_GALARIAN",
+    "category": "regional"
+  },
+  "554_2341": {
+    "species": "Darumaka",
+    "form_name": "DARUMAKA_GALARIAN",
+    "category": "regional"
+  },
+  "555_2342": {
+    "species": "Darmanitan",
+    "form_name": "DARMANITAN_GALARIAN_STANDARD",
+    "category": "regional"
+  },
+  "555_2343": {
+    "species": "Darmanitan",
+    "form_name": "DARMANITAN_GALARIAN_ZEN",
+    "category": "regional"
+  },
+  "562_2344": {
+    "species": "Yamask",
+    "form_name": "YAMASK_GALARIAN",
+    "category": "regional"
+  },
+  "618_2345": {
+    "species": "Stunfisk",
+    "form_name": "STUNFISK_GALARIAN",
+    "category": "regional"
+  },
+  "849_2463": {
+    "species": "Toxtricity",
+    "form_name": "TOXTRICITY_LOW_KEY",
+    "category": "cosmetic"
+  },
+  "849_2464": {
+    "species": "Toxtricity",
+    "form_name": "TOXTRICITY_AMPED",
+    "category": "cosmetic"
+  },
+  "854_2477": {
+    "species": "Sinistea",
+    "form_name": "SINISTEA_PHONY",
+    "category": "cosmetic"
+  },
+  "854_2478": {
+    "species": "Sinistea",
+    "form_name": "SINISTEA_ANTIQUE",
+    "category": "cosmetic"
+  },
+  "855_2480": {
+    "species": "Polteageist",
+    "form_name": "POLTEAGEIST_PHONY",
+    "category": "cosmetic"
+  },
+  "855_2481": {
+    "species": "Polteageist",
+    "form_name": "POLTEAGEIST_ANTIQUE",
+    "category": "cosmetic"
+  },
+  "862_2501": {
+    "species": "Obstagoon",
+    "form_name": "OBSTAGOON_NORMAL",
+    "category": "default"
+  },
+  "863_2504": {
+    "species": "Perrserker",
+    "form_name": "PERRSERKER_NORMAL",
+    "category": "default"
+  },
+  "864_2507": {
+    "species": "Cursola",
+    "form_name": "CURSOLA_NORMAL",
+    "category": "default"
+  },
+  "865_2510": {
+    "species": "Sirfetch'd",
+    "form_name": "SIRFETCHD_NORMAL",
+    "category": "default"
+  },
+  "866_2513": {
+    "species": "Mr. Rime",
+    "form_name": "MR_RIME_NORMAL",
+    "category": "cosmetic"
+  },
+  "867_2516": {
+    "species": "Runerigus",
+    "form_name": "RUNERIGUS_NORMAL",
+    "category": "default"
+  },
+  "875_2540": {
+    "species": "Eiscue",
+    "form_name": "EISCUE_ICE",
+    "category": "cosmetic"
+  },
+  "875_2541": {
+    "species": "Eiscue",
+    "form_name": "EISCUE_NOICE",
+    "category": "cosmetic"
+  },
+  "876_2542": {
+    "species": "Indeedee",
+    "form_name": "INDEEDEE_MALE",
+    "category": "cosmetic"
+  },
+  "876_2543": {
+    "species": "Indeedee",
+    "form_name": "INDEEDEE_FEMALE",
+    "category": "cosmetic"
+  },
+  "877_2544": {
+    "species": "Morpeko",
+    "form_name": "MORPEKO_FULL_BELLY",
+    "category": "cosmetic"
+  },
+  "877_2545": {
+    "species": "Morpeko",
+    "form_name": "MORPEKO_HANGRY",
+    "category": "cosmetic"
+  },
+  "888_2576": {
+    "species": "Zacian",
+    "form_name": "ZACIAN_CROWNED_SWORD",
+    "category": "cosmetic"
+  },
+  "888_2577": {
+    "species": "Zacian",
+    "form_name": "ZACIAN_HERO",
+    "category": "cosmetic"
+  },
+  "889_2578": {
+    "species": "Zamazenta",
+    "form_name": "ZAMAZENTA_CROWNED_SHIELD",
+    "category": "cosmetic"
+  },
+  "889_2579": {
+    "species": "Zamazenta",
+    "form_name": "ZAMAZENTA_HERO",
+    "category": "cosmetic"
+  },
+  "890_2580": {
+    "species": "Eternatus",
+    "form_name": "ETERNATUS_ETERNAMAX",
+    "category": "cosmetic"
+  },
+  "890_2581": {
+    "species": "Eternatus",
+    "form_name": "ETERNATUS_NORMAL",
+    "category": "default"
+  },
+  "79_2582": {
+    "species": "Slowpoke",
+    "form_name": "SLOWPOKE_GALARIAN",
+    "category": "regional"
+  },
+  "80_2583": {
+    "species": "Slowbro",
+    "form_name": "SLOWBRO_GALARIAN",
+    "category": "regional"
+  },
+  "199_2584": {
+    "species": "Slowking",
+    "form_name": "SLOWKING_GALARIAN",
+    "category": "regional"
+  },
+  "131_2585": {
+    "species": "Lapras",
+    "form_name": "LAPRAS_COSTUME2020",
+    "category": "event"
+  },
+  "94_2586": {
+    "species": "Gengar",
+    "form_name": "GENGAR_COSTUME2020",
+    "category": "event"
+  },
+  "668_2587": {
+    "species": "Pyroar",
+    "form_name": "PYROAR_NORMAL",
+    "category": "default"
+  },
+  "668_2588": {
+    "species": "Pyroar",
+    "form_name": "PYROAR_FEMALE",
+    "category": "cosmetic"
+  },
+  "678_2589": {
+    "species": "Meowstic",
+    "form_name": "MEOWSTIC_NORMAL",
+    "category": "default"
+  },
+  "678_2590": {
+    "species": "Meowstic",
+    "form_name": "MEOWSTIC_FEMALE",
+    "category": "cosmetic"
+  },
+  "718_2591": {
+    "species": "Zygarde",
+    "form_name": "ZYGARDE_TEN_PERCENT",
+    "category": "cosmetic"
+  },
+  "718_2592": {
+    "species": "Zygarde",
+    "form_name": "ZYGARDE_FIFTY_PERCENT",
+    "category": "cosmetic"
+  },
+  "718_2593": {
+    "species": "Zygarde",
+    "form_name": "ZYGARDE_COMPLETE",
+    "category": "cosmetic"
+  },
+  "666_2594": {
+    "species": "Vivillon",
+    "form_name": "VIVILLON_ARCHIPELAGO",
+    "category": "cosmetic"
+  },
+  "666_2595": {
+    "species": "Vivillon",
+    "form_name": "VIVILLON_CONTINENTAL",
+    "category": "cosmetic"
+  },
+  "666_2596": {
+    "species": "Vivillon",
+    "form_name": "VIVILLON_ELEGANT",
+    "category": "cosmetic"
+  },
+  "666_2597": {
+    "species": "Vivillon",
+    "form_name": "VIVILLON_FANCY",
+    "category": "cosmetic"
+  },
+  "666_2598": {
+    "species": "Vivillon",
+    "form_name": "VIVILLON_GARDEN",
+    "category": "cosmetic"
+  },
+  "666_2599": {
+    "species": "Vivillon",
+    "form_name": "VIVILLON_HIGH_PLAINS",
+    "category": "cosmetic"
+  },
+  "666_2600": {
+    "species": "Vivillon",
+    "form_name": "VIVILLON_ICY_SNOW",
+    "category": "cosmetic"
+  },
+  "666_2601": {
+    "species": "Vivillon",
+    "form_name": "VIVILLON_JUNGLE",
+    "category": "cosmetic"
+  },
+  "666_2602": {
+    "species": "Vivillon",
+    "form_name": "VIVILLON_MARINE",
+    "category": "cosmetic"
+  },
+  "666_2603": {
+    "species": "Vivillon",
+    "form_name": "VIVILLON_MEADOW",
+    "category": "cosmetic"
+  },
+  "666_2604": {
+    "species": "Vivillon",
+    "form_name": "VIVILLON_MODERN",
+    "category": "cosmetic"
+  },
+  "666_2605": {
+    "species": "Vivillon",
+    "form_name": "VIVILLON_MONSOON",
+    "category": "cosmetic"
+  },
+  "666_2606": {
+    "species": "Vivillon",
+    "form_name": "VIVILLON_OCEAN",
+    "category": "cosmetic"
+  },
+  "666_2607": {
+    "species": "Vivillon",
+    "form_name": "VIVILLON_POKEBALL",
+    "category": "cosmetic"
+  },
+  "666_2608": {
+    "species": "Vivillon",
+    "form_name": "VIVILLON_POLAR",
+    "category": "cosmetic"
+  },
+  "666_2609": {
+    "species": "Vivillon",
+    "form_name": "VIVILLON_RIVER",
+    "category": "cosmetic"
+  },
+  "666_2610": {
+    "species": "Vivillon",
+    "form_name": "VIVILLON_SANDSTORM",
+    "category": "cosmetic"
+  },
+  "666_2611": {
+    "species": "Vivillon",
+    "form_name": "VIVILLON_SAVANNA",
+    "category": "cosmetic"
+  },
+  "666_2612": {
+    "species": "Vivillon",
+    "form_name": "VIVILLON_SUN",
+    "category": "cosmetic"
+  },
+  "666_2613": {
+    "species": "Vivillon",
+    "form_name": "VIVILLON_TUNDRA",
+    "category": "cosmetic"
+  },
+  "669_2614": {
+    "species": "Flabébé",
+    "form_name": "FLABEBE_RED",
+    "category": "cosmetic"
+  },
+  "669_2615": {
+    "species": "Flabébé",
+    "form_name": "FLABEBE_YELLOW",
+    "category": "cosmetic"
+  },
+  "669_2616": {
+    "species": "Flabébé",
+    "form_name": "FLABEBE_ORANGE",
+    "category": "cosmetic"
+  },
+  "669_2617": {
+    "species": "Flabébé",
+    "form_name": "FLABEBE_BLUE",
+    "category": "cosmetic"
+  },
+  "669_2618": {
+    "species": "Flabébé",
+    "form_name": "FLABEBE_WHITE",
+    "category": "cosmetic"
+  },
+  "670_2619": {
+    "species": "Floette",
+    "form_name": "FLOETTE_RED",
+    "category": "cosmetic"
+  },
+  "670_2620": {
+    "species": "Floette",
+    "form_name": "FLOETTE_YELLOW",
+    "category": "cosmetic"
+  },
+  "670_2621": {
+    "species": "Floette",
+    "form_name": "FLOETTE_ORANGE",
+    "category": "cosmetic"
+  },
+  "670_2622": {
+    "species": "Floette",
+    "form_name": "FLOETTE_BLUE",
+    "category": "cosmetic"
+  },
+  "670_2623": {
+    "species": "Floette",
+    "form_name": "FLOETTE_WHITE",
+    "category": "cosmetic"
+  },
+  "671_2624": {
+    "species": "Florges",
+    "form_name": "FLORGES_RED",
+    "category": "cosmetic"
+  },
+  "671_2625": {
+    "species": "Florges",
+    "form_name": "FLORGES_YELLOW",
+    "category": "cosmetic"
+  },
+  "671_2626": {
+    "species": "Florges",
+    "form_name": "FLORGES_ORANGE",
+    "category": "cosmetic"
+  },
+  "671_2627": {
+    "species": "Florges",
+    "form_name": "FLORGES_BLUE",
+    "category": "cosmetic"
+  },
+  "671_2628": {
+    "species": "Florges",
+    "form_name": "FLORGES_WHITE",
+    "category": "cosmetic"
+  },
+  "676_2629": {
+    "species": "Furfrou",
+    "form_name": "FURFROU_NATURAL",
+    "category": "cosmetic"
+  },
+  "676_2630": {
+    "species": "Furfrou",
+    "form_name": "FURFROU_HEART",
+    "category": "cosmetic"
+  },
+  "676_2631": {
+    "species": "Furfrou",
+    "form_name": "FURFROU_STAR",
+    "category": "cosmetic"
+  },
+  "676_2632": {
+    "species": "Furfrou",
+    "form_name": "FURFROU_DIAMOND",
+    "category": "cosmetic"
+  },
+  "676_2633": {
+    "species": "Furfrou",
+    "form_name": "FURFROU_DEBUTANTE",
+    "category": "cosmetic"
+  },
+  "676_2634": {
+    "species": "Furfrou",
+    "form_name": "FURFROU_MATRON",
+    "category": "cosmetic"
+  },
+  "676_2635": {
+    "species": "Furfrou",
+    "form_name": "FURFROU_DANDY",
+    "category": "cosmetic"
+  },
+  "676_2636": {
+    "species": "Furfrou",
+    "form_name": "FURFROU_LA_REINE",
+    "category": "cosmetic"
+  },
+  "676_2637": {
+    "species": "Furfrou",
+    "form_name": "FURFROU_KABUKI",
+    "category": "cosmetic"
+  },
+  "676_2638": {
+    "species": "Furfrou",
+    "form_name": "FURFROU_PHARAOH",
+    "category": "cosmetic"
+  },
+  "681_2639": {
+    "species": "Aegislash",
+    "form_name": "AEGISLASH_SHIELD",
+    "category": "cosmetic"
+  },
+  "681_2640": {
+    "species": "Aegislash",
+    "form_name": "AEGISLASH_BLADE",
+    "category": "cosmetic"
+  },
+  "710_2641": {
+    "species": "Pumpkaboo",
+    "form_name": "PUMPKABOO_SMALL",
+    "category": "cosmetic"
+  },
+  "710_2642": {
+    "species": "Pumpkaboo",
+    "form_name": "PUMPKABOO_AVERAGE",
+    "category": "cosmetic"
+  },
+  "710_2643": {
+    "species": "Pumpkaboo",
+    "form_name": "PUMPKABOO_LARGE",
+    "category": "cosmetic"
+  },
+  "710_2644": {
+    "species": "Pumpkaboo",
+    "form_name": "PUMPKABOO_SUPER",
+    "category": "cosmetic"
+  },
+  "711_2645": {
+    "species": "Gourgeist",
+    "form_name": "GOURGEIST_SMALL",
+    "category": "cosmetic"
+  },
+  "711_2646": {
+    "species": "Gourgeist",
+    "form_name": "GOURGEIST_AVERAGE",
+    "category": "cosmetic"
+  },
+  "711_2647": {
+    "species": "Gourgeist",
+    "form_name": "GOURGEIST_LARGE",
+    "category": "cosmetic"
+  },
+  "711_2648": {
+    "species": "Gourgeist",
+    "form_name": "GOURGEIST_SUPER",
+    "category": "cosmetic"
+  },
+  "716_2649": {
+    "species": "Xerneas",
+    "form_name": "XERNEAS_NEUTRAL",
+    "category": "cosmetic"
+  },
+  "716_2650": {
+    "species": "Xerneas",
+    "form_name": "XERNEAS_ACTIVE",
+    "category": "cosmetic"
+  },
+  "720_2651": {
+    "species": "Hoopa",
+    "form_name": "HOOPA_CONFINED",
+    "category": "cosmetic"
+  },
+  "720_2652": {
+    "species": "Hoopa",
+    "form_name": "HOOPA_UNBOUND",
+    "category": "cosmetic"
+  },
+  "302_2666": {
+    "species": "Sableye",
+    "form_name": "SABLEYE_COSTUME2020_DEPRECATED",
+    "category": "event"
+  },
+  "302_2668": {
+    "species": "Sableye",
+    "form_name": "SABLEYE_COSTUME2020",
+    "category": "event"
+  },
+  "25_2669": {
+    "species": "Pikachu",
+    "form_name": "PIKACHU_ADVENTURE_HAT2020",
+    "category": "event"
+  },
+  "25_2670": {
+    "species": "Pikachu",
+    "form_name": "PIKACHU_WINTER2020",
+    "category": "event"
+  },
+  "225_2671": {
+    "species": "Delibird",
+    "form_name": "DELIBIRD_WINTER2020",
+    "category": "event"
+  },
+  "613_2672": {
+    "species": "Cubchoo",
+    "form_name": "CUBCHOO_WINTER2020",
+    "category": "event"
+  },
+  "79_2673": {
+    "species": "Slowpoke",
+    "form_name": "SLOWPOKE2020",
+    "category": "cosmetic"
+  },
+  "80_2674": {
+    "species": "Slowbro",
+    "form_name": "SLOWBRO2021",
+    "category": "cosmetic"
+  },
+  "25_2675": {
+    "species": "Pikachu",
+    "form_name": "PIKACHU_KARIYUSHI",
+    "category": "event"
+  },
+  "25_2676": {
+    "species": "Pikachu",
+    "form_name": "PIKACHU_POP_STAR",
+    "category": "event"
+  },
+  "25_2677": {
+    "species": "Pikachu",
+    "form_name": "PIKACHU_ROCK_STAR",
+    "category": "cosmetic"
+  },
+  "25_2678": {
+    "species": "Pikachu",
+    "form_name": "PIKACHU_FLYING5_TH_ANNIV",
+    "category": "event"
+  },
+  "741_2679": {
+    "species": "Oricorio",
+    "form_name": "ORICORIO_BAILE",
+    "category": "cosmetic"
+  },
+  "741_2680": {
+    "species": "Oricorio",
+    "form_name": "ORICORIO_POMPOM",
+    "category": "cosmetic"
+  },
+  "741_2681": {
+    "species": "Oricorio",
+    "form_name": "ORICORIO_PAU",
+    "category": "cosmetic"
+  },
+  "741_2683": {
+    "species": "Oricorio",
+    "form_name": "ORICORIO_SENSU",
+    "category": "cosmetic"
+  },
+  "745_2684": {
+    "species": "Lycanroc",
+    "form_name": "LYCANROC_MIDDAY",
+    "category": "cosmetic"
+  },
+  "745_2685": {
+    "species": "Lycanroc",
+    "form_name": "LYCANROC_MIDNIGHT",
+    "category": "cosmetic"
+  },
+  "745_2686": {
+    "species": "Lycanroc",
+    "form_name": "LYCANROC_DUSK",
+    "category": "cosmetic"
+  },
+  "746_2687": {
+    "species": "Wishiwashi",
+    "form_name": "WISHIWASHI_SOLO",
+    "category": "cosmetic"
+  },
+  "746_2688": {
+    "species": "Wishiwashi",
+    "form_name": "WISHIWASHI_SCHOOL",
+    "category": "cosmetic"
+  },
+  "773_2689": {
+    "species": "Silvally",
+    "form_name": "SILVALLY_NORMAL",
+    "category": "default"
+  },
+  "773_2690": {
+    "species": "Silvally",
+    "form_name": "SILVALLY_BUG",
+    "category": "cosmetic"
+  },
+  "773_2691": {
+    "species": "Silvally",
+    "form_name": "SILVALLY_DARK",
+    "category": "cosmetic"
+  },
+  "773_2692": {
+    "species": "Silvally",
+    "form_name": "SILVALLY_DRAGON",
+    "category": "cosmetic"
+  },
+  "773_2693": {
+    "species": "Silvally",
+    "form_name": "SILVALLY_ELECTRIC",
+    "category": "cosmetic"
+  },
+  "773_2694": {
+    "species": "Silvally",
+    "form_name": "SILVALLY_FAIRY",
+    "category": "cosmetic"
+  },
+  "773_2695": {
+    "species": "Silvally",
+    "form_name": "SILVALLY_FIGHTING",
+    "category": "cosmetic"
+  },
+  "773_2696": {
+    "species": "Silvally",
+    "form_name": "SILVALLY_FIRE",
+    "category": "cosmetic"
+  },
+  "773_2697": {
+    "species": "Silvally",
+    "form_name": "SILVALLY_FLYING",
+    "category": "cosmetic"
+  },
+  "773_2698": {
+    "species": "Silvally",
+    "form_name": "SILVALLY_GHOST",
+    "category": "cosmetic"
+  },
+  "773_2699": {
+    "species": "Silvally",
+    "form_name": "SILVALLY_GRASS",
+    "category": "cosmetic"
+  },
+  "773_2700": {
+    "species": "Silvally",
+    "form_name": "SILVALLY_GROUND",
+    "category": "cosmetic"
+  },
+  "773_2701": {
+    "species": "Silvally",
+    "form_name": "SILVALLY_ICE",
+    "category": "cosmetic"
+  },
+  "773_2702": {
+    "species": "Silvally",
+    "form_name": "SILVALLY_POISON",
+    "category": "cosmetic"
+  },
+  "773_2703": {
+    "species": "Silvally",
+    "form_name": "SILVALLY_PSYCHIC",
+    "category": "cosmetic"
+  },
+  "773_2704": {
+    "species": "Silvally",
+    "form_name": "SILVALLY_ROCK",
+    "category": "cosmetic"
+  },
+  "773_2705": {
+    "species": "Silvally",
+    "form_name": "SILVALLY_STEEL",
+    "category": "cosmetic"
+  },
+  "773_2706": {
+    "species": "Silvally",
+    "form_name": "SILVALLY_WATER",
+    "category": "cosmetic"
+  },
+  "774_2707": {
+    "species": "Minior",
+    "form_name": "MINIOR_METEOR_BLUE",
+    "category": "cosmetic"
+  },
+  "774_2708": {
+    "species": "Minior",
+    "form_name": "MINIOR_BLUE",
+    "category": "cosmetic"
+  },
+  "774_2709": {
+    "species": "Minior",
+    "form_name": "MINIOR_GREEN",
+    "category": "cosmetic"
+  },
+  "774_2710": {
+    "species": "Minior",
+    "form_name": "MINIOR_INDIGO",
+    "category": "cosmetic"
+  },
+  "774_2711": {
+    "species": "Minior",
+    "form_name": "MINIOR_ORANGE",
+    "category": "cosmetic"
+  },
+  "774_2712": {
+    "species": "Minior",
+    "form_name": "MINIOR_RED",
+    "category": "cosmetic"
+  },
+  "774_2713": {
+    "species": "Minior",
+    "form_name": "MINIOR_VIOLET",
+    "category": "cosmetic"
+  },
+  "774_2714": {
+    "species": "Minior",
+    "form_name": "MINIOR_YELLOW",
+    "category": "cosmetic"
+  },
+  "778_2715": {
+    "species": "Mimikyu",
+    "form_name": "MIMIKYU_BUSTED",
+    "category": "cosmetic"
+  },
+  "778_2716": {
+    "species": "Mimikyu",
+    "form_name": "MIMIKYU_DISGUISED",
+    "category": "cosmetic"
+  },
+  "800_2717": {
+    "species": "Necrozma",
+    "form_name": "NECROZMA_NORMAL",
+    "category": "default"
+  },
+  "800_2718": {
+    "species": "Necrozma",
+    "form_name": "NECROZMA_DUSK_MANE",
+    "category": "cosmetic"
+  },
+  "800_2719": {
+    "species": "Necrozma",
+    "form_name": "NECROZMA_DAWN_WINGS",
+    "category": "cosmetic"
+  },
+  "800_2720": {
+    "species": "Necrozma",
+    "form_name": "NECROZMA_ULTRA",
+    "category": "cosmetic"
+  },
+  "801_2721": {
+    "species": "Magearna",
+    "form_name": "MAGEARNA_NORMAL",
+    "category": "default"
+  },
+  "801_2722": {
+    "species": "Magearna",
+    "form_name": "MAGEARNA_ORIGINAL_COLOR",
+    "category": "cosmetic"
+  },
+  "892_2723": {
+    "species": "Urshifu",
+    "form_name": "URSHIFU_SINGLE_STRIKE",
+    "category": "cosmetic"
+  },
+  "892_2724": {
+    "species": "Urshifu",
+    "form_name": "URSHIFU_RAPID_STRIKE",
+    "category": "cosmetic"
+  },
+  "898_2725": {
+    "species": "Calyrex",
+    "form_name": "CALYREX_NORMAL",
+    "category": "default"
+  },
+  "898_2726": {
+    "species": "Calyrex",
+    "form_name": "CALYREX_ICE_RIDER",
+    "category": "cosmetic"
+  },
+  "898_2727": {
+    "species": "Calyrex",
+    "form_name": "CALYREX_SHADOW_RIDER",
+    "category": "cosmetic"
+  },
+  "100_2728": {
+    "species": "Voltorb",
+    "form_name": "VOLTORB_HISUIAN",
+    "category": "regional"
+  },
+  "249_2729": {
+    "species": "Lugia",
+    "form_name": "LUGIA_S",
+    "category": "cosmetic"
+  },
+  "250_2730": {
+    "species": "Ho",
+    "form_name": "HO_OH_S",
+    "category": "cosmetic"
+  },
+  "243_2731": {
+    "species": "Raikou",
+    "form_name": "RAIKOU_S",
+    "category": "cosmetic"
+  },
+  "244_2732": {
+    "species": "Entei",
+    "form_name": "ENTEI_S",
+    "category": "cosmetic"
+  },
+  "245_2733": {
+    "species": "Suicune",
+    "form_name": "SUICUNE_S",
+    "category": "cosmetic"
+  },
+  "199_2734": {
+    "species": "Slowking",
+    "form_name": "SLOWKING2022",
+    "category": "cosmetic"
+  },
+  "101_2735": {
+    "species": "Electrode",
+    "form_name": "ELECTRODE_HISUIAN",
+    "category": "regional"
+  },
+  "25_2736": {
+    "species": "Pikachu",
+    "form_name": "PIKACHU_FLYING_OKINAWA",
+    "category": "event"
+  },
+  "744_2737": {
+    "species": "Rockruff",
+    "form_name": "ROCKRUFF_DUSK",
+    "category": "cosmetic"
+  },
+  "774_2739": {
+    "species": "Minior",
+    "form_name": "MINIOR_METEOR_GREEN",
+    "category": "cosmetic"
+  },
+  "774_2740": {
+    "species": "Minior",
+    "form_name": "MINIOR_METEOR_INDIGO",
+    "category": "cosmetic"
+  },
+  "774_2741": {
+    "species": "Minior",
+    "form_name": "MINIOR_METEOR_ORANGE",
+    "category": "cosmetic"
+  },
+  "774_2742": {
+    "species": "Minior",
+    "form_name": "MINIOR_METEOR_RED",
+    "category": "cosmetic"
+  },
+  "774_2743": {
+    "species": "Minior",
+    "form_name": "MINIOR_METEOR_VIOLET",
+    "category": "cosmetic"
+  },
+  "774_2744": {
+    "species": "Minior",
+    "form_name": "MINIOR_METEOR_YELLOW",
+    "category": "cosmetic"
+  },
+  "664_2745": {
+    "species": "Scatterbug",
+    "form_name": "SCATTERBUG_ARCHIPELAGO",
+    "category": "cosmetic"
+  },
+  "664_2746": {
+    "species": "Scatterbug",
+    "form_name": "SCATTERBUG_CONTINENTAL",
+    "category": "cosmetic"
+  },
+  "664_2747": {
+    "species": "Scatterbug",
+    "form_name": "SCATTERBUG_ELEGANT",
+    "category": "cosmetic"
+  },
+  "664_2748": {
+    "species": "Scatterbug",
+    "form_name": "SCATTERBUG_FANCY",
+    "category": "cosmetic"
+  },
+  "664_2749": {
+    "species": "Scatterbug",
+    "form_name": "SCATTERBUG_GARDEN",
+    "category": "cosmetic"
+  },
+  "664_2750": {
+    "species": "Scatterbug",
+    "form_name": "SCATTERBUG_HIGH_PLAINS",
+    "category": "cosmetic"
+  },
+  "664_2751": {
+    "species": "Scatterbug",
+    "form_name": "SCATTERBUG_ICY_SNOW",
+    "category": "cosmetic"
+  },
+  "664_2752": {
+    "species": "Scatterbug",
+    "form_name": "SCATTERBUG_JUNGLE",
+    "category": "cosmetic"
+  },
+  "664_2753": {
+    "species": "Scatterbug",
+    "form_name": "SCATTERBUG_MARINE",
+    "category": "cosmetic"
+  },
+  "664_2754": {
+    "species": "Scatterbug",
+    "form_name": "SCATTERBUG_MEADOW",
+    "category": "cosmetic"
+  },
+  "664_2755": {
+    "species": "Scatterbug",
+    "form_name": "SCATTERBUG_MODERN",
+    "category": "cosmetic"
+  },
+  "664_2756": {
+    "species": "Scatterbug",
+    "form_name": "SCATTERBUG_MONSOON",
+    "category": "cosmetic"
+  },
+  "664_2757": {
+    "species": "Scatterbug",
+    "form_name": "SCATTERBUG_OCEAN",
+    "category": "cosmetic"
+  },
+  "664_2758": {
+    "species": "Scatterbug",
+    "form_name": "SCATTERBUG_POKEBALL",
+    "category": "cosmetic"
+  },
+  "664_2759": {
+    "species": "Scatterbug",
+    "form_name": "SCATTERBUG_POLAR",
+    "category": "cosmetic"
+  },
+  "664_2760": {
+    "species": "Scatterbug",
+    "form_name": "SCATTERBUG_RIVER",
+    "category": "cosmetic"
+  },
+  "664_2761": {
+    "species": "Scatterbug",
+    "form_name": "SCATTERBUG_SANDSTORM",
+    "category": "cosmetic"
+  },
+  "664_2762": {
+    "species": "Scatterbug",
+    "form_name": "SCATTERBUG_SAVANNA",
+    "category": "cosmetic"
+  },
+  "664_2763": {
+    "species": "Scatterbug",
+    "form_name": "SCATTERBUG_SUN",
+    "category": "cosmetic"
+  },
+  "664_2764": {
+    "species": "Scatterbug",
+    "form_name": "SCATTERBUG_TUNDRA",
+    "category": "cosmetic"
+  },
+  "665_2765": {
+    "species": "Spewpa",
+    "form_name": "SPEWPA_ARCHIPELAGO",
+    "category": "cosmetic"
+  },
+  "665_2766": {
+    "species": "Spewpa",
+    "form_name": "SPEWPA_CONTINENTAL",
+    "category": "cosmetic"
+  },
+  "665_2767": {
+    "species": "Spewpa",
+    "form_name": "SPEWPA_ELEGANT",
+    "category": "cosmetic"
+  },
+  "665_2768": {
+    "species": "Spewpa",
+    "form_name": "SPEWPA_FANCY",
+    "category": "cosmetic"
+  },
+  "665_2769": {
+    "species": "Spewpa",
+    "form_name": "SPEWPA_GARDEN",
+    "category": "cosmetic"
+  },
+  "665_2770": {
+    "species": "Spewpa",
+    "form_name": "SPEWPA_HIGH_PLAINS",
+    "category": "cosmetic"
+  },
+  "665_2771": {
+    "species": "Spewpa",
+    "form_name": "SPEWPA_ICY_SNOW",
+    "category": "cosmetic"
+  },
+  "665_2772": {
+    "species": "Spewpa",
+    "form_name": "SPEWPA_JUNGLE",
+    "category": "cosmetic"
+  },
+  "665_2773": {
+    "species": "Spewpa",
+    "form_name": "SPEWPA_MARINE",
+    "category": "cosmetic"
+  },
+  "665_2774": {
+    "species": "Spewpa",
+    "form_name": "SPEWPA_MEADOW",
+    "category": "cosmetic"
+  },
+  "665_2775": {
+    "species": "Spewpa",
+    "form_name": "SPEWPA_MODERN",
+    "category": "cosmetic"
+  },
+  "665_2776": {
+    "species": "Spewpa",
+    "form_name": "SPEWPA_MONSOON",
+    "category": "cosmetic"
+  },
+  "665_2777": {
+    "species": "Spewpa",
+    "form_name": "SPEWPA_OCEAN",
+    "category": "cosmetic"
+  },
+  "665_2778": {
+    "species": "Spewpa",
+    "form_name": "SPEWPA_POKEBALL",
+    "category": "cosmetic"
+  },
+  "665_2779": {
+    "species": "Spewpa",
+    "form_name": "SPEWPA_POLAR",
+    "category": "cosmetic"
+  },
+  "665_2780": {
+    "species": "Spewpa",
+    "form_name": "SPEWPA_RIVER",
+    "category": "cosmetic"
+  },
+  "665_2781": {
+    "species": "Spewpa",
+    "form_name": "SPEWPA_SANDSTORM",
+    "category": "cosmetic"
+  },
+  "665_2782": {
+    "species": "Spewpa",
+    "form_name": "SPEWPA_SAVANNA",
+    "category": "cosmetic"
+  },
+  "665_2783": {
+    "species": "Spewpa",
+    "form_name": "SPEWPA_SUN",
+    "category": "cosmetic"
+  },
+  "665_2784": {
+    "species": "Spewpa",
+    "form_name": "SPEWPA_TUNDRA",
+    "category": "cosmetic"
+  },
+  "724_2785": {
+    "species": "Decidueye",
+    "form_name": "DECIDUEYE_HISUIAN",
+    "category": "regional"
+  },
+  "157_2786": {
+    "species": "Typhlosion",
+    "form_name": "TYPHLOSION_HISUIAN",
+    "category": "regional"
+  },
+  "503_2787": {
+    "species": "Samurott",
+    "form_name": "SAMUROTT_HISUIAN",
+    "category": "regional"
+  },
+  "211_2788": {
+    "species": "Qwilfish",
+    "form_name": "QWILFISH_HISUIAN",
+    "category": "regional"
+  },
+  "549_2789": {
+    "species": "Lilligant",
+    "form_name": "LILLIGANT_HISUIAN",
+    "category": "regional"
+  },
+  "705_2790": {
+    "species": "Sliggoo",
+    "form_name": "SLIGGOO_HISUIAN",
+    "category": "regional"
+  },
+  "706_2791": {
+    "species": "Goodra",
+    "form_name": "GOODRA_HISUIAN",
+    "category": "regional"
+  },
+  "58_2792": {
+    "species": "Growlithe",
+    "form_name": "GROWLITHE_HISUIAN",
+    "category": "regional"
+  },
+  "59_2793": {
+    "species": "Arcanine",
+    "form_name": "ARCANINE_HISUIAN",
+    "category": "regional"
+  },
+  "215_2794": {
+    "species": "Sneasel",
+    "form_name": "SNEASEL_HISUIAN",
+    "category": "regional"
+  },
+  "713_2795": {
+    "species": "Avalugg",
+    "form_name": "AVALUGG_HISUIAN",
+    "category": "regional"
+  },
+  "570_2796": {
+    "species": "Zorua",
+    "form_name": "ZORUA_HISUIAN",
+    "category": "regional"
+  },
+  "571_2797": {
+    "species": "Zoroark",
+    "form_name": "ZOROARK_HISUIAN",
+    "category": "regional"
+  },
+  "628_2798": {
+    "species": "Braviary",
+    "form_name": "BRAVIARY_HISUIAN",
+    "category": "regional"
+  },
+  "146_2799": {
+    "species": "Moltres",
+    "form_name": "MOLTRES_GALARIAN",
+    "category": "regional"
+  },
+  "145_2800": {
+    "species": "Zapdos",
+    "form_name": "ZAPDOS_GALARIAN",
+    "category": "regional"
+  },
+  "144_2801": {
+    "species": "Articuno",
+    "form_name": "ARTICUNO_GALARIAN",
+    "category": "regional"
+  },
+  "905_2802": {
+    "species": "Enamorus",
+    "form_name": "ENAMORUS_INCARNATE",
+    "category": "cosmetic"
+  },
+  "905_2803": {
+    "species": "Enamorus",
+    "form_name": "ENAMORUS_THERIAN",
+    "category": "cosmetic"
+  },
+  "550_2804": {
+    "species": "Basculin",
+    "form_name": "BASCULIN_WHITE_STRIPED",
+    "category": "cosmetic"
+  },
+  "25_2805": {
+    "species": "Pikachu",
+    "form_name": "PIKACHU_GOFEST2022",
+    "category": "event"
+  },
+  "25_2806": {
+    "species": "Pikachu",
+    "form_name": "PIKACHU_WCS2022",
+    "category": "event"
+  },
+  "902_2807": {
+    "species": "Basculegion",
+    "form_name": "BASCULEGION_NORMAL",
+    "category": "default"
+  },
+  "902_2808": {
+    "species": "Basculegion",
+    "form_name": "BASCULEGION_FEMALE",
+    "category": "cosmetic"
+  },
+  "724_2809": {
+    "species": "Decidueye",
+    "form_name": "DECIDUEYE_NORMAL",
+    "category": "default"
+  },
+  "705_2810": {
+    "species": "Sliggoo",
+    "form_name": "SLIGGOO_NORMAL",
+    "category": "default"
+  },
+  "706_2811": {
+    "species": "Goodra",
+    "form_name": "GOODRA_NORMAL",
+    "category": "default"
+  },
+  "713_2812": {
+    "species": "Avalugg",
+    "form_name": "AVALUGG_NORMAL",
+    "category": "default"
+  },
+  "25_2813": {
+    "species": "Pikachu",
+    "form_name": "PIKACHU_TSHIRT01",
+    "category": "cosmetic"
+  },
+  "25_2814": {
+    "species": "Pikachu",
+    "form_name": "PIKACHU_TSHIRT02",
+    "category": "cosmetic"
+  },
+  "25_2815": {
+    "species": "Pikachu",
+    "form_name": "PIKACHU_FLYING01",
+    "category": "event"
+  },
+  "25_2816": {
+    "species": "Pikachu",
+    "form_name": "PIKACHU_FLYING02",
+    "category": "event"
+  },
+  "901_2817": {
+    "species": "Ursaluna",
+    "form_name": "URSALUNA_NORMAL",
+    "category": "default"
+  },
+  "614_2820": {
+    "species": "Beartic",
+    "form_name": "BEARTIC_WINTER2020",
+    "category": "event"
+  },
+  "380_2821": {
+    "species": "Latias",
+    "form_name": "LATIAS_S",
+    "category": "cosmetic"
+  },
+  "381_2822": {
+    "species": "Latios",
+    "form_name": "LATIOS_S",
+    "category": "cosmetic"
+  },
+  "718_2823": {
+    "species": "Zygarde",
+    "form_name": "ZYGARDE_COMPLETE_TEN_PERCENT",
+    "category": "cosmetic"
+  },
+  "718_2824": {
+    "species": "Zygarde",
+    "form_name": "ZYGARDE_COMPLETE_FIFTY_PERCENT",
+    "category": "cosmetic"
+  },
+  "25_2825": {
+    "species": "Pikachu",
+    "form_name": "PIKACHU_GOTOUR2024_A",
+    "category": "event"
+  },
+  "25_2826": {
+    "species": "Pikachu",
+    "form_name": "PIKACHU_GOTOUR2024_B",
+    "category": "event"
+  },
+  "25_2827": {
+    "species": "Pikachu",
+    "form_name": "PIKACHU_GOTOUR2024_A02",
+    "category": "event"
+  },
+  "25_2828": {
+    "species": "Pikachu",
+    "form_name": "PIKACHU_GOTOUR2024_B02",
+    "category": "event"
+  },
+  "483_2829": {
+    "species": "Dialga",
+    "form_name": "DIALGA_ORIGIN",
+    "category": "cosmetic"
+  },
+  "484_2830": {
+    "species": "Palkia",
+    "form_name": "PALKIA_ORIGIN",
+    "category": "cosmetic"
+  },
+  "744_2831": {
+    "species": "Rockruff",
+    "form_name": "ROCKRUFF_NORMAL",
+    "category": "default"
+  },
+  "25_2832": {
+    "species": "Pikachu",
+    "form_name": "PIKACHU_TSHIRT03",
+    "category": "cosmetic"
+  },
+  "25_2833": {
+    "species": "Pikachu",
+    "form_name": "PIKACHU_FLYING04",
+    "category": "event"
+  },
+  "25_2834": {
+    "species": "Pikachu",
+    "form_name": "PIKACHU_TSHIRT04",
+    "category": "cosmetic"
+  },
+  "25_2835": {
+    "species": "Pikachu",
+    "form_name": "PIKACHU_TSHIRT05",
+    "category": "cosmetic"
+  },
+  "25_2836": {
+    "species": "Pikachu",
+    "form_name": "PIKACHU_TSHIRT06",
+    "category": "cosmetic"
+  },
+  "25_2837": {
+    "species": "Pikachu",
+    "form_name": "PIKACHU_TSHIRT07",
+    "category": "cosmetic"
+  },
+  "25_2838": {
+    "species": "Pikachu",
+    "form_name": "PIKACHU_FLYING05",
+    "category": "event"
+  },
+  "25_2839": {
+    "species": "Pikachu",
+    "form_name": "PIKACHU_FLYING06",
+    "category": "event"
+  },
+  "25_2840": {
+    "species": "Pikachu",
+    "form_name": "PIKACHU_FLYING07",
+    "category": "event"
+  },
+  "25_2841": {
+    "species": "Pikachu",
+    "form_name": "PIKACHU_FLYING08",
+    "category": "event"
+  },
+  "25_2842": {
+    "species": "Pikachu",
+    "form_name": "PIKACHU_HORIZONS",
+    "category": "event"
+  },
+  "25_2843": {
+    "species": "Pikachu",
+    "form_name": "PIKACHU_GOFEST2024_STIARA",
+    "category": "event"
+  },
+  "25_2844": {
+    "species": "Pikachu",
+    "form_name": "PIKACHU_GOFEST2024_MTIARA",
+    "category": "event"
+  },
+  "133_2845": {
+    "species": "Eevee",
+    "form_name": "EEVEE_GOFEST2024_STIARA",
+    "category": "event"
+  },
+  "133_2846": {
+    "species": "Eevee",
+    "form_name": "EEVEE_GOFEST2024_MTIARA",
+    "category": "event"
+  },
+  "196_2847": {
+    "species": "Espeon",
+    "form_name": "ESPEON_GOFEST2024_SSCARF",
+    "category": "event"
+  },
+  "197_2848": {
+    "species": "Umbreon",
+    "form_name": "UMBREON_GOFEST2024_MSCARF",
+    "category": "event"
+  },
+  "143_2849": {
+    "species": "Snorlax",
+    "form_name": "SNORLAX_WILDAREA2024",
+    "category": "event"
+  },
+  "25_2850": {
+    "species": "Pikachu",
+    "form_name": "PIKACHU_DIWALI2024",
+    "category": "event"
+  },
+  "25_2856": {
+    "species": "Pikachu",
+    "form_name": "PIKACHU_GOTOUR2025_A",
+    "category": "event"
+  },
+  "25_2857": {
+    "species": "Pikachu",
+    "form_name": "PIKACHU_GOTOUR2025_B",
+    "category": "event"
+  },
+  "25_2858": {
+    "species": "Pikachu",
+    "form_name": "PIKACHU_GOTOUR2025_A02",
+    "category": "event"
+  },
+  "25_2859": {
+    "species": "Pikachu",
+    "form_name": "PIKACHU_GOTOUR2025_B02",
+    "category": "event"
+  },
+  "702_2860": {
+    "species": "Dedenne",
+    "form_name": "DEDENNE_NORMAL",
+    "category": "default"
+  },
+  "831_2861": {
+    "species": "Wooloo",
+    "form_name": "WOOLOO_NORMAL",
+    "category": "default"
+  },
+  "832_2862": {
+    "species": "Dubwool",
+    "form_name": "DUBWOOL_NORMAL",
+    "category": "default"
+  },
+  "25_2863": {
+    "species": "Pikachu",
+    "form_name": "PIKACHU_KURTA",
+    "category": "event"
+  },
+  "25_2864": {
+    "species": "Pikachu",
+    "form_name": "PIKACHU_GOFEST2025_GOGGLES_RED",
+    "category": "event"
+  },
+  "25_2865": {
+    "species": "Pikachu",
+    "form_name": "PIKACHU_GOFEST2025_GOGGLES_BLUE",
+    "category": "event"
+  },
+  "25_2866": {
+    "species": "Pikachu",
+    "form_name": "PIKACHU_GOFEST2025_GOGGLES_YELLOW",
+    "category": "event"
+  },
+  "25_2867": {
+    "species": "Pikachu",
+    "form_name": "PIKACHU_GOFEST2025_MONOCLE_RED",
+    "category": "event"
+  },
+  "25_2868": {
+    "species": "Pikachu",
+    "form_name": "PIKACHU_GOFEST2025_MONOCLE_BLUE",
+    "category": "event"
+  },
+  "25_2869": {
+    "species": "Pikachu",
+    "form_name": "PIKACHU_GOFEST2025_MONOCLE_YELLOW",
+    "category": "event"
+  },
+  "870_2870": {
+    "species": "Falinks",
+    "form_name": "FALINKS_GOFEST2025_TRAIN_CONDUCTOR",
+    "category": "event"
+  },
+  "1012_2871": {
+    "species": "Poltchageist",
+    "form_name": "POLTCHAGEIST_COUNTERFEIT",
+    "category": "cosmetic"
+  },
+  "1012_2872": {
+    "species": "Poltchageist",
+    "form_name": "POLTCHAGEIST_ARTISAN",
+    "category": "cosmetic"
+  },
+  "1013_2873": {
+    "species": "Sinistcha",
+    "form_name": "SINISTCHA_UNREMARKABLE",
+    "category": "cosmetic"
+  },
+  "1013_2874": {
+    "species": "Sinistcha",
+    "form_name": "SINISTCHA_MASTERPIECE",
+    "category": "cosmetic"
+  },
+  "1017_2875": {
+    "species": "Ogerpon",
+    "form_name": "OGERPON_TEAL",
+    "category": "cosmetic"
+  },
+  "1017_2876": {
+    "species": "Ogerpon",
+    "form_name": "OGERPON_WELLSPRING",
+    "category": "cosmetic"
+  },
+  "1017_2877": {
+    "species": "Ogerpon",
+    "form_name": "OGERPON_HEARTHFLAME",
+    "category": "cosmetic"
+  },
+  "1017_2879": {
+    "species": "Ogerpon",
+    "form_name": "OGERPON_CORNERSTONE",
+    "category": "cosmetic"
+  },
+  "1024_2880": {
+    "species": "Terapagos",
+    "form_name": "TERAPAGOS_NORMAL",
+    "category": "default"
+  },
+  "1024_2881": {
+    "species": "Terapagos",
+    "form_name": "TERAPAGOS_TERASTAL",
+    "category": "cosmetic"
+  },
+  "1024_2882": {
+    "species": "Terapagos",
+    "form_name": "TERAPAGOS_STELLAR",
+    "category": "cosmetic"
+  },
+  "916_2981": {
+    "species": "Oinkologne",
+    "form_name": "OINKOLOGNE_NORMAL",
+    "category": "default"
+  },
+  "916_2982": {
+    "species": "Oinkologne",
+    "form_name": "OINKOLOGNE_FEMALE",
+    "category": "cosmetic"
+  },
+  "925_2983": {
+    "species": "Maushold",
+    "form_name": "MAUSHOLD_FAMILY_OF_THREE",
+    "category": "cosmetic"
+  },
+  "925_2984": {
+    "species": "Maushold",
+    "form_name": "MAUSHOLD_FAMILY_OF_FOUR",
+    "category": "cosmetic"
+  },
+  "931_2985": {
+    "species": "Squawkabilly",
+    "form_name": "SQUAWKABILLY_GREEN",
+    "category": "cosmetic"
+  },
+  "931_2986": {
+    "species": "Squawkabilly",
+    "form_name": "SQUAWKABILLY_BLUE",
+    "category": "cosmetic"
+  },
+  "931_2987": {
+    "species": "Squawkabilly",
+    "form_name": "SQUAWKABILLY_YELLOW",
+    "category": "cosmetic"
+  },
+  "931_2988": {
+    "species": "Squawkabilly",
+    "form_name": "SQUAWKABILLY_WHITE",
+    "category": "cosmetic"
+  },
+  "964_2989": {
+    "species": "Palafin",
+    "form_name": "PALAFIN_ZERO",
+    "category": "cosmetic"
+  },
+  "964_2990": {
+    "species": "Palafin",
+    "form_name": "PALAFIN_HERO",
+    "category": "cosmetic"
+  },
+  "978_2991": {
+    "species": "Tatsugiri",
+    "form_name": "TATSUGIRI_CURLY",
+    "category": "cosmetic"
+  },
+  "978_2992": {
+    "species": "Tatsugiri",
+    "form_name": "TATSUGIRI_DROOPY",
+    "category": "cosmetic"
+  },
+  "978_2993": {
+    "species": "Tatsugiri",
+    "form_name": "TATSUGIRI_STRETCHY",
+    "category": "cosmetic"
+  },
+  "982_2994": {
+    "species": "Dudunsparce",
+    "form_name": "DUDUNSPARCE_TWO",
+    "category": "cosmetic"
+  },
+  "982_2995": {
+    "species": "Dudunsparce",
+    "form_name": "DUDUNSPARCE_THREE",
+    "category": "cosmetic"
+  },
+  "1007_2996": {
+    "species": "Koraidon",
+    "form_name": "KORAIDON_APEX",
+    "category": "cosmetic"
+  },
+  "1008_2997": {
+    "species": "Miraidon",
+    "form_name": "MIRAIDON_ULTIMATE",
+    "category": "cosmetic"
+  },
+  "999_2998": {
+    "species": "Gimmighoul",
+    "form_name": "GIMMIGHOUL_NORMAL",
+    "category": "default"
+  },
+  "1000_3000": {
+    "species": "Gholdengo",
+    "form_name": "GHOLDENGO_NORMAL",
+    "category": "default"
+  },
+  "142_3001": {
+    "species": "Aerodactyl",
+    "form_name": "AERODACTYL_SUMMER2023",
+    "category": "event"
+  },
+  "25_3002": {
+    "species": "Pikachu",
+    "form_name": "PIKACHU_SUMMER2023_A",
+    "category": "event"
+  },
+  "25_3003": {
+    "species": "Pikachu",
+    "form_name": "PIKACHU_SUMMER2023_B",
+    "category": "event"
+  },
+  "25_3004": {
+    "species": "Pikachu",
+    "form_name": "PIKACHU_SUMMER2023_C",
+    "category": "event"
+  },
+  "25_3005": {
+    "species": "Pikachu",
+    "form_name": "PIKACHU_SUMMER2023_D",
+    "category": "event"
+  },
+  "128_3006": {
+    "species": "Tauros",
+    "form_name": "TAUROS_PALDEA_COMBAT",
+    "category": "regional"
+  },
+  "128_3007": {
+    "species": "Tauros",
+    "form_name": "TAUROS_PALDEA_BLAZE",
+    "category": "regional"
+  },
+  "128_3008": {
+    "species": "Tauros",
+    "form_name": "TAUROS_PALDEA_AQUA",
+    "category": "regional"
+  },
+  "194_3009": {
+    "species": "Wooper",
+    "form_name": "WOOPER_PALDEA",
+    "category": "regional"
+  },
+  "25_3010": {
+    "species": "Pikachu",
+    "form_name": "PIKACHU_SUMMER2023_E",
+    "category": "event"
+  },
+  "25_3011": {
+    "species": "Pikachu",
+    "form_name": "PIKACHU_FLYING03",
+    "category": "event"
+  },
+  "25_3012": {
+    "species": "Pikachu",
+    "form_name": "PIKACHU_JEJU",
+    "category": "event"
+  },
+  "25_3013": {
+    "species": "Pikachu",
+    "form_name": "PIKACHU_DOCTOR",
+    "category": "event"
+  },
+  "25_3014": {
+    "species": "Pikachu",
+    "form_name": "PIKACHU_WCS2023",
+    "category": "event"
+  },
+  "25_3015": {
+    "species": "Pikachu",
+    "form_name": "PIKACHU_WCS2024",
+    "category": "event"
+  },
+  "815_3016": {
+    "species": "Cinderace",
+    "form_name": "CINDERACE_NORMAL",
+    "category": "default"
+  },
+  "25_3017": {
+    "species": "Pikachu",
+    "form_name": "PIKACHU_WCS2025",
+    "category": "event"
+  },
+  "999_3018": {
+    "species": "Gimmighoul",
+    "form_name": "GIMMIGHOUL_COIN_A1",
+    "category": "event"
+  },
+  "54_3019": {
+    "species": "Psyduck",
+    "form_name": "PSYDUCK_SWIM2025",
+    "category": "event"
+  },
+  "760_3020": {
+    "species": "Bewear",
+    "form_name": "BEWEAR_NORMAL",
+    "category": "default"
+  },
+  "760_3021": {
+    "species": "Bewear",
+    "form_name": "BEWEAR_WILDAREA2025",
+    "category": "event"
+  },
+  "650_3022": {
+    "species": "Chespin",
+    "form_name": "CHESPIN_NORMAL",
+    "category": "default"
+  },
+  "651_3023": {
+    "species": "Quilladin",
+    "form_name": "QUILLADIN_NORMAL",
+    "category": "default"
+  },
+  "652_3024": {
+    "species": "Chesnaught",
+    "form_name": "CHESNAUGHT_NORMAL",
+    "category": "default"
+  },
+  "653_3025": {
+    "species": "Fennekin",
+    "form_name": "FENNEKIN_NORMAL",
+    "category": "default"
+  },
+  "654_3026": {
+    "species": "Braixen",
+    "form_name": "BRAIXEN_NORMAL",
+    "category": "default"
+  },
+  "655_3027": {
+    "species": "Delphox",
+    "form_name": "DELPHOX_NORMAL",
+    "category": "default"
+  },
+  "656_3028": {
+    "species": "Froakie",
+    "form_name": "FROAKIE_NORMAL",
+    "category": "default"
+  },
+  "657_3029": {
+    "species": "Frogadier",
+    "form_name": "FROGADIER_NORMAL",
+    "category": "default"
+  },
+  "658_3030": {
+    "species": "Greninja",
+    "form_name": "GRENINJA_NORMAL",
+    "category": "default"
+  },
+  "659_3031": {
+    "species": "Bunnelby",
+    "form_name": "BUNNELBY_NORMAL",
+    "category": "default"
+  },
+  "660_3032": {
+    "species": "Diggersby",
+    "form_name": "DIGGERSBY_NORMAL",
+    "category": "default"
+  },
+  "661_3033": {
+    "species": "Fletchling",
+    "form_name": "FLETCHLING_NORMAL",
+    "category": "default"
+  },
+  "662_3034": {
+    "species": "Fletchinder",
+    "form_name": "FLETCHINDER_NORMAL",
+    "category": "default"
+  },
+  "663_3035": {
+    "species": "Talonflame",
+    "form_name": "TALONFLAME_NORMAL",
+    "category": "default"
+  },
+  "667_3036": {
+    "species": "Litleo",
+    "form_name": "LITLEO_NORMAL",
+    "category": "default"
+  },
+  "672_3037": {
+    "species": "Skiddo",
+    "form_name": "SKIDDO_NORMAL",
+    "category": "default"
+  },
+  "673_3038": {
+    "species": "Gogoat",
+    "form_name": "GOGOAT_NORMAL",
+    "category": "default"
+  },
+  "674_3039": {
+    "species": "Pancham",
+    "form_name": "PANCHAM_NORMAL",
+    "category": "default"
+  },
+  "675_3040": {
+    "species": "Pangoro",
+    "form_name": "PANGORO_NORMAL",
+    "category": "default"
+  },
+  "677_3041": {
+    "species": "Espurr",
+    "form_name": "ESPURR_NORMAL",
+    "category": "default"
+  },
+  "679_3042": {
+    "species": "Honedge",
+    "form_name": "HONEDGE_NORMAL",
+    "category": "default"
+  },
+  "680_3043": {
+    "species": "Doublade",
+    "form_name": "DOUBLADE_NORMAL",
+    "category": "default"
+  },
+  "682_3044": {
+    "species": "Spritzee",
+    "form_name": "SPRITZEE_NORMAL",
+    "category": "default"
+  },
+  "683_3045": {
+    "species": "Aromatisse",
+    "form_name": "AROMATISSE_NORMAL",
+    "category": "default"
+  },
+  "684_3046": {
+    "species": "Swirlix",
+    "form_name": "SWIRLIX_NORMAL",
+    "category": "default"
+  },
+  "685_3047": {
+    "species": "Slurpuff",
+    "form_name": "SLURPUFF_NORMAL",
+    "category": "default"
+  },
+  "686_3048": {
+    "species": "Inkay",
+    "form_name": "INKAY_NORMAL",
+    "category": "default"
+  },
+  "687_3049": {
+    "species": "Malamar",
+    "form_name": "MALAMAR_NORMAL",
+    "category": "default"
+  },
+  "688_3050": {
+    "species": "Binacle",
+    "form_name": "BINACLE_NORMAL",
+    "category": "default"
+  },
+  "689_3051": {
+    "species": "Barbaracle",
+    "form_name": "BARBARACLE_NORMAL",
+    "category": "default"
+  },
+  "690_3052": {
+    "species": "Skrelp",
+    "form_name": "SKRELP_NORMAL",
+    "category": "default"
+  },
+  "691_3053": {
+    "species": "Dragalge",
+    "form_name": "DRAGALGE_NORMAL",
+    "category": "default"
+  },
+  "692_3054": {
+    "species": "Clauncher",
+    "form_name": "CLAUNCHER_NORMAL",
+    "category": "default"
+  },
+  "693_3055": {
+    "species": "Clawitzer",
+    "form_name": "CLAWITZER_NORMAL",
+    "category": "default"
+  },
+  "694_3056": {
+    "species": "Helioptile",
+    "form_name": "HELIOPTILE_NORMAL",
+    "category": "default"
+  },
+  "695_3057": {
+    "species": "Heliolisk",
+    "form_name": "HELIOLISK_NORMAL",
+    "category": "default"
+  },
+  "696_3058": {
+    "species": "Tyrunt",
+    "form_name": "TYRUNT_NORMAL",
+    "category": "default"
+  },
+  "697_3059": {
+    "species": "Tyrantrum",
+    "form_name": "TYRANTRUM_NORMAL",
+    "category": "default"
+  },
+  "698_3060": {
+    "species": "Amaura",
+    "form_name": "AMAURA_NORMAL",
+    "category": "default"
+  },
+  "699_3061": {
+    "species": "Aurorus",
+    "form_name": "AURORUS_NORMAL",
+    "category": "default"
+  },
+  "700_3062": {
+    "species": "Sylveon",
+    "form_name": "SYLVEON_NORMAL",
+    "category": "default"
+  },
+  "701_3063": {
+    "species": "Hawlucha",
+    "form_name": "HAWLUCHA_NORMAL",
+    "category": "default"
+  },
+  "703_3064": {
+    "species": "Carbink",
+    "form_name": "CARBINK_NORMAL",
+    "category": "default"
+  },
+  "704_3065": {
+    "species": "Goomy",
+    "form_name": "GOOMY_NORMAL",
+    "category": "default"
+  },
+  "707_3066": {
+    "species": "Klefki",
+    "form_name": "KLEFKI_NORMAL",
+    "category": "default"
+  },
+  "708_3067": {
+    "species": "Phantump",
+    "form_name": "PHANTUMP_NORMAL",
+    "category": "default"
+  },
+  "709_3068": {
+    "species": "Trevenant",
+    "form_name": "TREVENANT_NORMAL",
+    "category": "default"
+  },
+  "712_3069": {
+    "species": "Bergmite",
+    "form_name": "BERGMITE_NORMAL",
+    "category": "default"
+  },
+  "714_3070": {
+    "species": "Noibat",
+    "form_name": "NOIBAT_NORMAL",
+    "category": "default"
+  },
+  "715_3071": {
+    "species": "Noivern",
+    "form_name": "NOIVERN_NORMAL",
+    "category": "default"
+  },
+  "716_3072": {
+    "species": "Xerneas",
+    "form_name": "XERNEAS_NORMAL",
+    "category": "default"
+  },
+  "717_3073": {
+    "species": "Yveltal",
+    "form_name": "YVELTAL_NORMAL",
+    "category": "default"
+  },
+  "719_3074": {
+    "species": "Diancie",
+    "form_name": "DIANCIE_NORMAL",
+    "category": "default"
+  },
+  "721_3075": {
+    "species": "Volcanion",
+    "form_name": "VOLCANION_NORMAL",
+    "category": "default"
+  },
+  "722_3076": {
+    "species": "Rowlet",
+    "form_name": "ROWLET_NORMAL",
+    "category": "default"
+  },
+  "723_3077": {
+    "species": "Dartrix",
+    "form_name": "DARTRIX_NORMAL",
+    "category": "default"
+  },
+  "725_3078": {
+    "species": "Litten",
+    "form_name": "LITTEN_NORMAL",
+    "category": "default"
+  },
+  "726_3079": {
+    "species": "Torracat",
+    "form_name": "TORRACAT_NORMAL",
+    "category": "default"
+  },
+  "727_3080": {
+    "species": "Incineroar",
+    "form_name": "INCINEROAR_NORMAL",
+    "category": "default"
+  },
+  "728_3081": {
+    "species": "Popplio",
+    "form_name": "POPPLIO_NORMAL",
+    "category": "default"
+  },
+  "729_3082": {
+    "species": "Brionne",
+    "form_name": "BRIONNE_NORMAL",
+    "category": "default"
+  },
+  "730_3083": {
+    "species": "Primarina",
+    "form_name": "PRIMARINA_NORMAL",
+    "category": "default"
+  },
+  "731_3084": {
+    "species": "Pikipek",
+    "form_name": "PIKIPEK_NORMAL",
+    "category": "default"
+  },
+  "732_3085": {
+    "species": "Trumbeak",
+    "form_name": "TRUMBEAK_NORMAL",
+    "category": "default"
+  },
+  "733_3086": {
+    "species": "Toucannon",
+    "form_name": "TOUCANNON_NORMAL",
+    "category": "default"
+  },
+  "734_3087": {
+    "species": "Yungoos",
+    "form_name": "YUNGOOS_NORMAL",
+    "category": "default"
+  },
+  "735_3088": {
+    "species": "Gumshoos",
+    "form_name": "GUMSHOOS_NORMAL",
+    "category": "default"
+  },
+  "736_3089": {
+    "species": "Grubbin",
+    "form_name": "GRUBBIN_NORMAL",
+    "category": "default"
+  },
+  "737_3090": {
+    "species": "Charjabug",
+    "form_name": "CHARJABUG_NORMAL",
+    "category": "default"
+  },
+  "738_3091": {
+    "species": "Vikavolt",
+    "form_name": "VIKAVOLT_NORMAL",
+    "category": "default"
+  },
+  "739_3092": {
+    "species": "Crabrawler",
+    "form_name": "CRABRAWLER_NORMAL",
+    "category": "default"
+  },
+  "740_3093": {
+    "species": "Crabominable",
+    "form_name": "CRABOMINABLE_NORMAL",
+    "category": "default"
+  },
+  "742_3094": {
+    "species": "Cutiefly",
+    "form_name": "CUTIEFLY_NORMAL",
+    "category": "default"
+  },
+  "743_3095": {
+    "species": "Ribombee",
+    "form_name": "RIBOMBEE_NORMAL",
+    "category": "default"
+  },
+  "747_3096": {
+    "species": "Mareanie",
+    "form_name": "MAREANIE_NORMAL",
+    "category": "default"
+  },
+  "748_3097": {
+    "species": "Toxapex",
+    "form_name": "TOXAPEX_NORMAL",
+    "category": "default"
+  },
+  "749_3098": {
+    "species": "Mudbray",
+    "form_name": "MUDBRAY_NORMAL",
+    "category": "default"
+  },
+  "750_3099": {
+    "species": "Mudsdale",
+    "form_name": "MUDSDALE_NORMAL",
+    "category": "default"
+  },
+  "751_3100": {
+    "species": "Dewpider",
+    "form_name": "DEWPIDER_NORMAL",
+    "category": "default"
+  },
+  "752_3101": {
+    "species": "Araquanid",
+    "form_name": "ARAQUANID_NORMAL",
+    "category": "default"
+  },
+  "753_3102": {
+    "species": "Fomantis",
+    "form_name": "FOMANTIS_NORMAL",
+    "category": "default"
+  },
+  "754_3103": {
+    "species": "Lurantis",
+    "form_name": "LURANTIS_NORMAL",
+    "category": "default"
+  },
+  "755_3104": {
+    "species": "Morelull",
+    "form_name": "MORELULL_NORMAL",
+    "category": "default"
+  },
+  "756_3105": {
+    "species": "Shiinotic",
+    "form_name": "SHIINOTIC_NORMAL",
+    "category": "default"
+  },
+  "757_3106": {
+    "species": "Salandit",
+    "form_name": "SALANDIT_NORMAL",
+    "category": "default"
+  },
+  "758_3107": {
+    "species": "Salazzle",
+    "form_name": "SALAZZLE_NORMAL",
+    "category": "default"
+  },
+  "759_3108": {
+    "species": "Stufful",
+    "form_name": "STUFFUL_NORMAL",
+    "category": "default"
+  },
+  "761_3109": {
+    "species": "Bounsweet",
+    "form_name": "BOUNSWEET_NORMAL",
+    "category": "default"
+  },
+  "762_3110": {
+    "species": "Steenee",
+    "form_name": "STEENEE_NORMAL",
+    "category": "default"
+  },
+  "763_3111": {
+    "species": "Tsareena",
+    "form_name": "TSAREENA_NORMAL",
+    "category": "default"
+  },
+  "764_3112": {
+    "species": "Comfey",
+    "form_name": "COMFEY_NORMAL",
+    "category": "default"
+  },
+  "765_3113": {
+    "species": "Oranguru",
+    "form_name": "ORANGURU_NORMAL",
+    "category": "default"
+  },
+  "766_3114": {
+    "species": "Passimian",
+    "form_name": "PASSIMIAN_NORMAL",
+    "category": "default"
+  },
+  "767_3115": {
+    "species": "Wimpod",
+    "form_name": "WIMPOD_NORMAL",
+    "category": "default"
+  },
+  "768_3116": {
+    "species": "Golisopod",
+    "form_name": "GOLISOPOD_NORMAL",
+    "category": "default"
+  },
+  "769_3117": {
+    "species": "Sandygast",
+    "form_name": "SANDYGAST_NORMAL",
+    "category": "default"
+  },
+  "770_3118": {
+    "species": "Palossand",
+    "form_name": "PALOSSAND_NORMAL",
+    "category": "default"
+  },
+  "771_3119": {
+    "species": "Pyukumuku",
+    "form_name": "PYUKUMUKU_NORMAL",
+    "category": "default"
+  },
+  "772_3120": {
+    "species": "Type",
+    "form_name": "TYPE_NULL_NORMAL",
+    "category": "cosmetic"
+  },
+  "775_3121": {
+    "species": "Komala",
+    "form_name": "KOMALA_NORMAL",
+    "category": "default"
+  },
+  "776_3122": {
+    "species": "Turtonator",
+    "form_name": "TURTONATOR_NORMAL",
+    "category": "default"
+  },
+  "777_3123": {
+    "species": "Togedemaru",
+    "form_name": "TOGEDEMARU_NORMAL",
+    "category": "default"
+  },
+  "779_3124": {
+    "species": "Bruxish",
+    "form_name": "BRUXISH_NORMAL",
+    "category": "default"
+  },
+  "780_3125": {
+    "species": "Drampa",
+    "form_name": "DRAMPA_NORMAL",
+    "category": "default"
+  },
+  "781_3126": {
+    "species": "Dhelmise",
+    "form_name": "DHELMISE_NORMAL",
+    "category": "default"
+  },
+  "782_3127": {
+    "species": "Jangmo-o",
+    "form_name": "JANGMO_O_NORMAL",
+    "category": "cosmetic"
+  },
+  "783_3128": {
+    "species": "Hakamo",
+    "form_name": "HAKAMO_O_NORMAL",
+    "category": "cosmetic"
+  },
+  "784_3129": {
+    "species": "Kommo",
+    "form_name": "KOMMO_O_NORMAL",
+    "category": "cosmetic"
+  },
+  "785_3130": {
+    "species": "Tapu",
+    "form_name": "TAPU_KOKO_NORMAL",
+    "category": "cosmetic"
+  },
+  "785_3131": {
+    "species": "Tapu",
+    "form_name": "TAPU_LELE_NORMAL",
+    "category": "cosmetic"
+  },
+  "785_3132": {
+    "species": "Tapu",
+    "form_name": "TAPU_BULU_NORMAL",
+    "category": "cosmetic"
+  },
+  "785_3133": {
+    "species": "Tapu",
+    "form_name": "TAPU_FINI_NORMAL",
+    "category": "cosmetic"
+  },
+  "789_3134": {
+    "species": "Cosmog",
+    "form_name": "COSMOG_NORMAL",
+    "category": "default"
+  },
+  "790_3135": {
+    "species": "Cosmoem",
+    "form_name": "COSMOEM_NORMAL",
+    "category": "default"
+  },
+  "791_3136": {
+    "species": "Solgaleo",
+    "form_name": "SOLGALEO_NORMAL",
+    "category": "default"
+  },
+  "792_3137": {
+    "species": "Lunala",
+    "form_name": "LUNALA_NORMAL",
+    "category": "default"
+  },
+  "793_3138": {
+    "species": "Nihilego",
+    "form_name": "NIHILEGO_NORMAL",
+    "category": "default"
+  },
+  "794_3139": {
+    "species": "Buzzwole",
+    "form_name": "BUZZWOLE_NORMAL",
+    "category": "default"
+  },
+  "795_3140": {
+    "species": "Pheromosa",
+    "form_name": "PHEROMOSA_NORMAL",
+    "category": "default"
+  },
+  "796_3141": {
+    "species": "Xurkitree",
+    "form_name": "XURKITREE_NORMAL",
+    "category": "default"
+  },
+  "797_3142": {
+    "species": "Celesteela",
+    "form_name": "CELESTEELA_NORMAL",
+    "category": "default"
+  },
+  "798_3143": {
+    "species": "Kartana",
+    "form_name": "KARTANA_NORMAL",
+    "category": "default"
+  },
+  "799_3144": {
+    "species": "Guzzlord",
+    "form_name": "GUZZLORD_NORMAL",
+    "category": "default"
+  },
+  "802_3145": {
+    "species": "Marshadow",
+    "form_name": "MARSHADOW_NORMAL",
+    "category": "default"
+  },
+  "803_3146": {
+    "species": "Poipole",
+    "form_name": "POIPOLE_NORMAL",
+    "category": "default"
+  },
+  "804_3147": {
+    "species": "Naganadel",
+    "form_name": "NAGANADEL_NORMAL",
+    "category": "default"
+  },
+  "805_3148": {
+    "species": "Stakataka",
+    "form_name": "STAKATAKA_NORMAL",
+    "category": "default"
+  },
+  "806_3149": {
+    "species": "Blacephalon",
+    "form_name": "BLACEPHALON_NORMAL",
+    "category": "default"
+  },
+  "807_3150": {
+    "species": "Zeraora",
+    "form_name": "ZERAORA_NORMAL",
+    "category": "default"
+  },
+  "810_3151": {
+    "species": "Grookey",
+    "form_name": "GROOKEY_NORMAL",
+    "category": "default"
+  },
+  "811_3152": {
+    "species": "Thwackey",
+    "form_name": "THWACKEY_NORMAL",
+    "category": "default"
+  },
+  "813_3153": {
+    "species": "Scorbunny",
+    "form_name": "SCORBUNNY_NORMAL",
+    "category": "default"
+  },
+  "814_3154": {
+    "species": "Raboot",
+    "form_name": "RABOOT_NORMAL",
+    "category": "default"
+  },
+  "816_3155": {
+    "species": "Sobble",
+    "form_name": "SOBBLE_NORMAL",
+    "category": "default"
+  },
+  "817_3156": {
+    "species": "Drizzile",
+    "form_name": "DRIZZILE_NORMAL",
+    "category": "default"
+  },
+  "818_3157": {
+    "species": "Inteleon",
+    "form_name": "INTELEON_NORMAL",
+    "category": "default"
+  },
+  "819_3158": {
+    "species": "Skwovet",
+    "form_name": "SKWOVET_NORMAL",
+    "category": "default"
+  },
+  "820_3159": {
+    "species": "Greedent",
+    "form_name": "GREEDENT_NORMAL",
+    "category": "default"
+  },
+  "821_3160": {
+    "species": "Rookidee",
+    "form_name": "ROOKIDEE_NORMAL",
+    "category": "default"
+  },
+  "822_3161": {
+    "species": "Corvisquire",
+    "form_name": "CORVISQUIRE_NORMAL",
+    "category": "default"
+  },
+  "823_3162": {
+    "species": "Corviknight",
+    "form_name": "CORVIKNIGHT_NORMAL",
+    "category": "default"
+  },
+  "824_3163": {
+    "species": "Blipbug",
+    "form_name": "BLIPBUG_NORMAL",
+    "category": "default"
+  },
+  "825_3164": {
+    "species": "Dottler",
+    "form_name": "DOTTLER_NORMAL",
+    "category": "default"
+  },
+  "826_3165": {
+    "species": "Orbeetle",
+    "form_name": "ORBEETLE_NORMAL",
+    "category": "default"
+  },
+  "827_3166": {
+    "species": "Nickit",
+    "form_name": "NICKIT_NORMAL",
+    "category": "default"
+  },
+  "828_3167": {
+    "species": "Thievul",
+    "form_name": "THIEVUL_NORMAL",
+    "category": "default"
+  },
+  "829_3168": {
+    "species": "Gossifleur",
+    "form_name": "GOSSIFLEUR_NORMAL",
+    "category": "default"
+  },
+  "830_3169": {
+    "species": "Eldegoss",
+    "form_name": "ELDEGOSS_NORMAL",
+    "category": "default"
+  },
+  "833_3170": {
+    "species": "Chewtle",
+    "form_name": "CHEWTLE_NORMAL",
+    "category": "default"
+  },
+  "834_3171": {
+    "species": "Drednaw",
+    "form_name": "DREDNAW_NORMAL",
+    "category": "default"
+  },
+  "835_3172": {
+    "species": "Yamper",
+    "form_name": "YAMPER_NORMAL",
+    "category": "default"
+  },
+  "836_3173": {
+    "species": "Boltund",
+    "form_name": "BOLTUND_NORMAL",
+    "category": "default"
+  },
+  "837_3174": {
+    "species": "Rolycoly",
+    "form_name": "ROLYCOLY_NORMAL",
+    "category": "default"
+  },
+  "838_3175": {
+    "species": "Carkol",
+    "form_name": "CARKOL_NORMAL",
+    "category": "default"
+  },
+  "839_3176": {
+    "species": "Coalossal",
+    "form_name": "COALOSSAL_NORMAL",
+    "category": "default"
+  },
+  "840_3177": {
+    "species": "Applin",
+    "form_name": "APPLIN_NORMAL",
+    "category": "default"
+  },
+  "841_3178": {
+    "species": "Flapple",
+    "form_name": "FLAPPLE_NORMAL",
+    "category": "default"
+  },
+  "842_3179": {
+    "species": "Appletun",
+    "form_name": "APPLETUN_NORMAL",
+    "category": "default"
+  },
+  "843_3180": {
+    "species": "Silicobra",
+    "form_name": "SILICOBRA_NORMAL",
+    "category": "default"
+  },
+  "844_3181": {
+    "species": "Sandaconda",
+    "form_name": "SANDACONDA_NORMAL",
+    "category": "default"
+  },
+  "845_3182": {
+    "species": "Cramorant",
+    "form_name": "CRAMORANT_NORMAL",
+    "category": "default"
+  },
+  "846_3183": {
+    "species": "Arrokuda",
+    "form_name": "ARROKUDA_NORMAL",
+    "category": "default"
+  },
+  "847_3184": {
+    "species": "Barraskewda",
+    "form_name": "BARRASKEWDA_NORMAL",
+    "category": "default"
+  },
+  "848_3185": {
+    "species": "Toxel",
+    "form_name": "TOXEL_NORMAL",
+    "category": "default"
+  },
+  "850_3186": {
+    "species": "Sizzlipede",
+    "form_name": "SIZZLIPEDE_NORMAL",
+    "category": "default"
+  },
+  "851_3187": {
+    "species": "Centiskorch",
+    "form_name": "CENTISKORCH_NORMAL",
+    "category": "default"
+  },
+  "852_3188": {
+    "species": "Clobbopus",
+    "form_name": "CLOBBOPUS_NORMAL",
+    "category": "default"
+  },
+  "853_3189": {
+    "species": "Grapploct",
+    "form_name": "GRAPPLOCT_NORMAL",
+    "category": "default"
+  },
+  "856_3190": {
+    "species": "Hatenna",
+    "form_name": "HATENNA_NORMAL",
+    "category": "default"
+  },
+  "857_3191": {
+    "species": "pid857",
+    "form_name": "HATTREM_NORMAL",
+    "category": "default"
+  },
+  "858_3192": {
+    "species": "Hatterene",
+    "form_name": "HATTERENE_NORMAL",
+    "category": "default"
+  },
+  "859_3193": {
+    "species": "Impidimp",
+    "form_name": "IMPIDIMP_NORMAL",
+    "category": "default"
+  },
+  "860_3194": {
+    "species": "Morgrem",
+    "form_name": "MORGREM_NORMAL",
+    "category": "default"
+  },
+  "861_3195": {
+    "species": "Grimmsnarl",
+    "form_name": "GRIMMSNARL_NORMAL",
+    "category": "default"
+  },
+  "868_3196": {
+    "species": "Milcery",
+    "form_name": "MILCERY_NORMAL",
+    "category": "default"
+  },
+  "869_3197": {
+    "species": "Alcremie",
+    "form_name": "ALCREMIE_NORMAL",
+    "category": "default"
+  },
+  "871_3198": {
+    "species": "Pincurchin",
+    "form_name": "PINCURCHIN_NORMAL",
+    "category": "default"
+  },
+  "872_3199": {
+    "species": "Snom",
+    "form_name": "SNOM_NORMAL",
+    "category": "default"
+  },
+  "873_3200": {
+    "species": "Frosmoth",
+    "form_name": "FROSMOTH_NORMAL",
+    "category": "default"
+  },
+  "874_3201": {
+    "species": "Stonjourner",
+    "form_name": "STONJOURNER_NORMAL",
+    "category": "default"
+  },
+  "878_3202": {
+    "species": "Cufant",
+    "form_name": "CUFANT_NORMAL",
+    "category": "default"
+  },
+  "879_3203": {
+    "species": "Copperajah",
+    "form_name": "COPPERAJAH_NORMAL",
+    "category": "default"
+  },
+  "880_3204": {
+    "species": "Dracozolt",
+    "form_name": "DRACOZOLT_NORMAL",
+    "category": "default"
+  },
+  "881_3205": {
+    "species": "Arctozolt",
+    "form_name": "ARCTOZOLT_NORMAL",
+    "category": "default"
+  },
+  "882_3206": {
+    "species": "Dracovish",
+    "form_name": "DRACOVISH_NORMAL",
+    "category": "default"
+  },
+  "883_3207": {
+    "species": "Arctovish",
+    "form_name": "ARCTOVISH_NORMAL",
+    "category": "default"
+  },
+  "884_3208": {
+    "species": "Duraludon",
+    "form_name": "DURALUDON_NORMAL",
+    "category": "default"
+  },
+  "885_3209": {
+    "species": "Dreepy",
+    "form_name": "DREEPY_NORMAL",
+    "category": "default"
+  },
+  "886_3210": {
+    "species": "Drakloak",
+    "form_name": "DRAKLOAK_NORMAL",
+    "category": "default"
+  },
+  "887_3211": {
+    "species": "Dragapult",
+    "form_name": "DRAGAPULT_NORMAL",
+    "category": "default"
+  },
+  "891_3212": {
+    "species": "Kubfu",
+    "form_name": "KUBFU_NORMAL",
+    "category": "default"
+  },
+  "893_3213": {
+    "species": "Zarude",
+    "form_name": "ZARUDE_NORMAL",
+    "category": "default"
+  },
+  "894_3214": {
+    "species": "Regieleki",
+    "form_name": "REGIELEKI_NORMAL",
+    "category": "default"
+  },
+  "895_3215": {
+    "species": "Regidrago",
+    "form_name": "REGIDRAGO_NORMAL",
+    "category": "default"
+  },
+  "896_3216": {
+    "species": "Glastrier",
+    "form_name": "GLASTRIER_NORMAL",
+    "category": "default"
+  },
+  "897_3217": {
+    "species": "Spectrier",
+    "form_name": "SPECTRIER_NORMAL",
+    "category": "default"
+  },
+  "899_3218": {
+    "species": "Wyrdeer",
+    "form_name": "WYRDEER_NORMAL",
+    "category": "default"
+  },
+  "900_3219": {
+    "species": "Kleavor",
+    "form_name": "KLEAVOR_NORMAL",
+    "category": "default"
+  },
+  "903_3220": {
+    "species": "Sneasler",
+    "form_name": "SNEASLER_NORMAL",
+    "category": "default"
+  },
+  "904_3221": {
+    "species": "Overqwil",
+    "form_name": "OVERQWIL_NORMAL",
+    "category": "default"
+  },
+  "906_3222": {
+    "species": "Sprigatito",
+    "form_name": "SPRIGATITO_NORMAL",
+    "category": "default"
+  },
+  "907_3223": {
+    "species": "Floragato",
+    "form_name": "FLORAGATO_NORMAL",
+    "category": "default"
+  },
+  "908_3224": {
+    "species": "Meowscarada",
+    "form_name": "MEOWSCARADA_NORMAL",
+    "category": "default"
+  },
+  "909_3225": {
+    "species": "Fuecoco",
+    "form_name": "FUECOCO_NORMAL",
+    "category": "default"
+  },
+  "910_3226": {
+    "species": "Crocalor",
+    "form_name": "CROCALOR_NORMAL",
+    "category": "default"
+  },
+  "911_3227": {
+    "species": "Skeledirge",
+    "form_name": "SKELEDIRGE_NORMAL",
+    "category": "default"
+  },
+  "912_3228": {
+    "species": "Quaxly",
+    "form_name": "QUAXLY_NORMAL",
+    "category": "default"
+  },
+  "913_3229": {
+    "species": "Quaxwell",
+    "form_name": "QUAXWELL_NORMAL",
+    "category": "default"
+  },
+  "914_3230": {
+    "species": "Quaquaval",
+    "form_name": "QUAQUAVAL_NORMAL",
+    "category": "default"
+  },
+  "915_3231": {
+    "species": "Lechonk",
+    "form_name": "LECHONK_NORMAL",
+    "category": "default"
+  },
+  "917_3232": {
+    "species": "pid917",
+    "form_name": "TAROUNTULA_NORMAL",
+    "category": "default"
+  },
+  "918_3233": {
+    "species": "Spidops",
+    "form_name": "SPIDOPS_NORMAL",
+    "category": "default"
+  },
+  "919_3234": {
+    "species": "Nymble",
+    "form_name": "NYMBLE_NORMAL",
+    "category": "default"
+  },
+  "920_3235": {
+    "species": "Lokix",
+    "form_name": "LOKIX_NORMAL",
+    "category": "default"
+  },
+  "921_3236": {
+    "species": "Pawmi",
+    "form_name": "PAWMI_NORMAL",
+    "category": "default"
+  },
+  "922_3237": {
+    "species": "Pawmo",
+    "form_name": "PAWMO_NORMAL",
+    "category": "default"
+  },
+  "923_3238": {
+    "species": "Pawmot",
+    "form_name": "PAWMOT_NORMAL",
+    "category": "default"
+  },
+  "924_3239": {
+    "species": "Tandemaus",
+    "form_name": "TANDEMAUS_NORMAL",
+    "category": "default"
+  },
+  "926_3240": {
+    "species": "Fidough",
+    "form_name": "FIDOUGH_NORMAL",
+    "category": "default"
+  },
+  "927_3241": {
+    "species": "Dachsbun",
+    "form_name": "DACHSBUN_NORMAL",
+    "category": "default"
+  },
+  "928_3242": {
+    "species": "Smoliv",
+    "form_name": "SMOLIV_NORMAL",
+    "category": "default"
+  },
+  "929_3243": {
+    "species": "Dolliv",
+    "form_name": "DOLLIV_NORMAL",
+    "category": "default"
+  },
+  "930_3244": {
+    "species": "Arboliva",
+    "form_name": "ARBOLIVA_NORMAL",
+    "category": "default"
+  },
+  "932_3245": {
+    "species": "Nacli",
+    "form_name": "NACLI_NORMAL",
+    "category": "default"
+  },
+  "933_3246": {
+    "species": "Naclstack",
+    "form_name": "NACLSTACK_NORMAL",
+    "category": "default"
+  },
+  "934_3247": {
+    "species": "Garganacl",
+    "form_name": "GARGANACL_NORMAL",
+    "category": "default"
+  },
+  "935_3248": {
+    "species": "Charcadet",
+    "form_name": "CHARCADET_NORMAL",
+    "category": "default"
+  },
+  "936_3249": {
+    "species": "Armarouge",
+    "form_name": "ARMAROUGE_NORMAL",
+    "category": "default"
+  },
+  "937_3250": {
+    "species": "Ceruledge",
+    "form_name": "CERULEDGE_NORMAL",
+    "category": "default"
+  },
+  "938_3251": {
+    "species": "Tadbulb",
+    "form_name": "TADBULB_NORMAL",
+    "category": "default"
+  },
+  "939_3252": {
+    "species": "Bellibolt",
+    "form_name": "BELLIBOLT_NORMAL",
+    "category": "default"
+  },
+  "940_3253": {
+    "species": "Wattrel",
+    "form_name": "WATTREL_NORMAL",
+    "category": "default"
+  },
+  "941_3254": {
+    "species": "Kilowattrel",
+    "form_name": "KILOWATTREL_NORMAL",
+    "category": "default"
+  },
+  "942_3255": {
+    "species": "Maschiff",
+    "form_name": "MASCHIFF_NORMAL",
+    "category": "default"
+  },
+  "943_3256": {
+    "species": "Mabosstiff",
+    "form_name": "MABOSSTIFF_NORMAL",
+    "category": "default"
+  },
+  "944_3257": {
+    "species": "Shroodle",
+    "form_name": "SHROODLE_NORMAL",
+    "category": "default"
+  },
+  "945_3258": {
+    "species": "Grafaiai",
+    "form_name": "GRAFAIAI_NORMAL",
+    "category": "default"
+  },
+  "946_3259": {
+    "species": "Bramblin",
+    "form_name": "BRAMBLIN_NORMAL",
+    "category": "default"
+  },
+  "947_3260": {
+    "species": "Brambleghast",
+    "form_name": "BRAMBLEGHAST_NORMAL",
+    "category": "default"
+  },
+  "948_3261": {
+    "species": "Toedscool",
+    "form_name": "TOEDSCOOL_NORMAL",
+    "category": "default"
+  },
+  "949_3262": {
+    "species": "Toedscruel",
+    "form_name": "TOEDSCRUEL_NORMAL",
+    "category": "default"
+  },
+  "950_3263": {
+    "species": "Klawf",
+    "form_name": "KLAWF_NORMAL",
+    "category": "default"
+  },
+  "951_3264": {
+    "species": "Capsakid",
+    "form_name": "CAPSAKID_NORMAL",
+    "category": "default"
+  },
+  "952_3265": {
+    "species": "Scovillain",
+    "form_name": "SCOVILLAIN_NORMAL",
+    "category": "default"
+  },
+  "953_3266": {
+    "species": "Rellor",
+    "form_name": "RELLOR_NORMAL",
+    "category": "default"
+  },
+  "954_3267": {
+    "species": "Rabsca",
+    "form_name": "RABSCA_NORMAL",
+    "category": "default"
+  },
+  "955_3268": {
+    "species": "pid955",
+    "form_name": "FLITTLE_NORMAL",
+    "category": "default"
+  },
+  "956_3269": {
+    "species": "Espathra",
+    "form_name": "ESPATHRA_NORMAL",
+    "category": "default"
+  },
+  "957_3270": {
+    "species": "Tinkatink",
+    "form_name": "TINKATINK_NORMAL",
+    "category": "default"
+  },
+  "958_3271": {
+    "species": "Tinkatuff",
+    "form_name": "TINKATUFF_NORMAL",
+    "category": "default"
+  },
+  "959_3272": {
+    "species": "Tinkaton",
+    "form_name": "TINKATON_NORMAL",
+    "category": "default"
+  },
+  "960_3273": {
+    "species": "Wiglett",
+    "form_name": "WIGLETT_NORMAL",
+    "category": "default"
+  },
+  "961_3274": {
+    "species": "Wugtrio",
+    "form_name": "WUGTRIO_NORMAL",
+    "category": "default"
+  },
+  "962_3275": {
+    "species": "Bombirdier",
+    "form_name": "BOMBIRDIER_NORMAL",
+    "category": "default"
+  },
+  "963_3276": {
+    "species": "Finizen",
+    "form_name": "FINIZEN_NORMAL",
+    "category": "default"
+  },
+  "965_3277": {
+    "species": "Varoom",
+    "form_name": "VAROOM_NORMAL",
+    "category": "default"
+  },
+  "966_3278": {
+    "species": "Revavroom",
+    "form_name": "REVAVROOM_NORMAL",
+    "category": "default"
+  },
+  "967_3279": {
+    "species": "Cyclizar",
+    "form_name": "CYCLIZAR_NORMAL",
+    "category": "default"
+  },
+  "968_3280": {
+    "species": "Orthworm",
+    "form_name": "ORTHWORM_NORMAL",
+    "category": "default"
+  },
+  "969_3281": {
+    "species": "Glimmet",
+    "form_name": "GLIMMET_NORMAL",
+    "category": "default"
+  },
+  "970_3282": {
+    "species": "Glimmora",
+    "form_name": "GLIMMORA_NORMAL",
+    "category": "default"
+  },
+  "971_3283": {
+    "species": "Greavard",
+    "form_name": "GREAVARD_NORMAL",
+    "category": "default"
+  },
+  "972_3284": {
+    "species": "Houndstone",
+    "form_name": "HOUNDSTONE_NORMAL",
+    "category": "default"
+  },
+  "973_3285": {
+    "species": "Flamigo",
+    "form_name": "FLAMIGO_NORMAL",
+    "category": "default"
+  },
+  "974_3286": {
+    "species": "Cetoddle",
+    "form_name": "CETODDLE_NORMAL",
+    "category": "default"
+  },
+  "975_3287": {
+    "species": "Cetitan",
+    "form_name": "CETITAN_NORMAL",
+    "category": "default"
+  },
+  "976_3288": {
+    "species": "Veluza",
+    "form_name": "VELUZA_NORMAL",
+    "category": "default"
+  },
+  "977_3289": {
+    "species": "Dondozo",
+    "form_name": "DONDOZO_NORMAL",
+    "category": "default"
+  },
+  "979_3290": {
+    "species": "Annihilape",
+    "form_name": "ANNIHILAPE_NORMAL",
+    "category": "default"
+  },
+  "980_3291": {
+    "species": "Clodsire",
+    "form_name": "CLODSIRE_NORMAL",
+    "category": "default"
+  },
+  "981_3292": {
+    "species": "Farigiraf",
+    "form_name": "FARIGIRAF_NORMAL",
+    "category": "default"
+  },
+  "983_3293": {
+    "species": "Kingambit",
+    "form_name": "KINGAMBIT_NORMAL",
+    "category": "default"
+  },
+  "984_3294": {
+    "species": "Greattusk",
+    "form_name": "GREATTUSK_NORMAL",
+    "category": "default"
+  },
+  "985_3295": {
+    "species": "Screamtail",
+    "form_name": "SCREAMTAIL_NORMAL",
+    "category": "default"
+  },
+  "986_3296": {
+    "species": "Brutebonnet",
+    "form_name": "BRUTEBONNET_NORMAL",
+    "category": "default"
+  },
+  "987_3297": {
+    "species": "Fluttermane",
+    "form_name": "FLUTTERMANE_NORMAL",
+    "category": "default"
+  },
+  "988_3298": {
+    "species": "Slitherwing",
+    "form_name": "SLITHERWING_NORMAL",
+    "category": "default"
+  },
+  "989_3299": {
+    "species": "Sandyshocks",
+    "form_name": "SANDYSHOCKS_NORMAL",
+    "category": "default"
+  },
+  "990_3300": {
+    "species": "Irontreads",
+    "form_name": "IRONTREADS_NORMAL",
+    "category": "default"
+  },
+  "991_3301": {
+    "species": "Ironbundle",
+    "form_name": "IRONBUNDLE_NORMAL",
+    "category": "default"
+  },
+  "992_3302": {
+    "species": "Ironhands",
+    "form_name": "IRONHANDS_NORMAL",
+    "category": "default"
+  },
+  "993_3303": {
+    "species": "Ironjugulis",
+    "form_name": "IRONJUGULIS_NORMAL",
+    "category": "default"
+  },
+  "994_3304": {
+    "species": "Ironmoth",
+    "form_name": "IRONMOTH_NORMAL",
+    "category": "default"
+  },
+  "995_3305": {
+    "species": "Ironthorns",
+    "form_name": "IRONTHORNS_NORMAL",
+    "category": "default"
+  },
+  "996_3306": {
+    "species": "Frigibax",
+    "form_name": "FRIGIBAX_NORMAL",
+    "category": "default"
+  },
+  "997_3307": {
+    "species": "Arctibax",
+    "form_name": "ARCTIBAX_NORMAL",
+    "category": "default"
+  },
+  "998_3308": {
+    "species": "Baxcalibur",
+    "form_name": "BAXCALIBUR_NORMAL",
+    "category": "default"
+  },
+  "1001_3309": {
+    "species": "Wochien",
+    "form_name": "WOCHIEN_NORMAL",
+    "category": "default"
+  },
+  "1002_3310": {
+    "species": "Chienpao",
+    "form_name": "CHIENPAO_NORMAL",
+    "category": "default"
+  },
+  "1003_3311": {
+    "species": "Tinglu",
+    "form_name": "TINGLU_NORMAL",
+    "category": "default"
+  },
+  "1004_3312": {
+    "species": "Chiyu",
+    "form_name": "CHIYU_NORMAL",
+    "category": "default"
+  },
+  "1005_3313": {
+    "species": "Roaringmoon",
+    "form_name": "ROARINGMOON_NORMAL",
+    "category": "default"
+  },
+  "1006_3314": {
+    "species": "Ironvaliant",
+    "form_name": "IRONVALIANT_NORMAL",
+    "category": "default"
+  },
+  "185_3315": {
+    "species": "Sudowoodo",
+    "form_name": "SUDOWOODO_WINTER2025",
+    "category": "event"
+  },
+  "737_3316": {
+    "species": "Charjabug",
+    "form_name": "CHARJABUG_WINTER2025",
+    "category": "event"
+  },
+  "738_3317": {
+    "species": "Vikavolt",
+    "form_name": "VIKAVOLT_WINTER2025",
+    "category": "event"
+  },
+  "25_3318": {
+    "species": "Pikachu",
+    "form_name": "PIKACHU_GOTOUR2026_A",
+    "category": "event"
+  },
+  "25_3319": {
+    "species": "Pikachu",
+    "form_name": "PIKACHU_GOTOUR2026_A02",
+    "category": "event"
+  },
+  "25_3320": {
+    "species": "Pikachu",
+    "form_name": "PIKACHU_GOTOUR2026_B",
+    "category": "event"
+  },
+  "25_3321": {
+    "species": "Pikachu",
+    "form_name": "PIKACHU_GOTOUR2026_B02",
+    "category": "event"
+  },
+  "25_3322": {
+    "species": "Pikachu",
+    "form_name": "PIKACHU_GOTOUR2026_C",
+    "category": "event"
+  },
+  "25_3323": {
+    "species": "Pikachu",
+    "form_name": "PIKACHU_GOTOUR2026_C02",
+    "category": "event"
+  },
+  "1009_3324": {
+    "species": "Walkingwake",
+    "form_name": "WALKINGWAKE_NORMAL",
+    "category": "default"
+  },
+  "1010_3325": {
+    "species": "Ironleaves",
+    "form_name": "IRONLEAVES_NORMAL",
+    "category": "default"
+  },
+  "1011_3326": {
+    "species": "Dipplin",
+    "form_name": "DIPPLIN_NORMAL",
+    "category": "default"
+  },
+  "1014_3327": {
+    "species": "Okidogi",
+    "form_name": "OKIDOGI_NORMAL",
+    "category": "default"
+  },
+  "1015_3328": {
+    "species": "Munkidori",
+    "form_name": "MUNKIDORI_NORMAL",
+    "category": "default"
+  },
+  "1016_3329": {
+    "species": "Fezandipiti",
+    "form_name": "FEZANDIPITI_NORMAL",
+    "category": "default"
+  },
+  "1018_3330": {
+    "species": "Archaludon",
+    "form_name": "ARCHALUDON_NORMAL",
+    "category": "default"
+  },
+  "1019_3331": {
+    "species": "Hydrapple",
+    "form_name": "HYDRAPPLE_NORMAL",
+    "category": "default"
+  },
+  "1020_3332": {
+    "species": "Gougingfire",
+    "form_name": "GOUGINGFIRE_NORMAL",
+    "category": "default"
+  },
+  "1021_3333": {
+    "species": "Ragingbolt",
+    "form_name": "RAGINGBOLT_NORMAL",
+    "category": "default"
+  },
+  "1022_3334": {
+    "species": "Ironboulder",
+    "form_name": "IRONBOULDER_NORMAL",
+    "category": "default"
+  },
+  "1023_3335": {
+    "species": "Ironcrown",
+    "form_name": "IRONCROWN_NORMAL",
+    "category": "default"
+  },
+  "1025_3336": {
+    "species": "Pecharunt",
+    "form_name": "PECHARUNT_NORMAL",
+    "category": "default"
+  },
+  "132_3337": {
+    "species": "Ditto",
+    "form_name": "DITTO_SPRING2026_A",
+    "category": "event"
+  },
+  "132_3338": {
+    "species": "Ditto",
+    "form_name": "DITTO_SPRING2026_B",
+    "category": "event"
+  },
+  "222_3339": {
+    "species": "Corsola",
+    "form_name": "CORSOLA_SPRING2026",
+    "category": "event"
+  },
+  "25_3340": {
+    "species": "Pikachu",
+    "form_name": "PIKACHU_BB2026",
+    "category": "event"
+  },
+  "25_3341": {
+    "species": "Pikachu",
+    "form_name": "PIKACHU_VISOR2026",
+    "category": "event"
+  },
+  "25_3342": {
+    "species": "Pikachu",
+    "form_name": "PIKACHU_FOSSIL2026",
+    "category": "event"
+  },
+  "25_3343": {
+    "species": "Pikachu",
+    "form_name": "PIKACHU_GOFEST2026_CAP_BLUE",
+    "category": "event"
+  },
+  "25_3344": {
+    "species": "Pikachu",
+    "form_name": "PIKACHU_GOFEST2026_CAP_RED",
+    "category": "event"
+  },
+  "25_3345": {
+    "species": "Pikachu",
+    "form_name": "PIKACHU_GOFEST2026_CAP_YELLOW",
+    "category": "event"
+  },
+  "10_3346": {
+    "species": "Caterpie",
+    "form_name": "CATERPIE_GOFEST2026",
+    "category": "event"
+  },
+  "25_3348": {
+    "species": "Pikachu",
+    "form_name": "PIKACHU_ANNIVERSARY2026",
+    "category": "event"
+  },
+  "25_253": {
+    "species": "Pikachu",
+    "form_name": "MAGIKARP_NORMAL",
+    "category": "default"
+  },
+  "29_776": {
+    "species": "Nidoran F",
+    "form_name": "NIDORAN_NORMAL",
+    "category": "default"
+  },
+  "39_119": {
+    "species": "Jigglypuff",
+    "form_name": "BURMY_SANDY",
+    "category": "cosmetic"
+  },
+  "121_253": {
+    "species": "Starmie",
+    "form_name": "MAGIKARP_NORMAL",
+    "category": "default"
+  },
+  "129_598": {
+    "species": "Magikarp",
+    "form_name": "PIKACHU_NORMAL",
+    "category": "default"
+  },
+  "130_286": {
+    "species": "Gyarados",
+    "form_name": "PSYDUCK_NORMAL",
+    "category": "default"
+  },
+  "338_598": {
+    "species": "Solrock",
+    "form_name": "PIKACHU_NORMAL",
+    "category": "default"
+  }
+}

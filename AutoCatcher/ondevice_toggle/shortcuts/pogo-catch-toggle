@@ -1,0 +1,21 @@
+#!/data/data/com.termux/files/usr/bin/sh
+# pogo-catch-toggle — home-screen ON/OFF button for the on-device auto-catcher.
+# Flips the marker file that catch.js polls. ON = file exists, OFF = file gone.
+# No gadget reload, no Frida re-attach: catch.js sees the file change within ~1s.
+#
+# Put this in ~/.shortcuts/ and add a Termux:Widget home-screen shortcut to it.
+MARK=/data/local/tmp/re.zyg.fri/catch.on
+
+# Use root to read/flip the file (it lives in /data/local/tmp, app-owned dir).
+if su -c "[ -f $MARK ]"; then
+  su -c "rm -f $MARK"
+  STATE="OFF"
+else
+  # 'touch' creates the marker; perms loose so the PoGo process can stat it.
+  su -c "touch $MARK && chmod 666 $MARK"
+  STATE="ON"
+fi
+
+echo "PoGo auto-catch: $STATE"
+# Best-effort toast so you get feedback from a home-screen tap (Termux:API).
+command -v termux-toast >/dev/null 2>&1 && termux-toast -g middle "PoGo auto-catch: $STATE"

@@ -1,0 +1,6 @@
+#!/data/data/com.termux/files/usr/bin/sh
+# pogo-catch-off — force the auto-catcher OFF (removes the marker).
+MARK=/data/local/tmp/re.zyg.fri/catch.on
+su -c "rm -f $MARK"
+echo "PoGo auto-catch: OFF"
+command -v termux-toast >/dev/null 2>&1 && termux-toast -g middle "PoGo auto-catch: OFF"
