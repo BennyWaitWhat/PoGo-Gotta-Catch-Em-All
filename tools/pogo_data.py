@@ -20,7 +20,7 @@ a push never overwrites a newer phone version (pull first, or --force); nothing 
 cannot roll code back; SQLite files are packed through the backup API (WAL-safe) and their stale -wal/-shm are removed
 on pull. Device: $ADB_TARGET (the cloud hook sets 127.0.0.1:5555; the PC default is the phone's Tailscale address).
 """
-import argparse, glob, hashlib, io, json, os, socket, sqlite3, subprocess, sys, tarfile, tempfile, time
+import argparse, glob, hashlib, json, os, socket, sqlite3, subprocess, sys, tarfile, tempfile, time
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 MANIFEST = os.path.join(ROOT, 'data_manifest.txt')
@@ -84,10 +84,18 @@ def _sqlite_copy(src, dst):
         b.close(); a.close()
 
 
-def build_tar(paths, root=ROOT):
-    """(bytes, sha256) of a gzip tarball of the repo-relative paths. *.db goes through the SQLite backup API."""
-    buf = io.BytesIO()
-    with tempfile.TemporaryDirectory() as td, tarfile.open(fileobj=buf, mode='w:gz', compresslevel=6) as tf:
+def sha256_file(path):
+    h = hashlib.sha256()
+    with open(path, 'rb') as f:
+        for chunk in iter(lambda: f.read(1 << 20), b''):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def build_tar(paths, dst, root=ROOT):
+    """Write a gzip tarball of the repo-relative paths to dst (streamed: the cold group is GBs); return (bytes, sha256).
+    *.db goes through the SQLite backup API."""
+    with tempfile.TemporaryDirectory() as td, tarfile.open(dst, mode='w:gz', compresslevel=6) as tf:
         for rel in paths:
             src = os.path.join(root, rel)
             if rel.endswith('.db'):
@@ -98,14 +106,13 @@ def build_tar(paths, root=ROOT):
                 os.utime(tmp, (os.path.getmtime(src),) * 2)
                 src = tmp
             tf.add(src, arcname=rel, recursive=False)
-    data = buf.getvalue()
-    return data, hashlib.sha256(data).hexdigest()
+    return os.path.getsize(dst), sha256_file(dst)
 
 
-def newer_here(data, root=ROOT):
+def newer_here(tar_path, root=ROOT):
     """Members whose local copy is NEWER than the packed one and differs in size (a pull would lose local work)."""
     out = []
-    with tarfile.open(fileobj=io.BytesIO(data), mode='r:gz') as tf:
+    with tarfile.open(tar_path, mode='r:gz') as tf:
         for m in tf.getmembers():
             p = os.path.join(root, m.name)
             if m.isfile() and os.path.isfile(p) and os.path.getmtime(p) > m.mtime + 2 and os.path.getsize(p) != m.size:
@@ -113,8 +120,8 @@ def newer_here(data, root=ROOT):
     return out
 
 
-def extract_tar(data, root=ROOT):
-    with tarfile.open(fileobj=io.BytesIO(data), mode='r:gz') as tf:
+def extract_tar(tar_path, root=ROOT):
+    with tarfile.open(tar_path, mode='r:gz') as tf:
         members = tf.getmembers()
         for m in members:
             if m.name.startswith('/') or '..' in m.name.split('/') or not (m.isfile() or m.isdir()):
@@ -143,7 +150,7 @@ def adb(*args, timeout=900):
 
 def phone_meta():
     """{group: meta} for every <group>.json on the phone."""
-    out = adb('shell', 'for f in %s/*.json; do [ -f "$f" ] && { printf "%%s\\t" "$f"; tr -d "\\n" < "$f"; echo; }; done'
+    out = adb('shell', 'for f in %s/*.json; do [ -f "$f" ] && { printf "%%s\\t" "$f"; tr -d "\\n" < "$f"; echo; }; done; true'
               % PHONE_DIR).decode('utf-8', 'replace')
     metas = {}
     for line in out.splitlines():
@@ -161,7 +168,7 @@ def phone_put(local_path, name):
     adb('shell', 'mkdir -p %s' % PHONE_DIR)
     tmp = '%s/.%s.tmp' % (PHONE_DIR, name)
     adb('push', local_path, tmp)
-    want = hashlib.sha256(open(local_path, 'rb').read()).hexdigest()
+    want = sha256_file(local_path)
     got = adb('shell', 'sha256sum %s' % tmp).decode().split()[0]
     if got != want:
         raise SystemExit('upload of %s corrupted (sha %s != %s) -- nothing replaced' % (name, got[:12], want[:12]))
@@ -210,19 +217,20 @@ def cmd_pull(a):
             dst = os.path.join(td, g + '.tar.gz')
             t0 = time.time()
             adb('pull', '%s/%s.tar.gz' % (PHONE_DIR, g), dst)
-            data = open(dst, 'rb').read()
-        if hashlib.sha256(data).hexdigest() != m['sha256']:
-            raise SystemExit('%s: the download does not match its meta sha -- nothing extracted (a push in flight? retry)' % g)
-        lose = [] if a.force else newer_here(data)
+            if sha256_file(dst) != m['sha256']:
+                raise SystemExit('%s: the download does not match its meta sha -- nothing extracted (a push in flight? retry)'
+                                 % g)
+            lose = [] if a.force else newer_here(dst)
+            n = 0 if lose else extract_tar(dst)
+            size = os.path.getsize(dst)
         if lose:
             print('%s: REFUSED -- %d local file(s) are newer than the phone copy v%s (a pull would lose them): %s%s\n'
                   '   push them first (push --group %s), or pull --force to take the phone copy.'
                   % (g, len(lose), m['version'], ', '.join(lose[:5]), ' ...' if len(lose) > 5 else '', g))
             rc = 3
             continue
-        n = extract_tar(data)
         _hold(g, m['version'])
-        print('%s: v%s, %d files, %.1f MB in %.0f s' % (g, m['version'], n, len(data) / 1e6, time.time() - t0))
+        print('%s: v%s, %d files, %.1f MB in %.0f s' % (g, m['version'], n, size / 1e6, time.time() - t0))
     return rc
 
 
@@ -240,19 +248,19 @@ def cmd_push(a):
             print('%s: no files match -- skipped' % g)
             continue
         t0 = time.time()
-        data, sha = build_tar(paths)
         ver = int(m.get('version') or 0) + 1
-        meta = {'version': ver, 'at': time.strftime('%Y-%m-%d %H:%M:%S'), 'sha256': sha, 'bytes': len(data),
-                'files': len(paths), 'by': os.environ.get('POGO_DATA_BY') or (
-                    'cloud' if os.environ.get('CLAUDE_CODE_REMOTE') == 'true' else socket.gethostname())}
         with tempfile.TemporaryDirectory() as td:
             tp, mp = os.path.join(td, g + '.tar.gz'), os.path.join(td, g + '.json')
-            open(tp, 'wb').write(data)
-            json.dump(meta, open(mp, 'w'))
+            size, sha = build_tar(paths, tp)
+            meta = {'version': ver, 'at': time.strftime('%Y-%m-%d %H:%M:%S'), 'sha256': sha, 'bytes': size,
+                    'files': len(paths), 'by': os.environ.get('POGO_DATA_BY') or (
+                        'cloud' if os.environ.get('CLAUDE_CODE_REMOTE') == 'true' else socket.gethostname())}
+            with open(mp, 'w') as f:
+                json.dump(meta, f)
             phone_put(tp, g + '.tar.gz')                 # tarball first: a reader who sees the new meta finds its data
             phone_put(mp, g + '.json')
         _hold(g, ver)
-        print('%s: v%d, %d files, %.1f MB pushed in %.0f s' % (g, ver, len(paths), len(data) / 1e6, time.time() - t0))
+        print('%s: v%d, %d files, %.1f MB pushed in %.0f s' % (g, ver, len(paths), size / 1e6, time.time() - t0))
     return 0
 
 
@@ -275,7 +283,8 @@ def cmd_selftest(_a):
         hot = files_for('hot', g, td, skip={'a/code.py'})
         assert hot == ['a/db.db', 'a/snaps/s4.gz', 'a/snaps/s3.gz'], hot
         assert len(files_for('hot-cold', g, td)) == 5
-        data, _ = build_tar(hot, td)
+        data = os.path.join(td, 'hot.tar.gz')
+        build_tar(hot, data, td)
         c.close()
         out = os.path.join(td, 'out')
         os.makedirs(os.path.join(out, 'a'))
