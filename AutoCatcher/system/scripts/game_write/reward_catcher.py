@@ -29,7 +29,7 @@ LOG = os.path.join(ROOT, "system", "analysis", "pokemod", "reward_catch.log")
 ROUNDS = os.path.join(ROOT, "system", "analysis", "pokemod", "reward_rounds.jsonl")
 _args = [a for a in sys.argv[1:]]
 DRY = "--dry" in _args
-_pos = [a for a in _args if not a.startswith("--")]
+_pos = [a for a in _args if a and not a.startswith("--")]   # the app's button passes an empty MAX ("")
 MAX = int(_pos[0]) if _pos else 0      # 0 = until dry
 TYPES = [4, 5, 6, 10, 13, 23]          # EncounterType values the Today view itself queries for dangling rewards
 BALL = 1                               # Poke (rewards are guaranteed/no-flee; cheapest is fine)
