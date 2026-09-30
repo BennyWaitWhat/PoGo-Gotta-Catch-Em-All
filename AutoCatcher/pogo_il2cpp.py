@@ -375,95 +375,12 @@ def _adb_pidof(dev=None):
         return None
 
 
-def _adb_focus(dev=None):
-    """Return the current foreground window string (mCurrentFocus), or ''."""
-    dev = dev or ADB_TARGET
-    try:
-        out = subprocess.check_output(
-            ['adb', '-s', dev, 'shell', 'dumpsys', 'window'],
-            stderr=subprocess.DEVNULL
-        ).decode(errors='ignore')
-        for line in out.splitlines():
-            if 'mCurrentFocus' in line:
-                return line.strip()
-    except Exception:
-        pass
-    return ''
-
-
 def restart_pogo_and_wait(launch_timeout=90, settle=8):
-    """Force-stop PoGo, relaunch, and BLOCK until it's truly ready to take
-    IL2CPP calls — i.e. a *new* PID is up, the activity is focused, libil2cpp.so
-    is loaded in that process, AND a fresh PokemonBagImpl walk returns >100 mons.
-
-    This is the readiness gate that prevents the post-restart failures:
-      - "enumerateExports of null"  -> libil2cpp not loaded yet
-      - stale-bag no-op writes      -> we re-prove the bag walks before returning
-
-    Returns (frida.Session, int pid) on a confirmed-ready process.
-    Raises RuntimeError if it never reaches readiness within launch_timeout.
-    """
-    import time as _t
-    dev = _resolve_device()
-    if not dev:
-        raise RuntimeError('No ADB device reachable for restart.')
-    if dev == ADB_TARGET:
-        subprocess.run(['adb', 'connect', ADB_TARGET], capture_output=True)
-    old_pid = _adb_pidof(dev)
-    subprocess.run(['adb', '-s', dev, 'shell', 'am', 'force-stop', POGO_PKG], capture_output=True)
-    _t.sleep(3)
-    # Relaunch via monkey (no need to know the exact activity name).
-    subprocess.run(
-        ['adb', '-s', dev, 'shell', 'monkey', '-p', POGO_PKG,
-         '-c', 'android.intent.category.LAUNCHER', '1'],
-        capture_output=True)
-
-    deadline = _t.time() + launch_timeout
-    pid = None
-    # Phase 1: wait for a NEW pid + the Unity activity focused.
-    while _t.time() < deadline:
-        _t.sleep(2)
-        pid = _adb_pidof(dev)
-        foc = _adb_focus(dev)
-        if pid and pid != old_pid and 'pokemongo' in foc.lower():
-            break
-    if not pid or pid == old_pid:
-        raise RuntimeError('PoGo did not relaunch (no new PID / not focused).')
-
-    # Phase 2: give the engine time to load libil2cpp + sync the bag, then PROVE
-    # readiness by attaching and walking the bag. Retry until it walks >100.
-    _t.sleep(settle)
-    last_err = 'never attached'
-    while _t.time() < deadline:
-        try:
-            sess, p2 = get_session()
-        except Exception as e:
-            last_err = f'attach: {e}'
-            _t.sleep(3)
-            continue
-        try:
-            # init() throws/returns no gameImage if libil2cpp isn't mapped yet.
-            sc = get_script_with_helpers(sess)
-            try:
-                ini = sc.exports_sync.init()
-                if not ini.get('gameImage'):
-                    last_err = 'libil2cpp not loaded (no gameImage)'
-                    raise RuntimeError(last_err)
-            finally:
-                sc.unload()
-            bag = pick_singleton(sess, 'Niantic.Holoholo.Internal', 'PokemonBagImpl')
-            n = len(walk_bag_protos(sess, bag))
-            if n > 100:
-                return sess, p2          # CONFIRMED ready
-            last_err = f'bag walk only {n} mons'
-        except Exception as e:
-            last_err = str(e)
-        try:
-            sess.detach()
-        except Exception:
-            pass
-        _t.sleep(3)
-    raise RuntimeError(f'PoGo relaunched (pid {pid}) but never reached readiness: {last_err}')
+    """RETIRED 2026-09-29. Tools never force-stop, restart or launch PoGo (the user: "never restart the game.
+    ever."; Pokemod must be the one that launches it, and the on-phone catcher runs on it). Kept as a stub so an
+    old caller fails loudly instead of killing the game. If PoGo is down, ask the user to reopen it."""
+    raise RuntimeError('restart_pogo_and_wait is retired: tools never force-stop or relaunch PoGo. '
+                       'Ask the user to reopen the game.')
 
 
 class NotReadyToAttach(RuntimeError):

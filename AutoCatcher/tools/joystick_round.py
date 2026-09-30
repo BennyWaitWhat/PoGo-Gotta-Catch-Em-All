@@ -3,9 +3,10 @@
   python tools/joystick_round.py WALK JOG RUN [SPEED_OFFSET]      e.g. 10.7 11.1 11.6 0
   python tools/joystick_round.py mode walking|jogging|running      tap a speed button on the overlay (live)
 
-Safe order (the real GPS must never reach PoGo): record the spot -> edit presets in the joystick's Settings ->
-close PoGo -> STOP intent + force-stop the joystick (kills the stale process) -> TELEPORT to the recorded spot
-(starts a fresh process that loads the new presets) -> ROUTE "NY Long" -> Home -> reopen PoGo.
+Safe order (the real GPS must never reach PoGo): the user closes PoGo first (tools never force-stop or launch the
+game, so this refuses while PoGo runs) -> edit presets in the joystick's Settings -> record the spot -> STOP intent
++ force-stop the joystick (kills the stale process) -> TELEPORT to the recorded spot (starts a fresh process that
+loads the new presets) -> ROUTE "NY Long" -> Home. The user reopens PoGo.
 Every step is verified; any surprise aborts before the next step.
 """
 import html
@@ -150,6 +151,8 @@ def main():
         return
     walk, jog, run = sys.argv[1:4]
     off = sys.argv[4] if len(sys.argv) > 4 else None
+    if sh("pidof com.nianticlabs.pokemongo").strip():
+        die("PoGo is open. Close it yourself first (tools never force-stop the game), then rerun.")
     t0 = time.time()
     T = lambda: f"[{time.time() - t0:5.1f}s]"
     print(T(), "1. open joystick Settings and set presets", flush=True)
@@ -170,12 +173,9 @@ def main():
         die(f"presets not saved as asked: {vals}")
     spot = pos()
     print(T(), "2. spot", spot, flush=True)
-    sh("am force-stop com.nianticlabs.pokemongo")
-    time.sleep(1)
     if sh("pidof com.nianticlabs.pokemongo").strip():
-        die("PoGo still running")
-    spot = pos() or spot
-    print(T(), "3. PoGo closed; spot at close", spot, flush=True)
+        die("PoGo was opened during the run: close it yourself, then rerun")
+    print(T(), "3. PoGo still closed", flush=True)
     sh("am start-foreground-service -a theappninjas.gpsjoystick.STOP")
     time.sleep(2)
     sh(f"am force-stop {PKG}")
@@ -198,11 +198,7 @@ def main():
     q2 = pos()
     print(T(), f"6. route started: moved {meters(q, q2):.1f} m in 4 s, label {q2[2] * 3.6:.1f} km/h", flush=True)
     sh("input keyevent KEYCODE_HOME")
-    time.sleep(1.5)
-    sh("monkey -p com.nianticlabs.pokemongo -c android.intent.category.LAUNCHER 1 >/dev/null 2>&1")
-    time.sleep(3)
-    focus = sh("dumpsys window | grep -m1 mCurrentFocus")
-    print(T(), "7. PoGo reopened:", "yes" if "pokemongo" in focus else focus.strip(), "pid", sh("pidof com.nianticlabs.pokemongo").strip(), flush=True)
+    print(T(), "7. done: reopen PoGo yourself", flush=True)
 
 
 if __name__ == "__main__":

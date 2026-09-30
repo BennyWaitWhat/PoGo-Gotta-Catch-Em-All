@@ -1,3 +1,0 @@
-#!/data/data/com.termux/files/usr/bin/sh
-# Report derived ON/OFF (from the live gadget config) + tail catch.log.
-su -c '/data/local/tmp/re.zyg.fri/pogo-catch.sh status' 2>&1
