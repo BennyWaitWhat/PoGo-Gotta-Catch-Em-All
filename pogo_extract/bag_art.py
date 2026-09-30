@@ -21,6 +21,7 @@ the processing parameters: change a size and the old directory is simply ignored
 Env: BAG_ART=0 turns art AND official names off (today's page, byte for byte); BAG_ART_CACHE=<dir>; BAG_ART_OFFLINE=1.
 
     python bag_art.py --selftest                                   offline, no DB, no phone, no network
+    python bag_art.py --text [FILE]                                a page's words, pictures stripped (default: the active account's Bag Pulse)
     python bag_art.py --refresh-index --tree FILE | --clone DIR    rebuild pogo_icon_index.txt (a saved trees-API JSON or
                                                                    `git ls-tree` list, or a local clone; read-only git only)
     python bag_art.py --refresh-names --i18n FILE [--gm FILE] [--commit SHA]
@@ -994,6 +995,17 @@ def main(argv):
         return None
     if a == ['--selftest']:
         return _selftest()
+    if a and a[0] == '--text' and len(a) <= 2:
+        # the page's visible words (tags, scripts, styles and data-URI pictures stripped): what the cull reads before it
+        # publishes Bag Pulse; no FILE = the active account's page (2026-09-30, fewer cull steps)
+        import account_guard
+        p = a[1] if len(a) == 2 else os.path.join(HERE, 'system', 'analysis', 'collection_stats.html'
+                                                  if account_guard.active() in (None, 'oyebenny') else 'bag_pulse_alt.html')
+        s = open(p, encoding='utf-8').read()
+        for pat in (r'<script[\s\S]*?</script>', r'<style[\s\S]*?</style>', r'<[^>]+>'):
+            s = re.sub(pat, ' ', s)
+        print(os.path.basename(p) + ': ' + ' '.join(html.unescape(s).split()))
+        return 0
     if a and a[0] == '--refresh-index':
         a.pop(0)
         tree, clone, commit, committed = opt('--tree'), opt('--clone'), opt('--commit'), opt('--committed')
