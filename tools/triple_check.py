@@ -24,7 +24,7 @@ SECRET = re.compile(rb'AIza[0-9A-Za-z_\-]{30,}|tskey-(?:auth|client|api)-[0-9A-Z
                     rb'|[A-Za-z0-9._%+\-]+@(?:gmail|bellsouth|yahoo|outlook|hotmail|icloud)\.[a-z]+')
 SELFTESTS = [['tools/pogo_data.py', 'selftest'], ['pogo_extract/walk_tripwires.py', '--selftest'],
              ['pogo_extract/cull_report.py', '--selftest'], ['pogo_extract/independent_law.py'],
-             ['pogo_extract/system/scripts/check_constant_drift.py']]
+             ['pogo_extract/system/scripts/check_constant_drift.py'], ['pogo_extract/bag_art.py', '--selftest']]
 results = []
 
 

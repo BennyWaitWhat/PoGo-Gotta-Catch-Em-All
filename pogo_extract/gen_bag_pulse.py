@@ -22,6 +22,24 @@ import keep_config
 import size_line as sl
 import evolvable_forms as ef
 from pvp_iv_rule import pvid
+# PICTURES + THE GAME'S OWN NAMES (2026-09-30, docs/memory/pogo-bag-pulse-sprites.md): the Transfer pile as sprites (form, costume,
+# gender, shiny, background card) and official species / form names. DISPLAY ONLY, and the page must never fail for it: this
+# import is guarded, bag_art.prepare never raises, and BAG_ART=0 gives back the page as it was, byte for byte.
+try:
+    import bag_art
+    import pogo_display
+    NAMES = pogo_display.Names.load() if bag_art.enabled() else pogo_display.Names.empty()
+except Exception as _e:
+    bag_art = pogo_display = None
+    print('bag_art unavailable (%s) -- text-only page' % _e)
+
+    class _Plain:                                                  # today's names: whatever the walk stored
+        species = staticmethod(lambda dex, fallback='': fallback)
+        label = staticmethod(lambda r: r['species_name'])
+        fix_stamped = staticmethod(lambda t: t)
+        learn = staticmethod(lambda rows: None)
+    NAMES = _Plain()
+ART_ON = bag_art is not None and bag_art.enabled()
 
 con = sqlite3.connect('file:pokemon.db?mode=ro', uri=True)
 con.row_factory = sqlite3.Row
@@ -120,8 +138,9 @@ dex = json.load(open('pokedex_hundos_live.json', encoding='utf-8'))
 ents = {e['pid']: e for e in dex.get('entries', [])}
 names = {}
 for r in rows:
-    names.setdefault(r['pokemon_id'], r['species_name'])
-nm = lambda pid: names.get(pid, '#%d' % pid)
+    names.setdefault(r['pokemon_id'], NAMES.species(r['pokemon_id'], r['species_name']))
+nm = lambda pid: names[pid] if pid in names else NAMES.species(pid, '#%d' % pid)      # the game's own spelling: Mr. Mime, Nidoran♀
+NAMES.learn(rows)
 ever_hundo = {pid for pid, e in ents.items() if e.get('hundo')}
 never_hundo = sorted(((e.get('times', 0), pid) for pid, e in ents.items() if not e.get('hundo')), reverse=True)
 bag_hundo = {r['pokemon_id'] for r in hundo}
@@ -163,14 +182,20 @@ _uids = sorted({u for e in hist[-40:] for u in (e.get('_pile') or [])})
 _nm = {}
 for i in range(0, len(_uids), 400):
     _chunk = _uids[i:i + 400]
-    for r in _con2.execute('SELECT uid_hex, species_name, iv_total, in_bag FROM pokemon WHERE uid_hex IN (%s)' % ','.join('?' * len(_chunk)), _chunk):
-        _nm[r['uid_hex']] = (r['species_name'], round((r['iv_total'] or 0) * 100 / 45), r['in_bag'])
+    for r in _con2.execute('SELECT uid_hex, species_name, iv_total, in_bag, pokemon_id, form, fresh_form FROM pokemon WHERE uid_hex IN (%s)' % ','.join('?' * len(_chunk)), _chunk):
+        _nm[r['uid_hex']] = (r['species_name'], round((r['iv_total'] or 0) * 100 / 45), r['in_bag'], r['pokemon_id'], r['form'], r['fresh_form'])
 _con2.close()
-passes = []
+NAMES.learn([{'species_name': v[0], 'pokemon_id': v[3]} for v in _nm.values()])
+_lab = lambda u: NAMES.label({'pokemon_id': _nm[u][3], 'species_name': _nm[u][0], 'form': _nm[u][4], 'fresh_form': _nm[u][5]})
+passes, _ents = [], []
 for e in reversed(hist[-40:]):
     pl = e.get('_pile') or []
     _pn = e.get('_pile_names') or {}                       # stamped by ladder_report at write time (released rows leave the DB)
-    labs = [('%s %d%%' % (_nm[u][0], _nm[u][1])) if u in _nm else (_pn[u] + ' (released)') for u in pl if u in _nm or u in _pn]
+    # (uid, text): the text keeps today's shape ('<name> <iv>%'), with the game's own name; the uid lets the sprite step
+    # find the mon again. A stamped name is '<DB spelling> <iv>%': fix_stamped only respells the prefix (Nidoran F -> Nidoran♀)
+    ent = [(u, ('%s %d%%' % (_lab(u), _nm[u][1])) if u in _nm else (NAMES.fix_stamped(_pn[u]) + ' (released)')) for u in pl if u in _nm or u in _pn]
+    labs = [t for _u, t in ent]
+    _ents.append((ent[:14], len(ent) > 14))
     passes.append({'ts': e['ts'], 'bag': e.get('bag'), 'free': (cap_total - e['bag']) if e.get('bag') else None, 'pile': len(pl),
                    'caught': e.get('caught', 0), 'released': e.get('released', 0), 'evolved': e.get('evolved', 0), 'picks': e.get('promises_kept', 0),
                    'improved': e.get('stage_best_improved', 0), 'hundos': e.get('new_hundos', 0), 'ladder': e.get('resident_mean_iv'),
@@ -207,6 +232,42 @@ for i, p in enumerate(passes):                       # newest first: hist[-1-i];
     p['ladder_d'] = None if not _p or _e.get('resident_mean_iv') is None or _p.get('resident_mean_iv') is None else round(_e['resident_mean_iv'] - _p['resident_mean_iv'], 1)
     p['gl5'], p['ul5'] = _e.get('pvp_gl_top5'), _e.get('pvp_ul_top5')
     p['gl1'], p['ul1'] = _e.get('new_gl1', 0), _e.get('new_ul1', 0)
+# THE PILE AS PICTURES (2026-09-30, user: seeing each pile mon's exact look next to its name finds the right copy faster --
+# he releases the pile by hand). The current Transfer pile first, then the mons of the pass log that are still in the bag;
+# bag_art.prepare fetches / caches / thumbnails and NEVER raises, so anything that goes wrong here is today's text page.
+# Past passes whose mons left the bag keep text: 921 of the last 973 pile uids are gone from the DB, a picture cannot help find them.
+byuid = {r['uid_hex']: r for r in rows}
+pile_rows = [byuid[u] for u in sorted(pile) if u in byuid]
+art, pile_html = None, ''
+if ART_ON:
+    try:
+        _seen = {r['uid_hex'] for r in pile_rows}
+        _spr_uids = [r['uid_hex'] for r in pile_rows]
+        for _ent, _more in _ents:
+            for _u, _t in _ent:
+                if _u in byuid and _u not in _seen:
+                    _seen.add(_u)
+                    _spr_uids.append(_u)
+        art = bag_art.prepare(rows, _spr_uids, [r['uid_hex'] for r in pile_rows])
+        pile_html = bag_art.pile_card_html(art, pile_rows, NAMES, ef.gender_key, ef.max_axis, unknown=len(pile) - len(pile_rows))
+        for p, (_ent, _more) in zip(passes, _ents):
+            items = []
+            for _u, _t in _ent:
+                it = {'t': _t}
+                _k = art.sprite_key(_u) if _u in byuid else None
+                if _k:
+                    it['k'], it['n'] = _k, NAMES.label(byuid[_u])
+                    if art.match[_u].approx:
+                        it['a'] = 1
+                items.append(it)
+            if any('k' in it for it in items):               # a pass with no picture keeps the plain text cell
+                p['pile_items'], p['pile_more'] = items, _more
+    except Exception as _e:
+        art, pile_html = None, ''
+        for p in passes:
+            p.pop('pile_items', None)
+            p.pop('pile_more', None)
+        print('art step skipped (%s: %s) -- text-only page' % (type(_e).__name__, _e))
 DATA = {
     'window': WINDOW,
     'generated': time.strftime('%Y-%m-%d %H:%M', time.localtime(os.path.getmtime('pokemon.db'))), 'history_from': days[0], 'history_to': days[-1],
@@ -235,14 +296,17 @@ DATA = {
             'bag_no_shiny': len(bag_no_shiny), 'bag_no_shiny_top': [{'name': nm(p), 'times': times.get(p, 0)} for p in bag_no_shiny[:24]],
             'hundo_stages': bydays[days[-1]].get('stages_with_hundo'), 'stages': bydays[days[-1]].get('stages')},
     'regions': regions,
-    'showcase': [{'name': r['species_name'], 'iv': P(r), 'h': round(r['height_m'] or 0, 2), 'w': round(r['weight_kg'] or 0, 2), 'pts': p} for p, r in xxl_pts[:10]],
+    'showcase': [{'name': NAMES.label(r), 'iv': P(r), 'h': round(r['height_m'] or 0, 2), 'w': round(r['weight_kg'] or 0, 2), 'pts': p} for p, r in xxl_pts[:10]],
     'places': {'known': len(located), 'near_home': near_home, 'abroad': abroad,
-               'far': [{'name': r['species_name'], 'iv': P(r), 'km': round(km(HOME, (r['lat'], r['lon'])))} for r in far]},
+               'far': [{'name': NAMES.label(r), 'iv': P(r), 'km': round(km(HOME, (r['lat'], r['lon'])))} for r in far]},
     'today': {'culls': len(tday), 'caught': S('caught'), 'released': S('released'), 'evolved': S('evolved'), 'picks': S('promises_kept'),
               'broken': S('promises_broken'), 'improved': S('stage_best_improved')} if tday else None,
     'tags': sorted(tags.items(), key=lambda kv: -kv[1]),
     'passes': passes,
 }
+if art is not None:                                          # absent with BAG_ART=0, so the DATA (and the page) are today's
+    DATA['spr'] = dict(sorted(art.sprites.items()))          # icon file name (or 'c:' + card stem) -> data: URI; sorted: a stable page
+    DATA['art'] = dict(art.stats)
 
 TEMPLATE = r'''<title>Bag Pulse</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Lilita+One&family=Manrope:wght@300;500;600;700&family=Nunito:wght@400;600;700;800&family=IBM+Plex+Mono:wght@500&display=swap">
@@ -299,13 +363,13 @@ a{color:var(--shiny)}
 :focus-visible{outline:2px solid var(--shiny);outline-offset:2px}
 @media (max-width:480px){.eta{grid-template-columns:1fr}.kpi .v{font-size:22px}h1{font-size:28px}.ball{width:38px;height:38px}}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
-</style>
+__ART_CSS__</style>
 <div class="wrap">
   <header class="hero"><span class="ball" aria-hidden="true"></span><div><h1>Bag Pulse</h1><p class="sub" id="sub"></p></div></header>
   <div class="rings" id="rings"></div>
   <div class="kpis" id="kpis"></div>
   <div class="grid">
-    <div class="card wide">
+    __PILE_CARD__<div class="card wide">
       <div class="eyebrow">Cull by cull</div><h2 id="win_h2"></h2>
       <p class="note" id="win_note" style="margin:0 0 10px"></p>
       <div class="kpis" id="win_kpis" style="margin-bottom:12px"></div>
@@ -352,7 +416,7 @@ a{color:var(--shiny)}
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
 <script>
 const D = __DATA__;
-const css = getComputedStyle(document.documentElement);
+__ART_JS__const css = getComputedStyle(document.documentElement);
 const tok = n => css.getPropertyValue(n).trim();
 const el = id => document.getElementById(id);
 const pct = v => (v == null ? '-' : (typeof v === 'number' ? v.toFixed(1) : v) + '%');
@@ -501,7 +565,7 @@ el('passes').innerHTML = '<tr><th>Pass</th><th class="num">Bag</th><th class="nu
     '<td class="num">' + p.evolved + (p.picks ? ' <span class="d">(' + p.picks + ' picks)</span>' : '') + '</td><td class="num">' + (p.ladder == null ? '-' : p.ladder + '%') + '</td>' +
     '<td class="num ' + dcls(p.ladder_d) + '">' + (p.ladder_d == null ? '-' : sgn(p.ladder_d, 1)) + '</td>' +
     '<td class="num">' + (p.gl5 == null ? '-' : p.gl5 + ' · ' + p.ul5) + (p.gl1 || p.ul1 ? ' <span class="up">+' + (p.gl1 + p.ul1) + ' #1</span>' : '') + '</td>' +
-    '<td style="font-size:12px;color:var(--mut)">' + p.pile_list + '</td></tr>').join('');
+    '<td style="font-size:12px;color:var(--mut)">' + __PILE_CELL__ + '</td></tr>').join('');
 const PR = PS.slice().reverse();
 new Chart(el('c_passes'), {type: 'bar', data: {labels: PR.map(p => p.ts.slice(5, 16).replace('-', '/')), datasets: [
   {type: 'bar', label: 'Pile', data: PR.map(p => p.pile), backgroundColor: tok('--hundo'), borderRadius: 3, yAxisID: 'y'},
@@ -510,9 +574,15 @@ new Chart(el('c_passes'), {type: 'bar', data: {labels: PR.map(p => p.ts.slice(5,
     y: ax({title: {display: true, text: 'pile'}}), y2: {position: 'right', grid: {display: false}, ticks: {font: mono}, title: {display: true, text: 'free slots'}}}}});
 </script>
 '''
-doc = TEMPLATE.replace('__DATA__', json.dumps(DATA, ensure_ascii=False))
+if bag_art is not None:
+    doc = bag_art.assemble(TEMPLATE, DATA, art, pile_html, on=art is not None)     # on=False: every hook empty = the page as it was
+else:                                                        # bag_art would not import: the page as it was before pictures
+    doc = (TEMPLATE.replace('__ART_CSS__', '').replace('__PILE_CARD__', '').replace('__ART_JS__', '')
+           .replace('__PILE_CELL__', 'p.pile_list').replace('__DATA__', json.dumps(DATA, ensure_ascii=False)))
 out = os.path.join('system', 'analysis', 'collection_stats.html')
 open(out, 'w', encoding='utf-8').write(doc)
 print('wrote', out, '%d KB' % (len(doc) // 1024))
+if art is not None:
+    print(art.line([r['uid_hex'] for r in pile_rows]))
 print('ladder %.1f%% (%+.1f since %s, %+.2f/day) | non-PvP keepers %.1f%% | hundos %d | shinies %d avg %.1f%% | never-hundo species %d | ETA 90%%: %s' % (
     cur, cur - (first_iv or cur), days[0], slope, DATA['kpi']['nonpvp_iv'], len(hundo), len(shiny), DATA['kpi']['shiny_iv'], len(never_hundo), DATA['trend']['eta']['90']))

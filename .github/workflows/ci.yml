@@ -38,6 +38,7 @@ jobs:
           python tools/pogo_data.py selftest
           python pogo_extract/walk_tripwires.py --selftest
           python pogo_extract/cull_report.py --selftest
+          python pogo_extract/bag_art.py --selftest
           python pogo_extract/independent_law.py
           python pogo_extract/system/scripts/check_constant_drift.py
 
