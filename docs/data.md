@@ -19,7 +19,7 @@ python tools/pogo_data.py selftest                 # offline check of the tool i
 | Group | Owner (only the owner pushes it) | What | Pulled by default |
 |---|---|---|---|
 | `inventory` | Pokemon Inventory | `pokemon.db`, walk outputs, tag sets, analysis state, per-account sets, newest 6 snapshots | yes |
-| `inventory-cold` | Pokemon Inventory | every DB snapshot + the pre-switch archive (`archive_main_account_20260926/`, keep forever) | no |
+| `inventory-cold` | Pokemon Inventory | every DB snapshot + the pre-switch archive (`archive_main_account_20260926/`, keep forever). **Not seeded yet** — 1.6 GB, ~25 min at the link's ~1 MB/s; the PC holds it. Seed from the PC when Benny is not playing: `push --group inventory-cold` | no |
 | `catcher` | AutoCatcher | map data, studies (`*.jsonl`), caches its tools read | yes |
 | `gym` | Gym Battle | `AutoCatcher/tools/gym_state/` except the runner inbox | yes |
 
