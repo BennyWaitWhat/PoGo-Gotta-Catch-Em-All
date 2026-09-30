@@ -40,6 +40,7 @@ jobs:
           python pogo_extract/cull_report.py --selftest
           python pogo_extract/independent_law.py
           python pogo_extract/system/scripts/check_constant_drift.py
+          python pogo_extract/system/scripts/refresh_gamemaster.py --selftest
 
       - name: Safety guards hold
         working-directory: pogo_extract

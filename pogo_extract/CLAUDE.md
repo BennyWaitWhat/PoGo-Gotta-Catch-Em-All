@@ -64,7 +64,8 @@ The first cull in a fresh VM also rebuilds `system/scripts/rank_tables.pkl` (not
 | `system/scripts/preflight_transfer.py` + `prune_tags.py` | The ONLY path to the `Transfer` tag (rule 2). `set_db_tags_from_files.py` mirrors the DB afterwards, last |
 | `cull_report.py` | Writes the `=== REPORT ===` block the cull prints (format: `../.claude/skills/cull/SKILL.md`) |
 | `walk_tripwires.py` | Frozen-graph / impossible-read rules; STOP = rc 8, nothing is judged or synced |
-| `system/scripts/refresh_gamemaster.py` | Monthly game-master + pvpoke refresh; exit 2 = a keep decision crossed rank 5, the pass stops (rc 5) |
+| `system/scripts/refresh_gamemaster.py` | Monthly pvpoke refresh + the client (PokeMiners) game master asked EVERY run and diffed against the bag before it is installed; exit 2 = a keep decision crossed rank 5 or an in-bag client-GM verdict flipped, the pass stops (rc 5); `--selftest` = offline proof |
+| `gm_guard.py` | The pure half of that check: the `.meta` stamp (batch, APK, sha256), the differ, the in-bag impact on BOTH accounts' bags (reuses detect_legacy / evolvable_forms / remote_trade_picks / audit_gamemaster), the audit_invariants I2.7 WARN. No phone |
 | `dashboard.py`, `gen_artifacts.py`, `gen_bag_pulse.py` | Local pages; `full_audit.py` starts and stops the dashboard itself |
 | `system/scripts/tag_ops.py`, `retire_tags.py`, `reconcile_tags.py`, `ready_gate.py`; `sync_post_tags.py` (root) | Hardened tag writes, empty-shell deletion, drift report, write-readiness gate, Remote Trade + tag order |
 | `switch_account.py`, `account_guard.py` | Two accounts, one data set each (`accounts/`, `active_account.txt`). Only when Benny says; push `inventory` right after |
@@ -88,6 +89,7 @@ working: find the cause and fix it, never work around it or sync by hand.
 ```
 python -m py_compile <every file you changed>
 python walk_tripwires.py --selftest              # pure; runs anywhere
+python system/scripts/refresh_gamemaster.py --selftest   # the client game-master guard on synthetic fixtures; pure, no network
 python system/scripts/check_constant_drift.py    # code + the small root data files (form_enum.json, keep_config.json ...); no DB
 python full_audit.py --audits-only               # THE gate: the 11 audits. Needs pokemon.db + system/analysis/*. No phone, no network
 python granular_tags.py --audit                  # tag registry vs tagset files; needs system/analysis/tagsets/
