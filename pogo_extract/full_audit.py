@@ -825,8 +825,9 @@ def _main():
         _gm = subprocess.run([PY, os.path.join('system', 'scripts', 'refresh_gamemaster.py')],
                              capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=1800)
     except subprocess.TimeoutExpired:
-        say('gamemaster: refresh_gamemaster.py TIMED OUT after 1800 s -- a new game master may be installed with its rank '
-            'changes never diffed; stopping before recrawl/sync (its review gate stops the next run too)')
+        say('gamemaster: refresh_gamemaster.py TIMED OUT after 1800 s -- the pvpoke half (download + rank pass) never finished '
+            '(the client game master check bounds its own downloads since 2026-09-30); a pvpoke file installed before the rank '
+            'diff leaves an in-progress review that stops the next run too. Stopping before recrawl/sync')
         return 5
     _gm_line = ((_gm.stdout or '') + (_gm.stderr or '')).strip().splitlines()
     if _gm.returncode == 2 or os.path.exists(_review):
@@ -837,7 +838,8 @@ def _main():
             say('gamemaster: %s' % _l[:220])
         say('GAME MASTER REFRESH STOPPED THE PASS (rc %d) -- a keep decision moved (a rank<=5 crossing, or an in-bag verdict '
             'of the client game master), or the refresh itself could not finish (the lines above say which). Stopping before '
-            'recrawl/sync. Review pending: %s; when reviewed: python system/scripts/refresh_gamemaster.py --ack'
+            'recrawl/sync. Review pending: %s; when reviewed: python system/scripts/refresh_gamemaster.py --ack (a HELD client '
+            'game master: --ack installs it, --reject keeps the installed one -- both only on Benny\'s word)'
             % (_gm.returncode, 'YES' if os.path.exists(_review) else 'no'))
         return 5
     say('gamemaster: %s' % (_gm_line[-1][:110] if _gm_line else 'rc=%d' % _gm.returncode))

@@ -57,6 +57,8 @@ mon in the bag: a held move that is a plain TM now (its Legacy protection), a fo
 copy's size numbers or types, tradability, rarity. The lines above name the mons and what flipped (the same rows are in
 `pogo_extract/system/analysis/gamemaster_review_pending.json`). **Show Benny those rows and wait** — keep policy is his
 call. Run `python system/scripts/refresh_gamemaster.py --ack` only when he says so, never yourself, then cull again.
+A new client game master that flips a verdict is HELD (`gamemaster_pokeminers.pending.json`), not installed: `--ack` installs it
+(the previous file stays as `.bak-<date>`), `--reject` keeps the installed one and declines that batch -- ask him which.
 The previous file stays as `gamemaster_pokeminers.json.bak-<date>`. A batch the engine cannot load, or a bag that cannot
 be read, is never installed: the `WARN pokeminers:` / `STOP` line says which file and how to restore it.
 

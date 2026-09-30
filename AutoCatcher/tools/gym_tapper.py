@@ -1572,8 +1572,9 @@ def stab_config(gm_path=None, enum_path=None):
     Key "<dex>" = the species' plain typing (its game master template with no form). Key "<dex>:<form>" = a form whose typing differs
     (Alolan / Galarian / Hisuian / Paldean, Arceus and Silvally types, Rotom, Castform, ...), <form> = the game's own Form enum value
     (form_enum.json; the game master spells a form MEWTWO_A where the enum says MewtwoA, so both are matched letters-and-digits only).
-    The game master is the client's 0.427.0 and the game is newer: a species or form it lacks is simply absent here, and the tapper then
-    has no table types for it (the live read, or no boost). Types are the game master's names without the POKEMON_TYPE_ prefix; the
+    The game master is the client's 0.427.0 and the game is newer: a SPECIES it lacks is absent here (the live read, or no boost); a FORM
+    it lacks falls back to its species' typing in the tapper -- those forms are listed in "species_typed" (2026-09-30: every one's
+    species typing is a subset of its own, so a same-type bonus can be missed, never wrongly given). Types are the game master's names without the POKEMON_TYPE_ prefix; the
     tapper turns them into the live HoloPokemonType enum values itself."""
     gm_path, enum_path = gm_path or GM_PATH, enum_path or FORM_ENUM_PATH
     if (gm_path, enum_path) in _STAB_CFG:
@@ -1585,6 +1586,15 @@ def stab_config(gm_path=None, enum_path=None):
             enum = json.load(f)
     except (OSError, ValueError) as e:                                   # (not cached: a data pull may bring the file)
         return {"err": f"{type(e).__name__}: {e}", "hint": "python tools/pogo_data.py pull --group inventory brings pogo_extract/gamemaster_pokeminers.json"}
+    try:
+        cfg = _build_stab_config(gm, enum)
+    except Exception as e:                                               # an odd-shaped file (a dict, an error page, a renamed field)
+        return {"err": f"unusable game master: {type(e).__name__}: {e}", "hint": "python tools/pogo_data.py pull --group inventory brings a fresh pogo_extract/gamemaster_pokeminers.json"}
+    _STAB_CFG[(gm_path, enum_path)] = cfg
+    return cfg
+
+
+def _build_stab_config(gm, enum):
     norm = lambda x: re.sub(r"[^A-Z0-9]", "", str(x).upper())
     by_form = {}
     for k, v in enum.items():
@@ -1616,11 +1626,23 @@ def stab_config(gm_path=None, enum_path=None):
             for code in by_form[form]:
                 table[f"{dex}:{code}"] = types
                 nforms += 1
+    # FORMS THE GAME MASTER DOES NOT LIST (2026-09-30, review of #27): the enum is newer than the client game master (Ogerpon's masks,
+    # Hisuian Sliggoo / Goodra, Terapagos ...). The tapper gives them their SPECIES' typing -- on 2026-09-30 a SUBSET of the true one
+    # for every such form (Wellspring Ogerpon is Grass/Water, it reads Grass; Hisuian Goodra Steel/Dragon, it reads Dragon), so no
+    # bonus is WRONG, a bonus for the type the form adds is only MISSED. pvpoke lacks them too; they are named so the runner says so.
+    known = {dex: set(fs) for dex, fs in forms.items()}
+    prefixes = sorted(((norm(nm), dex) for dex, nm in names.items() if norm(nm)), key=lambda x: -len(x[0]))
+    species_typed = []
+    for code, nm in enum.items():
+        n = norm(nm)
+        if not n or re.search(r"(19|20)\d\d", n) or "COSTUME" in n or n.endswith(("NORMAL", "SHADOW", "PURIFIED")):
+            continue                                                      # a plain / shadow / event-costume form: the species typing is right
+        dex = next((d for p, d in prefixes if n.startswith(p)), None)
+        if dex is not None and n != norm(names[dex]) and n not in known.get(dex, ()):
+            species_typed.append(nm)
     try:
         mult = float(mult)
     except (TypeError, ValueError):
         mult = None
-    cfg = {"mult": mult if mult and 1 < mult <= 2 else None, "types": table, "names": names, "species": len(base), "forms": nforms,
-           "unmapped": unmapped}
-    _STAB_CFG[(gm_path, enum_path)] = cfg
-    return cfg
+    return {"mult": mult if mult and 1 < mult <= 2 else None, "types": table, "names": names, "species": len(base), "forms": nforms,
+            "unmapped": unmapped, "species_typed": sorted(species_typed)}

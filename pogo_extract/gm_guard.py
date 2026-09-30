@@ -248,10 +248,28 @@ def apk_from_tree(tree, batch_ts_ms):
         return None, None
 
 
-def http_get(url, timeout=30):
+HTTP_MAX_BYTES = 120 * 1024 * 1024     # the client game master is ~20 MB; anything past this is not one
+
+
+def http_get(url, timeout=30, max_bytes=HTTP_MAX_BYTES):
+    """GET -> bytes. `timeout` bounds each socket wait AND (since 2026-09-30, review of #27) the whole transfer, at
+    max(20 s, 1.35 x timeout): urlopen's timeout is per read, so a host trickling a byte at a time kept a cull waiting until
+    full_audit's 30-minute kill (the stamp: 20 s, the 20 MB file: ~243 s, the tree API: ~34 s). A body over max_bytes is refused."""
+    end = time.time() + max(20.0, 1.35 * timeout)
     req = urllib.request.Request(url, headers={'User-Agent': 'pogo-gm-guard/1', 'Accept': 'application/vnd.github+json, */*'})
     with urllib.request.urlopen(req, timeout=timeout) as r:
-        return r.read()
+        parts, n = [], 0
+        read = getattr(r, 'read1', r.read)          # read1: whatever has ARRIVED -- read(n) blocks until n bytes, so a trickle never
+        while True:                                   # came back to the clock below
+            if time.time() > end:
+                raise OSError('download took longer than its %.0f s budget (%d bytes so far)' % (max(20.0, 1.35 * timeout), n))
+            b = read(1 << 16)
+            if not b:
+                return b''.join(parts)
+            n += len(b)
+            if n > max_bytes:
+                raise OSError('download larger than %d MB -- not a game master' % (max_bytes // (1024 * 1024)))
+            parts.append(b)
 
 
 def lookup_apk(batch_ts_ms, fetch=http_get):
@@ -850,7 +868,7 @@ def review_lines(res, old_meta, new_meta_, bak, with_digest=True, max_lines=200)
                      'master/previous_game_masters/%s/game_master.json, sha256 %s)' % (old_meta['folder'], str(old_meta.get('sha256'))[:16]))
     grouped = OrderedDict()
     order = {'LOST': 0, 'CHANGED': 1, 'GAINED': 2}
-    for f in sorted(res['flips'], key=lambda f: (order.get(f['dir'], 1), f['axis'], f['species'], f['what'])):
+    for f in sorted(res['flips'], key=lambda f: (order.get(f['dir'], 1), f['axis'], str(f['species']), str(f['what']))):   # a NULL name must not crash the stop
         k = (f['dir'], f['axis'], f['species'], f['what'], f['old'], f['new'])
         grouped[k] = grouped.get(k, 0) + 1
     for (d, ax, sp, what, a, b), n in grouped.items():
@@ -1473,34 +1491,42 @@ def _orchestrator_tests(rgm, td, put, rows, enum, ok):
             if os.path.exists(p):
                 os.remove(p)
         for f in os.listdir(td):
-            if '.bak-' in f or f.endswith('.download'):
+            if '.bak-' in f or f.endswith('.download') or f.endswith('.pending.json'):
                 os.remove(os.path.join(td, f))
         put('gm.json', _fixture_gm(gm_variant))
         if with_meta:
             write_meta(mtp, new_meta(ts, sha256_file(gmp), '0.400.0', 'gm_v2_apk4000_x', NOW - 86400, False))
     gmp, mtp = os.path.join(td, 'gm.json'), os.path.join(td, 'gm.json.meta')
     try:
-        # FLIPS: install + backup + meta + the SAME record; rc 2; review_gate reads it; --ack clears it exactly as for a rank crossing
+        # FLIPS: HELD, NOT INSTALLED (2026-09-30): the judged bytes wait as gm.pending.json beside the untouched file, the SAME
+        # record is written, rc 2 with no tail; review_gate stops every run; --ack installs exactly the held bytes (backup + stamp)
         reset(None)
-        old_bytes = open(gmp, 'rb').read()
+        old_bytes, old_meta = open(gmp, 'rb').read(), open(mtp, 'rb').read()
+        held = os.path.join(td, 'gm.pending.json')
         served['json'] = json.dumps(_fixture_gm('move'))
         rc, out = run()
         rec = json.load(open(rgm.REVIEW, encoding='utf-8'))
-        baks = sorted(f for f in os.listdir(td) if f.startswith('gm.json.bak-'))
-        ok(rc == (2, True), 'FLIPS must exit 2 with the tail owed, got %s' % (rc,))
+        ok(rc == (2, False), 'FLIPS must exit 2 and install nothing (no tail owed), got %s' % (rc,))
         ok(rec['crossed'] == ['u_eev_swift'] and rec['nulled'] == [] and rec['kind'] == 'client_gm' and rec['target'] == 'pokeminers'
-           and rec['lines'][0].startswith('CLIENT GAME MASTER') and rec['backup'] == baks[0] and 'status' not in rec,
-           'the record has the rows the gate reads: %s' % {k: rec[k] for k in ('crossed', 'nulled', 'backup')})
-        ok(open(os.path.join(td, baks[0]), 'rb').read() == old_bytes and sha256_file(gmp) == read_meta(mtp)['sha256'], 'backup = the old bytes; new file stamped')
-        ok(read_meta(mtp)['batch_ts'] == ts_b and read_meta(mtp)['tail_pending'] is True and read_meta(mtp)['apk'] == '0.401.0', 'meta of the installed batch: %s' % read_meta(mtp))
-        ok(not os.path.exists(gmp + '.download') and os.path.exists(mtp + '.bak-' + baks[0].split('.bak-', 1)[1]), 'no temp file left; the old stamp is backed up too')
-        ok(json.dumps(rec).isascii() and 'pokeminers' in out and 'NEEDS A HUMAN' in out, 'ASCII record, the run says it needs a human')
+           and rec['lines'][0].startswith('CLIENT GAME MASTER') and rec['lines'][1].startswith('HELD, NOT INSTALLED')
+           and rec['staged'] == 'gm.pending.json' and rec['backup'] is None and rec['batch_ts'] == ts_b and 'status' not in rec,
+           'the record has the rows the gate reads and names the held file: %s' % {k: rec.get(k) for k in ('crossed', 'nulled', 'staged', 'backup')})
+        ok(open(gmp, 'rb').read() == old_bytes and open(mtp, 'rb').read() == old_meta and os.path.exists(held)
+           and sha256_file(held) == rec['meta_new']['sha256'] and not [f for f in os.listdir(td) if f.startswith('gm.json.bak-')],
+           'held, not installed: the installed file and its stamp are untouched, no backup yet')
+        ok(not os.path.exists(gmp + '.download') and json.dumps(rec).isascii() and 'HELD' in out and 'NEEDS A HUMAN' in out and '--reject' in out,
+           'no temp file left; ASCII record; the run says the batch is held and names --ack / --reject')
         buf = io.StringIO()
         with contextlib.redirect_stdout(buf):
             g = rgm.review_gate([])
-            ok(g == 2 and 'REVIEW PENDING' in buf.getvalue() and 'CLIENT GAME MASTER' in buf.getvalue(), 'review_gate stops every run and prints the rows')
-            ok(rgm.review_gate(['--ack']) == 0 and not os.path.exists(rgm.REVIEW), '--ack clears it exactly as today')
-        ok(sha256_file(gmp) != sha256_file(os.path.join(td, baks[0])), '--ack does not roll a client-GM record back')
+            ok(g == 2 and 'REVIEW PENDING' in buf.getvalue() and 'CLIENT GAME MASTER' in buf.getvalue() and '--reject' in buf.getvalue(),
+               'review_gate stops every run, prints the rows and both ways out')
+            ok(rgm.review_gate(['--ack']) == 0 and not os.path.exists(rgm.REVIEW), '--ack clears the record')
+        baks = sorted(f for f in os.listdir(td) if f.startswith('gm.json.bak-'))
+        ok(len(baks) == 1 and open(os.path.join(td, baks[0]), 'rb').read() == old_bytes and not os.path.exists(held)
+           and sha256_file(gmp) == read_meta(mtp)['sha256'] == rec['meta_new']['sha256'], '--ack installs exactly the held bytes; backup = the old bytes')
+        ok(read_meta(mtp)['batch_ts'] == ts_b and read_meta(mtp)['tail_pending'] is True and read_meta(mtp)['apk'] == '0.401.0'
+           and os.path.exists(mtp + '.bak-' + baks[0].split('.bak-', 1)[1]), 'meta of the installed batch, tail owed; the old stamp is backed up: %s' % read_meta(mtp))
         # the batch is upstream's latest now: no second download, only the check time moves
         n0 = served['n_json']
         rc, out = run()
@@ -1508,7 +1534,41 @@ def _orchestrator_tests(rgm, td, put, rows, enum, ok):
         # a second install the same day never overwrites the first backup
         served['ts'], served['json'] = str(ts_b + 5000), json.dumps(_fixture_gm('evo_cost'))
         rc, out = run(review=os.path.join(td, 'review2.json'))
+        with contextlib.redirect_stdout(io.StringIO()):
+            rgm.review_gate(['--ack'])                       # a held batch installs on --ack (a CLEAR one already did)
         ok(len([f for f in os.listdir(td) if f.startswith('gm.json.bak-')]) == 2, 'a same-day second install gets its own backup')
+        served['ts'] = str(ts_b)
+        # --reject: the held batch is dropped, the installed file stays, and that batch is DECLINED: no run downloads or stops on it
+        # again; --reject never clears a pvpoke rank review; a NEWER batch is judged as usual
+        reset(None)
+        b_old, m_old = open(gmp, 'rb').read(), read_meta(mtp)
+        served['ts'], served['json'] = str(ts_b), json.dumps(_fixture_gm('move'))
+        rc, out = run()
+        ok(rc == (2, False) and os.path.exists(os.path.join(td, 'gm.pending.json')), 'held for --reject: %s' % (rc,))
+        with contextlib.redirect_stdout(io.StringIO()):
+            ok(rgm.review_gate(['--reject']) == 0 and not os.path.exists(rgm.REVIEW), '--reject clears the record')
+        ok(open(gmp, 'rb').read() == b_old and not os.path.exists(os.path.join(td, 'gm.pending.json'))
+           and (read_meta(mtp).get('declined') or {}).get('batch_ts') == ts_b and read_meta(mtp)['sha256'] == m_old['sha256'],
+           '--reject keeps the installed file, drops the held one, declines the batch: %s' % read_meta(mtp).get('declined'))
+        n0 = served['n_json']
+        rc, out = run()
+        ok(rc == (None, False) and served['n_json'] == n0 and 'declined' in out and not os.path.exists(rgm.REVIEW),
+           'a declined batch is never downloaded or stopped on again: %s %s' % (rc, out[-160:]))
+        with contextlib.redirect_stdout(io.StringIO()):
+            ok(rgm.review_gate(['--reject']) == 0, '--reject with nothing pending is a no-op')
+        with open(rgm.REVIEW, 'w', encoding='utf-8') as f:
+            json.dump({'since': 'x', 'crossed': ['u'], 'nulled': [], 'lines': ['x']}, f)
+        with contextlib.redirect_stdout(io.StringIO()):
+            ok(rgm.review_gate(['--reject']) == 2 and os.path.exists(rgm.REVIEW), '--reject never clears a pvpoke rank review')
+        os.remove(rgm.REVIEW)
+        served['ts'] = str(ts_b + 7000)
+        rc, out = run()
+        ok(rc == (2, False) and served['n_json'] == n0 + 1, 'a NEWER batch is judged as usual after a decline: %s' % (rc,))
+        # --ack when the held file is gone (another machine held it) or changed: NOTHING installed, the record cleared
+        os.remove(os.path.join(td, 'gm.pending.json'))
+        with contextlib.redirect_stdout(io.StringIO()):
+            ok(rgm.review_gate(['--ack']) == 0 and not os.path.exists(rgm.REVIEW) and open(gmp, 'rb').read() == b_old,
+               '--ack without the held bytes installs nothing and clears the record')
         served['ts'] = str(ts_b)
         # an interrupted-refresh record that names the client GM rolls back the CLIENT file, never pvpoke's
         pv = os.path.join(td, 'pvpoke.json')
@@ -1701,7 +1761,7 @@ def _orchestrator_tests(rgm, td, put, rows, enum, ok):
         served['json'] = json.dumps(_fixture_gm('move'))
         rc, out = run()
         rec = json.load(open(rgm.REVIEW, encoding='utf-8'))
-        ok(rc == (2, True) and rec['crossed'] == ['u_eev_swift', 'u_rest_swift'],
+        ok(rc == (2, False) and rec['crossed'] == ['u_eev_swift', 'u_rest_swift'],
            'the resting account is judged, the active account\'s stale parked copy is not: %s %s' % (rc, rec['crossed']))
         ok(any('Eevee (rest)' in l for l in rec['lines']), 'a resting row is named with its account')
         with open(os.path.join(adir, 'rest', 'pokemon.db'), 'wb') as f:

@@ -74,7 +74,10 @@ def _parse(templates):
         elif tid == 'SHARED_MOVE_SETTINGS':
             shared = dat.get('sharedMoveSettings') or {}
         elif re.match(r'V\d{4}_FAMILY_', tid) and (dat.get('pokemonFamily') or {}).get('candyPerXlCandy'):
-            T['xl_rate'][int(tid[1:5])] = int(dat['pokemonFamily']['candyPerXlCandy'])
+            try:
+                T['xl_rate'][int(tid[1:5])] = int(dat['pokemonFamily']['candyPerXlCandy'])
+            except (TypeError, ValueError):
+                pass                                    # Power Up only (report): a surprise here must not break second_moves(), which feeds a tag
     T['override'] = {ps[k]: v for k, v in ov.items() if k in ps}
     for key, who in (('third_shadow', 'shadow'), ('third_purified', 'purified')):
         md, mc = shared.get(who + 'ThirdMoveUnlockStardustMultiplier'), shared.get(who + 'ThirdMoveUnlockCandyMultiplier')
@@ -415,6 +418,7 @@ def power_up_plan(items, rows, dust=_READ, candy=_READ, xl=_READ, player_level=_
         if r is None or T is None:
             continue
         al, dex, form = _alignment(r), r.get('pokemon_id'), r.get('form') or 0
+        e['align'] = al                                  # 1 shadow / 2 purified: the report marks the price approximate (rounding unverified)
         e['need'] = need = power_up_cost(lv, target, shadow=al == 1, purified=al == 2, lucky=bool(r.get('is_lucky')), dex=dex, form=form)
         try:
             e['family'] = fam = fam_of(r)

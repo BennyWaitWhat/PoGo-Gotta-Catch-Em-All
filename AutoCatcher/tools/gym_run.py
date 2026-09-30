@@ -95,6 +95,10 @@ def stab_setup(sc, g, r):
     say(f"  STAB table from the game master: {rep['types']} typings ({cfg['species']} species + {cfg['forms']} form overrides), multiplier x{rep['mult']:g} "
         f"({rep['multSrc']}; live {rep.get('liveMult')}, game master {rep.get('gmMult')})"
         + (f"; {rep['rejected']} REJECTED (type names the live enum lacks)" if rep.get("rejected") else ""))
+    st = cfg.get("species_typed") or []
+    if st:                                                   # 2026-09-30 (review of #27): say which forms run on their species' typing
+        say(f"  STAB: {len(st)} form(s) the game master does not list use their species' typing (a bonus for a type the form adds is "
+            f"missed): {', '.join(st[:12])}{' ...' if len(st) > 12 else ''}")
 
 
 def map_top(t):
@@ -814,7 +818,12 @@ def _run(a, g, mv, done, t_start, enemy, goal, sess, pid, sc):
         + (f"; older graphs at {_gr['other']} -- the game rebuilt its services in-process, reading the newest" if _gr.get("other") else ""))
     for _gn in r.get("graphNotes") or []:
         say(f"  !! live graph: {_gn}")
-    stab_setup(sc, g, r)                                     # same-type bonus: what install() resolved + the game master's typing table
+    try:                                                     # same-type bonus: what install() resolved + the game master's typing table
+        stab_setup(sc, g, r)
+    except (Detached, frida.InvalidOperationError, frida.TransportError, frida.ServerNotRunningError):
+        raise                                                # a dropped game connection keeps its own re-attach path
+    except Exception as e:                                   # STAB is an extra: an odd game master file must not abort the session (main() would re-attach + re-run install() every 10 s)
+        say(f"  !! STAB setup failed ({type(e).__name__}: {e}) -- running with the old (non-STAB) pick")
     sc.exports_sync.feedcfg(a.feed, a.feed_at, a.feed_hot, a.feed_mate)
     if a.study and os.path.exists(a.study):                  # contest level of each gym, seeded from the last hour of readings
         try:

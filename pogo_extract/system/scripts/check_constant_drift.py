@@ -63,6 +63,7 @@ LIVE = [
     'granular_tags.py',                   # the 23-tag scheme
     'audit_cull.py',                      # the 8-layer cull audit
     'cull_v9.py',                         # advisory, but pogo_pipeline imports and RUNS it in-process
+    'pogo_pipeline.py',                   # its CPM_TABLE was collapsed onto cpm_table.CPM (2026-09-30): keep it scanned
 ]
 
 # KNOWN OUTSTANDING -- a real live duplicate that is NOT yet collapsed, listed by name so it
