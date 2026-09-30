@@ -6,8 +6,8 @@ I'm sure it goes up when I'm on my route rn to Bryant Park back and forth to Cen
 What it does, every SAMPLE_S seconds (cloud side, over adb):
   1. reads the mocked GPS fix the game sees (dumpsys location: lat, lng, speed, bearing) -> where we are walking;
   2. reads the catcher's latest 10 s run line (vis / track / pend = something to catch, caught, gone);
-  3. picks a speed: BUSY_KMH while the catcher is backed up (BACKLOG_*) or a Pokemon just escaped out of range
-     ('gone' went up), else FAST_KMH (PARK_KMH inside a park); never above MAX_KMH;
+  3. picks a speed: BUSY_KMH for IDLE_S after a Pokemon escaped out of range ('gone' went up), else FAST_KMH
+     (PARK_KMH inside a park); never above MAX_KMH. A busy screen alone does not slow it (measured: saved nothing);
   4. sends theappninjas.gpsjoystick.SPEED only when the target changes (and speeds up only after IDLE_S of nothing).
 It NEVER teleports, starts/stops a route or touches anything else. It stands still (sends nothing) when the fix jumps
 (a teleport of his), when the walk is stopped (speed ~0), or when the position is outside the Midtown corridor.
@@ -24,9 +24,12 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 MAX_KMH = 28.0       # hard cap (the 3 ok was "under ~32 km/h, moderate ban risk")
 FAST_KMH = 28.0      # the catcher keeps up: sweep more ground (catches scale with distance covered, ~30-40 wild/km)
 PARK_KMH = 28.0      # parks: same until the data says otherwise -- dense spawns trip the backlog rule by themselves
-BUSY_KMH = 16.0      # the catcher is backed up or Pokemon escaped out of range: let it finish (140 m range)
-BACKLOG_PEND = 2     # pending opens at or above this = backed up
-BACKLOG_SEEN = 4     # visible + tracked at or above this = backed up
+BUSY_KMH = 16.0      # a Pokemon escaped out of range ('gone' went up): let the catcher finish for IDLE_S
+# NO BACKLOG SLOW-DOWN (measured 2026-09-30 03:08-03:16: slowing on a busy screen saved 0 escapes -- 'gone' never moved
+# in 7 min, 16.4 caught/min vs 12.6 at a steady 20). Same as docs/memory: loss rate is flat with speed, "Do NOT slow the
+# route for catch rate". Only a real escape slows it now.
+BACKLOG_PEND = 10 ** 6
+BACKLOG_SEEN = 10 ** 6
 RESTORE_KMH = 20.0   # what he had set (measured 20.0 km/h at 03:03) -- put back on exit
 IDLE_S = 20          # speed up only after this long with nothing to catch
 SAMPLE_S = 5
@@ -84,6 +87,19 @@ def catcher():
     return None
 
 
+def guard():
+    """None when it is safe to send a command, else why not (docs/memory/reference-gps-joystick-control.md):
+    - the joystick's :overlay process is gone -> the spoof stopped and the REAL location can reach PoGo. Any intent now
+      would auto-launch the joystick app over the game. Send nothing; Benny decides (never restart PoGo from here).
+    - a GPS JoyStick screen has the focus -> the Pro gate ("GATE_REQUIRED") popped over the game once (2026-09-25)."""
+    if not sh("pidof com.theappninjas.fakegpsjoystick:overlay").strip():
+        return "JOYSTICK OVERLAY GONE -- spoof stopped, the real GPS may reach PoGo"
+    foc = re.search(r"mCurrentFocus=\S+ \S+ (\S+)\}", sh("dumpsys window | grep mCurrentFocus"))
+    if foc and foc.group(1).startswith("com.theappninjas.fakegpsjoystick"):
+        return "a GPS JoyStick screen is in front (%s)" % foc.group(1)
+    return None
+
+
 def set_speed(kmh, dry):
     kmh = min(float(kmh), MAX_KMH)
     if dry:
@@ -106,7 +122,7 @@ def main():
         wr.writerow(["time", "lat", "lng", "kmh", "bearing", "place", "vis", "track", "pend", "caught", "gone",
                      "target", "sent", "why"])
     end = time.time() + a.minutes * 60
-    last_fix, target, last_busy, hold_until, last_gone = None, None, 0.0, 0.0, None
+    last_fix, target, last_busy, hold_until, last_gone, alarm = None, None, 0.0, 0.0, None, None
     print("speed governor: %s, cap %.0f km/h (fast %.0f / park %.0f / busy %.0f), restore %.0f on exit -> %s"
           % ("DRY RUN" if a.dry else "LIVE", MAX_KMH, FAST_KMH, PARK_KMH, BUSY_KMH, RESTORE_KMH, CSV), flush=True)
     try:
@@ -114,7 +130,19 @@ def main():
             t0 = time.time()
             f, c = fix(), catcher()
             why, want = "", None
-            if f is None or c is None:
+            bad = guard()
+            if bad:
+                if bad != alarm:
+                    print("%s ALERT: %s -- sending nothing until it clears" % (time.strftime("%H:%M:%S"), bad), flush=True)
+                alarm = bad
+                f = None                          # no decision this sample
+                why = bad
+            elif alarm:
+                print("%s ALERT cleared: %s" % (time.strftime("%H:%M:%S"), alarm), flush=True)
+                alarm = None
+            if bad:
+                pass
+            elif f is None or c is None:
                 why = "no fix" if f is None else "no catcher line"
             else:
                 lat, lng, kmh, bear = f
@@ -160,7 +188,7 @@ def main():
     except KeyboardInterrupt:
         pass
     finally:
-        if target is not None and not a.dry:
+        if target is not None and not a.dry and guard() is None:   # never poke a dead joystick (it would pop its app)
             print("%s restoring %.0f km/h [%s]" % (time.strftime("%H:%M:%S"), RESTORE_KMH, set_speed(RESTORE_KMH, False)),
                   flush=True)
         fh.close()
