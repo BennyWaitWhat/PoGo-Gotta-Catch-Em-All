@@ -161,14 +161,37 @@ def compute_target(why=None, spent=None, detail=None, gated=None, items_spent=No
         return not ((r['abg'] or 0) or (r['hlc'] and (r['lce'] or 0)) or (r['fc'] or 0) or _icf(r['ff']) or _icf(r['form'])
                     or evolvable_forms.max_axis(r['bm']) or r['al'] == 1)
     sh_ivs_pl = defaultdict(list)
+    # PER SPECIES + FORM (LAW bucket 4; keep_policy's shiny groups are (pokemon_id, form)), 2026-09-30: one pvpoke id can
+    # hold several plain forms (all five Florges colours), and pooling them hid real upgrades into an empty colour. Filed
+    # bare + form like audit_promises; _skey() judges a spare on the form the game names for it at the next stage.
+    _fname = lambda r: evolvable_forms.canon_form(pvid(r['s'], r['form'] or 0), evolvable_forms.form_name(r['form'] or r['ff']))
+    form_names = defaultdict(list)                       # speciesId -> the form name of every held copy
     for r in rows:
+        form_names[pvid(r['s'], r['form'] or 0)].append(_fname(r))
         if r['sh']:
             shiny_count[r['pid']] += 1
-            sh_ivs[pvid(r['s'], r['form'] or 0)].append(r['iv'] or 0)
-            if _plain_sh(r):
-                sh_ivs_pl[pvid(r['s'], r['form'] or 0)].append(r['iv'] or 0)
+            for _k in {(pvid(r['s'], r['form'] or 0), ''), (pvid(r['s'], r['form'] or 0), _fname(r))}:
+                sh_ivs[_k].append(r['iv'] or 0)
+                if _plain_sh(r):
+                    sh_ivs_pl[_k].append(r['iv'] or 0)
     for _v in list(sh_ivs.values()) + list(sh_ivs_pl.values()):
         _v.sort(reverse=True)
+
+    def _skey(n, r):
+        """The shiny bucket r lands in at stage n: the form the game names for it when every held copy of n has a
+        readable form (audit_promises.stage_key's rule), else the whole speciesId."""
+        fr = _full.get(r['u'])
+        tf = evolvable_forms.canon_form(n, evolvable_forms.target_form(r['ff'] or r['form'], n, pvid(r['s'], r['form'] or 0),
+                                                                      fr['gender'] if fr is not None else None))
+        names = form_names.get(n) or []
+        return (n, tf) if tf and names and all(names) else (n, '')
+
+    def _take(n, r):
+        """r takes its spot at stage n (a tag or a hold): the next spare must beat it -- filed bare + form, like the fill."""
+        for _k in {(n, ''), _skey(n, r)}:
+            sh_ivs[_k].append(r['iv'] or 0); sh_ivs[_k].sort(reverse=True)
+            if _plain_sh(r):
+                sh_ivs_pl[_k].append(r['iv'] or 0); sh_ivs_pl[_k].sort(reverse=True)
     by_stage = defaultdict(list)                 # (pid, form) -> surplus shiny candidates
     for r in rows:
         # EVOLVABILITY FROM THE ONE GRAPH, NOT A STALE COLUMN (H08, 2026-09-29): can_evolve_estimated has no writer since
@@ -244,18 +267,19 @@ def compute_target(why=None, spent=None, detail=None, gated=None, items_spent=No
                     _pending = {'species': r['s'], 'iv': r['iv'], 'target': nsid, 'why': _why,
                                 'item': evolvable_forms.item_name(_it) if _it else None, 'have': _have,
                                 'need': evolvable_forms.gate_text(nsid, sid, have=_have)}   # the game's own words
-            def need(n, iv=(r['iv'] or 0), pl=_plain_sh(r)):
+            def need(n, iv=(r['iv'] or 0), pl=_plain_sh(r), row=r):
                 pid = sid_to_pid.get(n)
                 cap = keep_config.species_cap('shiny', pid, keep_config.cap('shiny'))
-                h = sh_ivs.get(n, [])
+                k = _skey(n, row)
+                h = sh_ivs.get(k, [])
                 if cap <= 0 or not (len(h) < cap or iv > h[cap - 1]):
                     return False
                 if not pl:
                     return True
-                if iv < keep_config.shiny_floor_iv() and sh_ivs_pl.get(n):   # shiny floor (2026-09-24): only a form's first PLAIN shiny may be that low
+                if iv < keep_config.shiny_floor_iv() and sh_ivs_pl.get(k):   # shiny floor (2026-09-24): only a form's first PLAIN shiny may be that low
                     return False
                 pcap = cap if keep_config.species_cap('shiny', pid, None) is not None else min(cap, keep_config.cap('shiny_plain'))
-                hp = sh_ivs_pl.get(n, [])
+                hp = sh_ivs_pl.get(k, [])
                 return pcap > 0 and (len(hp) < pcap or iv > hp[pcap - 1])   # a plain spare must clear the PLAIN bar too
             if not ok and gated is not None and _pending is not None and need(_pending['target']):
                 gated[r['u']] = _pending         # nothing takeable at all -> the report names what it needs -- only when
@@ -272,9 +296,7 @@ def compute_target(why=None, spent=None, detail=None, gated=None, items_spent=No
                 # `held`, so they skipped the append and told a 62% shiny Qwilfish to go for an Overqwil spot the 80%
                 # and 76% holds ahead of it had already taken -- 'culled after evolving' in audit_promises.
                 for _n in _branches:             # a HOLD takes its spot like a promise: the next spare must beat it
-                    sh_ivs[_n].append(r['iv'] or 0); sh_ivs[_n].sort(reverse=True)
-                    if _plain_sh(r):
-                        sh_ivs_pl[_n].append(r['iv'] or 0); sh_ivs_pl[_n].sort(reverse=True)
+                    _take(_n, r)
             if ok and all(need(n) for n in ok):  # an open shiny spot OR beats the weakest; a SPLIT needs it on every branch
                 fam = evolvable_forms.family(sid)    # (random tap / task choice the label cannot name, 2026-09-17)
                 cost = max((evolvable_forms.step_cost(sid, n) or 0) for n in ok)
@@ -285,9 +307,7 @@ def compute_target(why=None, spent=None, detail=None, gated=None, items_spent=No
                     if held is not None:
                         held[r['u']] = list(ok)      # earned a spot, cannot pay today: HELD, never released (H08) --
                         for _n in ok:                # and it takes that spot (LAW 2026-09-29: an unpaid hold commits)
-                            sh_ivs[_n].append(r['iv'] or 0); sh_ivs[_n].sort(reverse=True)
-                            if _plain_sh(r):
-                                sh_ivs_pl[_n].append(r['iv'] or 0); sh_ivs_pl[_n].sort(reverse=True)
+                            _take(_n, r)
                     continue                         # not affordable now: no tag (the next surplus may be, e.g. cheaper)
                 if _candy is not None and fam is not None:
                     _candy[fam] = _candy.get(fam, 0) - cost
@@ -305,9 +325,7 @@ def compute_target(why=None, spent=None, detail=None, gated=None, items_spent=No
                 if detail is not None:
                     detail[r['u']] = list(ok)             # the next stage(s) this shiny is promised (audit_promises)
                 for n in ok:                          # the evolved shiny takes its spot: the next spare competes with it
-                    sh_ivs[n].append(r['iv'] or 0); sh_ivs[n].sort(reverse=True)
-                    if _plain_sh(r):
-                        sh_ivs_pl[n].append(r['iv'] or 0); sh_ivs_pl[n].sort(reverse=True)
+                    _take(n, r)
     return target
 
 

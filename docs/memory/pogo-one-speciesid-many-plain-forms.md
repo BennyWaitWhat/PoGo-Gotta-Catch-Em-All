@@ -61,9 +61,11 @@ the shiny ladder by `pvid()` alone, so all five Florges colours shared 4 plain s
 105 reward catches blocked on `NO REASON: Floette 57% -> florges` -- 3 White + 2 Yellow Floettes promised, while the
 bag's only shiny Florges is Blue. The law and `keep_policy` key shinies by (pokemon_id, form). Fix: the spots are
 filed bare + form and a promise is judged on `stage_key()`'s form (commit "audit_promises: shiny spots per
-species+form"). Still form-blind: `refresh_evolve_shiny` (`sh_ivs` by pvid). It is only ever STRICTER than the
-law, so it can miss a shiny upgrade on a multi-form line but never over-promise. Any NEW pooled-by-pvid code is the
-same bug: grep for it when you add a ladder.
+species+form"). The producer `refresh_evolve_shiny` (`sh_ivs` by pvid) was fixed the same way the same night:
+it was only ever STRICTER than the law, and it did hide one upgrade -- a 55% shiny FlabebeRed got no evolve label
+because White/Yellow shiny Florges filled the pooled spots. Offline before/after: pile identical, that one
+`Evolve Once -> floette` added, 11/11 audits. Any NEW pooled-by-pvid code is the same bug: grep for it when you add
+a ladder.
 
 **How to apply:** never treat a pvpoke speciesId as a stage identity. Read the target FORM from the client
 branch, and read it from the FORM template, never the formless one -- `V0422_POKEMON_SHELLOS` claims EAST for
