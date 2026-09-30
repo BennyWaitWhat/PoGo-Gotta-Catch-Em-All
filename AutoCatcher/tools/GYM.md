@@ -14,7 +14,7 @@
 | `gym_send.sh` | Queues one command: `gym_send.sh '<json>' [writer]`. |
 | `gym_lap_route.txt` | The lap route: `lat,lng;lat,lng;...`. |
 | `gym_loop.py`, `gym_trace.py` | Legacy (2026-09-25): the screen-tapping re-battle loop and the flow tracer. Superseded by `gym_run.py` and referenced by nothing; kept until Benny says to delete them. |
-| `gym_state/` | Runtime state, shipped on the DATA branch, not main: `runner_inbox/`, `runner_cmd.json` (legacy), `buddy_out.jsonl`, `feed_study.jsonl` (the feeding study), `feed_outcomes.json`, `logs/`. |
+| `gym_state/` | Runtime state, NOT in git (ignored). It lives on the phone and moves with `python tools/pogo_data.py status\|pull\|push --group gym`: `buddy_out.jsonl`, `feed_study.jsonl` (the feeding study), `feed_outcomes.json`, `logs/`. `runner_inbox/` and `runner_cmd.json` stay local to the machine running the runner and are never synced (a synced inbox could replay commands). |
 
 ## Steering (no restarts)
 - **One command = one file in `gym_state/runner_inbox/`:** a dot-file renamed in, read once in name order, then removed.
@@ -32,7 +32,9 @@
 - **Phone marker `/data/local/tmp/pogo_desktop_busy` is ADVISORY** (Benny, 2026-09-29: nobody pauses for anybody). The runner writes `GymBattle/<pid> <deadline>` only around its world-stopping phases (the install scans; quiesce + unload) and clears it after them. It logs anyone else's marker and never waits or refuses. It also stops `pogo_il2cpp.get_session()` from waiting on its behalf.
 
 ## Cloud sessions
-- **Phone bridge (Benny, 2026-09-29): Tailscale inside the cloud VM.** A userspace `tailscaled` plus `socat 127.0.0.1:5555 -> tailscale nc <phone> 5555`. The session-start hook exports `ADB_TARGET=127.0.0.1:5555`.
+- **Where gym work happens:** Benny (2026-09-29) wants all PoGo work in Claude cloud sessions.
+- **The phone bridge exists:** `.claude/hooks/cloud_session_start.sh` runs Tailscale inside the VM. It exports `ADB_TARGET` (the phone's own address on the VM loopback when possible, else `127.0.0.1:5555`) and `TZ=America/New_York`.
+- **Data:** before analysing or running, `python tools/pogo_data.py pull --group gym`; after a run, `python tools/pogo_data.py push --group gym`. `status` shows what differs. The inbox is never synced.
 - **Everything that talks to the phone honours `ADB_TARGET`:**
   - `pogo_il2cpp.get_session`;
   - `cutoff_hunt.DEV` (joystick intents, adb shell, the phone marker);
@@ -45,7 +47,7 @@
 - **The rule does not change: no `gym_run.py`, no Frida attach and no command to a live runner without Benny's explicit go.** Without it, a cloud session may:
   - run the checks below;
   - change the code;
-  - analyse `gym_state/` (on the data branch).
+  - analyse `gym_state/` (after `pogo_data.py pull --group gym`).
 
 ## Checks
 ```
