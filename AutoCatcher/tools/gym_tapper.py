@@ -17,8 +17,14 @@ ClickBattle -- its battleButton is an Image) -> GO (the party screen's battleBut
 attacks (TryOrQueueAttack; charged via ChargeAttackButtonTapped when <IsCharged>, Pokemod's pick by the game's own
 effectiveness text) -> continue between defenders (ContinueToNextBattle once the screen is Opening/Open and wired).
 A watchdog reports a party screen still Open after its battle started ('prepstuck').
+
+The charged-move pick is power x the game's effectiveness label x the same-type bonus (STAB). STAB never applied before 2026-09-30
+(the first-type field was looked up as type / type_, the game names it type1_); see the STAB block in the script and GYM.md. The
+runner hands the tapper the client game master's typing table through stab_config() below, used only where the live read yields nothing.
 """
+import json
 import os
+import re
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -927,6 +933,7 @@ function popups(now) {
     } catch (e) { return false; }
   });
 }
+/* >>> STAB: tools/test_gym_stab.py runs everything from here to the "<<< STAB" marker under node, against mock il2cpp objects */
 function rank(disp) {                         /* the game's own effectiveness label on the charge button */
   try {
     var t = disp.add(O.cadEff).readPointer(); if (t.isNull()) return 1;
@@ -935,20 +942,147 @@ function rank(disp) {                         /* the game's own effectiveness la
     return s.indexOf('NOT') >= 0 ? 0 : (s.indexOf('SUPER') >= 0 ? 2 : 1);
   } catch (e) { return 1; }
 }
-var SETOFF = {}, MOVE_NAME = {};
-function setOffs(ps) {                        /* the attacker's species settings: Type / Type2 offsets resolved at install (metadata only) */
-  var k = ps.readPointer(), key = String(k); if (SETOFF[key] !== undefined) return SETOFF[key];
-  if (!K.PokemonSettings || !k.equals(K.PokemonSettings)) { SETOFF[key] = null; send({k: 'info', what: 'attacker settings class (no same-type bonus)', layout: nameOf(k)}); return null; }
-  SETOFF[key] = O.setT1 >= 0 ? {t1: O.setT1, t2: O.setT2} : null; return SETOFF[key];
+/* ---- same-type attack bonus (STAB) ----
+   The charge pick scores power x the game's effectiveness label x STAB; STAB = the game's SameTypeAttackBonusMultiplier (client game
+   master: 1.2) when the move's type is one of the ATTACKER's types. It never applied (2026-09-30, Benny: "fix it"): over 87 gym logs
+   and 327 readings the logged damage / power was always 1.0, 1.6 or 0.625, never x1.2. PROVEN cause, from the repo's live dumps: the
+   class recon (pogo_extract/_recon_evolve_out.json: type1_ @24, type2_ @28) and a 0.429.1 dump (AutoCatcher/system/analysis/map_full.json,
+   2026-09-25: "uniqueId_": 19, "type1_": 1) both name PokemonSettingsProto's first type type1_; the old matcher wanted type / type_ for
+   it, so setT1 stayed -1 and setOffs() returned null WITHOUT a log line (the class matched, so no info line either).
+   INFERRED, not provable offline: that ChargeAttackDisplay has an IPokemonSettings field at all, and that it holds the ATTACKER's
+   settings (the effectiveness label needs the DEFENDER's). A wrong-side read would boost the wrong moves, so the live read counts only
+   when its species is one of OUR fighting six that carries this button's move(s). Order (attackerTypes):
+     live   the button's settings object, validated as above;
+     table  the attacker = our fighting six matched by the charge moves on the buttons, its types from the game master table the
+            runner hands over (stab()); a mega-evolved attacker is never looked up (its types differ);
+     none   no boost = the old behaviour. The first supervised run shows which one fired (install line, 'charged moves:' lines). */
+var STAB = {mult: 1.2, multSrc: 'default', live: null, gm: null, table: null, tableN: 0, told: {}, err: null, snap: {key: '', at: 0, list: []}};
+var SETOFF = {}, MOVE_NAME = {}, TYPE_ID = {}, DISP = null;
+function settingsFields(fs) {                 /* PokemonSettingsProto's own fields by DECLARED TYPE -> {t1, t2, id} offsets (-1 = not found); names only break ties */
+  var r = {t1: -1, t2: -1, id: -1};
+  var pick = function (tn) { return fs.filter(function (x) { return x.tn === tn; }).sort(function (a, b) { return a.off - b.off; }); };
+  var ty = pick('Holoholo.Rpc.HoloPokemonType'), ids = pick('Holoholo.Rpc.HoloPokemonId');
+  ty.forEach(function (x) { if (/^type2_?$/i.test(x.name)) r.t2 = x.off; else if (/^type1?_?$/i.test(x.name)) r.t1 = x.off; });
+  if ((r.t1 < 0 || r.t2 < 0) && ty.length === 2) { r.t1 = ty[0].off; r.t2 = ty[1].off; }   /* renamed again: the two type fields in declaration order */
+  ids.forEach(function (x) { if (r.id < 0 && /^uniqueId_?$/i.test(x.name)) r.id = x.off; });
+  if (r.id < 0 && ids.length) r.id = ids[0].off;   /* the species (uniqueId_ @16 in the recon) is the first HoloPokemonId field */
+  return r;
 }
-function moveScore(d) {                       /* the game's own numbers for one charge button */
+function typeIds(lits) {                      /* the live enum {PokemonTypeWater: 11, ...} -> {WATER: 11, ...}: the game master spells them POKEMON_TYPE_WATER */
+  var o = {};
+  Object.keys(lits || {}).forEach(function (nm) { var n = nm.replace(/^PokemonType/i, '').toUpperCase(); if (n && n !== 'NONE' && lits[nm] > 0) o[n] = lits[nm]; });
+  return o;
+}
+function liveMult(vals) {                     /* the game's own multiplier from GymBattleSettingsProto: the one sane value every reading agrees on, else null */
+  var ok = vals.filter(function (v) { return v > 1 && v <= 2; });
+  if (!ok.length || ok.some(function (v) { return Math.abs(v - ok[0]) > 1e-4; })) return null;
+  return Math.round(ok[0] * 1e4) / 1e4;
+}
+function loadStab(cfg) {                      /* the runner hands over the client game master's multiplier + typing table (read only where the live read yields nothing) */
+  var t = {}, n = 0, bad = 0, m = cfg ? +cfg.mult : 0, src = (cfg && cfg.types) || {};
+  STAB.gm = m > 1 && m <= 2 ? m : null;
+  if (STAB.live === null && STAB.gm !== null) { STAB.mult = STAB.gm; STAB.multSrc = 'game master'; }   /* (the live value wins when install() resolved it) */
+  Object.keys(src).forEach(function (k) {
+    var ids = (src[k] || []).map(function (nm) { return TYPE_ID[String(nm).toUpperCase()]; });
+    if (!ids.length || ids.some(function (v) { return !(v > 0); })) { bad++; return; }
+    t[k] = [ids[0], ids.length > 1 ? ids[1] : 0]; n++; });
+  STAB.table = n ? t : null; STAB.tableN = n;
+  return {types: n, rejected: bad, mult: STAB.mult, multSrc: STAB.multSrc, liveMult: STAB.live, gmMult: STAB.gm};
+}
+function resolveStab() {                      /* install(): the STAB field offsets + the live type enum (optional: a miss is reported in the install line, never a MISSING) */
+  O.cadSet = []; O.cadRelated = []; O.setT1 = -1; O.setT2 = -1; O.setId = -1; K.PokemonSettings = null;
+  try {
+    fieldsOf(K.ChargeAttackDisplay).forEach(function (x) {   /* EVERY IPokemonSettings field (an attacker's AND a defender's, if both exist); attackerTypes() validates each by species */
+      if (x.tn === 'Holoholo.Rpc.IPokemonSettings') O.cadSet.push(x.off);
+      if (/PokemonProto$|PokemonSettings|BattlePokemon/.test(x.tn)) O.cadRelated.push(x.name + ':' + x.tn.split('.').pop() + '@' + x.off); });
+    K.PokemonSettings = byName('Holoholo.Rpc', 'PokemonSettingsProto');
+    if (K.PokemonSettings) { var stf = settingsFields(fieldsOf(K.PokemonSettings)); O.setT1 = stf.t1; O.setT2 = stf.t2; O.setId = stf.id; }
+    var ptk = byName('Holoholo.Rpc', 'HoloPokemonType'); TYPE_ID = ptk ? typeIds(enumLits(ptk)) : {};
+  } catch (e) { STAB.err = String(e); }
+}
+function resolveLiveMult() {                  /* install(): the game's own SameTypeAttackBonusMultiplier (client game master 1.2); the runner's game master value is the fallback */
+  try {
+    var bk = byName('Holoholo.Rpc', 'GymBattleSettingsProto'), bo = bk ? fieldBy(bk, function (n, t) { return /^sameTypeAttackBonusMultiplier_?$/i.test(n) && t === 'System.Single'; }) : -1;
+    if (bo < 0) return;
+    var vals = [];
+    instances(bk, 4).forEach(function (g) { try { if (isA(g, bk)) vals.push(g.add(bo).readFloat()); } catch (e) {} });
+    var lm = liveMult(vals); if (lm !== null) { STAB.live = lm; STAB.mult = lm; STAB.multSrc = 'live'; }
+  } catch (e) { STAB.err = String(e); }
+}
+function stabReport() {                       /* install()'s STAB line: what resolved, so the first supervised run shows which path can fire */
+  return {cadSettings: O.cadSet || [], setT1: O.setT1, setT2: O.setT2, setId: O.setId, settingsClass: !!K.PokemonSettings, moveType: !!O.mvTypeOk,
+    typeNames: Object.keys(TYPE_ID).length, related: O.cadRelated || [], mult: STAB.mult, multSrc: STAB.multSrc, liveMult: STAB.live, err: STAB.err};
+}
+function setOffs(ps) {                        /* the settings object's layout: only the PokemonSettingsProto whose fields install() resolved is readable */
+  var k = ps.readPointer(), key = String(k); if (SETOFF[key] !== undefined) return SETOFF[key];
+  if (!K.PokemonSettings || !k.equals(K.PokemonSettings)) { SETOFF[key] = null; send({k: 'info', what: 'STAB: a charge button has a settings object of another class (live types unread, the game master table decides):', layout: nameOf(k)}); return null; }
+  SETOFF[key] = O.setT1 >= 0 && O.setId >= 0 ? {t1: O.setT1, t2: O.setT2, id: O.setId} : null; return SETOFF[key];
+}
+function dispOffs() {                         /* PokemonDisplayProto: the form and the temporary (mega / primal) evolution, by name, once */
+  if (DISP) return DISP;
+  DISP = {form: -1, mega: -1}; var dk = byName('Holoholo.Rpc', 'PokemonDisplayProto');
+  if (dk) fieldsOf(dk).forEach(function (x) { if (/^form_?$/i.test(x.name)) DISP.form = x.off; else if (/^currentTempEvolution_?$/i.test(x.name)) DISP.mega = x.off; });
+  return DISP;
+}
+function fightingSix(now) {                   /* our six in this battle as plain numbers {dex, form, mega, m2, m3}, read through the bag by id (cached per roster, no pointer kept) */
+  var ids = Object.keys(ACTIVE).sort(), key = ACTIVE_AT + ':' + ids.join(',');
+  if (STAB.snap.key === key && (STAB.snap.list.length === ids.length || now - STAB.snap.at < 3000)) return STAB.snap.list;
+  var o = protoOffs(), dp = dispOffs(), out = [];
+  if (o.pokemonId !== undefined && o.move2 !== undefined) ids.forEach(function (id) {
+    try {
+      var p = liveProto(id); if (!p) return;
+      var disp = o.pokemonDisplay !== undefined ? p.add(o.pokemonDisplay).readPointer() : NULL, has = !disp.isNull();
+      out.push({dex: p.add(o.pokemonId).readS32(), form: has && dp.form >= 0 ? disp.add(dp.form).readS32() : 0,
+        mega: has && dp.mega >= 0 ? disp.add(dp.mega).readS32() !== 0 : false,
+        m2: p.add(o.move2).readS32(), m3: o.move3 !== undefined ? p.add(o.move3).readS32() : 0});
+    } catch (e) {}
+  });
+  STAB.snap = {key: key, at: now, list: out};
+  return out;
+}
+function attackerTypes(ds, now) {             /* who attacks and with what types: {pairs: [[t1, t2], ...], src: 'live' | 'table' | 'none', dex, note} */
+  var r = {pairs: [], src: 'none', dex: null, note: ''}, mids = [];
+  ds.forEach(function (d) { try { var mv = d.add(O.cadMove).readPointer(); if (!mv.isNull()) mids.push(mv.add(O.mvId).readS32()); } catch (e) {} });
+  var six = fightingSix(now);
+  if (!six.length) { r.note = 'no snapshot of our six'; return r; }
+  var cands = mids.length ? six.filter(function (t) { return mids.every(function (m) { return m === t.m2 || m === t.m3; }); }) : [];
+  if (!cands.length) { r.note = 'none of our six carries these moves'; return r; }
+  var dexes = {}, live = null, other = null;
+  cands.forEach(function (t) { dexes[t.dex] = 1; });
+  var mega = cands.filter(function (t) { return t.mega; })[0];
+  if (mega) { r.note = '#' + mega.dex + ' is mega evolved (its types differ from the species)'; return r; }
+  ds.forEach(function (d) {
+    (O.cadSet || []).forEach(function (off) {
+      if (live) return;
+      try {
+        var ps = d.add(off).readPointer(); if (ps.isNull()) return;
+        var so = setOffs(ps); if (!so) return;
+        var dex = ps.add(so.id).readS32(), t1 = ps.add(so.t1).readS32(), t2 = so.t2 >= 0 ? ps.add(so.t2).readS32() : 0;
+        if (dexes[dex]) { if (t1 > 0) live = {dex: dex, t: [t1, t2]}; } else other = dex;   /* another species: the defender's (or stale) -- never the attacker's types */
+      } catch (e) {}
+    });
+  });
+  if (live) { r.pairs = [live.t]; r.src = 'live'; r.dex = live.dex; return r; }
+  var told = other === null ? null : other + '>' + Object.keys(dexes).join('/');
+  if (told && !STAB.told[told]) { STAB.told[told] = 1; send({k: 'info', what: 'STAB: the charge button settings object is species #' + other + ', not the attacker (#' + Object.keys(dexes).join('/') + ') -- its types are not used', layout: ''}); }
+  var seen = {}, bad = null;
+  cands.forEach(function (t) {
+    var key = t.dex + ':' + t.form; if (seen[key]) return; seen[key] = 1;
+    var ty = STAB.table ? (STAB.table[key] || STAB.table[t.dex]) : null;
+    if (!ty) { bad = t; return; }
+    if (!r.pairs.some(function (p) { return p[0] === ty[0] && p[1] === ty[1]; })) r.pairs.push(ty);
+  });
+  if (bad) { r.pairs = []; r.note = STAB.table ? 'no game master types for #' + bad.dex + ' form ' + bad.form : 'no game master table'; return r; }
+  r.src = 'table'; r.dex = Object.keys(dexes).length === 1 ? cands[0].dex : null;
+  return r;
+}
+function moveScore(d, atk) {                  /* the game's own numbers for one charge button; x the same-type bonus when the attacker's types are known */
   var mv = d.add(O.cadMove).readPointer(); if (mv.isNull()) return null;
   var pw = mv.add(O.mvPower).readFloat(), en = -mv.add(O.mvEnergy).readS32(), ty = mv.add(O.mvType).readS32(), stab = 1;
   if (!(en > 0)) en = 100;
-  try { var ps = O.cadSettings >= 0 ? d.add(O.cadSettings).readPointer() : NULL;
-    if (!ps.isNull()) { var so = setOffs(ps); if (so && (ps.add(so.t1).readS32() === ty || (so.t2 >= 0 && ps.add(so.t2).readS32() === ty))) stab = 1.2; } } catch (e) {}
+  if (atk && O.mvTypeOk && ty > 0 && atk.pairs.length && atk.pairs.every(function (p) { return p[0] === ty || p[1] === ty; })) stab = STAB.mult;   /* every candidate attacker must agree */
   var dmg = pw * [0.625, 1, 1.6][rank(d)] * stab;
-  return {dmg: dmg, en: en, dpe: dmg / en, id: mv.add(O.mvId).readS32(), ch: !!d.add(O.cadCharged).readU8()};
+  return {dmg: dmg, en: en, dpe: dmg / en, id: mv.add(O.mvId).readS32(), ch: !!d.add(O.cadCharged).readU8(), stab: stab};
 }
 function attack(now) {
   if (!ROUND || !GBS || now - ST.last < __ACT__) return;
@@ -962,8 +1096,9 @@ function attack(now) {
   if (!gh.isNull()) { var arr = gh.add(O.ghDisplays).readPointer();
     if (!arr.isNull()) { var n = arr.add(0x18).readS32(); for (var i = 0; i < n && i < 4; i++) { var d = arr.add(0x20 + 8 * i).readPointer(); if (!d.isNull()) ds.push(d); } } }
   var sc = [], top = -1, nch = 0, fire = -1;   /* the STRONGEST move (power x effectiveness x same-type) fires when charged */
+  var atk = null; try { atk = attackerTypes(ds, now); } catch (e) { atk = null; }   /* (a failed STAB read never stops an attack: no boost = the old pick) */
   for (var j = 0; j < ds.length; j++) {
-    var m = null; try { m = moveScore(ds[j]); } catch (e) {} sc.push(m); if (!m) continue;
+    var m = null; try { m = moveScore(ds[j], atk); } catch (e) {} sc.push(m); if (!m) continue;
     if (m.ch) nch++;
     if (top < 0 || m.dmg > sc[top].dmg) top = j;
   }
@@ -971,9 +1106,10 @@ function attack(now) {
   else if (top >= 0) {                        /* the big one is not ready: a charged weaker one only if it is as efficient per energy */
     for (var q = 0; q < sc.length; q++) if (sc[q] && sc[q].ch && sc[q].dpe > sc[top].dpe * 1.1 && (fire < 0 || sc[q].dmg > sc[fire].dmg)) fire = q;   /* clearly more efficient only */
   }
-  var mk = sc.map(function (m) { return m ? m.id : 0; }).join(',');
-  if (mk !== ST.moveKey) { ST.moveKey = mk;   /* a new attacker: say what it will do */
-    send({k: 'moves', list: sc.filter(Boolean).map(function (m) { return {n: MOVE_NAME[m.id] || m.id, dmg: Math.round(m.dmg), en: m.en, dpe: Math.round(m.dpe * 100) / 100}; })}); }
+  var mk = sc.map(function (m) { return m ? m.id : 0; }).join(',') + '|' + (atk ? atk.src + ':' + (atk.dex || '') : 'x');
+  if (mk !== ST.moveKey) { ST.moveKey = mk;   /* a new attacker (or a new STAB source): say what it will do, and which STAB path decided */
+    send({k: 'moves', list: sc.filter(Boolean).map(function (m) { return {n: MOVE_NAME[m.id] || m.id, dmg: Math.round(m.dmg), en: m.en, dpe: Math.round(m.dpe * 100) / 100, stab: m.stab}; }),
+      src: atk ? atk.src : 'none', who: atk ? atk.dex : null, note: atk ? atk.note : 'the STAB read failed', mult: STAB.mult}); }
   if (nch > ST.nch) send({k: 'progress'});      /* a charge just filled: our hits land, the battle is moving */
   ST.nch = nch;
   if (fire >= 0) {
@@ -982,6 +1118,7 @@ function attack(now) {
   } else { if (call(M.fast, svc, 'fastAttack') === null) return; ST.fast++; }
   if (now - ST.lastSent > 1000) { ST.lastSent = now; send({k: 'act', fast: ST.fast, charged: ST.charged}); }
 }
+/* <<< STAB */
 function runAway() {                          /* the battle's own run-away button (SurrenderButton.TrySurrender) */
   if (!GBS) return false;
   var ui = GBS.add(O.gbsUi).readPointer(); if (ui.isNull()) return false;
@@ -1140,14 +1277,12 @@ rpc.exports = {
     O.cadCharged = need('ChargeAttackDisplay.IsCharged', fieldBy(K.ChargeAttackDisplay, function (n) { return n === '<IsCharged>k__BackingField'; }));
     O.cadEff = need('ChargeAttackDisplay.effectivenessText', fieldBy(K.ChargeAttackDisplay, function (n) { return n === 'effectivenessText'; }));
     O.cadMove = need('ChargeAttackDisplay -> MoveSettingsProto', fieldBy(K.ChargeAttackDisplay, function (n, t) { return t === 'Holoholo.Rpc.MoveSettingsProto'; }));
-    O.cadSettings = fieldBy(K.ChargeAttackDisplay, function (n, t) { return t === 'Holoholo.Rpc.IPokemonSettings'; });
-    K.PokemonSettings = byName('Holoholo.Rpc', 'PokemonSettingsProto'); O.setT1 = -1; O.setT2 = -1;
-    if (K.PokemonSettings) fieldsOf(K.PokemonSettings).forEach(function (x) { if (x.tn === 'Holoholo.Rpc.HoloPokemonType' || cs(TN(x.t)) === 'Holoholo.Rpc.HoloPokemonType') {
-      if (/^type2_?$/i.test(x.name)) O.setT2 = x.off; else if (/^type_?$/i.test(x.name)) O.setT1 = x.off; } });
+    resolveStab();                             /* the same-type bonus fields (STAB block); a miss is reported in the install line, never a MISSING */
     (function () { var mk = byName('Holoholo.Rpc', 'MoveSettingsProto');
       O.mvPower = need('MoveSettingsProto.Power', fieldBy(mk, function (n, t) { return n === 'Power' && t === 'System.Single'; }));
       O.mvEnergy = need('MoveSettingsProto.EnergyDelta', fieldBy(mk, function (n, t) { return n === 'EnergyDelta' && t === 'System.Int32'; }));
       O.mvType = need('MoveSettingsProto.Type', fieldBy(mk, function (n) { return n === 'Type'; }));
+      O.mvTypeOk = fieldBy(mk, function (n, t) { return n === 'Type' && t === 'Holoholo.Rpc.HoloPokemonType'; }) >= 0;   /* STAB compares it with the attacker's HoloPokemonType fields: only if it IS one */
       O.mvId = need('MoveSettingsProto.UniqueId', fieldBy(mk, function (n) { return n === 'UniqueId'; }));
       var ek = byName('Holoholo.Rpc', 'HoloPokemonMove');
       if (ek) { var l = enumLits(ek); for (var nm in l) MOVE_NAME[l[nm]] = nm.replace(/^V\d+Move/, '').replace(/Fast$/, ''); } })();
@@ -1207,6 +1342,7 @@ rpc.exports = {
       var ro = fk ? fieldBy(fk, function (n, t) { return n === 'InteractionRangeMeters' && t === 'System.Single'; }) : -1; if (ro < 0) return;
       instances(gk, 4).forEach(function (g) { try { if (RANGE === null && isA(g, gk)) { var f = g.add(fo).readPointer(); if (isA(f, fk)) { var v = f.add(ro).readFloat(); if (v > 10 && v < 1000) RANGE = v; } } } catch (e) {} });
     })();
+    resolveLiveMult();                         /* the game's own same-type multiplier (another liveness walk, before any hook exists) */
     if (MISSING.length) return {ok: false, missing: MISSING};
     var TEAM_MISSING = [];
     (function () {
@@ -1379,8 +1515,10 @@ rpc.exports = {
       try { var u = a[1]; delete GUIS[u]; delete CONT_DONE[u]; delete SKIP_DONE[u]; delete OUTCOME_SEEN[u];
         POPQ = POPQ.filter(function (d) { return !d.gui.equals(u); }); } catch (e) {} });
     return {ok: true, gyms: dirGyms().length, root: String(ROOT), guiLayer: GLS_CANDS.length, open: LIT.open, autoplace: !!M.pickHandler,
-      team: TEAM_MISSING.length ? TEAM_MISSING : true, feed: FEED_MISSING.length ? FEED_MISSING : true, detailsParams: O.detailsParams || null, range: RANGE, graph: GRAPH, graphNotes: GRAPH_NOTES};
+      team: TEAM_MISSING.length ? TEAM_MISSING : true, feed: FEED_MISSING.length ? FEED_MISSING : true, detailsParams: O.detailsParams || null, range: RANGE, graph: GRAPH, graphNotes: GRAPH_NOTES,
+      stab: stabReport()};
   },
+  stab: function (cfg) { return loadStab(cfg); },   /* the client game master's same-type multiplier + typing table, handed over by the runner (gym_tapper.stab_config) */
   open: function (fid) { if (/GymRootState|GymRotationState/.test(CHAIN)) return {known: !!GYMS[fid], busy: true};   /* a gym is opening/open */
     PENDING = fid; PENDING_AT = Date.now(); return {known: !!GYMS[fid]}; },
   autodeploy: function (fid, ids, friendly, team) { if (team) MYTEAM = team;
@@ -1418,3 +1556,71 @@ rpc.exports = {
   info: function () { return {gyms: Object.keys(GYMS).length, map: Object.keys(GTEAM).length, fast: ST.fast, charged: ST.charged}; }
 };
 """.replace("__ACT__", str(ACT_MS))
+
+GM_PATH = os.path.join(os.path.dirname(os.path.dirname(HERE)), "pogo_extract", "gamemaster_pokeminers.json")   # the client game master (read-only data)
+FORM_ENUM_PATH = os.path.join(os.path.dirname(os.path.dirname(HERE)), "pogo_extract", "form_enum.json")        # the game's own Form enum (tracked)
+_STAB_CFG = {}
+
+
+def stab_config(gm_path=None, enum_path=None):
+    """The client game master's same-type multiplier and typing table, for the tapper's stab() export (2026-09-30, Benny: "fix it").
+    Read-only; never raises (a missing file comes back as {"err": ...}: the runner carries on with the live read alone).
+
+      {"mult": 1.2, "types": {"150": ["PSYCHIC"], "484": ["WATER", "DRAGON"], "26:50": ["ELECTRIC", "PSYCHIC"], ...},
+       "names": {150: "Mewtwo", ...}, "species": 1024, "forms": 117, "unmapped": 0}
+
+    Key "<dex>" = the species' plain typing (its game master template with no form). Key "<dex>:<form>" = a form whose typing differs
+    (Alolan / Galarian / Hisuian / Paldean, Arceus and Silvally types, Rotom, Castform, ...), <form> = the game's own Form enum value
+    (form_enum.json; the game master spells a form MEWTWO_A where the enum says MewtwoA, so both are matched letters-and-digits only).
+    The game master is the client's 0.427.0 and the game is newer: a species or form it lacks is simply absent here, and the tapper then
+    has no table types for it (the live read, or no boost). Types are the game master's names without the POKEMON_TYPE_ prefix; the
+    tapper turns them into the live HoloPokemonType enum values itself."""
+    gm_path, enum_path = gm_path or GM_PATH, enum_path or FORM_ENUM_PATH
+    if (gm_path, enum_path) in _STAB_CFG:
+        return _STAB_CFG[(gm_path, enum_path)]
+    try:
+        with open(gm_path, encoding="utf-8") as f:
+            gm = json.load(f)
+        with open(enum_path, encoding="utf-8") as f:
+            enum = json.load(f)
+    except (OSError, ValueError) as e:                                   # (not cached: a data pull may bring the file)
+        return {"err": f"{type(e).__name__}: {e}", "hint": "python tools/pogo_data.py pull --group inventory brings pogo_extract/gamemaster_pokeminers.json"}
+    norm = lambda x: re.sub(r"[^A-Z0-9]", "", str(x).upper())
+    by_form = {}
+    for k, v in enum.items():
+        by_form.setdefault(norm(v), []).append(int(k))
+    base, forms, names, mult = {}, {}, {}, None
+    for t in gm:
+        d = t.get("data") or {}
+        if t.get("templateId") == "BATTLE_SETTINGS":
+            mult = (d.get("battleSettings") or {}).get("sameTypeAttackBonusMultiplier")
+        s, m = d.get("pokemonSettings"), re.match(r"V(\d{4})_POKEMON_", t.get("templateId", ""))
+        if not s or not m:
+            continue
+        dex = int(m.group(1))
+        types = [x.replace("POKEMON_TYPE_", "") for x in (s.get("type"), s.get("type2")) if x]
+        if s.get("form"):
+            forms.setdefault(dex, {})[norm(s["form"])] = types
+        else:
+            base[dex] = types
+            names[dex] = str(s.get("pokemonId") or "").replace("_", " ").title()
+    table = {str(dex): types for dex, types in base.items() if types}
+    nforms = unmapped = 0
+    for dex, fs in forms.items():
+        for form, types in fs.items():
+            if not types or types == base.get(dex):
+                continue                                                  # the species' own typing: no entry needed
+            if form not in by_form:
+                unmapped += 1
+                continue
+            for code in by_form[form]:
+                table[f"{dex}:{code}"] = types
+                nforms += 1
+    try:
+        mult = float(mult)
+    except (TypeError, ValueError):
+        mult = None
+    cfg = {"mult": mult if mult and 1 < mult <= 2 else None, "types": table, "names": names, "species": len(base), "forms": nforms,
+           "unmapped": unmapped}
+    _STAB_CFG[(gm_path, enum_path)] = cfg
+    return cfg

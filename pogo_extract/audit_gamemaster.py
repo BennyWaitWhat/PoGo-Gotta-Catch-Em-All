@@ -5,6 +5,10 @@ a new release that the hand list has not caught up with BLOCKS the sync instead 
 
   1. RARITY  -- every pokemonClass LEGENDARY / MYTHIC / ULTRA_BEAST species in the game is in references.py's
                 LEGENDARY/PARADOX, MYTHICAL, ULTRA_BEAST sets (rarity cap, 3-star floor, never-evolve all hang off them).
+  1b. CATCHER -- the same species are all in AutoCatcher's hand-kept skip list, CFG["legendary"] in catch_loop_fast.py (2026-09-30:
+                six Paradox legendaries had been missing; the catcher auto-throws up to 12 balls at any species not listed). The
+                list is read from the catcher's SOURCE TEXT with ast -- the catcher is never imported or run. Only 144 / 145 / 146
+                are deliberately absent (the Galarian birds: CFG["priority"] opens them first and the skip runs before it).
   2. GENDER  -- every evolution the game locks to ONE gender (evolutionBranch.genderRequirement with no sibling branch
                 for the other gender) is in evolvable_forms.GENDER_TERMINALS, which the ranker and the labels use.
   3. TRANSFER -- no mon the game marks isTransferable=false sits in the Transfer pile (the game would refuse, and the
@@ -12,9 +16,9 @@ a new release that the hand list has not caught up with BLOCKS the sync instead 
   4. MOVES   -- move_id_to_name.json names every move id the bag holds (an unnamed id is treated as legacy -- safe,
                 but a sign the map is stale).
 
-Read-only. Exit 1 (BLOCK) on 1-3; 4 is a WARN.
+Read-only. Exit 1 (BLOCK) on 1, 1b, 2 and 3; 4 is a WARN (1b also WARNs on a listed dex the game does not class so).
 """
-import json, os, re, sqlite3, sys
+import ast, json, os, re, sqlite3, sys
 from collections import defaultdict
 ROOT = os.path.dirname(os.path.abspath(__file__)); os.chdir(ROOT)
 sys.path.insert(0, os.path.join(ROOT, 'system', 'scripts')); sys.path.insert(0, ROOT)
@@ -22,6 +26,32 @@ import evolvable_forms
 from references import LEGENDARY_IDS, MYTHICAL_IDS, ULTRA_BEAST_IDS, PARADOX_IDS
 
 norm = lambda x: re.sub(r'[^A-Z0-9]', '', str(x).upper())
+
+CATCHER = os.path.normpath(os.path.join(ROOT, os.pardir, 'AutoCatcher', 'system', 'scripts', 'game_write', 'catch_loop_fast.py'))
+# Deliberately NOT in the catcher's skip list (2026-09-30): the Galarian birds. CFG["priority"] opens them first, at the best ball, and the
+# catcher's walk checks CFG["legendary"] BEFORE priority -- listing them would skip them. Every other game-master LEGENDARY / MYTHIC /
+# ULTRA_BEAST dex must be listed.
+CATCHER_ALLOW = {144: 'Articuno', 145: 'Zapdos', 146: 'Moltres'}
+
+
+def catcher_legendary(path=CATCHER):
+    """CFG["legendary"] from the catcher's SOURCE TEXT: ast.literal_eval of its module-level CFG dict. The catcher attaches to the
+    game, so it is never imported or run here."""
+    with open(path, encoding='utf-8') as f:
+        tree = ast.parse(f.read(), path)
+    for n in tree.body:
+        if isinstance(n, ast.Assign) and any(isinstance(t, ast.Name) and t.id == 'CFG' for t in n.targets):
+            return [int(x) for x in ast.literal_eval(n.value)['legendary']]
+    raise ValueError('no module-level CFG = {...} in %s' % path)
+
+
+def catcher_gaps(cls, listed):
+    """(missing, stray): the game-master LEGENDARY / MYTHIC / ULTRA_BEAST dex the catcher's list lacks (minus CATCHER_ALLOW), and the
+    listed dex the game master does not class that way."""
+    game = set()
+    for c in ('POKEMON_CLASS_LEGENDARY', 'POKEMON_CLASS_MYTHIC', 'POKEMON_CLASS_ULTRA_BEAST'):
+        game |= set(cls.get(c, ()))
+    return sorted(game - set(listed) - set(CATCHER_ALLOW)), sorted(set(listed) - game)
 
 
 def scan_client_gm(gm):
@@ -72,6 +102,22 @@ def main():
         if gap:
             block.append('%s: the game classes dex %s as %s but references.py does not -- rarity keep rules miss them'
                          % (label, gap, cname))
+    # 1b. the catcher's own hand-kept skip list (2026-09-30: it had missed six Paradox legendaries, 1009 1010 1020-1023)
+    listed = None
+    try:
+        listed = catcher_legendary(CATCHER)
+    except (OSError, SyntaxError, ValueError, KeyError, TypeError) as e:
+        block.append('CATCHER: cannot read CFG["legendary"] from catch_loop_fast.py (%s: %s) -- its skip list is unchecked against the game master'
+                     % (type(e).__name__, e))
+    if listed is not None:
+        gap, stray = catcher_gaps(cls, listed)
+        if gap:
+            block.append('CATCHER: dex %s are LEGENDARY / MYTHIC / ULTRA_BEAST in the game master but missing from catch_loop_fast.py '
+                         'CFG["legendary"] -- the catcher would auto-throw up to 12 balls at each; list them (only %s are deliberately absent)'
+                         % (gap, sorted(CATCHER_ALLOW)))
+        if stray:
+            warn.append('CATCHER: CFG["legendary"] lists dex %s that the game master does not class LEGENDARY / MYTHIC / ULTRA_BEAST '
+                        '(a newer client may; otherwise a typo skips a normal species)' % stray)
     # 2. gender
     for (d, target), genders in gender_branch.items():
         if genders & {'ANY'} or len(genders) != 1:
@@ -233,6 +279,9 @@ def main():
           % (len(cls.get('POKEMON_CLASS_LEGENDARY', ())), len(cls.get('POKEMON_CLASS_MYTHIC', ())),
              len(cls.get('POKEMON_CLASS_ULTRA_BEAST', ())),
              sum(1 for g in gender_branch.values() if 'ANY' not in g and len(g) == 1), locked))
+    if listed is not None and not catcher_gaps(cls, listed)[0]:
+        print('catcher skip list: %d dex in CFG["legendary"]; every game-master LEGENDARY / MYTHIC / ULTRA_BEAST dex is covered except the '
+              'deliberate %s' % (len(set(listed)), sorted(CATCHER_ALLOW)))
     for w in warn:
         print('  *** WARN  ' + w)
     for b in block:

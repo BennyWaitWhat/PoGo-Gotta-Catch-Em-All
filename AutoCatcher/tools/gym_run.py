@@ -59,6 +59,44 @@ def say(s):
     print(time.strftime("%H:%M:%S"), s, flush=True)
 
 
+def stab_tag(p, names):
+    """The same-type-bonus path behind one 'charged moves:' line (2026-09-30): who the tapper thinks is attacking, where the types came
+    from (live = the game's own settings object, validated against our six; table = the game master, the attacker matched by its charge
+    moves; none = no boost, with the reason) and the multiplier used. The first supervised run reads which path fired from this."""
+    who = p.get("who")
+    nm = (f"#{who} {names[who]}" if who in names else f"#{who}") if who else "unknown"
+    return f" [attacker {nm}; types: {p.get('src', 'none')}" + (f" ({p['note']})" if p.get("note") else "") + f"; same-type x{p.get('mult', 1.2):g}]"
+
+
+def stab_setup(sc, g, r):
+    """Same-type attack bonus (STAB), 2026-09-30: say what install() resolved for it, then hand the tapper the client game master's
+    multiplier + typing table (used only where the live read yields nothing). A missing data file never stops the runner."""
+    sb = r.get("stab") or {}
+    fld = sb.get("cadSettings") or []
+    say("  same-type bonus (STAB): charge-button settings field(s) " + (", ".join(f"@{x}" for x in fld) or "NONE")
+        + f"; PokemonSettingsProto types @{sb.get('setT1')}/@{sb.get('setT2')}, species @{sb.get('setId')}; multiplier x{sb.get('mult', 1.2):g} ({sb.get('multSrc')})"
+        + (f"; button fields that mention a Pokemon: {', '.join(sb['related'])}" if sb.get("related") else ""))
+    if not fld:
+        say("  !! STAB: the charge button has no IPokemonSettings field -- the live read is off; the game master table decides (attacker matched by its charge moves)")
+    if min(sb.get("setT1", -1), sb.get("setT2", -1), sb.get("setId", -1)) < 0:
+        say("  !! STAB: PokemonSettingsProto types / species not all found -- the live read is off; the game master table decides")
+    if not sb.get("moveType"):
+        say("  !! STAB: MoveSettingsProto.Type is not a HoloPokemonType -- the same-type bonus is OFF")
+    if not sb.get("typeNames"):
+        say("  !! STAB: the live HoloPokemonType enum was not read -- the game master table cannot be used")
+    if sb.get("err"):
+        say(f"  !! STAB: resolving it raised: {sb['err']}")
+    cfg = gt.stab_config()
+    g.stab_names = cfg.get("names") or {}
+    if cfg.get("err"):
+        say(f"  !! STAB: game master table unavailable ({cfg['err']}; {cfg.get('hint')}) -- the live read decides alone")
+        return
+    rep = sc.exports_sync.stab({"mult": cfg["mult"], "types": cfg["types"]})
+    say(f"  STAB table from the game master: {rep['types']} typings ({cfg['species']} species + {cfg['forms']} form overrides), multiplier x{rep['mult']:g} "
+        f"({rep['multSrc']}; live {rep.get('liveMult')}, game master {rep.get('gmMult')})"
+        + (f"; {rep['rejected']} REJECTED (type names the live enum lacks)" if rep.get("rejected") else ""))
+
+
 def map_top(t):
     """The top screen is the plain map (toasts -- catch rewards, notices -- may sit over it)."""
     return t is not None and (t in ("MainMenuGuiController", "") or "Toast" in t)
@@ -128,8 +166,8 @@ class Game:
         elif k == "charged":
             self.last_act = time.time()
         elif k == "moves":
-            say("    charged moves: " + ", ".join(f"{m['n']} {m['dmg']} dmg / {m['en']} energy" for m in p["list"])
-                + " -> the strongest fires when charged")
+            say("    charged moves: " + ", ".join(f"{m['n']} {m['dmg']} dmg / {m['en']} energy stab x{m.get('stab', 1):g}" for m in p["list"])
+                + " -> the strongest fires when charged" + stab_tag(p, getattr(self, "stab_names", {})))
         elif k == "timers":
             say(f"    results timers were faint {p['faint']:.2f} s / CP drain {p['drain']:.2f} s -> 0.5 s; knockout camera {p.get('camera')} -> 0.2 s each")
         elif k == "prepstuck":
@@ -775,6 +813,7 @@ def _run(a, g, mv, done, t_start, enemy, goal, sess, pid, sc):
         + (f"; older graphs at {_gr['other']} -- the game rebuilt its services in-process, reading the newest" if _gr.get("other") else ""))
     for _gn in r.get("graphNotes") or []:
         say(f"  !! live graph: {_gn}")
+    stab_setup(sc, g, r)                                     # same-type bonus: what install() resolved + the game master's typing table
     sc.exports_sync.feedcfg(a.feed, a.feed_at, a.feed_hot, a.feed_mate)
     if a.study and os.path.exists(a.study):                  # contest level of each gym, seeded from the last hour of readings
         try:

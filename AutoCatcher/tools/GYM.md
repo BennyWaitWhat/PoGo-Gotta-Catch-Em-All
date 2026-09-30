@@ -10,6 +10,7 @@
 | `buddy_tapper.py` | Buddy calls (stats / feed / pet / history / set), used by `buddy_run.py`. |
 | `live_graph_js.py` | The live-service-graph pick shared by both tappers (H01, 2026-09-29): the newest `InventoryCache.latestTimestamp` wins. A service must link to that graph and contradict it nowhere. A tie or an unprovable pick is refused, never guessed. |
 | `test_graph_pick.py` | Offline check: the real `live_graph_js` block under node with mock il2cpp objects (13 cases). |
+| `test_gym_stab.py` | Offline check (2026-09-30): `node --check` of the whole tapper script text plus a top-level duplicate-name scan; the real STAB block (the `>>> STAB` / `<<< STAB` markers in `gym_tapper.py`) under node against mock il2cpp objects; `stab_config()`; the runner's STAB report lines. Needs node, not Frida. CI runs it. |
 | `gym_restart.sh` | The ONLY way to (re)start the runner: a graceful stop through the inbox, then a new runner. |
 | `gym_send.sh` | Queues one command: `gym_send.sh '<json>' [writer]`. |
 | `gym_lap_route.txt` | The lap route: `lat,lng;lat,lng;...`. |
@@ -30,6 +31,29 @@
 - Golden Razz only for his own defenders plus one teammate per gym. Never for buddies.
 - Read and log the TEXT of every warning / lockout / error screen, not just its name.
 - **Phone marker `/data/local/tmp/pogo_desktop_busy` is ADVISORY** (Benny, 2026-09-29: nobody pauses for anybody). The runner writes `GymBattle/<pid> <deadline>` only around its world-stopping phases (the install scans; quiesce + unload) and clears it after them. It logs anyone else's marker and never waits or refuses. It also stops `pogo_il2cpp.get_session()` from waiting on its behalf.
+
+## Same-type bonus (STAB): changed 2026-09-30, CODE ONLY
+Benny: "fix it". It ships at the next supervised run; every run or deploy still needs his explicit go. Nothing was run, attached or deployed.
+
+The charged-move pick is power x the game's effectiveness label x STAB (x1.2 when the move's type is one of the attacker's two types). STAB never applied: in the 87 gym logs, 327 `charged moves:` readings, damage / power was always 1.0, 1.6 or 0.625, never x1.2 (Palkia: Aqua Tail 50, Draco Meteor 150; with STAB 60 and 180. Mewtwo: Psystrike 95 against Shadow Ball 100; with STAB 114, so the pick changes).
+- **Proven cause (from the repo's own live dumps):** `PokemonSettingsProto` names its two types `type1_` @24 and `type2_` @28 (class recon `pogo_extract/_recon_evolve_out.json`, May). The 0.429.1 client dump `AutoCatcher/system/analysis/map_full.json` (2026-09-25) shows the same names (`"uniqueId_": 19, "type1_": 1`). The matcher wanted `type` / `type_` for the first, so `setT1` stayed -1 and `setOffs()` returned null with no log line. The class did match, so the one info line ("attacker settings class") never fired either, which is why none is in any log.
+- **Inferred, not provable offline:**
+  - `ChargeAttackDisplay` has an `IPokemonSettings` field at all (it was never `need()`-checked);
+  - that field holds the ATTACKER's settings and not the defender's (the effectiveness label needs the defender's).
+  - The repo history is one import commit, so it is not proven the STAB code was live in those runs. The `moves` line exists from `gym_v2_32` (2026-09-25 23:44).
+- **What the tapper does now** (`gym_tapper.py`, the STAB block):
+  - the type fields are found by declared type (`HoloPokemonType`, in declaration order), names only break ties;
+  - **live** read: the button's settings object counts only when its species is one of our fighting six AND that Pokemon carries the button's move(s), so a defender's settings can never boost the wrong moves;
+  - **table** fallback, independent of any live field: the attacker is our fighting six matched by the charge moves on the buttons, its types come from the client game master table the runner hands over (`gym_tapper.stab_config()` reads `pogo_extract/gamemaster_pokeminers.json` and `form_enum.json`; key `dex` or `dex:form`; the game master file is data, not in git, so `python tools/pogo_data.py pull --group inventory` brings it, and without it the runner says so and the live read decides alone). A mega-evolved attacker, a species the table lacks, or candidates that disagree get no boost (the old pick);
+  - the multiplier is the live `GymBattleSettingsProto.SameTypeAttackBonusMultiplier` when it resolves, else the game master's 1.2.
+  - Any failure in the STAB read leaves exactly the old pick. Pacing, targeting, feeding, deploying and timings are untouched.
+- **First supervised run: read these lines to see which path fired:**
+  - `same-type bonus (STAB): charge-button settings field(s) @... ; PokemonSettingsProto types @24/@28, species @16; multiplier x1.2 (live | game master | default)`, plus a `!! STAB:` line for anything unresolved;
+  - `STAB table from the game master: N typings (... species + ... form overrides)`;
+  - every `charged moves:` line now ends `stab xF` per move and `[attacker #dex Name; types: live | table | none (reason); same-type xM]`;
+  - `STAB: the charge button settings object is species #N, not the attacker` means that field is the defender's (it is then ignored);
+  - `STAB: a charge button has a settings object of another class` names the wrapper class.
+  - The `related` fields in the first line list every button field that mentions a Pokemon, with its name: a field called `defenderSettings` answers the attacker/defender question at once.
 
 ## Cloud sessions
 - **Where gym work happens:** Benny (2026-09-29) wants all PoGo work in Claude cloud sessions.
@@ -52,6 +76,7 @@
 ## Checks
 ```
 python test_graph_pick.py
+python test_gym_stab.py
 python -m py_compile gym_run.py gym_tapper.py buddy_tapper.py live_graph_js.py
 bash -n gym_restart.sh && bash -n gym_send.sh
 ```
