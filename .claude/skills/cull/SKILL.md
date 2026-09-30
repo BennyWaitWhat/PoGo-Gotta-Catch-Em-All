@@ -48,6 +48,18 @@ Common shapes:
 - `8-layer cull ... pvp rank` — a rank<=5 spread reached the pile. Stop; that is the Mareep failure mode.
 - `structural inv. ... BLOCK` — an invariant about the MODEL, not the membership. Read its `DO:` line.
 
+## If the game-master refresh stops the pass
+
+`GAME MASTER REFRESH STOPPED THE PASS (rc 5)` means a game master moved keep decisions, so nothing was recrawled or
+synced — the stop is the feature, not a crash. Two causes: pvpoke's ranks crossed the rank<=5 line, or PokeMiners
+published a NEW client game master (`gamemaster_pokeminers.json`, asked on every run) that flips a keep verdict of a
+mon in the bag: a held move that is a plain TM now (its Legacy protection), a form that can or cannot evolve, an XXL
+copy's size numbers or types, tradability, rarity. The lines above name the mons and what flipped (the same rows are in
+`pogo_extract/system/analysis/gamemaster_review_pending.json`). **Show Benny those rows and wait** — keep policy is his
+call. Run `python system/scripts/refresh_gamemaster.py --ack` only when he says so, never yourself, then cull again.
+The previous file stays as `gamemaster_pokeminers.json.bak-<date>`. A batch the engine cannot load, or a bag that cannot
+be read, is never installed: the `WARN pokeminers:` / `STOP` line says which file and how to restore it.
+
 ## If the attach fails
 
 The pipeline waits out PoGo's 45-second init storm on its own, so a relaunched game just costs a few silent
@@ -81,6 +93,9 @@ JUST CAUGHT or JUST EVOLVED (see memory feedback-just-caught-in-pile-explanation
 **Safety check:** N checked, none in any top 5 — closest <mon> at <league> #<n> as <stage>.
 
 **Which way to evolve** — every `which way:` line full_audit printed (evolve_targets.py), in plain words.
+
+**Power Up to 2500** — only when a Power Up tag holds mons: each one's exact price from the game master (dust / candy / XL candy)
+against what you hold, "doable now" / "doable after exchanging N candy (if the game allows the exchange)" / "short X". Report only.
 ```
 
 He expects all three sections EVERY cull (user 2026-09-24: "Where's my little thing about what got improved and
@@ -89,6 +104,10 @@ full_audit ends with `=== REPORT ===` (cull_report.py) — relay that block, add
 anything unusual from the log. Do not rebuild it by hand ("Why does it take you so long to make the report? it
 shouldnt..."). Send the report BEFORE any follow-up work (the data push and Bag Pulse come right after; the
 pages and the dashboard stop are already done by full_audit).
+
+The Power Up block at the end of that report (2026-09-30) is advice only: it reads the tag files and this walk's balances and changes
+nothing that is kept or tagged. Relay it as printed -- the exchange is the game's 100-candy-for-1-XL swap, which no tool here has ever
+done, so its "if the game allows the exchange" stays in.
 
 Then, briefly, only what is worth his attention: a count that moved, a new trophy, an audit that fired, an
 upgrade now affordable. Skip anything that reads the same as last time — repeating a steady number every pass

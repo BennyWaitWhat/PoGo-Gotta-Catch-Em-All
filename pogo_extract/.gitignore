@@ -56,6 +56,10 @@
 !/proto_layout.json
 # the master-plan workflow output gen_master_plan.py renders (static)
 !/wf_master.json
+# Bag Pulse pictures + the game's own names (bag_art.py --refresh-index / --refresh-names writes them, pogo_display.py reads them):
+# a fresh clone and CI need both, and the default deny above would hide them
+!/pogo_icon_index.txt
+!/official_names_en.json
 
 # --- 5. DENY: things the allow rules above would otherwise let in ------------
 # 5a. SECRETS / AUTH / SESSION (defense in depth; the default deny already blocks them)
@@ -203,3 +207,5 @@ __pycache__/
 /system/analysis/maxout_data/
 /system/analysis/tagsets/
 /system/analysis/dossiers/
+# 6f. the picture cache of Bag Pulse (bag_art.py): thumbnails of a public source, rebuildable, NOT in the phone data store
+/system/analysis/art_cache/

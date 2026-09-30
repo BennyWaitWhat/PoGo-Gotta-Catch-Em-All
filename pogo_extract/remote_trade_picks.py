@@ -35,21 +35,37 @@ _norm = lambda x: re.sub(r'[^A-Z0-9]', '', str(x).upper())
 _TRADABLE = None
 
 
+def tradable_tables_from(gm):
+    """(by_form, by_dex) isTradable tables of a client game master template list. PURE (2026-09-30): gm_guard judges a
+    candidate game master with this before it is installed."""
+    by_form, by_dex = {}, {}
+    for t in gm:
+        s = (t.get('data') or {}).get('pokemonSettings')
+        m = re.match(r'V(\d{4})_POKEMON_', t.get('templateId', ''))
+        if not s or not m:
+            continue
+        # absent = untradable: the game master prints isTradable only when true (Deoxys has none) -- see audit_gamemaster
+        if s.get('form'):
+            by_form[_norm(s['form'])] = bool(s.get('isTradable'))
+        else:
+            by_dex.setdefault(int(m.group(1)), bool(s.get('isTradable')))
+    return by_form, by_dex
+
+
 def _tradable_tables():
     global _TRADABLE
     if _TRADABLE is None:
-        by_form, by_dex = {}, {}
-        for t in json.load(open(os.path.join(HERE, 'gamemaster_pokeminers.json'), encoding='utf-8')):
-            s = (t.get('data') or {}).get('pokemonSettings')
-            m = re.match(r'V(\d{4})_POKEMON_', t.get('templateId', ''))
-            if not s or not m:
-                continue
-            if s.get('form'):
-                by_form[_norm(s['form'])] = s.get('isTradable', True)
-            else:
-                by_dex.setdefault(int(m.group(1)), s.get('isTradable', True))
-        _TRADABLE = (by_form, by_dex)
+        _TRADABLE = tradable_tables_from(json.load(open(os.path.join(HERE, 'gamemaster_pokeminers.json'), encoding='utf-8')))
     return _TRADABLE
+
+
+def row_tradable(r, tables, enum):
+    """False when the game master marks this row's form (else its species) untradable; True when it says nothing.
+    ONE definition for compute() and gm_guard (2026-09-30)."""
+    by_form, by_dex = tables
+    f = r['fresh_form'] or r['form'] or 0
+    v = by_form.get(_norm(enum.get(f, ''))) if f else None
+    return by_dex.get(r['pokemon_id'], True) if v is None else v
 
 
 def variant_key(r):
@@ -80,9 +96,7 @@ def compute(rows=None, now=None):
         return [], collections.Counter({'no keep reasons -- nothing offered': 1})
 
     def tradable(r):
-        f = r['fresh_form'] or r['form'] or 0
-        v = by_form.get(_norm(enum.get(f, ''))) if f else None
-        return by_dex.get(r['pokemon_id'], True) if v is None else v
+        return row_tradable(r, (by_form, by_dex), enum)
 
     def days(r):
         try:

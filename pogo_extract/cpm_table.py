@@ -63,6 +63,19 @@ entries are decimal roundings of the game's float32 values (deltas ~1e-9); repla
 whole table with exact float32 was measured too -- pile and all 48 tagsets still
 identical, 0 boundary crossings, but 416 rank columns churn for no decision benefit, so
 it is NOT done without a deliberate call.
+
+20 HALF LEVELS CORRECTED (2026-09-30, Benny's call: "1-4 fix it all")
+------------------------------------------------------------------
+The '~1e-9' above held for the whole levels only. 20 half-level entries -- L20.5-29.5 and
+L41.5-50.5 -- sat up to 4.85e-6 (about 80 float32 steps) BELOW the game's ladder: a half
+level is sqrt((a^2 + b^2) / 2) of its two whole-level neighbours, and the PokeMiners client
+game master (playerLevel.cpMultiplier) gives those. They are now float32 of that value.
+Arbiter check against the game's own stored floats (cp_multiplier + additional_cpm, bag of
+2026-09-30): identical at 16 of the 19 half levels the bag holds; at L21.5 / L27.5 / L47.5
+the game's float32 sum of the two stored parts lands one float32 step either side (it
+depends on how the multiplier is split between caught level and power-ups). The other 81
+entries are untouched. check_constant_drift.py now re-derives the whole ladder from the
+game master whenever it is present and fails on any entry off by more than 1e-7.
 """
 
 # Index i corresponds to level 1 + i/2  (i=0 -> L1.0, i=98 -> L50.0, i=100 -> L51.0).
@@ -74,17 +87,17 @@ CPM = (
     0.42250001, 0.432926419, 0.44310755, 0.4530599578, 0.46279839, 0.472336083,  # L10.0-L12.5
     0.48168495, 0.4908558, 0.49985844, 0.508701765, 0.51739395, 0.525942511,  # L13.0-L15.5
     0.53435433, 0.542635767, 0.55079269, 0.558830576, 0.56675452, 0.574569153,  # L16.0-L18.5
-    0.58227891, 0.589887907, 0.59740001, 0.604818814, 0.61215729, 0.619399365,  # L19.0-L21.5
-    0.62656713, 0.633644533, 0.64065295, 0.647576426, 0.65443563, 0.661214806,  # L22.0-L24.5
-    0.667934, 0.674577537, 0.68116492, 0.687680648, 0.69414365, 0.700538673,  # L25.0-L27.5
-    0.7068842, 0.713164996, 0.71939909, 0.725571552, 0.7317, 0.734741009,  # L28.0-L30.5
+    0.58227891, 0.589887907, 0.59740001, 0.6048236489, 0.61215729, 0.6194040775,  # L19.0-L21.5
+    0.62656713, 0.6336491704, 0.64065295, 0.6475809813, 0.65443563, 0.6612192392,  # L22.0-L24.5
+    0.667934, 0.6745818853, 0.68116492, 0.6876848936, 0.69414365, 0.7005428672,  # L25.0-L27.5
+    0.7068842, 0.7131690979, 0.71939909, 0.7255756259, 0.7317, 0.734741009,  # L28.0-L30.5
     0.73776948, 0.740785574, 0.74378943, 0.746781211, 0.74976104, 0.752729087,  # L31.0-L33.5
     0.7556855, 0.758630378, 0.76156384, 0.764486065, 0.76739717, 0.770297266,  # L34.0-L36.5
     0.7731865, 0.776064962, 0.77893275, 0.781790055, 0.78463697, 0.787473578,  # L37.0-L39.5
-    0.79030001, 0.792803968, 0.79530001, 0.797800015, 0.8003, 0.802799995,  # L40.0-L42.5
-    0.8053, 0.807800014, 0.81029999, 0.812799985, 0.81529999, 0.81779999,  # L43.0-L45.5
-    0.82029998, 0.82279998, 0.82529997, 0.82779996, 0.83029996, 0.83279996,  # L46.0-L48.5
-    0.83529995, 0.83779995, 0.8403000235557556, 0.84279995, 0.84529994,  # L49.0-L51.0
+    0.79030001, 0.792803968, 0.79530001, 0.7978039384, 0.8003, 0.802803874,  # L40.0-L42.5
+    0.8053, 0.8078038692, 0.81029999, 0.8128038645, 0.81529999, 0.8178038001,  # L43.0-L45.5
+    0.82029998, 0.8228037953, 0.82529997, 0.8278037906, 0.83029996, 0.8328037262,  # L46.0-L48.5
+    0.83529995, 0.8378037214, 0.8403000235557556, 0.8428037167, 0.84529994,  # L49.0-L51.0
 )
 
 MAX_LEVEL_IDX = 98          # level 50.0 -- the highest level the ranker will evaluate (matches Pokemod)

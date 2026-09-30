@@ -69,15 +69,7 @@ LIVE = [
 # is printed on EVERY run instead of quietly allowlisted. Reported as WARN (does not fail the
 # guard) purely because it was owned by another agent editing in parallel when this landed.
 # Collapse it and delete the entry.
-PENDING = {
-    'pogo_pipeline.py': (
-        'CPM_TABLE (~line 275) re-hardcodes the whole ladder as (cpm, level) pairs for '
-        'cpm_to_level(). It is the REVERSE lookup that derives the `level` column, matched '
-        'with a 1e-6 tolerance, so it is insensitive to the L50 correction -- but it is still '
-        'a second copy of the ladder that can drift from the ranker\'s. '
-        'FIX: `from cpm_table import CPM, level_for_index` then '
-        '`CPM_TABLE = [(v, level_for_index(i)) for i, v in enumerate(CPM)]`.'),
-}
+PENDING = {}     # pogo_pipeline.py's CPM_TABLE was collapsed onto cpm_table.CPM on 2026-09-30
 
 # Modules that are SAFE to import (no side effects at module scope) and the canonical
 # attribute each must agree with.
@@ -279,6 +271,32 @@ def main():
         fail('cpm_table.py is MISSING', 'Every consumer imports it; without it nothing ranks.')
     else:
         ok('cpm_table.py present and its import-time self-checks passed')
+
+    print('\n[5] the ladder against the GAME (2026-09-30): the client game master\'s playerLevel.cpMultiplier')
+    _gm = os.path.join(ROOT, 'gamemaster_pokeminers.json')
+    if not os.path.exists(_gm):
+        print('   -- skipped: no gamemaster_pokeminers.json here (CI has no game data; sessions pull it)')
+    else:
+        try:
+            import json as _json, math as _math
+            _cp = next(t['data']['playerLevel']['cpMultiplier'] for t in _json.load(open(_gm, encoding='utf-8'))
+                       if 'playerLevel' in (t.get('data') or {}))
+            _bad = []
+            for _i, _v in enumerate(cpm_table.CPM):
+                _lv = cpm_table.level_for_index(_i)
+                _a = _cp[int(_lv) - 1]
+                _g = _a if _lv == int(_lv) else _math.sqrt((_a * _a + _cp[int(_lv)] ** 2) / 2)   # the game's half-level rule
+                if abs(_v - _g) > 1e-7:
+                    _bad.append('L%s %.9f vs %.9f' % (_lv, _v, _g))
+            if _bad:
+                fail('%d cpm_table entries differ from the game master by > 1e-7: %s' % (len(_bad), '; '.join(_bad[:6])),
+                     'Rebuild them from playerLevel.cpMultiplier (a half level is sqrt((a^2+b^2)/2) of its neighbours) and '
+                     're-derive the ranks; 20 half levels were off by up to 4.85e-6 until 2026-09-30.')
+            else:
+                ok('all %d entries within 1e-7 of the game master ladder (whole levels as listed, half levels '
+                   'sqrt((a^2+b^2)/2))' % len(cpm_table.CPM))
+        except Exception as _e:
+            fail('cannot read the game master ladder (%s)' % _e, 'A present but unreadable game master proves nothing.')
 
     print('\n' + '=' * 78)
     if FAILURES:

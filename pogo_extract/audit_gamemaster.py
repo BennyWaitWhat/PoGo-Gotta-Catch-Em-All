@@ -5,6 +5,10 @@ a new release that the hand list has not caught up with BLOCKS the sync instead 
 
   1. RARITY  -- every pokemonClass LEGENDARY / MYTHIC / ULTRA_BEAST species in the game is in references.py's
                 LEGENDARY/PARADOX, MYTHICAL, ULTRA_BEAST sets (rarity cap, 3-star floor, never-evolve all hang off them).
+  1b. CATCHER -- the same species are all in AutoCatcher's hand-kept skip list, CFG["legendary"] in catch_loop_fast.py (2026-09-30:
+                six Paradox legendaries had been missing; the catcher auto-throws up to 12 balls at any species not listed). The
+                list is read from the catcher's SOURCE TEXT with ast -- the catcher is never imported or run. Only 144 / 145 / 146
+                are deliberately absent (the Galarian birds: CFG["priority"] opens them first and the skip runs before it).
   2. GENDER  -- every evolution the game locks to ONE gender (evolutionBranch.genderRequirement with no sibling branch
                 for the other gender) is in evolvable_forms.GENDER_TERMINALS, which the ranker and the labels use.
   3. TRANSFER -- no mon the game marks isTransferable=false sits in the Transfer pile (the game would refuse, and the
@@ -12,9 +16,9 @@ a new release that the hand list has not caught up with BLOCKS the sync instead 
   4. MOVES   -- move_id_to_name.json names every move id the bag holds (an unnamed id is treated as legacy -- safe,
                 but a sign the map is stale).
 
-Read-only. Exit 1 (BLOCK) on 1-3; 4 is a WARN.
+Read-only. Exit 1 (BLOCK) on 1, 1b, 2 and 3; 4 is a WARN (1b also WARNs on a listed dex the game does not class so).
 """
-import json, os, re, sqlite3, sys
+import ast, json, os, re, sqlite3, sys
 from collections import defaultdict
 ROOT = os.path.dirname(os.path.abspath(__file__)); os.chdir(ROOT)
 sys.path.insert(0, os.path.join(ROOT, 'system', 'scripts')); sys.path.insert(0, ROOT)
@@ -23,12 +27,37 @@ from references import LEGENDARY_IDS, MYTHICAL_IDS, ULTRA_BEAST_IDS, PARADOX_IDS
 
 norm = lambda x: re.sub(r'[^A-Z0-9]', '', str(x).upper())
 
+CATCHER = os.path.normpath(os.path.join(ROOT, os.pardir, 'AutoCatcher', 'system', 'scripts', 'game_write', 'catch_loop_fast.py'))
+# Deliberately NOT in the catcher's skip list (2026-09-30): the Galarian birds. CFG["priority"] opens them first, at the best ball, and the
+# catcher's walk checks CFG["legendary"] BEFORE priority -- listing them would skip them. Every other game-master LEGENDARY / MYTHIC /
+# ULTRA_BEAST dex must be listed.
+CATCHER_ALLOW = {144: 'Articuno', 145: 'Zapdos', 146: 'Moltres'}
 
-def main():
-    gm = json.load(open('gamemaster_pokeminers.json', encoding='utf-8'))
-    enum = {int(k): v for k, v in json.load(open('form_enum.json', encoding='utf-8')).items()}
-    block, warn = [], []
 
+def catcher_legendary(path=CATCHER):
+    """CFG["legendary"] from the catcher's SOURCE TEXT: ast.literal_eval of its module-level CFG dict. The catcher attaches to the
+    game, so it is never imported or run here."""
+    with open(path, encoding='utf-8') as f:
+        tree = ast.parse(f.read(), path)
+    for n in tree.body:
+        if isinstance(n, ast.Assign) and any(isinstance(t, ast.Name) and t.id == 'CFG' for t in n.targets):
+            return [int(x) for x in ast.literal_eval(n.value)['legendary']]
+    raise ValueError('no module-level CFG = {...} in %s' % path)
+
+
+def catcher_gaps(cls, listed):
+    """(missing, stray): the game-master LEGENDARY / MYTHIC / ULTRA_BEAST dex the catcher's list lacks (minus CATCHER_ALLOW), and the
+    listed dex the game master does not class that way."""
+    game = set()
+    for c in ('POKEMON_CLASS_LEGENDARY', 'POKEMON_CLASS_MYTHIC', 'POKEMON_CLASS_ULTRA_BEAST'):
+        game |= set(cls.get(c, ()))
+    return sorted(game - set(listed) - set(CATCHER_ALLOW)), sorted(set(listed) - game)
+
+
+def scan_client_gm(gm):
+    """(cls, dex_of, tf_form, tf_pid, gender_branch) of a client game master template list. PURE (2026-09-30): the
+    rarity classes, isTransferable tables and gender-locked branches this audit judges, so gm_guard can judge a
+    CANDIDATE game master the same way before it is installed."""
     cls, dex_of, tf_form, tf_pid, gender_branch = defaultdict(set), {}, {}, {}, defaultdict(set)
     for t in gm:
         s = (t.get('data') or {}).get('pokemonSettings')
@@ -38,13 +67,35 @@ def main():
         d = int(m.group(1)); dex_of.setdefault(s['pokemonId'], d)
         if s.get('pokemonClass'):
             cls[s['pokemonClass']].add(d)
+    # ABSENT = FALSE (2026-09-30, PokeMiners deep dive): the client game master prints these flags only when true -- 0 literal
+    # false in 18,812 templates, while Mew/Celebi/Jirachi/Kyurem B-W (untransferable) and Deoxys (untradable) simply lack them.
+    # Reading a missing flag as True made check 3 blind (it printed 0 locked; the bag holds 21) and offered 2 Deoxys for trade.
         if s.get('form'):
-            tf_form[norm(s['form'])] = s.get('isTransferable', True)
+            tf_form[norm(s['form'])] = bool(s.get('isTransferable'))
         else:
-            tf_pid.setdefault(d, s.get('isTransferable', True))
+            tf_pid.setdefault(d, bool(s.get('isTransferable')))
         for b in s.get('evolutionBranch') or []:
             if b.get('evolution'):
                 gender_branch[(d, b['evolution'])].add(b.get('genderRequirement') or 'ANY')
+    return cls, dex_of, tf_form, tf_pid, gender_branch
+
+
+def row_transferable(r, enum, tf_form, tf_pid):
+    """False when the game master marks this row's form (else its species) isTransferable=false. ONE definition for
+    check 3 below and gm_guard (2026-09-30)."""
+    f = r['fresh_form'] or r['form'] or 0
+    v = tf_form.get(norm(enum.get(f, ''))) if f else None
+    if v is None:
+        v = tf_pid.get(r['pokemon_id'], True)
+    return v
+
+
+def main():
+    gm = json.load(open('gamemaster_pokeminers.json', encoding='utf-8'))
+    enum = {int(k): v for k, v in json.load(open('form_enum.json', encoding='utf-8')).items()}
+    block, warn = [], []
+
+    cls, dex_of, tf_form, tf_pid, gender_branch = scan_client_gm(gm)
 
     # 1. rarity
     for cname, ours, label in (('POKEMON_CLASS_LEGENDARY', set(LEGENDARY_IDS) | set(PARADOX_IDS), 'LEGENDARY/PARADOX'),
@@ -54,6 +105,22 @@ def main():
         if gap:
             block.append('%s: the game classes dex %s as %s but references.py does not -- rarity keep rules miss them'
                          % (label, gap, cname))
+    # 1b. the catcher's own hand-kept skip list (2026-09-30: it had missed six Paradox legendaries, 1009 1010 1020-1023)
+    listed = None
+    try:
+        listed = catcher_legendary(CATCHER)
+    except (OSError, SyntaxError, ValueError, KeyError, TypeError) as e:
+        block.append('CATCHER: cannot read CFG["legendary"] from catch_loop_fast.py (%s: %s) -- its skip list is unchecked against the game master'
+                     % (type(e).__name__, e))
+    if listed is not None:
+        gap, stray = catcher_gaps(cls, listed)
+        if gap:
+            block.append('CATCHER: dex %s are LEGENDARY / MYTHIC / ULTRA_BEAST in the game master but missing from catch_loop_fast.py '
+                         'CFG["legendary"] -- the catcher would auto-throw up to 12 balls at each; list them (only %s are deliberately absent)'
+                         % (gap, sorted(CATCHER_ALLOW)))
+        if stray:
+            warn.append('CATCHER: CFG["legendary"] lists dex %s that the game master does not class LEGENDARY / MYTHIC / ULTRA_BEAST '
+                        '(a newer client may; otherwise a typo skips a normal species)' % stray)
     # 2. gender
     for (d, target), genders in gender_branch.items():
         if genders & {'ANY'} or len(genders) != 1:
@@ -72,10 +139,7 @@ def main():
     c.close()
     locked = 0
     for r in rows:
-        f = r['fresh_form'] or r['form'] or 0
-        v = tf_form.get(norm(enum.get(f, ''))) if f else None
-        if v is None:
-            v = tf_pid.get(r['pokemon_id'], True)
+        v = row_transferable(r, enum, tf_form, tf_pid)
         if v is False:
             locked += 1
             if r['uid_hex'] in pile:
@@ -169,10 +233,58 @@ def main():
                      % '; '.join('%s x%d' % kv for kv in sorted(_bad.items())[:8]))
     _nmax = sum(1 for r in rows if r['fresh_bread_mode'])
 
+    # 6. COSTUME FLAGS (2026-09-30, user: "do whats best and not lazy" -> costume option 5; LAW.md "WHAT COUNTS AS A COSTUME").
+    # costume_forms calls a form-encoded costume what its enum NAME says OR what the game itself flags (formSettings.forms[].isCostume),
+    # add only. Re-derived here from the RAW game master -- never through costume_forms' cache or parser -- so a stale cache, a parser
+    # reading the wrong field or a dropped union cannot vouch for itself:
+    #   BLOCK  a form the game flags isCostume that costume_forms does not treat as a costume: the game-master layer failed, and every
+    #          copy of that form would be judged PLAIN again (a costume in the irreversible pile) -- or a BASE form (<Species>Normal) the
+    #          game flags: add-only applies it as written, and a plain form read as a costume empties its species' plain ladder (the
+    #          shape of the 2026-09-02 +62-into-the-pile incident), so a human looks first
+    #   WARN   the flags were not loaded although the file exists (the name rule alone decides), or come from the STALE cache of an
+    #          older game master (the file was unreadable when costume_forms loaded): costume status rests on an old verdict, or none
+    #   INFO   how many costumes only the name rule knows (the add-only direction at work: the game master lags the enum and leaves
+    #          isCostume unset on some event skins) -- a line to read, never a verdict
+    import costume_forms as _cfm
+    _cflag = {}
+    for t in gm:
+        for _cf in (((t.get('data') or {}).get('formSettings') or {}).get('forms') or []):
+            if _cf.get('form'):
+                _cflag[norm(_cf['form'])] = bool(_cf.get('isCostume'))
+    _cgame = [(_k, _n) for _k, _n in _cfm.FORM_ENUM.items() if _cflag.get(norm(_n))]          # enum codes the game flags
+    _clost = sorted(_n for _k, _n in _cgame if _k not in _cfm.COSTUME_FORMS)
+    if _clost:
+        block.append('COSTUME FLAGS: the game master flags %d form(s) isCostume that costume_forms does not treat as costumes -- the '
+                     'game-master layer failed (stale cache? load error? a dropped union?) and their copies would be judged PLAIN: %s'
+                     % (len(_clost), ', '.join(_clost[:8])))
+    _cbase = sorted(_n for _k, _n in _cgame if _cfm.classify(_n) == 'base')
+    if _cbase:
+        block.append('COSTUME FLAGS: the game master flags the BASE form(s) %s isCostume -- a plain form read as a costume empties its '
+                     "species' plain ladder (a game-master error, or a new meaning): look before syncing; the flag is applied as written"
+                     % ', '.join(_cbase[:8]))
+    _csrc = getattr(_cfm, 'GM_SOURCE', None)
+    if _csrc == 'stale_cache':
+        warn.append('COSTUME FLAGS: costume_forms runs from the STALE CACHE of an older game master, not from '
+                    'gamemaster_pokeminers.json (%s)' % getattr(_cfm, 'GM_NOTE', None))
+    elif _csrc != 'game_master':
+        warn.append('COSTUME FLAGS: costume_forms loaded NO game-master flags although gamemaster_pokeminers.json exists (%s)'
+                    % (getattr(_cfm, 'GM_NOTE', None) or 'GM_SOURCE=%r -- the name rule alone decides costume status' % _csrc))
+    if not _cflag:
+        warn.append('COSTUME FLAGS: gamemaster_pokeminers.json lists no formSettings forms at all (a format change?) -- nothing to check the '
+                    'costume layer against')
+    _conly = [_n for _k, _n in _cfm.FORM_ENUM.items() if _cfm.classify(_n) == 'costume' and not _cflag.get(norm(_n))]
+    _cunl = sum(1 for _n in _conly if norm(_n) not in _cflag)
+    print('  INFO  costume flags: the game master flags %d forms isCostume (%d of them in the enum, %d costumes here); %d costumes only the '
+          'name rule catches (%d the game does not list yet, %d it lists unflagged); game-master layer source: %s'
+          % (sum(1 for _v in _cflag.values() if _v), len(_cgame), len(_cgame) - len(_clost), len(_conly), _cunl, len(_conly) - _cunl, _csrc))
+
     print('game master: %d legendary, %d mythic, %d ultra beast; %d one-gender evolutions; %d non-transferable in bag'
           % (len(cls.get('POKEMON_CLASS_LEGENDARY', ())), len(cls.get('POKEMON_CLASS_MYTHIC', ())),
              len(cls.get('POKEMON_CLASS_ULTRA_BEAST', ())),
              sum(1 for g in gender_branch.values() if 'ANY' not in g and len(g) == 1), locked))
+    if listed is not None and not catcher_gaps(cls, listed)[0]:
+        print('catcher skip list: %d dex in CFG["legendary"]; every game-master LEGENDARY / MYTHIC / ULTRA_BEAST dex is covered except the '
+              'deliberate %s' % (len(set(listed)), sorted(CATCHER_ALLOW)))
     for w in warn:
         print('  *** WARN  ' + w)
     for b in block:

@@ -52,12 +52,13 @@ Notes reference each other as [[note-name]] = the file `note-name.md` in this fo
 - [Labels must be true for the mon on screen](feedback-labels-true-for-the-mon-on-screen.md) -- literally true of THAT mon now.
 - [Never re-propose the plain shiny cap](feedback-never-repropose-plain-shiny-cap.md) -- 4 plain shinies; the lever is the IV floor; refused cap cuts listed.
 - [Bag Pulse cull-by-cull + PvP standing](pogo-bag-pulse-cull-by-cull.md) -- last 30 passes with IV/PvP series and cumulative wins; `ladder_report.pvp_metrics` + `--backfill-pvp` (2026-09-29).
+- [Bag Pulse sprites, cards, official names](pogo-bag-pulse-sprites.md) -- the Transfer pile as exact-look sprites + location-card thumbnails + the game's own names; `bag_art.py` / `pogo_display.py`, committed icon index, cache NOT in the data store, `BAG_ART=0` (2026-09-30).
 - [Cull report sections](feedback-cull-report-sections.md) -- every cull: What improved + Why each pile mon + Which way to evolve.
 - [Say "Just caught" in pile explanations](feedback-just-caught-in-pile-explanations.md) -- name the just-caught copy that outdated each pile mon.
 - [Trade picks are GOOD ones](feedback-trade-picks-are-good-ones.md) -- Trade = top 10 of the remainder, never the worst copies.
 
 ## PoGo — safety rules for the irreversible pile
-- [BAN LOCKOUT 2026-09-26 04:55](pogo-ban-lockout-2026-09-26.md) -- main locked out mid-automation; NO game automation without his explicit go; >= strike 2.
+- [BAN LOCKOUT 2026-09-26 04:55](pogo-ban-lockout-2026-09-26.md) -- main locked out mid-automation; NO game automation without his explicit go; the screen was the game's rate-limit message (strike count unknown, 2026-09-30 addendum).
 - [TAG ONLY — never release](feedback-tag-only-never-release-no-xxs.md) -- I tag Transfer; HE releases in game. XXS is dead.
 - [Pre-flight Transfer on EVERY axis](feedback-transfer-preflight-every-axis.md) -- check the pile against every keep axis; RECRAWL first; no gym excuse.
 - [Pile gate: preflight stamp](pogo-pile-gate-2026-09.md) -- only route to Transfer: preflight_transfer -> prune_tags --atomic.
@@ -87,6 +88,7 @@ Notes reference each other as [[note-name]] = the file `note-name.md` in this fo
 - [Comb-up bar ignored displacement](pogo-combup-bar-ignored-displacement-2026-09-13.md) -- labels must use the keep rule's occupancy model.
 - [Pattern-pooled lines](pogo-pattern-pooled-lines-2026-09.md) -- one plain_line pool per PATTERN; no comb-up.
 - [Special backgrounds are capped](pogo-special-backgrounds-capped.md) -- top-3 per (species, form, card); costume copies take those slots first.
+- [Costume status: name OR the game's flag (2026-09-30)](pogo-costume-status-game-flag-2026-09-30.md) -- option 5, add-only; FLYING skips Arceus/Silvally, TSHIRT; flags survive a missing game master (costume_gm_flags.json); the engine stamp covers costume_forms.py + form_enum.json + the game master.
 - [Fusion components hold no ladder slot](pogo-fusion-components-no-ladder-slot.md) -- fused Reshiram/Zekrom kept as 'fused'.
 - [PoGo collector keep-rules 2026](pogo-collector-keep-rules-2026.md) -- AE roster, Gigantamax count, Mighty flag, remote-trade lockout.
 - [Adventure-Effect live registry](pogo-adventure-effect-live-registry.md) -- AE per mon; registry read every recrawl; audit_tag_truth.py.
@@ -135,8 +137,10 @@ Notes reference each other as [[note-name]] = the file `note-name.md` in this fo
 - [PoGo game state 2026](pogo-game-state-2026.md) -- Scopely-owned, levels, friends, trades. NEVER hardcode storage capacity.
 - [PoGo mechanics reference](pogo-mechanics-reference.md) -- CP/CPM, IV floors, multipliers, size enum, Mega ladder, proto fields.
 - [The GAME outranks pvpoke](pogo-game-authoritative-over-pvpoke.md) -- reconcile_gamemaster.py copies client truth; the client vetoes stale flags.
+- [Evolution quest wording = the game's text](pogo-evolution-quest-wording.md) -- labels say what the Evolve screen says ('Defeat 15 Dark- or Steel-type Raid Bosses'); `official_names_en.json` 'quests', one `--refresh-names` command, the singular-hearts trap (goals 20/70/7), evolvable_forms cache v11 + qsig (2026-09-30).
 - [Form enum arbitrates CP ties](pogo-form-enum-arbitrates-cp-ties.md) -- the live form NAME decides tied ids.
-- [Game master monthly refresh](project-gamemaster-monthly-refresh.md) -- refresh_gamemaster.py exits 2 on a rank<=5 crossing; since 2026-09-29 it also refreshes pvpoke's meta rankings (the top-200 dust-advice gate) on the same 30-day clock.
+- [Game master monthly refresh](project-gamemaster-monthly-refresh.md) -- refresh_gamemaster.py exits 2 on a rank<=5 crossing; since 2026-09-29 it also refreshes pvpoke's meta rankings (the top-200 dust-advice gate) on the same 30-day clock; since 2026-09-30 it also asks PokeMiners on EVERY run and exits 2 when a new CLIENT game master flips an in-bag keep verdict (gm_guard).
+- [Exact Power Up costs](pogo-powerup-cost-gm.md) -- `game_opportunities.power_up_cost`: slot floor(level)-1, candy to L39.5 + XL from L40, shadow x1.2 / purified x0.9 / lucky x0.5, Eternatus override; the report-only Power Up block; rounding and the candy-to-XL swap are NOT verified (2026-09-30).
 - [Client limits dump 2026-09-24](reference-pogo-client-limits.md) -- every client threshold in game_limits.json/.html; the egg speed cap is server-only.
 - [PokeGenie backup](project-pokegenie-backup.md) -- regenerate PokeGenie's collection from pokemon.db.
 - [PokeGenie art internals](reference-pokegenie-art-internals.md) -- `app_imageDir/i_<id>.jpg`; patch ScanHistory too.

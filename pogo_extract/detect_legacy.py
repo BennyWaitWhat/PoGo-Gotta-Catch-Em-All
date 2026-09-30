@@ -19,6 +19,7 @@ Reads pokemon.db read-only. Writes legacy_accurate.json.
 import json
 import re
 import sqlite3
+import sys
 from collections import defaultdict
 from pathlib import Path
 
@@ -194,20 +195,26 @@ def build_form_resolver(by_dex, form_enum):
 
 
 GM_CLIENT = ROOT / "gamemaster_pokeminers.json"
+GM_MIN_DEX = 900      # a healthy client game master gives move pools for 1,023 dex (APK 0.427.0); see main()
 
 
-def _game_master_rollable(move_map):
+def _game_master_rollable(move_map, gm=None):
     """{pokedex number: every move the CLIENT game master lets some form of that species roll NORMALLY today
     (quickMoves + cinematicMoves only -- never eliteQuickMove / eliteCinematicMove / nonTmCinematicMoves)}.
     THE GAME OUTRANKS PVPOKE (2026-09-23): pvpoke still listed Body Slam as elite for Audino and Seed Flare for
     Shaymin while the client's own template rolls them from a plain TM, so 6 tagged "Legacy Moves" were untrue
     (audit_tag_truth). A pvpoke elite flag is dropped when the game says the move is ordinary now. Empty if the
-    file is missing -> nothing is dropped."""
-    if not GM_CLIENT.exists():
-        return {}
+    file is missing -> nothing is dropped.
+    `gm` (2026-09-30, gm_guard): an ALREADY-PARSED template list to judge instead of the installed file, so a candidate
+    client game master can be compared with the installed one before it is installed. None = the installed file,
+    exactly as before (including 'missing -> {}'); the caller of a `gm` owns its validity."""
+    if gm is None:
+        if not GM_CLIENT.exists():
+            return {}
+        gm = json.loads(GM_CLIENT.read_text(encoding="utf-8"))
     names = {int(k): v for k, v in move_map.items()}
     pools = defaultdict(set)
-    for t in json.loads(GM_CLIENT.read_text(encoding="utf-8")):
+    for t in gm:
         s = (t.get("data") or {}).get("pokemonSettings")
         m = re.match(r"V(\d{4})_POKEMON_", t.get("templateId", ""))
         if not s or not m:
@@ -226,14 +233,17 @@ def _game_master_rollable(move_map):
     return pools
 
 
-def _game_master_pools(move_map):
+def _game_master_pools(move_map, gm=None):
     """{pokedex number: every move ANY form of that species can roll normally}, from the client game master.
-    Empty dict if the file is missing -- the pvpoke test above still stands alone then."""
-    if not GM_CLIENT.exists():
-        return {}
+    Empty dict if the file is missing -- the pvpoke test above still stands alone then.
+    `gm`: an already-parsed template list to judge instead of the installed file (see _game_master_rollable)."""
+    if gm is None:
+        if not GM_CLIENT.exists():
+            return {}
+        gm = json.loads(GM_CLIENT.read_text(encoding="utf-8"))
     names = {int(k): v for k, v in move_map.items()}
     pools = defaultdict(set)
-    for t in json.loads(GM_CLIENT.read_text(encoding="utf-8")):
+    for t in gm:
         s = (t.get("data") or {}).get("pokemonSettings")
         m = re.match(r"V(\d{4})_POKEMON_", t.get("templateId", ""))
         if not s or not m:
@@ -274,6 +284,15 @@ def main():
     # sketched moves ...). UNION only: this can add protection, never remove it.
     gm_normal = _game_master_pools(move_map)
     gm_rollable = _game_master_rollable(move_map)     # the game's plain-TM pool: vetoes a stale pvpoke elite flag
+    # FAIL CLOSED (2026-09-30, PokeMiners deep dive): a missing client game master, or one whose move lists were renamed or
+    # emptied, used to leave both pools empty and fall back to pvpoke alone WITH rc 0 -- measured on a copy of the bag: 339 ->
+    # 299 legacy flags, 9 of them mons whose ONLY keep reason is Legacy (Houndoom, Skarmory, 4 Snorlax ...), silently
+    # unprotected. pogo_pipeline treats a non-zero rc here as FATAL before any pile is rebuilt.
+    if len(gm_normal) < GM_MIN_DEX:
+        print(f"FATAL: the client game master ({GM_CLIENT.name}) gives move pools for {len(gm_normal)} species (a healthy one: "
+              f"1,023; the floor is {GM_MIN_DEX}) -- missing, damaged or renamed fields. Legacy moves are NOT judged on pvpoke "
+              "alone: restore the file (python system/scripts/refresh_gamemaster.py) and re-run.", file=sys.stderr)
+        sys.exit(1)
     stale_elite = defaultdict(int)                   # pvpoke said elite, the game rolls it normally
 
     con = sqlite3.connect(f"file:{DB}?mode=ro", uri=True)

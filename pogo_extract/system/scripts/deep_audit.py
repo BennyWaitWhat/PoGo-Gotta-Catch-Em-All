@@ -19,6 +19,7 @@ from references import LEGENDARY_IDS, MYTHICAL_IDS, ULTRA_BEAST_IDS, PARADOX_IDS
 RARE = LEGENDARY_IDS | MYTHICAL_IDS | ULTRA_BEAST_IDS | PARADOX_IDS
 from pvp_iv_rule import pvid, maxcp, GL_CAP, UL_CAP, VIABILITY_MARGIN
 from costume_forms import is_costume_form, FORM_ENUM, classify
+from costume_forms import _TYPE_FORM_SPECIES   # the ONE list of species whose forms are TYPE forms (Arceus, Silvally): 'Flying' there is a type
 import keep_policy as kp
 
 DB = os.path.join(ROOT, 'pokemon.db')
@@ -69,7 +70,11 @@ def main():
                 'FEDORA', 'FLOWERCROWN', 'STRAWHAT', 'EARMUFF', 'BOWTIE', 'CROCHET', 'FLYING', 'ANNIV',
                 'PARTY', 'WITCH', 'SANTA', 'HALLOWEEN', 'HOLIDAY', 'DIWALI', 'GOFEST', 'GOTOUR', 'WCS',
                 'JEJU', 'KURTA', 'HORIZON', 'POPSTAR', 'ROCKSTAR', 'LIBRE', 'STARMOBILE', 'FOSSIL')
-    fullmiss = [n for f, n in FORM_ENUM.items() if classify(n) == 'form' and n and any(w in n.upper() for w in ACC_FULL) and 'CROWNED' not in n.upper()]
+    # FLYING TYPE-FORM GUARD (2026-09-30, costume option 5): Arceus and Silvally use 'Flying' as the TYPE (ArceusFlying, SilvallyFlying are plain
+    # forms), exactly as costume_forms.classify() reads them -- without the same exemption here this hunt would report them as missed costumes
+    # and print ISSUES ABOVE for a classifier that is right. Non-gating like the rest of this script.
+    fullmiss = [n for f, n in FORM_ENUM.items() if classify(n) == 'form' and n and 'CROWNED' not in n.upper()
+                and any(w in n.upper() for w in ACC_FULL if not (w == 'FLYING' and n.upper().startswith(_TYPE_FORM_SPECIES)))]
     print(f"FULL-ENUM costume misses (game-wide form-class w/ costume word): {fullmiss or 'none'}")
 
     BROAD = ('HAT', 'CAP', 'HOOD', 'MASK', 'GLASSES', 'SCARF', 'HELMET', 'WIG', 'COSTUME', 'OUTFIT',

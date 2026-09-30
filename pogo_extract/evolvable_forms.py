@@ -11,12 +11,13 @@ form_can_evolve(form_id) -> True / False / None (None = the form has no game-mas
 species-level evolution graph). ponytail: the 19 MB game master is parsed once per process (~1 s) and cached to
 system/analysis/evolvable_forms.json keyed by the game master's mtime.
 """
-import json, os, re, time
+import hashlib, json, os, re, time
 
 _ROOT = os.path.dirname(os.path.abspath(__file__))
 _GM = os.path.join(_ROOT, 'gamemaster_pokeminers.json')
 _ENUM = os.path.join(_ROOT, 'form_enum.json')
 _CACHE = os.path.join(_ROOT, 'system', 'analysis', 'evolvable_forms.json')
+_OFFICIAL = os.path.join(_ROOT, 'official_names_en.json')    # the game's own text (committed); bag_art.py --refresh-names rebuilds it
 _norm = lambda x: re.sub(r'[^A-Z0-9]', '', str(x).upper())
 # AN EVOLUTION THAT IS NOT A PLAIN CANDY TAP. Each of these makes the Evolve button do something the user cannot do
 # from the bag screen alone, so an advisory label must not assume it (user 2026-09-17 "Fix everything"). The list is
@@ -45,7 +46,8 @@ _noevo = None      # normalized form or POKEMON_ID -> normalized costume names t
 _dexname = None    # pokedex number -> POKEMON_ID
 _cenum = None      # costume id -> costume enum name
 _gdetail = None    # lowercase target speciesId -> {'km': 15.0, 'quest': 'template id', 'lure': ITEM_*, 'time': 'day'...}
-_quests = None     # quest template id -> a short human description of its goal
+_quests = None     # quest template id -> its goal in the game's own words ('Win 10 raids'), see _quest_text
+_qref = None       # official_names_en.json 'quests': the game's quest texts, i18n key -> text with {0}; {} when unreadable
 
 
 def _load():
@@ -62,7 +64,8 @@ def _load():
         c = {}
     if c:
         # mtime tolerance: a data-store restore (tools/pogo_data.py) round-trips mtimes through ns and can move the last bits
-        if abs((c.get('gm_mtime') or -1e9) - stamp) < 0.01 and c.get('v') == 10:
+        # v11 + qsig (2026-09-30): the cache holds RENDERED quest text, which is now the game's words from official_names_en.json
+        if abs((c.get('gm_mtime') or -1e9) - stamp) < 0.01 and c.get('v') == 11 and c.get('qsig') == _quest_sig():
             _table, _costs, _family, _items, _gated = c['forms'], c['costs'], c['family'], c['items'], c['gated']
             _icost, _gform, _noevo = c['icost'], c['gform'], {k: set(v) for k, v in c['noevo'].items()}
             _dexname = {int(k): v for k, v in c['dexname'].items()}
@@ -149,7 +152,7 @@ def _load():
         # ATOMIC (the 11 audits cold-start in parallel: a reader must never see half a file -- it crashed 6 of 25 rounds)
         tmp = '%s.%d.tmp' % (_CACHE, os.getpid())
         with open(tmp, 'w', encoding='utf-8') as f:
-            json.dump({'v': 10, 'gm_mtime': stamp, 'tform': _tform, 'forms': _table, 'costs': _costs, 'family': _family,
+            json.dump({'v': 11, 'qsig': _quest_sig(), 'gm_mtime': stamp, 'tform': _tform, 'forms': _table, 'costs': _costs, 'family': _family,
                        'items': _items, 'gated': _gated, 'icost': _icost, 'gform': _gform,
                        'noevo': {k: sorted(v) for k, v in _noevo.items()}, 'dexname': _dexname,
                        'gdetail': _gdetail, 'quests': _quests}, f)
@@ -471,35 +474,173 @@ def gate_reason(target):
     return list(_gated.get(str(target or '').lower(), []))
 
 
-def _quest_text(q):
-    """A quest template's goal in a few words: 'catch 20 Fighting-type', 'defeat 30 Ghost-type', 'win 5 raids'."""
-    kinds = {'QUEST_CATCH_POKEMON': 'catch', 'QUEST_FIGHT_POKEMON': 'defeat', 'QUEST_COMPLETE_BATTLE': 'win',
-             'QUEST_BUDDY_EVOLUTION_WALK': 'walk', 'QUEST_BUDDY_EARN_AFFECTION_POINTS': 'earn hearts with',
-             'QUEST_BUDDY_FEED': 'feed', 'QUEST_USE_INCENSE': 'use incense', 'QUEST_BUDDY_PET': 'play with'}
-    verb = kinds.get(q.get('questType'), (q.get('questType') or 'a task').replace('QUEST_', '').replace('_', ' ').lower())
-    out = []
-    for g in q.get('goals') or []:
-        n = g.get('target') or 1
-        what, raid = '', False
-        for c in g.get('condition') or []:
-            types = ((c.get('withPokemonType') or {}).get('pokemonType') or
-                     (c.get('withOpponentPokemonBattleStatus') or {}).get('opponentPokemonType') or [])
-            if types:
-                what = '/'.join(t.replace('POKEMON_TYPE_', '').strip().capitalize() for t in types) + '-type'
-            if 'COMBAT_TYPE_RAID' in ((c.get('withCombatType') or {}).get('combatType') or []):
-                raid = True
-        if verb == 'walk':
-            out.append('walk %g km as your buddy' % n)
-        elif raid:
-            out.append('win %d raid%s%s' % (n, 's' if n != 1 else '', (' with ' + what) if what else ''))
+# THE GAME'S OWN WORDS FOR AN EVOLUTION QUEST (Benny 2026-09-30: "yes" -- use the game's text, not ours). Each of the 37
+# evolutionQuestTemplate entries names its text: display.description == display.title, an i18n key in either case
+# ('quest_catch_type_dragon_plural', 'CHALLENGE_BUDDY_AFFECTION_SINGLE'); lowercased it is a key of the game's
+# i18n_english.json, and its text holds {0} where the goal's number goes. official_names_en.json 'quests' keeps those texts
+# (bag_art.py --refresh-names builds it from the game master + the i18n file), so a label says what the Evolve screen says:
+# 'Defeat 15 Dark- or Steel-type Raid Bosses', not the hand-built 'win 15 raids with Dark/Steel-type' (a different task).
+# Rules, each one a real case in today's data:
+#  * A TEXT MUST STATE THE NUMBER. Florges and Sylveon name the SINGULAR hearts text ('Earn a heart with your buddy') for goals
+#    of 20, 70 and 7 -- false for them -- so the PLURAL sibling of the pair is used with the template's own target, and a goal
+#    of 1 takes the singular sibling when the game has one ('Use an Incense').
+#  * ONE GOAL ONLY. The key describes the template, not each goal, so a template with several goals is worded goal by goal
+#    (none exists today; the game's single text would under-state the rest).
+#  * NOTHING IS GUESSED. No reference file, no key or no usable text -> the generated wording (_quest_goal), which says what
+#    questType + conditions say and NAMES a condition it does not model instead of dropping it (Benny's rule: a label must be
+#    literally true of the mon on screen; the old text called 'win 10 raids' "complete raid battle 10 times").
+_PAIR = re.compile(r'^(.+_)(single|singular|plural)$')
+_COMBAT = {'COMBAT_TYPE_RAID': 'raids', 'COMBAT_TYPE_DMAX': 'Max Battles', 'COMBAT_TYPE_GMAX': 'Max Battles'}
+
+
+def quest_keys(key):
+    """[key, its other number...]: the singular and plural texts the game keeps for one goal ('challenge_buddy_affection_single'
+    / '_plural', 'quest_incense_singular' / '_plural'). bag_art.refresh_names stores BOTH of a pair and _game_words picks one by
+    the goal's number, so this is the one place that spells the pairing."""
+    k = str(key or '').lower()
+    m = _PAIR.match(k)
+    if not k:
+        return []
+    return [k] + ([m.group(1) + s for s in ('single', 'singular', 'plural') if m.group(1) + s != k] if m else [])
+
+
+def _quest_ref():
+    """{i18n key (lowercase): the game's text, {0} = the goal's number} from official_names_en.json 'quests'. {} when the file or
+    the section is missing or unreadable: the generated wording then covers every quest (a label never depends on a reference
+    file being there)."""
+    global _qref
+    if _qref is None:
+        try:
+            d = json.load(open(_OFFICIAL, encoding='utf-8')).get('quests')
+            _qref = {str(k).lower(): str(v) for k, v in d.items() if str(v).strip()} if isinstance(d, dict) else {}
+        except (OSError, ValueError, AttributeError):
+            _qref = {}
+    return _qref
+
+
+def _quest_sig():
+    """A short fingerprint of the quest wording: the cache stores RENDERED text, so a refreshed official_names_en.json must
+    rebuild it even when the game master did not change (the monthly refreshes of the two files do not land together)."""
+    r = _quest_ref()
+    return hashlib.sha1(json.dumps(r, sort_keys=True).encode('ascii')).hexdigest()[:12] if r else ''
+
+
+def _qnum(n):
+    """A goal's number as the game prints it: 15, not 15.0; 2.5 stays 2.5."""
+    try:
+        return '%d' % n if float(n) == int(n) else '%g' % n
+    except (TypeError, ValueError, OverflowError):
+        return str(n)
+
+
+def _game_words(key, n, ref):
+    """The game's text for display key `key` and a goal of n, or None. A text is usable when it states n ({0}) or n is 1; the
+    sibling of the goal's own number is tried before the key's own text. A leftover {1}-style placeholder disqualifies it."""
+    k = str(key or '').lower()
+    if not k:
+        return None
+    one = float(n) == 1
+    for x in [s for s in quest_keys(k)[1:] if s.endswith('plural') != one] + [k]:
+        t = ref.get(x)
+        if t and ('{0}' in t or one):
+            t = t.replace('{0}', _qnum(n))
+            if not re.search(r'\{\d+\}', t):
+                return t
+    return None
+
+
+def _lst(x):
+    return [str(i) for i in x] if isinstance(x, (list, tuple)) else ([str(x)] if x else [])
+
+
+def _words(enum, drop='QUEST_'):
+    """'QUEST_COMPLETE_RAID_BATTLE' -> 'complete raid battle'."""
+    return str(enum or '').replace(drop, '', 1).replace('_', ' ').strip().lower()
+
+
+def _type_phrase(types):
+    """['POKEMON_TYPE_DARK', 'POKEMON_TYPE_STEEL'] -> 'Dark- or Steel-type' (the game's own shape); '' for no type."""
+    t = list(dict.fromkeys(x.replace('POKEMON_TYPE_', '').strip().capitalize() for x in types if x))
+    return '' if not t else ', '.join(x + '-' for x in t[:-1]) + (' or ' if len(t) > 1 else '') + t[-1] + '-type'
+
+
+def _quest_goal(q, g):
+    """ONE goal in words when the game's text is not on file, from questType + conditions alone, in the game's own shapes
+    ('Make 10 Excellent Throws', 'Defeat 30 Water-type Pokemon in raids or Max Battles', 'Win 10 raids'). A condition this does
+    not model is NAMED at the end ('(also: daily challenge)'), never dropped: a label that asks for less than the game does is false."""
+    n = g.get('target') or 1
+    N, one = _qnum(n), float(n) == 1
+    qt = q.get('questType') or ''
+    seen, types, combat, throw, dead = set(), [], [], '', False
+    for c in g.get('condition') or []:
+        seen.add(c.get('type') or '')
+        types += _lst((c.get('withPokemonType') or {}).get('pokemonType'))
+        o = c.get('withOpponentPokemonBattleStatus') or {}
+        types += _lst(o.get('opponentPokemonType'))
+        dead = dead or bool(o.get('requireDefeat'))
+        combat += _lst((c.get('withCombatType') or {}).get('combatType'))
+        throw = (c.get('withThrowType') or {}).get('throwType') or throw
+    tp = _type_phrase(types)
+    win = bool(seen & {'WITH_WIN_BATTLE_STATUS', 'WITH_WIN_RAID_STATUS'})
+    where = ' or '.join(dict.fromkeys(_COMBAT.get(x) or _words(x, 'COMBAT_TYPE_') for x in combat))
+    mon = (tp + ' ' if tp else '') + 'Pok\xe9mon'
+    used = set()
+    if qt == 'QUEST_BUDDY_EVOLUTION_WALK':
+        s = 'Walk %s km with your buddy' % N
+    elif qt == 'QUEST_BUDDY_EARN_AFFECTION_POINTS':
+        s = 'Earn a heart with your buddy' if one else 'Earn %s hearts with your buddy' % N
+    elif qt == 'QUEST_BUDDY_FEED':
+        s = 'Give your buddy a treat' if one else 'Give your buddy %s treats' % N
+    elif qt == 'QUEST_BUDDY_PET':
+        s = 'Play with your buddy' + ('' if one else ' %s times' % N)
+    elif qt == 'QUEST_USE_INCENSE':
+        s = 'Use an Incense' if one else 'Use %s Incense' % N
+    elif qt == 'QUEST_CATCH_POKEMON':
+        s, used = 'Catch %s %s' % (N, mon), {'WITH_POKEMON_TYPE'}
+    elif qt == 'QUEST_FIGHT_POKEMON':
+        s, used = '%s %s %s' % ('Defeat' if dead else 'Fight', N, mon), {'WITH_OPPONENT_POKEMON_BATTLE_STATUS', 'WITH_POKEMON_TYPE'}
+    elif qt == 'QUEST_LAND_THROW' and throw:
+        adj = _words(throw.replace('ACTIVITY_CATCH_', '').replace('_THROW', ''), '').title()
+        art = 'an' if adj[:1] in ('A', 'E', 'I', 'O', 'U') else 'a'
+        s, used = 'Make %s %sThrow%s' % (art if one else N, adj + ' ' if adj else '', '' if one else 's'), {'WITH_THROW_TYPE'}
+    elif qt == 'QUEST_COMPLETE_RAID_BATTLE':
+        s, used = ('Win' if win else 'Complete') + (' a raid' if one else ' %s raids' % N), {'WITH_WIN_RAID_STATUS'}
+    elif qt == 'QUEST_COMPLETE_BATTLE' and where:
+        used = {'WITH_WIN_BATTLE_STATUS', 'WITH_COMBAT_TYPE', 'WITH_POKEMON_TYPE'}
+        if tp and win and combat == ['COMBAT_TYPE_RAID']:
+            s = 'Defeat %s %s Raid Boss%s' % (N, tp, '' if one else 'es')
+        elif tp and win:
+            s = 'Defeat %s %s in %s' % (N, mon, where)
         else:
-            out.append(('%s %d %s' % (verb, n, what or 'times')).strip())
-    return '; '.join(out) or verb
+            s = '%s %s in %s' % ('Win' if win else 'Complete', 'a battle' if one else '%s battles' % N, where)
+    else:
+        s = '%s %s times' % (_words(qt) or 'a task', N)
+    extra = sorted(x for x in seen - used if x)
+    return s + ((' (also: %s)' % ', '.join(_words(x, 'WITH_') for x in extra)) if extra else '')
+
+
+def _quest_text(q, ref=None):
+    """An evolution quest's goal in the game's own words (block comment above), else the generated wording. `ref` replaces the
+    committed quests table ({} forces the generated wording). Never raises: a label must not break the engine's cold start, so a
+    template this cannot read is just 'a task'."""
+    try:
+        goals = q.get('goals') or []
+        if len(goals) == 1:
+            ref = _quest_ref() if ref is None else ref
+            d, n = q.get('display') or {}, goals[0].get('target') or 1
+            for key in (d.get('description'), d.get('title')):
+                t = _game_words(key, n, ref)
+                if t:
+                    return t
+        return '; '.join(_quest_goal(q, g) for g in goals) or _words(q.get('questType')) or 'a task'
+    except Exception:
+        return 'a task'
 
 
 def gate_text(target, src_sid=None, have=None):
-    """What an evolution into `target` needs beyond candy, in words: 'a Unova Stone (you have 0)', 'walk 15 km as your
-    buddy', 'defeat 30 Ghost-type', 'a Mossy Lure', 'daytime'. Empty string when candy alone does it."""
+    """What an evolution into `target` needs beyond candy, in words: 'a Unova Stone (you have 0)', 'Walk 15 km with your
+    buddy', 'Defeat 30 Ghost-type Pokemon' (a quest is worded as the game words it, see _quest_text), 'a Mossy Lure',
+    'daytime'. Empty string when candy alone does it."""
     _load()
     t = str(target or '').lower()
     d = _gdetail.get(t, {})
@@ -514,7 +655,8 @@ def gate_text(target, src_sid=None, have=None):
     if d.get('quest') and _quests.get(d['quest']):
         parts.append(_quests[d['quest']])
     elif d.get('km'):
-        parts.append('walk %g km as your buddy' % d['km'])
+        parts.append(_quest_text({'questType': 'QUEST_BUDDY_EVOLUTION_WALK', 'display': {'description': 'quest_buddy_walk_km_plural'},
+                                  'goals': [{'target': d['km']}]}))     # a km gate with no quest template: the walk quest's own words
     if d.get('lure'):
         parts.append('a %s' % item_name(d['lure']))
     if d.get('time'):
@@ -681,8 +823,21 @@ if __name__ == '__main__':
     assert costume_can_evolve({'fresh_costume': 81, 'form': 0, 'fresh_form': 0, 'pokemon_id': 572}) is True    # Fashion2025 Minccino
     assert costume_can_evolve({'fresh_costume': 11, 'form': 0, 'fresh_form': 0, 'pokemon_id': 1}) is True     # Jan2020 Bulbasaur: allowed
     assert costume_can_evolve({'fresh_costume': 11, 'form': 0, 'fresh_form': 0, 'pokemon_id': 133}) is False  # Jan2020 Eevee: locked
-    assert 'walk 15 km' in gate_text('sudowoodo', 'bonsly'), gate_text('sudowoodo', 'bonsly')
+    assert 'Walk 15 km with your buddy' in gate_text('sudowoodo', 'bonsly'), gate_text('sudowoodo', 'bonsly')   # the game's own words
+    # THE GAME'S OWN WORDS (2026-09-30), read off the real game master: the six quests the hand-built text got wrong, and the
+    # SINGULAR hearts key on goals of 20 / 70 / 7. Shapes, not numbers: a retuned goal must not break this check.
+    for _id, _rx in (('SIRFETCHD_EVOLUTION_QUEST', r'Make \d+ Excellent Throws'),
+                     ('BISHARP_KINGAMBIT_EVOLUTION_QUEST', r'Defeat \d+ Dark- or Steel-type Raid Bosses'),
+                     ('KUBFU_RAPID_STRIKE_EVOLUTION_QUEST', r'Defeat \d+ Water-type Pok\xe9mon in raids or Max Battles'),
+                     ('KUBFU_SINGLE_STRIKE_EVOLUTION_QUEST', r'Defeat \d+ Dark-type Pok\xe9mon in raids or Max Battles'),
+                     ('OVERQWIL_EVOLUTION_QUEST', r'Win \d+ raids'), ('RUNERIGUS_EVOLUTION_QUEST', r'Win \d+ raids'),
+                     ('FLORGES_EVOLUTION_QUEST', r'Earn [2-9]\d* hearts with your buddy'),
+                     ('SYLVEON_EVOLUTION_QUEST', r'Earn [2-9]\d* hearts with your buddy')):
+        assert re.fullmatch(_rx, _quests[_id]), (_id, _quests[_id])
+    assert not any(re.search(r'\d times$|^land throw|^complete raid|^earn hearts|^feed \d|^use incense', v) for v in _quests.values()), _quests
+    assert _quest_text({'questType': 'QUEST_BUDDY_EARN_AFFECTION_POINTS', 'goals': [{'target': 70}]}, {}) == 'Earn 70 hearts with your buddy'   # no reference: the generated wording
     assert 'Unova Stone' in gate_text('cinccino', 'minccino', have=0), gate_text('cinccino', 'minccino', have=0)
     print('   e.g.  Bonsly -> %s | Bisharp -> %s | Minccino -> %s' % (gate_text('sudowoodo', 'bonsly'),
           gate_text('kingambit', 'bisharp'), gate_text('cinccino', 'minccino', have=0)))
-    print('evolvable_forms: %d gated targets; %d forms known, %d locked; self-check OK' % (len(_gated), len(_table), sum(1 for v in _table.values() if not v)))
+    print('evolvable_forms: %d gated targets; %d forms known, %d locked; %d quests (%d game texts on file); self-check OK'
+          % (len(_gated), len(_table), sum(1 for v in _table.values() if not v), len(_quests), len(_quest_ref())))

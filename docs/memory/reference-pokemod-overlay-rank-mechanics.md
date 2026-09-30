@@ -20,3 +20,5 @@ power up so it can be UL 1"). Our engine identifies keepers the same way (best s
 gate would add 658 labels and change 0 keep/transfer decisions.
 
 Related: [[reference-pvp-rank-no-headroom-research]], [[pogo-viability-blind-best-stage-bug]], [[feedback-pvp-rank-not-iv-threshold]].
+
+**ADDENDUM 2026-09-30 (CP multipliers):** cpm_table.py's 20 half levels (L20.5-29.5, L41.5-50.5) were up to 4.85e-6 below the game's own values; they now match the client game master and PvPoke's cpms (7.9e-8 on all 101). The overlay appears to rank on the older rounded values (inferred: the 12/15/13 Armored Mewtwo anchor it confirmed as #1108 only reproduces on them). The repo now says #1109: Armored Mewtwo 9/9/15, capped at L28.5, really out-scores it (4,544,518.8 vs 4,544,497.6). Expect an occasional +-1 against the overlay for spreads capped at those half levels next to a near-equal neighbour; on 2026-09-30 it changed 0 tags and 0 keep decisions.
