@@ -15,24 +15,29 @@ belongs to the **Pokemon Inventory** session. No session edits another's files.
 | **Phone** (Termux, always on) | The catcher: wild/lure/incense catching, apples, auto-spin, limit detection | `system/scripts/game_write/catch_loop_fast.py`, run by `catch_phone.py` → `run_catch.sh` → `catcher_ctl.sh` |
 | Phone | Toggles | flag files `/data/local/tmp/pogo_{catch,spin,tap,perfect,apples}.on` (content `1`/`0`), the Auto-Catcher app, or `catcher_ctl.sh <feature>-on/off` |
 | Phone | Reward catcher, on demand | `catcher_ctl.sh rewards [--dry]` → `reward_phone.py` → `reward_catcher.py` |
-| **Desktop** (Windows, via adb over Tailscale) | Reward catcher, research probes, map recorders, analysis | `reward_catcher.py`, `tools/*.py` (attach through `pogo_il2cpp.get_session`) |
-| **Cloud clone** | Code and analysis ONLY | no phone, no adb, no Frida: never deploy, attach or toggle from the cloud |
+| **Cloud session** (Linux VM, the phone via the bridge) — the default place for AutoCatcher work | Everything the desktop does: deploys, toggles, reward catcher, probes, analysis | same files; `ADB_TARGET` is exported by the session hook |
+| **Desktop** (Windows, adb over Tailscale) — fallback | Same as the cloud | `reward_catcher.py`, `tools/*.py` (attach through `pogo_il2cpp.get_session`) |
 
 The desktop `pogo_il2cpp.py` is AutoCatcher's own copy. The phone has its own `pogo_il2cpp.py`, and `catch_phone.py`
 points `get_session` at the local gadget (`127.0.0.1:27047`, `dev.attach("Gadget")`).
 
 ## For cloud sessions
 
-A cloud session cannot reach the phone: it has no Tailscale, adb or Frida. It edits code, runs the offline sims and
-analyses the data. Every step below needs the **phone bridge**, i.e. the PC that has adb over Tailscale:
+Cloud sessions reach the phone through the **bridge** that `.claude/hooks/cloud_session_start.sh` sets up. It runs
+Tailscale in userspace mode and forwards the phone's adb port onto the VM's loopback: the phone's own address
+`100.98.158.56:5555` when it can bind it, otherwise `127.0.0.1:5555`. It exports `ADB_TARGET` (and
+`TZ=America/New_York`). Every tool here reads `ADB_TARGET`, so deploys, toggles, the reward catcher, probes and
+recorders all work from the cloud, with the same rules as on the PC:
 
-- **Deploying to the phone:** `deploy.sh`, and anything that pushes to `~/pogo` or `/data/local/tmp`.
-- **Toggling or restarting the catcher:** `catcher_ctl.sh`, and the flag files.
-- **Every desktop tool that attaches to the game:** `reward_catcher.py`, `tools/*` probes, recorders and collectors (they
-  go through `pogo_il2cpp.get_session`).
-- **Reading the phone's logs:** `catch_loop.log`, `pogo_state.txt`, `flags.log`.
-
-Before trusting any number from the phone, re-read the game's own records through the bridge.
+- **Crash rules** (below) and the **phone-access rules** apply unchanged. Nobody pauses anything for anyone; the busy
+  marker is advisory.
+- **Data:**
+  - The catcher's logs, map data and recordings are not in git. They live on the phone in
+    `/data/local/tmp/pogo_data/catcher.tar.gz`. Get them with `python tools/pogo_data.py pull --group catcher`.
+  - After a run that changes them, save them back with `python tools/pogo_data.py push --group catcher`.
+  - `system/analysis/game_limits.json` (the game's Google Maps key) is never shipped.
+- **Before trusting any number,** re-read the game's own records from the phone (bag counts, the catcher's status line).
+- If the bridge is down (`adb -s "$ADB_TARGET" get-state` is not `device`), do code and analysis only. Never guess at the phone's state.
 
 ## Deploying to the phone
 
@@ -41,8 +46,9 @@ Before trusting any number from the phone, re-read the game's own records throug
 ./deploy.sh --restart system/scripts/game_write/catch_loop_fast.py           # ... then restart the catcher (~1 s)
 ```
 
-`deploy.sh` needs Git Bash (it uses `cygpath`), adb, and root on the phone. After a deploy, delete
-`~/pogo/system/scripts/game_write/__pycache__/catch_loop_fast*.pyc`.
+`deploy.sh` runs on Linux (the cloud VM) and on Git Bash (it uses `cygpath` only when it exists). It needs `adb`,
+`md5sum` and root on the phone, and it honours `ADB_TARGET`. It also deletes the phone's stale
+`__pycache__/*.pyc` for every `.py` it deploys.
 
 Verify on the phone:
 - the `attached ...` line in `~/pogo/system/analysis/pokemod/catch_loop.log`;
