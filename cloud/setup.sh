@@ -24,8 +24,9 @@ if ! command -v tailscaled >/dev/null; then
   install -m 755 "/tmp/${TGZ%.tgz}/tailscale" "/tmp/${TGZ%.tgz}/tailscaled" /usr/local/bin/
 fi
 
-# Python: only what the committed code imports. frida MUST match the phone's gadget major (the PC ran 17.9.11).
+# Python: only what the committed code imports. frida MUST match the phone's gadget (the PC runs 17.9.11); frida-tools
+# is pinned with it (14.8.2 = the PC; newer frida-tools demand frida >= 17.10 and the install would fail).
 # (Research-only extras, install per task: loguru, androguard, mitmproxy.)
-pip install --break-system-packages frida==17.9.11 frida-tools s2sphere flask protobuf
+pip install --break-system-packages frida==17.9.11 frida-tools==14.8.2 s2sphere flask protobuf
 
 echo "setup done: tailscale $(tailscale version | head -1), $(adb version | head -1), frida $(python3 -c 'import frida; print(frida.__version__)')"
