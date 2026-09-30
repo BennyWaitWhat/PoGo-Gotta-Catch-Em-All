@@ -33,7 +33,7 @@
   <text x="72" y="192" font-family="Segoe UI, Helvetica Neue, Arial, sans-serif" font-size="27" fill="#e2e8f0">Your Pokémon GO storage, sorted. <tspan fill="#ffb020" font-weight="700">It never releases a thing.</tspan></text>
   <g font-family="Segoe UI, Helvetica Neue, Arial, sans-serif" font-size="17" font-weight="600" fill="#ffffff">
     <rect x="72" y="232" width="236" height="44" rx="22" fill="url(#chip)" stroke="#ffffff" stroke-opacity="0.18"/>
-    <text x="92" y="260">⚡ ~5,700 Pokémon read live</text>
+    <text x="92" y="260">📱 Rooted Android only</text>
     <rect x="322" y="232" width="232" height="44" rx="22" fill="url(#chip)" stroke="#ffffff" stroke-opacity="0.18"/>
     <text x="342" y="260">🛡 11 audits every cull</text>
     <rect x="568" y="232" width="258" height="44" rx="22" fill="url(#chip)" stroke="#ffffff" stroke-opacity="0.18"/>

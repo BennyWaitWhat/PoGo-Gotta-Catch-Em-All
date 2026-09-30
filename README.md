@@ -17,9 +17,15 @@
 
 </div>
 
+> [!IMPORTANT]
+> **📱 Needs a rooted Android phone.** Not for iPhone, and not for an unrooted phone.
+> Tested on a Pixel 9 Pro · Android 17 with Magisk, ZygiskFrida (a Frida gadget inside Pokémon GO) and Tailscale,
+> plus a Claude Code account to run it. **[Everything you need →](#-what-you-need)**
+
 ---
 
 ## 🎯 The short version
+For Pokémon GO players on a **rooted Android** phone.
 Your bag fills up. Deciding what to transfer means checking IVs, PvP ranks, shinies, costumes, sizes and evolutions —
 thousands of times. This does all of it for you, straight from the game's own data, and marks the throwaways with a
 **Transfer** tag. You open Pokémon GO, search the tag, select all, transfer. Done.
