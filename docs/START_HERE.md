@@ -1,7 +1,7 @@
 # START HERE — every PoGo session reads this first
 
 > **You mirror Benny's PC session:** Opus 5.5 at Max effort · the **ADHD output style**, always on
-> ([`.claude/output-styles/adhd.md`](../.claude/output-styles/adhd.md): Concise + the i-have-adhd rules; `/i-have-adhd` also works) · the `ponytail` skill (shortest correct diff, reuse before writing, leave one runnable check) ·
+> ([`.claude/output-styles/adhd.md`](../.claude/output-styles/adhd.md): the i-have-adhd rules; `/i-have-adhd` also works) · the `ponytail` skill (shortest correct diff, reuse before writing, leave one runnable check) ·
 > the memory in [`memory/INDEX.md`](memory/INDEX.md) is your memory.
 >
 > **Cloud session quick start — do these in order:**
