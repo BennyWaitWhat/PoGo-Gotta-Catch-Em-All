@@ -15,6 +15,7 @@ DB = os.path.join(ROOT, 'pokemon.db')
 sys.path.insert(0, HERE); sys.path.insert(0, ROOT)
 os.chdir(ROOT)                                   # cull_v9 reads gamemaster/legacy json relative to cwd
 import cull_v9, keep_engine                      # the unified keep-reason engine + purpose mapping
+import game_opportunities as _go                 # THE Power Up price (game master tables), not a table of our own
 def J(name): return json.load(open(os.path.join(ROOT, name), encoding='utf-8'))
 
 MOVES = {int(k): v for k, v in J('move_id_to_name.json').items()}
@@ -68,10 +69,15 @@ _mega=_dd(list)
 for _r in rows:
     if g(_r,'can_mega_evolve')==1: _mega[g(_r,'pokemon_id')].append(_r)
 megabest={pid:set(id(x) for x in sorted(lst,key=lambda r:g(r,'cp'),reverse=True)[:1]) for pid,lst in _mega.items()}
-_XL={50.0:0,49.5:20,49.0:40,48.5:57,48.0:74,47.5:91,47.0:108,46.5:123,46.0:138,45.5:153,
-     45.0:168,44.5:181,44.0:194,43.5:207,43.0:220,42.5:232,42.0:244,41.5:256,41.0:268,40.5:279,40.0:290}
-def _xl(lv): return 0 if lv>=50 else (_XL.get(max(lv,40.0),290) if lv>=40 else 296)
-def _dust(lv): return 0 if lv>=50 else int((50.0-lv)*2*(17000 if lv>=40 else 14000))
+def _power_up_opp(lv, shadow, purified, lucky, pid, form):
+    """'power-up->L50 (264 candy+296XL/492,600 dust)': the price from `lv` to L50 is the GAME MASTER's own, game_opportunities.power_up_cost
+    (2026-09-30). This file used to keep a hand table -- L40 -> L50 at 340,000 dust / 290 XL where the game says 250,000 / 296, L20 -> L50
+    at 840,000 dust where it says 475,000 -- with no candy, no shadow / purified / lucky multiplier and no species override (Eternatus).
+    query.py powerup shows what is inside the ( ); an unknown price says so instead of guessing."""
+    c = _go.power_up_cost(lv, 50.0, shadow=shadow, purified=purified, lucky=lucky, dex=pid, form=form)
+    if not c:
+        return 'power-up->L50 (cost unknown)'
+    return 'power-up->L50 (%s%dXL/%s dust)' % ('%d candy+' % c['candy'] if c['candy'] else '', c['xl'], format(c['dust'], ','))
 KEEP_FLAGS={'Legendary','Mythical','UltraBeast','Paradox','BestBuddy','Background','HUNDO','NUNDO',
             'Shadow','Purified','Costume','XXL','Gigantamax','Dynamax','SHUNDO','ShinyShadow'}
 
@@ -140,7 +146,7 @@ for r in rows:
     # opportunities (trade-for-evos intentionally excluded — user has the candy)
     lv=g(r,'level')
     if (glr==1 or ulr==1 or g(r,'iv_total')==45) and lv<50:
-        p['opps'].append(f"power-up->L50 ({_xl(lv)}XL/{_dust(lv)//1000}k dust)")
+        p['opps'].append(_power_up_opp(lv, shadow, fa==2, g(r,'is_lucky')==1, pid, form))
     if shadow:
         p['opps'].append('purify option (gains Return, ~10% cheaper to max)')
     if (g(r,'is_legendary')==1 or g(r,'is_mythical')==1) and g(r,'is_lucky')!=1:

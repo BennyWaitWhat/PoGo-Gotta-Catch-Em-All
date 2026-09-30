@@ -12,8 +12,18 @@ versions follow [Semantic Versioning](https://semver.org/).
   thumbnails, the game's own species and form names, and small icons in the pass table. Embedded from PokeMiners/pogo_assets
   into the page (`pogo_extract/bag_art.py`, `pogo_display.py`, `pogo_icon_index.txt`, `official_names_en.json`); the cache is
   rebuildable and not in the phone data store; every failure falls back to text and `BAG_ART=0` gives the old page.
+- Exact Power Up costs from the game master (`pogo_extract/game_opportunities.py`, Benny 2026-09-30: "yes"): `power_up_cost()` prices any
+  level range in stardust, candy (to L39.5) and XL candy (from L40) from the client game master's `POKEMON_UPGRADE_SETTINGS` at call
+  time, with the shadow / purified / lucky multipliers and the per-species override (Eternatus: 8,900 XL candy for L40 to L50). The cull
+  report gets a report-only Power Up block: each mon the Power Up tags hold, its price against your stardust and its family's candy
+  and XL candy, and "doable now" / "doable after exchanging N candy" (if the game allows it) / "short X". No tag, keep reason or pile
+  decision reads it: on the 2026-09-30 01:43 bag the pile, the keep reasons and all 33 tag files come out byte-identical to before.
+  `python game_opportunities.py --selftest` (offline, golden prices hand-checked against the tables) is in CI and `tools/triple_check.py`.
 
 ### Changed
+- A shadow mon's 2nd-move price is now x1.2 and a purified mon's x0.8 (`SHARED_MOVE_SETTINGS`); it was the plain price for every mon.
+  `deep_profile.py` prices `power-up->L50` from the same tables (L40 to L50 was 340,000 dust / 290 XL, the game says 250,000 / 296;
+  L20 to L50 was 840,000 dust, the game says 475,000). `game_opportunities.py` with an unknown argument prints its usage and exits 2.
 - Root tidied: CONTRIBUTING / SECURITY / CODE_OF_CONDUCT moved to `.github/`, the CHANGELOG to `docs/`,
   `data_manifest.txt` to `tools/`, `wf_master.json` to `pogo_extract/`; `.editorconfig` removed.
 
