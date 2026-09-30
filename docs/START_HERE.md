@@ -1,5 +1,10 @@
 # START HERE — every PoGo session reads this first
 
+> **Cloud session quick start — do these in order:**
+> 1. Look at the `PHONE BRIDGE:` line at the bottom of this page. Not connected → [`cloud_setup.md`](cloud_setup.md) table, tell Benny the one fix.
+> 2. `python tools/pogo_data.py status` — if `inventory` was last pushed `by pc-seed`, **run the first cull now** ([`HANDOFF.md`](HANDOFF.md) §0: Benny asked for it).
+> 3. Before you tell Benny anything is done: `python tools/triple_check.py --gate` must say **ALL CLEAR**.
+
 Benny's Pokémon GO tooling for one rooted Pixel 9 Pro. Since 2026-09-29 **all PoGo work runs in Claude cloud sessions**: this repo holds
 the code and docs, the phone holds the game data, and each cloud session reaches the phone over Tailscale (the SessionStart hook sets up
 the bridge and prints a `PHONE BRIDGE:` line below this page). How Benny wants answers: lead with the action,
@@ -25,6 +30,9 @@ Then read `docs/memory/INDEX.md` and the notes under "How I should work" and "sa
 3. Work in your folder. Phone steps follow `docs/phone_access.md`.
 
 ## 3. End of work
+0. **Triple check** (Benny: "Once done, triple check everything. Same for future posterity."):
+   `python tools/triple_check.py --gate` must end with **ALL CLEAR** before you tell him anything is done.
+   For a handoff or release: `python tools/triple_check.py --fresh` (fresh clone + data pull + everything).
 1. **Data:** after anything that changed game data, `python tools/pogo_data.py push --group <your group>`. Refused = another session pushed
    since your pull: pull, redo, push. Never `--force` over someone else's work.
 2. **Code:** commit on your session branch and push it. Then open a PR to `main` and merge it (`gh pr create --fill` +

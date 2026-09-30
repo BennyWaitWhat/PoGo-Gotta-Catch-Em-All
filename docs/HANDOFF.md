@@ -32,6 +32,7 @@ line in `cloud_setup.md` → tell Benny the ONE thing to fix. Nothing about the 
 python tools/pogo_data.py status        # expect: inventory v2, catcher v1, gym v1 on the phone; inventory-cold not seeded
 python tools/pogo_data.py pull          # ~65 MB over the tailnet; ~1 min at ~1 MB/s (slower if relayed)
 cd pogo_extract && python full_audit.py --audits-only   # expect: ALL 11 AUDITS PASS (proven on a fresh clone 2026-09-29)
+cd .. && python tools/triple_check.py --gate              # everything in one go; must say ALL CLEAR
 ```
 Then do §0 (the first cull). After that, whenever Benny says **`cull`**: follow `.claude/skills/cull/SKILL.md` exactly (pull → `full_audit.py` → push
 `--group inventory` → publish Bag Pulse). The first cull in a fresh VM rebuilds `system/scripts/rank_tables.pkl` (333 MB, not in
@@ -40,7 +41,7 @@ the store) — expect it slower than the ~80 s the PC took.
 ## 3. Where things stand
 | Thing | State (2026-09-29) |
 |---|---|
-| Repo | `main` = a8c89b3 at handoff (PRs #1–#9 merged), release **v1.0.0** (tag at 798d7ed), CI green, 1 branch, 0 open PRs |
+| Repo | PRs #1–#10 merged at handoff (`git log` for anything newer), release **v1.0.0** (tag at 798d7ed), CI green, 1 branch, 0 open PRs; `python tools/triple_check.py --fresh` = ALL CLEAR |
 | Phone data store | `inventory` v2 (334 files, 51.1 MB, 21:53) · `catcher` v1 (16 files, 13.4 MB) · `gym` v1 (90 files, 0.3 MB) — sha256 on the phone matches each meta; the PC changed nothing after seeding |
 | `inventory-cold` | **Not seeded** (1.6 GB: all DB snapshots + `archive_main_account_20260926/`, keep forever). The PC holds it. Push from the PC when the phone is idle (~25 min) |
 | Last cull | 21:28 ET: 11/11 PASS, **pile 27** tagged `Transfer`, the server answered Success for 1/1 tag batch, last walk: bag 5,706/5,850. Its post-DONE steps (Remote Trade + Evolve-for-Size tags) were cut off by a broken pipe — the next cull refreshes them |
@@ -106,6 +107,8 @@ Benny the branch link) · whether cloud sessions have the Artifact tool for Bag 
 a DERP relay.
 
 ## 8. Gotchas that cost time today
+- **"Done" means `python tools/triple_check.py --gate` says ALL CLEAR** (Benny: "triple check everything. Same for future
+  posterity.") — and every owning session confirmed its own area.
 - **Never run a script with `--help` to learn it** — `full_audit.py --help` ran a real cull (fixed: unknown flags → rc 2).
   Never pipe a phone script into `head`/`tail`: a broken pipe kills it mid-cycle.
 - **Heredocs mangle backslashes and quotes** in the agent shell: write patch scripts to a file, then run them.

@@ -55,6 +55,9 @@ jobs:
           [ "$rc" -eq 2 ] || { echo "::error::full_audit.py accepted an unknown flag (rc=$rc, want 2)"; exit 1; }
           echo "guards OK: no-data refusal and unknown-flag refusal both return 2"
 
+      - name: Triple check (what sessions run before saying "done")
+        run: python tools/triple_check.py
+
       - name: No secrets in the tree
         run: |
           if git grep -nIE 'AIza[0-9A-Za-z_-]{30,}|tskey-(auth|client|api)-[0-9A-Za-z]{8,}|gh[pousr]_[0-9A-Za-z]{30,}|xox[baprs]-[0-9A-Za-z-]{10,}|-----BEGIN [A-Z ]*PRIVATE KEY-----' -- . ':!.github/workflows/ci.yml'; then

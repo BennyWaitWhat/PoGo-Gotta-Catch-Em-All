@@ -29,6 +29,10 @@ cd pogo_extract && python full_audit.py --audits-only     # THE gate: the 11 aud
 ```
 CI runs the data-free part of this on every push and PR. The 11 audits need the phone's data, so run them yourself.
 
+**All of the above in one command:** `python tools/triple_check.py --gate` (plus git state, a secret scan of all history,
+doc links and the phone data store). It must end with `ALL CLEAR` before anything is called done; `--fresh` runs it on a
+fresh clone of `origin/main`.
+
 ## 4. Non-negotiables
 - **Tag only.** Nothing may release, transfer or delete a Pokémon. The `Transfer` pile has one route:
   `preflight_transfer.py` → `prune_tags.py --atomic`.
