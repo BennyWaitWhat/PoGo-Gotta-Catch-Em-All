@@ -53,7 +53,8 @@ CFG = {
     "maxOpen": 12,          # encounters awaiting a server answer at once
     "thresh": 0.28,         # cheapest ball whose BASE catch prob >= this (throws are Excellent+curve, ~3.4x)
     "floors": {"1": 5, "2": 5, "3": 5},   # keep a few Poke/Great/Ultra
-    "pinap": True, "pinapFloor": 5,       # Pinap on every throw that does not need a Razz; keep 5 (user, 2026-09-24)
+    "pinap": False, "pinapFloor": 5,      # OFF (user 2026-09-30: "pause autocatcher use for it now"): Pokemod's Pinap
+                                          # Master feeds Pinaps too and kept our stock at 0-6. Was: every throw with no Razz
     "razz": True, "razzFloor": 5, "razzThresh": 0.45,   # Razz (701) only when the throw is hard
     # 706 Golden Razz / 708 Silver Pinap: never touched (standing instruction) -- not even in the item list.
     "legendary": [150, 151, 243, 244, 245, 249, 250, 251, 377, 378, 379, 380, 381, 382, 383, 384, 385, 386,

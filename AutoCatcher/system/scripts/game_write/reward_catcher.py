@@ -78,10 +78,11 @@ function inv(m,obj,params){var h=H_();if(!m)return null;var n=params?params.leng
 
 var QS=ptr(0), QSM=ptr(0), QMP=ptr(0), ACTIVE_QMP=ptr(0), PBT=null, PBT_VT=false, EMPTY=ptr(0);
 var BALL=1, TYPES=[], FRAME=0, RUN=false, MAX=0, CAUGHT=0;
-var ST=0, stFrame=0, curProto=ptr(0), lastId="0", curId="0";
+var ST=0, stAt=0, curProto=ptr(0), lastId="0", curId="0";
 var SAMESTALL=0, SKIPTYPE={}, TYPEIDX=0, STUCKOUT=0;   // loop-breaker state (see STUCK escalation below)
-var OPEN_LAG=52, SETTLE=18, STUCK=150, NUDGE=42;   // frames @ ~60fps  (STUCK 480->150: blocked-throw recovery ~2.5s not ~8s)
-var STALLS=0, REOPENED=false, LOST=0, throwFrame=-100000, LOSTWAIT=90;   /* ~1.5 s (was 150 = 2.5 s): 2026-09-30, 105 catches -- every clean catch took <=1.9 s from open (the throw
+var OPEN_LAG=866, SETTLE=299, STUCK=2499, NUDGE=700;   /* ms, not frames (2026-09-30): Pokemod's FirstAidKit sets the frame rate
+   (90 fps), so a frame is no clock. = the old 52/18/150/42 frames at 60 fps, to the frame. STUCK 480->150 frames: ~2.5 s not ~8 s */
+var STALLS=0, REOPENED=false, LOST=0, throwAt=-100000, LOSTWAIT=1499;   /* ms, 90 frames at 60 fps (was 2.5 s): 2026-09-30, 105 catches -- every clean catch took <=1.9 s from open (the throw
    to the box rise <=0.7 s), and the 17 lost throws each sat out the full wait, ~20% of the run. A box that rises = slowconf, never a 2nd throw */
 var BAG=ptr(0), boxAtThrow=-1, SLOWCONF=0, slowNoted=false;              /* box (PokemonOnlyCount) = proof a throw registered */
 var THROWS={}, MAXTHROWS=6, STUCKIDS={};                                   /* per-reward throw cap (a break-out needs a few, never infinite) */
@@ -89,6 +90,7 @@ rpc.exports.setBag=function(p){BAG=ptr(p);};
 function readBox(){ try{ if(BAG.isNull())return -1; if(!M.box)M.box=mOf(H_().OGC(BAG),"get_PokemonOnlyCount",0); if(!M.box)return -1;
   var r=inv(M.box,BAG,[]); return r?r.add(0x10).readS32():-1; }catch(e){return -1;} }
 var ERRS=[];
+function nowMs(){ return Date.now(); }   /* THE clock for every wait above (reward_sim.js fakes it at 60 fps) */
 var M={};  // cached methods
 
 rpc.exports.setQs=function(p){QS=ptr(p);};
@@ -134,10 +136,10 @@ function tick(){ if(!RUN)return; FRAME++;
     curProto=ptr(0); REOPENED=false;
     for(var i=0;i<TYPES.length;i++){ if(SKIPTYPE[TYPES[i]])continue; var p=getDangling(TYPES[i]); if(p&&!p.isNull()){ curProto=p; TYPEIDX=i; break; } }
     if(curProto.isNull()){ ST=9; RUN=false; return; }   // dry -> done
-    ACTIVE_QMP=ptr(0); openEnc(curProto); stFrame=FRAME; ST=1; return;
+    ACTIVE_QMP=ptr(0); openEnc(curProto); stAt=nowMs(); ST=1; return;
   }
   if(ST===1){ // OPENING: wait for SendEncounterRequest hook + network open, then catch. FAST recovery if blocked.
-    var waited=FRAME-stFrame;
+    var waited=nowMs()-stAt;
     if(waited<OPEN_LAG) return;                          // network open must settle (>=OPEN_LAG; racing it crashes PoGo)
     if(ACTIVE_QMP && !ACTIVE_QMP.isNull()){
       curId=qmpId();
@@ -149,13 +151,13 @@ function tick(){ if(!RUN)return; FRAME++;
              was unreachable) and a plain lost-throw retry would throw at it forever, burning a ball every few seconds. */
           STUCKIDS[curId]=1; SKIPTYPE[TYPES[TYPEIDX]]=1; STUCKOUT=1; ST=0; return;
         }
-        if(curId!==lastId){ THROWS[curId]=n+1; boxAtThrow=readBox(); slowNoted=false; fireCatch(); CAUGHT++; lastId=curId; SAMESTALL=0; throwFrame=FRAME; stFrame=FRAME; ST=2; return; }
+        if(curId!==lastId){ THROWS[curId]=n+1; boxAtThrow=readBox(); slowNoted=false; fireCatch(); CAUGHT++; lastId=curId; SAMESTALL=0; throwAt=nowMs(); stAt=throwAt; ST=2; return; }
         /* The game handed back the SAME reward we threw at. Box rose since that throw -> it WAS caught, the server just
            has not cleared it yet: wait, never throw twice. Box unchanged after LOSTWAIT -> the throw was LOST (or broke
            out): re-throw now. v2 waited out 3 full STUCK cycles here: ~9 s frozen per lost throw, 5 of 100 on 2026-09-26. */
         var bx=readBox();
         if(bx>=0 && boxAtThrow>=0 && bx>boxAtThrow){ if(!slowNoted){ SLOWCONF++; slowNoted=true; } }
-        else if(FRAME-throwFrame>=LOSTWAIT){ THROWS[curId]=n+1; boxAtThrow=bx; fireCatch(); LOST++; throwFrame=FRAME; stFrame=FRAME; ST=2; return; }
+        else if(nowMs()-throwAt>=LOSTWAIT){ THROWS[curId]=n+1; boxAtThrow=bx; fireCatch(); LOST++; throwAt=nowMs(); stAt=throwAt; ST=2; return; }
         if(waited<STUCK) return;   /* the encounter IS open: no nudge re-open here (it would restart the open wait) */
       }
     }
@@ -173,7 +175,7 @@ function tick(){ if(!RUN)return; FRAME++;
     return;
   }
   if(ST===2){ // SETTLE
-    if(FRAME-stFrame>=SETTLE){ ST=(MAX>0&&CAUGHT>=MAX)?9:0; if(ST===9)RUN=false; }
+    if(nowMs()-stAt>=SETTLE){ ST=(MAX>0&&CAUGHT>=MAX)?9:0; if(ST===9)RUN=false; }
     return;
   }
  }catch(err){ERRS.push("tick:"+err);}

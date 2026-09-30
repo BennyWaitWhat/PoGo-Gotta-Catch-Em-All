@@ -4,7 +4,7 @@ registers. Run after ANY change to the tick() logic:
 
   python tools/reward_sim.py [path/to/reward_catcher.py]
 
-Expected (2026-09-30 build, LOSTWAIT 90): normal 3 throws, 214 frames; lost-once 4 throws lost=1, 304 frames (364 at
+Expected (2026-09-30 build: waits in ms, LOSTWAIT 1499; the sim's clock runs 60 fps, so = 90 frames): normal 3 throws, 214 frames; lost-once 4 throws lost=1, 304 frames (364 at
 LOSTWAIT 150, v2 took 738); slow-clear 3 throws slowconf=1 (never a double throw); never 7 throws then ST 9 in 646 frames
 (throw cap 6; 946 at LOSTWAIT 150; v2 threw forever)."""
 import os, subprocess, sys, tempfile

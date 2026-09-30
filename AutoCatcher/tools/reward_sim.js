@@ -14,6 +14,7 @@ function run(name, scen){
   api.set('readBox', function(){ return box; });
   api.set('fireCatch', function(){ thrown.push([frame,cur]); const r=scen.onThrow(cur, thrown.filter(x=>x[1]===cur).length);
        if(r.register){ box+=1; pendingClear={id:cur, at:frame+(r.clearAfter||5)}; } });
+  api.set('nowMs', ()=>frame*1000/60);   // the catcher waits in ms (2026-09-30): the sim's clock runs 60 fps
   api.set('RUN', true); api.set('ST', 0); api.set('BALL',1); api.set('TYPES',[4]); api.set('MAX',0);
   for(frame=0; frame<5000 && api.get('RUN'); frame++){ if(pendingClear&&frame>=pendingClear.at){ queue=queue.filter(x=>x!==pendingClear.id); pendingClear=null;} api.tick(); }
   console.log(name.padEnd(14), 'frames', frame, 'throws', thrown.length, JSON.stringify(thrown.map(x=>x[1])), 'box+', box-100,
