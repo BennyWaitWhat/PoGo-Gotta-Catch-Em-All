@@ -171,6 +171,10 @@ def check_data():
     skip = pogo_data.tracked(ROOT)
     for g in sorted(groups):
         m = metas.get(g)
+        if not m and g.endswith('-cold'):
+            # the cold archive stays on the PC by choice (Benny 2026-09-30: "maybe pc is ok"), not a gap to warn about
+            say('PASS', 'data', '%-14s kept on the PC, not the phone (by choice)' % g)
+            continue
         if not m:
             say('WARN', 'data', '%-14s not on the phone yet' % g)
             continue

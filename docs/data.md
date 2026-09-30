@@ -19,7 +19,7 @@ python tools/pogo_data.py selftest                 # offline check of the tool i
 | Group | Owner (only the owner pushes it) | What | Pulled by default |
 |---|---|---|---|
 | `inventory` | Pokemon Inventory | `pokemon.db`, walk outputs, tag sets, analysis state, per-account sets, newest 6 snapshots | yes |
-| `inventory-cold` | Pokemon Inventory | every DB snapshot + the pre-switch archive (`archive_main_account_20260926/`, keep forever). **Not seeded yet** — 1.6 GB, ~25 min at the link's ~1 MB/s; the PC holds it. Seed from the PC when Benny is not playing: `push --group inventory-cold` | no |
+| `inventory-cold` | Pokemon Inventory | every DB snapshot + the pre-switch archive (`archive_main_account_20260926/`, keep forever). **Kept on the PC, not the phone** (Benny 2026-09-30: "maybe pc is ok"): 1.6 GB on 2026-09-30, because every cull saves a full ~4 MB copy of the bag and nothing ever thinned them; since then each cull keeps only the newest 100 per account (`db_safety.KEEP_RECENT`, Benny: "Just keep the last 100 culls."), about 400 MB, and `archive_main_account_20260926/` is never pruned. The phone's `inventory` group already carries the newest 6 snapshots. Seeding it anyway is one `push --group inventory-cold` from the PC (~25 min at ~1 MB/s, phone idle) | no |
 | `catcher` | AutoCatcher | map data, studies (`*.jsonl`), caches its tools read | yes |
 | `gym` | Gym Battle | `AutoCatcher/tools/gym_state/` except the runner inbox | yes |
 

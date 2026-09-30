@@ -18,7 +18,7 @@ Public API:
         Compute schema hash, log to schema_version table if changed.
         Call after any ALTER TABLE. Returns the new hash.
 
-Retention: keep last 20 snapshots + one per day for the last 30 days.
+Retention: keep the newest 100 snapshots (Benny 2026-09-30: "Just keep the last 100 culls.").
 
 Snapshot mechanism: sqlite3.Connection.backup() into a fresh file, then gzip.
 This is safe with concurrent readers/writers (SQLite handles locking).
@@ -31,8 +31,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 SNAPSHOT_DIR = Path('.db_snapshots')
-KEEP_RECENT = 20
-KEEP_DAILY_DAYS = 30
+KEEP_RECENT = 100   # ~4 MB each; nothing reads further back than 30 culls (Bag Pulse's chart reads ladder_history)
 
 
 @dataclass
@@ -116,7 +115,7 @@ def snapshot_before(tag: str, db_path: str | Path = 'pokemon.db'):
         yield snap_path
     finally:
         # Prune AFTER body completes (success or failure) - never prune the
-        # just-taken snapshot, since "keep last 20" includes the new one.
+        # just-taken snapshot, since "keep the newest 100" includes the new one.
         try:
             prune(db_path)
         except Exception as e:
@@ -143,20 +142,7 @@ def list_snapshots(db_path: str | Path = 'pokemon.db') -> list[SnapshotInfo]:
 def prune(db_path: str | Path = 'pokemon.db') -> int:
     snaps = list_snapshots(db_path)
     keep: set[Path] = set()
-    # Recent: last N
-    for s in snaps[:KEEP_RECENT]:
-        keep.add(s.path)
-    # Daily: one per day for last D days (the earliest in each day, to favor
-    # the snapshot taken right after the prior day's last mutation)
-    cutoff = datetime.now() - timedelta(days=KEEP_DAILY_DAYS)
-    by_day: dict[str, SnapshotInfo] = {}
-    for s in snaps:
-        if s.timestamp < cutoff:
-            continue
-        day = s.timestamp.strftime('%Y-%m-%d')
-        if day not in by_day or s.timestamp < by_day[day].timestamp:
-            by_day[day] = s
-    for s in by_day.values():
+    for s in snaps[:KEEP_RECENT]:      # newest first
         keep.add(s.path)
     removed = 0
     for s in snaps:

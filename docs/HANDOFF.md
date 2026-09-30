@@ -43,7 +43,7 @@ the store) — expect it slower than the ~80 s the PC took.
 |---|---|
 | Repo | PRs #1–#10 merged at handoff (`git log` for anything newer), release **v1.0.0** (tag at 798d7ed), CI green, 1 branch, 0 open PRs; `python tools/triple_check.py --fresh` = ALL CLEAR |
 | Phone data store | `inventory` v2 (334 files, 51.1 MB, 21:53) · `catcher` v1 (16 files, 13.4 MB) · `gym` v1 (90 files, 0.3 MB) — sha256 on the phone matches each meta; the PC changed nothing after seeding |
-| `inventory-cold` | **Not seeded** (1.6 GB: all DB snapshots + `archive_main_account_20260926/`, keep forever). The PC holds it. Push from the PC when the phone is idle (~25 min) |
+| `inventory-cold` | **Stays on the PC** (Benny 2026-09-30: "maybe pc is ok"). 1.6 GB: all DB snapshots + `archive_main_account_20260926/`, keep forever. `triple_check` reports it as a PASS, not a gap |
 | Last cull | 21:28 ET: 11/11 PASS, **pile 27** tagged `Transfer`, the server answered Success for 1/1 tag batch, last walk: bag 5,706/5,850. Its post-DONE steps (Remote Trade + Evolve-for-Size tags) were cut off by a broken pipe — the next cull refreshes them |
 | Benny's to-do in game | **Release the 27 in the Transfer tag** (he released the previous 28) |
 | Bag Pulse | v118 published at 21:3x to `https://claude.ai/artifact/59FFz2wZBv8sNC4CZJBmKn` (alt: `BvcioQeAeZcposXoFHFE8Q`, built by hand from the same page with the title swapped) |
@@ -68,7 +68,7 @@ the store) — expect it slower than the ~80 s the PC took.
 1. **Keep-policy picks** still open from earlier: LAW caps (1a/1b), trade spares (2A–D), look-alikes (3a–c). Background:
    `docs/memory/pogo-keep-research-2026-09-29.md` (bag refills ~64/day; open: LAW caps 783, trade spares 469, merge 235).
 2. **florandez line pools**: should costume copies count toward the 2 plain slots per line? (Charmander lost both plain Charizards.)
-3. **Seed `inventory-cold`** from the PC (phone idle, ~25 min).
+3. ~~Seed `inventory-cold`~~ -- decided 2026-09-30: it stays on the PC.
 4. **Tailscale lock-down** to the phone's adb port (`cloud_setup.md` → "Lock it down"), and **branch protection** on `main`
    (GitHub suggests it; it's a security setting — his click).
 5. **Scrub git history** of the untracked hard-rule scripts (private repo, 1abe382) — only if he wants.
