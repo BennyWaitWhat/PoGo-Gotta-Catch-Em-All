@@ -134,6 +134,7 @@ def main():
     ap.add_argument("--send", action="store_true", help="hand the loop to GPS JoyStick (WALK); default: plan only")
     ap.add_argument("--out", help="write the lap as JSON (for the map page)")
     ap.add_argument("--record", metavar="NAME", help="save the loop as a joystick route while the walk runs it")
+    ap.add_argument("--gpx", metavar="PATH", help="write one closed lap as a GPX route (GPS JoyStick: Routes > import)")
     a = ap.parse_args()
     if a.speed > 28.0:
         sys.exit("speed cap is 28 km/h")
@@ -150,7 +151,18 @@ def main():
         json.dump({"south": a.south, "north": a.north, "speed": a.speed, "lap_km": round(lap_m / 1000, 2),
                    "corners": [{"ave": c[0], "st": c[1], "lat": p[0], "lng": p[1]} for c, p in zip(corners, pts)]},
                   open(a.out, "w"), indent=1)
+    if a.gpx:
+        import html
+        name = os.path.splitext(os.path.basename(a.gpx))[0].replace("_", " ")
+        gpx = ['<?xml version="1.0" encoding="UTF-8"?>',
+               '<gpx version="1.1" creator="pogo-dense-loop" xmlns="http://www.topografix.com/GPX/1/1">',
+               "<rte><name>%s</name>" % html.escape(name)] + \
+              ['<rtept lat="%.6f" lon="%.6f"/>' % p for p in pts + pts[:1]] + ["</rte></gpx>"]
+        open(a.gpx, "w").write("\n".join(gpx) + "\n")
+        print("wrote %s: route '%s', %d points (closed lap)" % (a.gpx, name, len(pts) + 1))
     if a.record:
+        # 2026-09-30: RECORD_START STOPPED the running WALK (the avatar sat at 0 km/h until the walk was re-sent), so
+        # riding the walk does not work. Kept for a stopped avatar only; prefer --gpx and the app's route import.
         record(pts, corners, a.record)
         return
     if not a.send:
