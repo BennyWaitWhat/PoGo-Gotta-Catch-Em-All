@@ -95,13 +95,20 @@ def _read_cache(path):
 
 
 def _parse_gm(path):
-    """{normalised form name: bool} from the game master's formSettings; {} when it cannot be read or lists no forms."""
+    """{normalised form name: bool} from the game master's formSettings; {} when it cannot be read or lists no forms.
+    A form printed as its enum NUMBER (0.381.2 / 0.395.1 print some: 3018 for GIMMIGHOUL_COIN_A1) is named through form_enum.json:
+    keyed '3018' its flag would never meet the form's name, and a game-master-only costume would silently stop being one."""
     try:
-        flags = {}
+        flags, enum = {}, None
         for t in json.load(open(path, encoding='utf-8')):
             for f in (((t.get('data') or {}).get('formSettings') or {}).get('forms') or []):
-                if f.get('form'):
-                    flags[_norm(f['form'])] = bool(f.get('isCostume'))
+                nm = f.get('form')
+                if isinstance(nm, int) and not isinstance(nm, bool):
+                    if enum is None:
+                        enum = {int(k): v for k, v in json.load(open(_ENUM, encoding='utf-8')).items()}
+                    nm = enum.get(nm)
+                if nm:
+                    flags[_norm(nm)] = bool(f.get('isCostume'))
         return flags
     except Exception:
         return {}
