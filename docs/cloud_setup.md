@@ -8,6 +8,24 @@ Pieces in this repo: `cloud/setup.sh` (installs adb, socat, Tailscale, Python de
 `.claude/hooks/cloud_session_start.sh` (every session: join the tailnet, restore the adb key, bridge, `adb connect`, export `ADB_TARGET`
 and `TZ`), `.claude/settings.json` (registers the hook).
 
+## Phone prerequisites (once)
+- **Root:** Magisk with Zygisk on (tested: Magisk 30.7 · Pixel 9 Pro · Android 17).
+- **Frida gadget in the game:** ZygiskFrida (tested v1.9.0) targeting `com.nianticlabs.pokemongo` with a Frida 17 gadget in
+  listen mode. The gadget config the tools expect is
+  [`AutoCatcher/ondevice_toggle/config.listen.so`](../AutoCatcher/ondevice_toggle/config.listen.so):
+  `{"interaction":{"type":"listen","address":"127.0.0.1","port":27047,"on_load":"resume"}}`
+  (ZygiskFrida's own files live in `/data/local/tmp/re.zyg.fri/`). Pokémon GO must **not** be on Magisk's DenyList.
+- **Root hiding:** Shamiko (DenyList configured but NOT enforced) + Play Integrity Fix.
+- **Tailscale** app on the phone, signed in to the tailnet the cloud key joins.
+- **adb over Wi-Fi at every boot** — save as `/data/adb/service.d/adb_tcp_5555.sh`, then `chmod 755` it:
+  ```sh
+  #!/system/bin/sh
+  setprop service.adb.tcp.port 5555
+  stop adbd
+  start adbd
+  ```
+- *Automation only:* Termux + Termux:Boot (the on-phone catcher), GPS Joystick, Pokemod.
+
 ## Benny's one-time steps (≈15 min)
 1. **GitHub access.** claude.ai/code → pick the repo `BennyWaitWhat/PoGo-Gotta-Catch-Em-All`. If it isn't listed, install/authorize the
    Claude GitHub app for BennyWaitWhat and give it this repo.
