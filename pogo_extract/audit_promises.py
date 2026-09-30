@@ -308,21 +308,30 @@ def main():
     for r in rows.values():
         if r['fresh_shiny'] and r['uid_hex'] not in pile_now and r['uid_hex'] not in todo and not keep_config.is_fused_component(r):
             _s0 = pvid(r['species_name'], r['form'] or 0)
-            _sh_at[_s0].append(r['iv_total'] or 0)
-            if not _sh_collectible(r):
-                _shp_at[_s0].append(r['iv_total'] or 0)
+            # PER SPECIES + FORM (LAW bucket 4; keep_policy's shiny groups are (pokemon_id, form)), 2026-09-30: pooled by
+            # pvid alone, pvpoke's one 'florges' held all five colours, so a Yellow Floette's shiny upgrade to the bag's
+            # first shiny Yellow Florges read "no spot" against White ones. Filed like the plain buckets: bare + form.
+            _fs = evolvable_forms.canon_form(_s0, evolvable_forms.form_name(r['form'] or r['fresh_form']))
+            for _k in {(_s0, ''), (_s0, _fs)}:
+                _sh_at[_k].append(r['iv_total'] or 0)
+                if not _sh_collectible(r):
+                    _shp_at[_k].append(r['iv_total'] or 0)
+
+    def _sh_key(t, r):
+        """The shiny bucket a promise lands in: stage_key()'s target form (the colour the game names), no gender."""
+        return stage_key(t, r)[:2]
 
     def _shiny_earns(r, t):
         """LAW: an open spot under the stage's shiny cap, or it beats the weakest of a full top-N; a PLAIN shiny must
         also clear the plain sub-cap, and under the shiny floor it takes no plain spot unless the stage has none."""
         iv, dex = (r['iv_total'] or 0), _DEX_OF0.get(t)
         cap = keep_config.species_cap('shiny', dex, keep_config.cap('shiny'))
-        h = sorted(_sh_at.get(t, []), reverse=True)
+        h = sorted(_sh_at.get(_sh_key(t, r), []), reverse=True)
         if cap <= 0 or not (len(h) < cap or iv > h[cap - 1]):
             return False
         if _sh_collectible(r):
             return True
-        hp = sorted(_shp_at.get(t, []), reverse=True)
+        hp = sorted(_shp_at.get(_sh_key(t, r), []), reverse=True)
         if iv < keep_config.shiny_floor_iv() and hp:
             return False
         pcap = cap if keep_config.species_cap('shiny', dex, None) is not None else min(cap, keep_config.cap('shiny_plain'))
@@ -338,9 +347,10 @@ def main():
             else:
                 why['shiny: an open or better shiny spot at the next stage'] += 1
             for t in targets:                                  # it takes that spot: the next shiny promise competes with it
-                _sh_at[t].append(rows[u]['iv_total'] or 0)
-                if not _sh_collectible(rows[u]):
-                    _shp_at[t].append(rows[u]['iv_total'] or 0)
+                for _k in {(t, ''), _sh_key(t, rows[u])}:
+                    _sh_at[_k].append(rows[u]['iv_total'] or 0)
+                    if not _sh_collectible(rows[u]):
+                        _shp_at[_k].append(rows[u]['iv_total'] or 0)
             continue
         if src_of.get(u) == 'size':                          # a showcase pick, whatever its count tag (2026-09-29)
             why['size: a bigger showcase entry at that stage'] += 1; continue
