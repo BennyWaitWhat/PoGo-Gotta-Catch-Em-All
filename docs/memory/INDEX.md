@@ -87,6 +87,7 @@ Notes reference each other as [[note-name]] = the file `note-name.md` in this fo
 - [Comb-up bar ignored displacement](pogo-combup-bar-ignored-displacement-2026-09-13.md) -- labels must use the keep rule's occupancy model.
 - [Pattern-pooled lines](pogo-pattern-pooled-lines-2026-09.md) -- one plain_line pool per PATTERN; no comb-up.
 - [Special backgrounds are capped](pogo-special-backgrounds-capped.md) -- top-3 per (species, form, card); costume copies take those slots first.
+- [Costume status: name OR the game's flag (2026-09-30)](pogo-costume-status-game-flag-2026-09-30.md) -- option 5, add-only; FLYING skips Arceus/Silvally, TSHIRT; flags survive a missing game master (costume_gm_flags.json); the engine stamp covers costume_forms.py + form_enum.json + the game master.
 - [Fusion components hold no ladder slot](pogo-fusion-components-no-ladder-slot.md) -- fused Reshiram/Zekrom kept as 'fused'.
 - [PoGo collector keep-rules 2026](pogo-collector-keep-rules-2026.md) -- AE roster, Gigantamax count, Mighty flag, remote-trade lockout.
 - [Adventure-Effect live registry](pogo-adventure-effect-live-registry.md) -- AE per mon; registry read every recrawl; audit_tag_truth.py.
