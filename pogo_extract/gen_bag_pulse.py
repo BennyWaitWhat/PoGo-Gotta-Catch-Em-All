@@ -1,6 +1,7 @@
 """Bag Pulse -> system/analysis/collection_stats.html: the collection as a dashboard (the last 30 culls pass by pass with
 PvP standing, KPIs, day trends with a projection, IV bands, shinies, missing hundos, regions, showcase winners). Read-only; run after a cull. Supersedes the table page
-gen_collection_stats.py wrote (2026-09-23).
+gen_collection_stats.py wrote (2026-09-23). Since 2026-09-30 the Transfer pile also shows as sprites and location cards, in the game's own names
+(bag_art.py + pogo_display.py; display only, never fails the page; BAG_ART=0 renders the page as it was).
 
 Every number comes from the same sources the cull uses: pokemon.db (in_bag=1), policy_reasons.json, the tagsets,
 ladder_history.json, pokedex_hundos_live.json and size_line.showcase_points -- so the page agrees with the phone.
@@ -306,7 +307,7 @@ DATA = {
 }
 if art is not None:                                          # absent with BAG_ART=0, so the DATA (and the page) are today's
     DATA['spr'] = dict(sorted(art.sprites.items()))          # icon file name (or 'c:' + card stem) -> data: URI; sorted: a stable page
-    DATA['art'] = dict(art.stats)
+    DATA['art'] = art.page_stats()                           # what the art step did (no local paths): for whoever debugs the artifact
 
 TEMPLATE = r'''<title>Bag Pulse</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Lilita+One&family=Manrope:wght@300;500;600;700&family=Nunito:wght@400;600;700;800&family=IBM+Plex+Mono:wght@500&display=swap">

@@ -16,6 +16,26 @@ sys.path.insert(0, ROOT); sys.path.insert(0, os.path.join(ROOT, 'system', 'scrip
 os.chdir(ROOT)
 A = os.path.join(ROOT, 'system', 'analysis')
 STATE = os.path.join(A, 'last_report.json')
+# THE GAME'S OWN NAMES (2026-09-30, docs/memory/pogo-bag-pulse-sprites.md): DISPLAY ONLY. species_name, form ids and pvids stay the
+# walk's own strings; only the words a person reads change ('Nidoran F' -> 'Nidoran♀', 'Mr Mime' -> 'Mr. Mime', 'Ho Oh' -> 'Ho-Oh').
+# Every failure (no pogo_display, no names file, an id it cannot vouch for) prints what this report printed before.
+try:
+    import pogo_display as _pd
+    _NM = _pd.Names.load()
+except Exception:
+    _NM = None
+
+
+def species_label(r):
+    """The species as the game spells it; the walk's own species_name when there is nothing better."""
+    return _NM.species(r['pokemon_id'], r['species_name']) if _NM else r['species_name']
+
+
+def stage_name(sid, dex=None):
+    """A pvpoke speciesId for a person: 'mr_mime' -> 'Mr. Mime', 'raichu_alolan' -> 'Alolan Raichu'. Any id the names file cannot
+    vouch for (a form, a shadow, a mega, no dex) keeps today's title-cased rendering."""
+    return (_NM.stage(sid, dex) if _NM else None) or str(sid).replace('_', ' ').title()
+
 
 LABEL = {'variant_floor': 'ladder slot', 'shiny': 'shiny slot', 'xxl': 'XXL showcase spot',
          'location_card': 'location-card slot', 'pvp_best_gl': 'Best GL', 'pvp_best_ul': 'Best UL',
@@ -105,6 +125,8 @@ def main():
     import pvp_iv_rule as pv, keep_config
     _gm = json.load(open(os.path.join(ROOT, 'pvpoke_gamemaster.json'), encoding='utf-8'))
     BS = {q['speciesId']: q.get('baseStats', {}) for q in _gm['pokemon']}
+    _dex_of = {q['speciesId']: q.get('dex') for q in _gm['pokemon']}
+    stg = lambda s: stage_name(s, _dex_of.get(s))            # a pvpoke speciesId as the game spells it (display only)
     snaps = _snapshots()
     if not snaps:
         print('(no walk snapshot yet)'); return 0
@@ -217,7 +239,7 @@ def main():
         if r['fresh_alignment'] == 1: bits.append('shadow')
         g = sym.get(r['gender'], '') if ef.gender_key(r['pokemon_id'], r['gender']) else ''
         reg = {'alolan': 'Alolan ', 'galarian': 'Galarian ', 'hisuian': 'Hisuian ', 'paldean': 'Paldean '}.get(sid(r).split('_')[-1], '')
-        s = '%d%% %s%s%s%s' % (pct(r), ' '.join(bits) + ' ' if bits else '', reg, r['species_name'], g)
+        s = '%d%% %s%s%s%s' % (pct(r), ' '.join(bits) + ' ' if bits else '', reg, species_label(r), g)
         if not with_origin:
             return s
         if r['uid_hex'] in origin:
@@ -233,7 +255,7 @@ def main():
     def kind_of(r):
         """'Alolan Raichu' -- the PvP identity by name (the group an XXL spot or a Best is decided in)."""
         return {'alolan': 'Alolan ', 'galarian': 'Galarian ', 'hisuian': 'Hisuian ', 'paldean': 'Paldean '}.get(
-            sid(r).split('_')[-1], '') + r['species_name']
+            sid(r).split('_')[-1], '') + species_label(r)
 
     def xxl_why(r):
         """Why an XXL copy holds no XXL spot -- size_line.xxl_keepers' own tests, in its order (H05-1): no height /
@@ -349,14 +371,14 @@ def main():
                     took = sorted((x for x in C.values() if x['uid_hex'] in origin and old_t & set(prom_now.get(x['uid_hex']) or [])),
                                   key=lambda x: (-(x['iv_total'] or 0), -(x['cp'] or 0)))
                     if took:
-                        _lbl = '%s slot' % ' / '.join(sorted(t.replace('_', ' ').title() for t in old_t))
+                        _lbl = '%s slot' % ' / '.join(sorted(stg(t) for t in old_t))
                         to.setdefault(desc(took[0]), []).append(_lbl)
                         if desc(r, False) not in replaced[took[0]['uid_hex']]:
                             replaced[took[0]['uid_hex']].append(desc(r, False))
                         continue
                     # NO FALL-THROUGH (R-B review): no arrival is promised r's target, and the generic path below named any
                     # same-stage arrival holding an Evolve label ("lost its Evolve Once to the just-caught 89% Charcadet")
-                    _tg = ' / '.join(sorted(t.replace('_', ' ').title() for t in old_t))
+                    _tg = ' / '.join(sorted(stg(t) for t in old_t))
                     parts.append('lost its %s%s -- no just-arrived copy is promised %s' % (
                         LABEL[reason], (' (%s)' % _tg) if _tg else '', 'that target' if _tg else 'its target'))
                     continue
@@ -370,7 +392,7 @@ def main():
                             _now.append('%s unranked' % _l.upper())
                             continue
                         _reach = bool(_st) and pv.maxcp(_st, BS) > _cp + pv.VIABILITY_MARGIN
-                        _now.append('%s #%d as %s%s' % (_l.upper(), _rk, (_st or '?').replace('_', ' ').title(),
+                        _now.append('%s #%d as %s%s' % (_l.upper(), _rk, stg(_st or '?'),
                                                          '' if _reach else ', a stage that cannot reach the league'))
                     # "its ranks changed" only when they DID (R-B review): the same ranks with the spread dropped means the
                     # rank rule (keep_config READY_RANK / viability margin) or the stage's reach changed
@@ -475,7 +497,7 @@ def main():
             meant = prev_targets.get(norm(src['uid_hex'])) if src else None
             miss = ''
             if meant and not any(sid(r).startswith(t.split('_')[0]) for t in meant):
-                _m = ' or '.join(t.replace('_', ' ').title() for t in meant)
+                _m = ' or '.join(stg(t) for t in meant)
                 # went PAST the promised stage (a Dratini tagged Evolve Next for a Dragonair slot, evolved twice)
                 past = any(ef.can_reach_sid(t, sid(r)) for t in meant)
                 miss = (' It was tagged to stop at %s (that is where the open slot was); evolving it again made it an extra.' % _m
@@ -610,7 +632,7 @@ def main():
                     # lawful to release, but he decides -- a Favorite keeps it
                     bk = best_kept.get((lg, st, cls(m)))
                     _txt = '%s (%d/%d/%d) is %s #%d as %s' % (desc(m, False), m['iv_atk'], m['iv_def'], m['iv_sta'], NAMES[lg],
-                                                             rk, st.replace('_', ' ').title())
+                                                             rk, stg(st))
                     if bk and bk[0] <= rk:
                         close_calls.append(_txt + ' -- your best kept there is #%d, so the better one stays and this one goes.' % bk[0])
                     else:
@@ -623,7 +645,7 @@ def main():
                             _rule = '#%d is past your #%d %scut-off' % (rk, sfloor if cls(m) == 'shadow' else floor,
                                                                       'shadow ' if cls(m) == 'shadow' else '')
                         elif cls(m) == 'plain' and _species_best_beats(m, lg):
-                            _rule = 'your Best %s %s wins at another stage (one per species)' % (NAMES[lg], m['species_name'])
+                            _rule = 'your Best %s %s wins at another stage (one per species)' % (NAMES[lg], species_label(m))
                         else:
                             _rule = 'of nothing -- ***CHECK: no rule lets it go***'
                         close_calls.append(_txt + ' -- nothing you keep there is better (%s), so it goes only because %s.'
@@ -635,11 +657,11 @@ def main():
                     # not a CHECK: nothing of that kind is kept by law
                     if rk <= floor:
                         uncollected.append('%s is %s #%d as %s -- you no longer keep %s shadows'
-                                           % (desc(m, False), NAMES[lg], rk, st.replace('_', ' ').title(), NAMES[lg]))
+                                           % (desc(m, False), NAMES[lg], rk, stg(st), NAMES[lg]))
                     continue
                 bk = best_kept.get((lg, st, cls(m)))
                 if bk is None or rk < bk[0]:
-                    note = '%s is your best %s %s (#%d%s)' % (desc(m, False), NAMES[lg], st.replace('_', ' ').title(), rk,
+                    note = '%s is your best %s %s (#%d%s)' % (desc(m, False), NAMES[lg], stg(st), rk,
                                                                ', next best kept #%d' % bk[0] if bk else '')
                     # A SHADOW is kept by rule 7 only inside pvp.shadow_rank_floor -- legendaries too: the roster's "Best at
                     # any rank" (LAW 2b) is the NON-shadow Best (H09-4, 2026-09-29: caps.rarity_shadow piled shadow Dialgas
@@ -648,7 +670,7 @@ def main():
                     if rk > (sfloor if _sh else floor) and (_sh or m['pokemon_id'] not in ROSTER):
                         # ONE LINE PER MON (2026-09-26): the #150 cut turned this into ~110 near-identical lines
                         floor_notes.append((m['uid_hex'], desc(m, False), '%s %s #%d%s%s' % (
-                            NAMES[lg], st.replace('_', ' ').title(), rk, ' (next best kept #%d)' % bk[0] if bk else '',
+                            NAMES[lg], stg(st), rk, ' (next best kept #%d)' % bk[0] if bk else '',
                             (' -- the shadow cut-off is #%d' % sfloor) if _sh and sfloor != floor else '')))
                     elif cls(m) == 'plain' and _species_best_beats(m, lg):
                         # ONE BEST PER SPECIES (LAW 2b), counted at every stage it can reach: a copy that is the best
@@ -657,7 +679,7 @@ def main():
                         # note, not a CHECK; a CHECK stays for a copy nothing of its species beats.
                         _sb = _species_best_beats(m, lg)          # cached via _ub: the repeat call is free
                         species_notes.append(note + ' -- but your Best %s %s is the %s (#%d as %s), one per species'
-                                             % (NAMES[lg], m['species_name'], _sb[0], _sb[1], _sb[2].replace('_', ' ').title()))
+                                             % (NAMES[lg], species_label(m), _sb[0], _sb[1], stg(_sb[2])))
                     else:
                         checks.append(note)
 
@@ -864,7 +886,7 @@ def main():
             if not origin[x['uid_hex']]:
                 tag.append('new hundo' + (', your first' if first_hundo(x) else ''))
             elif first_hundo(x):
-                tag.append('your first hundo %s' % x['species_name'])
+                tag.append('your first hundo %s' % species_label(x))
         elif (not x['fresh_shiny'] and _ab.get(stage_ng(x)) is x and stage_ng(x) in best_prev
               and (x['iv_total'] or 0) > best_prev[stage_ng(x)]):
             tag.append('new best at its stage')
@@ -872,9 +894,9 @@ def main():
             # gl_rank / ul_rank is the CHAIN's best (gl_stage may be a later stage): judge that stage's reach, and name it
             _st = x[_lg + '_stage'] or sid(x)
             if x[_lg + '_rank'] == 1 and pv.maxcp(_st, BS) > _cap + pv.VIABILITY_MARGIN:
-                tag.append(_lg.upper() + ' #1' + ('' if _st == sid(x) else ' as ' + _st.replace('_', ' ').title()))
+                tag.append(_lg.upper() + ' #1' + ('' if _st == sid(x) else ' as ' + stg(_st)))
         src = origin[x['uid_hex']]
-        line = '**%s** (%s)%s: %s' % (desc(x, False), ('just evolved from %s' % src['species_name']) if src else 'just %s' % arrived(x),
+        line = '**%s** (%s)%s: %s' % (desc(x, False), ('just evolved from %s' % species_label(src)) if src else 'just %s' % arrived(x),
                                       (' **%s**' % ', '.join(tag)) if tag else '', ', '.join(rs))
         if replaced.get(x['uid_hex']):
             line += ' -- replaces your %s' % ' and '.join(replaced[x['uid_hex']])
@@ -911,7 +933,7 @@ def main():
             out.extend('- ***CHECK: %s***' % c for c in checks)
         else:
             out.append('- none is a top-%d spread%s' % (pv.READY_RANK, (' -- closest: %s at %s #%d as %s%s'
-                        % (desc(close[1], False), close[2], close[0], close[3].replace('_', ' ').title(),
+                        % (desc(close[1], False), close[2], close[0], stg(close[3]),
                            '' if close[4] else ' (its CP is already over that league cap, so it can never play there)')) if close else ''))
             # a floor note IS a copy that beats every copy kept at that stage (bk is None or rk < bk[0]) -- the summary must
             # not say "none" above lines that say it is your best (H05-4)
@@ -1001,7 +1023,22 @@ def _selftest():
     st = still_lines(['91% Bulbasaur', '71% Cyndaquil', '64% Cyndaquil', '62% shadow Dialga'])
     assert st[0] == 'Still here from last time: 4 mons, in the last pile too and not released yet.' and st[2:4] == ['| In the pile | IVs |', '|---|---|'], st
     assert st[4:7] == ['| Bulbasaur | 91% |', '| Cyndaquil | 71%, 64% |', '| shadow Dialga | 62% |'] and st[7:] == [''], st
-    print('cull_report fodder selftest: ok')
+    # official names (2026-09-30): display only, and every doubt falls back to today's rendering
+    global _NM
+    assert _NM is not None and _NM.on, 'official_names_en.json did not load: %s' % (_pd.Names.load().error,)
+    for sid, dex, want in (('mr_mime', 122, 'Mr. Mime'), ('ho_oh', 250, 'Ho-Oh'), ('nidoran_female', 29, 'Nidoran\u2640'),
+                           ('raichu_alolan', 26, 'Alolan Raichu'), ('farfetchd_galarian', 83, "Galarian Farfetch'd"), ('flabebe', 669, 'Flab\u00e9b\u00e9'),
+                           ('porygon_z', 474, 'Porygon-Z'), ('giratina_altered', 487, 'Giratina Altered'), ('machamp_shadow', 68, 'Machamp Shadow'),
+                           ('unknown_thing', None, 'Unknown Thing'), ('?', None, '?')):
+        assert stage_name(sid, dex) == want, (sid, stage_name(sid, dex), want)
+    assert species_label({'pokemon_id': 29, 'species_name': 'Nidoran F'}) == 'Nidoran\u2640', 'Nidoran F'
+    assert species_label({'pokemon_id': 1012, 'species_name': 'Poltchageist'}) == 'Poltchageist', 'a dex the game i18n lacks keeps the walk name'
+    _saved, _NM = _NM, None
+    try:
+        assert stage_name('mr_mime', 122) == 'Mr Mime' and species_label({'pokemon_id': 29, 'species_name': 'Nidoran F'}) == 'Nidoran F', 'no names: today'
+    finally:
+        _NM = _saved
+    print('cull_report selftest (fodder tables, official names): ok')
 
 
 if __name__ == '__main__':

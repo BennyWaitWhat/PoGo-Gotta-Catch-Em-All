@@ -133,10 +133,11 @@ def read_index(path=INDEX_PATH):
 
 def split_listing(paths):
     """A repo-relative path listing -> (icon file names, card stems): only real pm<dex>...icon.png files directly in ICON_DIR,
-    only .png files directly in CARD_DIR (the 96 *.portrait.png next to the icons are not sprites)."""
+    only .png files directly in CARD_DIR (the 96 *.portrait.png next to the icons are not sprites). A name that would not
+    pass sprite_path / card_path validation never enters the index, so no later fetch can be handed an unsafe one."""
     icons = [p[len(ICON_DIR):] for p in paths if p.startswith(ICON_DIR) and '/' not in p[len(ICON_DIR):]]
     cards = [p[len(CARD_DIR):-4] for p in paths if p.startswith(CARD_DIR) and p.endswith('.png') and '/' not in p[len(CARD_DIR):]]
-    return [n for n in icons if _ICON_RX.match(n)], cards
+    return [n for n in icons if _ICON_RX.match(n) and _SPRITE_OK.match(n)], [c for c in cards if _CARD_OK.match(c)]
 
 
 def format_index(icons, cards, commit, committed, listed):

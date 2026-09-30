@@ -57,6 +57,7 @@ MAX_SRC_PX = 4_000_000                            # decode refuses bigger images
 ALPHA_MIN = 8                                     # alpha at or above this counts as 'inside the sprite' for the crop
 MAX_SPRITE_FETCH, MAX_CARD_FETCH = 80, 12
 WORKERS, FETCH_TIMEOUT, WALL_S, BREAKER = 6, 6.0, 25.0, 3
+STALE_DAYS = 60                                   # the icon index is called old after this many days since it was listed
 MISS_DAYS = {'404': 7, 'oversize': 30, 'undecodable': 1}    # negative cache; a network failure is NEVER cached
 PIXEL = 'data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw=='   # 1 px placeholder: keeps the box
 SIG = b'\x89PNG\r\n\x1a\n'
@@ -497,7 +498,7 @@ class Art:
         self.stats = collections.OrderedDict(
             wanted=0, cached=0, fetched=0, missing=0, unavailable=0, capped=0, over_budget=0, embedded=0, bytes=0,
             cards_wanted=0, cards_fetched=0, cards_missing=0, cards_capped=0, cards_embedded=0, offline='', cache='', seconds=0.0, error='',
-            index='')
+            index='', listed='')
 
     def sprite_key(self, uid):
         m = self.match.get(uid)
@@ -506,16 +507,34 @@ class Art:
     def approx(self, uids):
         return sum(1 for u in uids if u in self.match and self.match[u].approx)
 
+    def page_stats(self):
+        """The stats the PAGE carries (DATA.art): everything but the local cache path -- an unusable cache dir is a path on
+        the cloud VM that has no business in a published artifact."""
+        d = {k: v for k, v in self.stats.items() if k != 'cache'}
+        d['cache_ok'] = not self.stats['cache']
+        return d
+
     def line(self, pile_uids):
         """The one summary line the cull shows (gen_bag_pulse prints it BEFORE its KPI line: finish_step keeps only the last)."""
         s = self.stats
         mine = {self.sprite_key(u) for u in pile_uids} - {None}
+        age = index_age(s['listed'])
         flags = ''.join(t for t, on in ((' | OFFLINE (%s)' % s['offline'], s['offline']), (' | CACHE UNUSABLE (%s)' % s['cache'], s['cache']),
-                                        (' | ERROR %s' % s['error'], s['error'])) if on)
+                                        (' | ERROR %s' % s['error'], s['error']),
+                                        (' | ICON INDEX %d DAYS OLD (bag_art.py --refresh-index)' % (age or 0), age is not None and age > STALE_DAYS)) if on)
         return ('art: %d sprites (%d KB), %d of them for the %d pile mons, %d approximate, %d cards | cache %d hit / %d fetched / '
-                '%d missing / %d unavailable%s | icon index %s | %.1f s' % (
+                '%d missing / %d unavailable%s | icon index %s%s | %.1f s' % (
                     s['embedded'], s['bytes'] // 1024, len(mine), len(pile_uids), self.approx(pile_uids), s['cards_embedded'],
-                    s['cached'], s['fetched'], s['missing'], s['unavailable'], flags, s['index'] or '?', s['seconds']))
+                    s['cached'], s['fetched'], s['missing'], s['unavailable'], flags, s['index'] or '?',
+                    (' (listed %s)' % s['listed']) if s['listed'] else '', s['seconds']))
+
+
+def index_age(listed, today=None):
+    """Days since the icon index was listed from upstream (its header date), None when unknown."""
+    try:
+        return ((today or datetime.date.today()) - datetime.date.fromisoformat(listed)).days
+    except (TypeError, ValueError):
+        return None
 
 
 def enabled():
@@ -546,7 +565,7 @@ def _prepare(art, rows, sprite_uids, card_uids, cache_dir, offline, fetch, index
     st = art.stats
     ix = index or pd.IconIndex.load()
     nm = names or pd.Names.load()
-    st['index'] = ix.meta.get('committed', '') or ''
+    st['index'], st['listed'] = ix.meta.get('committed', '') or '', ix.meta.get('listed', '') or ''
     if ix.error:
         st['error'] = 'icon index: %s' % ix.error
     if offline is None:
@@ -574,7 +593,10 @@ def _prepare(art, rows, sprite_uids, card_uids, cache_dir, offline, fetch, index
         body_max = CARD_BODY_MAX if is_card else BODY_MAX
 
         def one(name):
-            url = pd.raw_url(pd.card_path(name) if is_card else pd.sprite_path(name))
+            path = pd.card_path(name) if is_card else pd.sprite_path(name)
+            if path is None:                                 # never reaches a URL or a cache path (the callers validate too)
+                raise Undecodable('unsafe name %r' % name[:40])
+            url = pd.raw_url(path)
             body = fetch(url) if fetch else http_get(url, max_bytes=body_max)
             if not isinstance(body, (bytes, bytearray)) or body[:8] != SIG:
                 raise BadBody('not a PNG')
@@ -682,7 +704,7 @@ def _prepare(art, rows, sprite_uids, card_uids, cache_dir, offline, fetch, index
 E = lambda s: html.escape(str(s), quote=True)
 
 ART_CSS = '''/* Bag Pulse pictures (2026-09-30, bag_art.py): the Transfer pile as tiles -- one tile per look (sprite + card), one row per copy */
-.tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(168px,1fr));gap:10px;align-items:start}
+.tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(168px,1fr));gap:10px;align-items:start;margin-top:10px}
 .tile{background:var(--surface-2);border:1px solid var(--line);border-radius:12px;padding:8px 10px;min-width:0}
 .tile .hd{display:flex;align-items:center;gap:8px}
 .tile h3{font-size:13px;line-height:1.2;margin:0;font-weight:700;overflow-wrap:break-word;min-width:0}
@@ -727,13 +749,19 @@ def _copy_row(r, names, gender_key, max_axis):
 def art_note(art, pile_rows, tiles=0, blank=0):
     """The footnote under the pile card: whose art it is, how old the icon index is, what is approximate, why a tile has no picture."""
     s = art.stats
-    bits = ['The pictures are the game\'s own icons, mirrored by PokeMiners/pogo_assets (icon index of %s).' % (E(s['index']) or 'unknown date')]
+    bits = ['The pictures are the game\'s own icons, mirrored by PokeMiners/pogo_assets (mirror state of %s%s).' % (
+        E(s['index']) or 'an unknown date', (', listed %s' % E(s['listed'])) if s['listed'] else '')]
+    age = index_age(s['listed'])
+    if age is not None and age > STALE_DAYS:
+        bits.append('The icon list is %d days old, so a brand-new form or costume may show an approximate picture.' % age)
     apx = art.approx(r['uid_hex'] for r in pile_rows)
     if apx:
         bits.append('Dashed = approximate: the mirror has no exact art for that look (%d of these %d).' % (apx, len(pile_rows)))
     if blank:
-        why = [w for w, on in (('offline', s['offline']), ('not in the mirror', s['missing']), ('over the page budget', s['over_budget']),
-                               ('over the fetch cap', s['capped'])) if on]
+        why = [w for w, on in (('offline', s['offline']), ('not fetched: network or time budget', s['unavailable'] and not s['offline']),
+                               ('not in the mirror', s['missing']), ('over the page budget', s['over_budget']),
+                               ('over the fetch cap', s['capped']), ('cache folder unusable', s['cache']),
+                               ('the art step hit an error', s['error'])) if on]
         bits.append('%d of the %d tiles show a letter instead of a picture (%s).' % (blank, tiles, E(', '.join(why) or 'no icon for that look')))
     return ' '.join(bits)
 
@@ -750,9 +778,11 @@ def pile_card_html(art, pile_rows, names, gender_key=None, max_axis=None, unknow
     for r in pile_rows:
         m = art.match.get(r['uid_hex']) or pd.Match(None, ())
         lab = names.label(r)
-        tiles.setdefault((lab.lower(), lab, m.fn or '', pd.card_id(r)), []).append(r)
+        # `dropped` is part of the key: a shiny copy the mirror has no shiny art for wears the PLAIN file, and must not share a
+        # tile (and its 'approximate' flag) with an exact plain copy of the same species
+        tiles.setdefault((lab.lower(), lab, m.fn or '', tuple(m.dropped), pd.card_id(r)), []).append(r)
     out = []
-    for (_l, lab, fn, cid), copies in sorted(tiles.items()):
+    for (_l, lab, fn, _dropped, cid), copies in sorted(tiles.items()):
         copies.sort(key=lambda r: (-(r['iv_total'] or 0), -(r['cp'] or 0), r['uid_hex']))
         first = copies[0]['uid_hex']
         m = art.match.get(first) or pd.Match(None, ())
@@ -1083,6 +1113,30 @@ def _selftest_body(ck, tmp, random, os):
     ck('\u2642' in doc and doc.index(pc(44)) < doc.index(pc(30)), 'sex sign where the injected rule says so; copies sorted best IV first')
     ck('spr none' in pile_card_html(prepare(rows, uids, uids, cache_dir=P(tmp, 'empty'), offline=True, index=fx, names=names_fx, workers=0), rows, names_fx),
        'an empty cache offline is a text page')
+    # an approximate copy never shares a tile (or its 'approximate' flag) with an exact one: the mirror has no shiny Alpha, so the
+    # shiny copy wears the plain file -- same file, same label, but its own dashed tile
+    ax = [_row('x0', 900, 'Alpha', iv=40), _row('x1', 900, 'Alpha', iv=44, fresh_shiny=1)]
+    aa = prepare(ax, ['x0', 'x1'], (), cache_dir=cache_dir, offline=True, index=fx, names=names_fx, workers=0)
+    ah = pile_card_html(aa, ax, names_fx)
+    ck(aa.match['x1'].dropped == ('shiny',) and aa.match['x0'].dropped == () and ah.count('class="tile"') == 2
+       and ah.count('class="spr approx"') == 1 and ah.count('approximate: no shiny art') == 1 and 'no shiny sprite' in ah,
+       'an approximate copy must get its own tile: %d tiles' % ah.count('class="tile"'))
+    # the page carries the art stats but never a local path; the log line and the note say how old the icon index is
+    f0 = P(tmp, 'afile0')
+    open(f0, 'w').write('x')
+    bc_art = prepare(rows, uids, (), cache_dir=f0, offline=True, index=fx, names=names_fx, workers=0)
+    ps = bc_art.page_stats()
+    ck(f0 in bc_art.stats['cache'] and 'cache' not in ps and ps['cache_ok'] is False and f0 not in json.dumps(ps)
+       and art.page_stats()['cache_ok'] is True, 'DATA.art must not carry the cache path: %s' % ps)
+    ck(index_age('2026-01-01', datetime.date(2026, 3, 1)) == 59 and index_age('junk') is None and index_age('') is None and index_age(None) is None, 'index_age')
+    old_art, new_art = Art(), Art()
+    old_art.stats['index'], old_art.stats['listed'] = '2020-01-01', '2020-01-02'
+    new_art.stats['index'], new_art.stats['listed'] = '2020-01-01', datetime.date.today().isoformat()
+    ck('days old' in art_note(old_art, []) and 'DAYS OLD' in old_art.line([]) and 'listed 2020-01-02' in old_art.line([])
+       and 'days old' not in art_note(new_art, []) and 'DAYS OLD' not in new_art.line([]), 'a stale icon index is said so, a fresh one is not')
+    ic_, cd_ = pd.split_listing([pd.ICON_DIR + 'pm25 x.icon.png', pd.ICON_DIR + 'pm25.icon.png', pd.ICON_DIR + 'pm26.f..icon.png', pd.CARD_DIR + 'a b.png',
+                                 pd.CARD_DIR + 'ok_1.png', pd.CARD_DIR + 'a.b.png'])
+    ck(ic_ == ['pm25.icon.png'] and cd_ == ['ok_1'], 'a listing name that would fail validation never enters the index: %s %s' % (ic_, cd_))
 
     # ---- a broken cache never crashes; the bad entries are simply not embedded
     afile = P(tmp, 'afile')

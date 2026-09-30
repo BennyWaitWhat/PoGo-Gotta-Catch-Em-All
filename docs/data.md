@@ -37,6 +37,12 @@ Secrets (Pokemod/Niantic prefs, `nia_secret_*`, keystores, `game_limits.json`, `
 binaries, logs, backups, and `system/scripts/rank_tables.pkl` (333 MB, rebuilds itself when missing — the first cull in a fresh VM is
 slower for it). To add a file: put its pattern in `tools/data_manifest.txt` under the owning group (owner edits), then push that group.
 
+Also not stored: Bag Pulse's picture cache, `pogo_extract/system/analysis/art_cache/` (2026-09-30). It is thumbnails of a public source
+(PokeMiners/pogo_assets), rebuilt by the next cull in 2-3 s (about 20 single-file GETs; an offline cull just shows text), so it is
+derived, not state; the manifest's single-level `system/analysis/*.json` globs do not match it. Revisit only if a cold fetch ever takes
+over ~10 s or raw.githubusercontent.com proves unreliable from cloud sessions: then add `pogo_extract/system/analysis/art_cache/**` to
+`[inventory]`. The two reference files it reads (`pogo_icon_index.txt`, `official_names_en.json`) are code: git tracks them.
+
 ## The PC
 The Windows PC is no longer where PoGo work happens. It seeded the store on 2026-09-29 and still holds the original copies. If a PC
 session ever works again: `pull` first, `push` after — the version checks keep the PC and the cloud from overwriting each other.

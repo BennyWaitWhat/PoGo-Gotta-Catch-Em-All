@@ -8,6 +8,10 @@ versions follow [Semantic Versioning](https://semver.org/).
 ### Added
 - Bag Pulse redesign: a night Pokédex frame from the README banner (Poké Ball header, navy-to-plum) with Oura-style data —
   score rings, light numerals, pastel series, smooth lines with fading fills; the page now shows the real scan time.
+- Bag Pulse pictures: the Transfer pile as tiles with each mon's exact icon (form, costume, gender, shiny), location-card
+  thumbnails, the game's own species and form names, and small icons in the pass table. Embedded from PokeMiners/pogo_assets
+  into the page (`pogo_extract/bag_art.py`, `pogo_display.py`, `pogo_icon_index.txt`, `official_names_en.json`); the cache is
+  rebuildable and not in the phone data store; every failure falls back to text and `BAG_ART=0` gives the old page.
 
 ### Changed
 - Root tidied: CONTRIBUTING / SECURITY / CODE_OF_CONDUCT moved to `.github/`, the CHANGELOG to `docs/`,

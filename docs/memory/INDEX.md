@@ -52,6 +52,7 @@ Notes reference each other as [[note-name]] = the file `note-name.md` in this fo
 - [Labels must be true for the mon on screen](feedback-labels-true-for-the-mon-on-screen.md) -- literally true of THAT mon now.
 - [Never re-propose the plain shiny cap](feedback-never-repropose-plain-shiny-cap.md) -- 4 plain shinies; the lever is the IV floor; refused cap cuts listed.
 - [Bag Pulse cull-by-cull + PvP standing](pogo-bag-pulse-cull-by-cull.md) -- last 30 passes with IV/PvP series and cumulative wins; `ladder_report.pvp_metrics` + `--backfill-pvp` (2026-09-29).
+- [Bag Pulse sprites, cards, official names](pogo-bag-pulse-sprites.md) -- the Transfer pile as exact-look sprites + location-card thumbnails + the game's own names; `bag_art.py` / `pogo_display.py`, committed icon index, cache NOT in the data store, `BAG_ART=0` (2026-09-30).
 - [Cull report sections](feedback-cull-report-sections.md) -- every cull: What improved + Why each pile mon + Which way to evolve.
 - [Say "Just caught" in pile explanations](feedback-just-caught-in-pile-explanations.md) -- name the just-caught copy that outdated each pile mon.
 - [Trade picks are GOOD ones](feedback-trade-picks-are-good-ones.md) -- Trade = top 10 of the remainder, never the worst copies.
