@@ -37,8 +37,8 @@ system/scripts/game_write/catch_loop_fast.v1-pause.py
 # ondevice_toggle: RETIRED 2026-09-29 -- a session must never run these. They force-stop or relaunch PoGo (or tell you
 # to), switch the gadget out of listen mode, wipe ~/pogo (setup_pogo.sh), write Magisk root grants (grant_root.sh), or
 # are stale copies of the live catcher_ctl.sh / run_catch.sh / catch_phone.py. They stay on the PC; git history has
-# them. Still tracked: apk/, 20-pogo-catcher.sh, 10-catcher-toggle.sh, config.listen.so, AUTO_CATCHER_PHONE.html and
-# the Termux build/repair scripts.
+# them. Still tracked: phone_pogo_il2cpp.py (the phone's own library), apk/, 20-pogo-catcher.sh, 10-catcher-toggle.sh,
+# config.listen.so, AUTO_CATCHER_PHONE.html and the Termux build/repair scripts.
 ondevice_toggle/*.md
 ondevice_toggle/configswap_toggle/
 ondevice_toggle/shortcuts/
