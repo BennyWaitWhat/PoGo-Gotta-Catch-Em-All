@@ -16,7 +16,9 @@ Sources (both committed, both rebuilt by `python bag_art.py --refresh-index|--re
   pogo_icon_index.txt      the file names of PokeMiners/pogo_assets 'Images/Pokemon - 256x256/Addressable Assets/' and
                            'Images/LocationCards/' at a named commit -- so a cull needs no listing API (api.github.com
                            answered 403 from a cloud session) and resolve() can only ever return a file of the SAME dex
-  official_names_en.json   pokemon_name_%04d and form_* from the game's i18n_english.json
+  official_names_en.json   pokemon_name_%04d and form_* from the game's i18n_english.json, plus a 'quests' section (the wording of the
+                           game's evolution quests, read by evolvable_forms._quest_text -- NOT by this module, which ignores it).
+                           `--refresh-names --i18n FILE [--gm FILE]` rebuilds all of it
 Never wire a stored identifier to these: species_name, form ids and costume ids stay the game's own numbers and strings.
 """
 import collections

@@ -23,7 +23,12 @@ Env: BAG_ART=0 turns art AND official names off (today's page, byte for byte); B
     python bag_art.py --selftest                                   offline, no DB, no phone, no network
     python bag_art.py --refresh-index --tree FILE | --clone DIR    rebuild pogo_icon_index.txt (a saved trees-API JSON or
                                                                    `git ls-tree` list, or a local clone; read-only git only)
-    python bag_art.py --refresh-names --i18n FILE                  rebuild official_names_en.json from i18n_english.json
+    python bag_art.py --refresh-names --i18n FILE [--gm FILE] [--commit SHA]
+                                                                   rebuild official_names_en.json from i18n_english.json: the game's
+                                                                   species + form names AND the wording of its evolution quests
+                                                                   (evolvable_forms._quest_text reads it). The client game master says
+                                                                   which i18n texts the quests display (default
+                                                                   gamemaster_pokeminers.json); one command for all the game's text
 Any other argument prints this usage and exits 2: nothing runs on a guessed flag (docs/memory/feedback-never-probe-scripts-
 with-help.md).
 """
@@ -873,8 +878,66 @@ def refresh_index(tree=None, clone=None, commit=None, committed=None, out=None):
 KEY_FIXES = {'squakabillywhite': 'squawkabillywhite'}
 
 
-def refresh_names(i18n, commit=None, out=None):
+# THE GAME'S OWN WORDS FOR THE EVOLUTION QUESTS ride in the same file (2026-09-30, Benny: "yes" to the game's text). Every
+# evolutionQuestTemplate of the client game master displays one i18n key (display.description == display.title); the i18n file
+# says what that key reads ('Defeat {0} Dark- or Steel-type Raid Bosses'). evolvable_forms._quest_text renders it with the goal's
+# own number and falls back to a generated wording for a template the file lacks, so a stale file costs wording, never a label.
+QUEST_MIN_TEMPLATES, QUEST_MIN_STRINGS = 20, 12       # refuse-to-shrink floors (2026-09-30: 37 evolution quests display 21 texts)
+
+
+def _quest_templates(gm_path):
+    """{template id: ([display keys, lowercased], the target of its one goal or None)} for every evolutionQuestTemplate of the
+    client game master. Read-only."""
+    gm = json.load(open(gm_path, encoding='utf-8'))
+    out = {}
+    for t in gm:
+        q = ((t.get('data') or {}).get('evolutionQuestTemplate')) if isinstance(t, dict) else None
+        if not isinstance(q, dict):
+            continue
+        d = q.get('display') or {}
+        goals = q.get('goals') or []
+        out[str(t.get('templateId') or q.get('questTemplateId'))] = (
+            list(dict.fromkeys(str(d[k]).lower() for k in ('description', 'title') if d.get(k))),
+            ((goals[0].get('target') or 1) if len(goals) == 1 else None))
+    return out
+
+
+def _build_quests(kv, gm_path, old):
+    """The 'quests' section: the game's text for every i18n key an evolution quest displays, plus the OTHER number of each
+    singular / plural pair (the Florges quests name the SINGULAR hearts text for goals of 20 and 7 and need the plural one).
+    Sorted, nothing dated: the same two input files give the same bytes. Refuses a shrink like refresh_index does: fewer than
+    QUEST_MIN_TEMPLATES quests in the game master, fewer than QUEST_MIN_STRINGS texts, or fewer texts than 90% of the committed
+    section means a wrong or partial input file, and it must not strip the wording. -> (quests, template count, templates whose
+    text the i18n file lacks, templates that show a singular text for a goal above 1)."""
+    import evolvable_forms as ef
+    tpl = _quest_templates(gm_path)
+    if len(tpl) < QUEST_MIN_TEMPLATES:
+        raise SystemExit('refusing to write: %s lists %d evolution quests (floor %d) -- the wrong or a partial game master?'
+                         % (gm_path, len(tpl), QUEST_MIN_TEMPLATES))
+    out, lost, plural = {}, [], []
+    for tid in sorted(tpl):
+        keys, n = tpl[tid]
+        hit = [k for k in keys if str(kv.get(k, '')).strip()]
+        if not hit:
+            lost.append(tid)
+        for k in hit:
+            for x in ef.quest_keys(k):
+                if str(kv.get(x, '')).strip():
+                    out[x] = kv[x]
+        if hit and n not in (None, 1) and re.search(r'_(single|singular)$', hit[0]):
+            plural.append(tid)
+    if len(out) < QUEST_MIN_STRINGS or (old and len(out) < 0.9 * len(old)):
+        raise SystemExit('refusing to write: %d quest texts is a shrink (committed: %d; floor %d) -- the wrong i18n file?'
+                         % (len(out), len(old or ()), QUEST_MIN_STRINGS))
+    return {k: out[k] for k in sorted(out)}, len(tpl), lost, plural
+
+
+def refresh_names(i18n, commit=None, out=None, gm=None, built=None):
+    """Rebuild official_names_en.json: species + form names and the evolution-quest wording, ALL or nothing -- every refusal
+    happens before the one atomic write. `gm` = the client game master (default gamemaster_pokeminers.json); `built` = the date
+    stamped into _src (default today: a test passes one so two runs are byte-identical)."""
     out = out or pd.NAMES_PATH
+    gm = gm or pd.GM_PATH
     d = json.load(open(i18n, encoding='utf-8'))['data']
     kv = dict(zip(d[0::2], d[1::2]))
     species = {int(k[13:]): v for k, v in kv.items() if re.fullmatch(r'pokemon_name_\d{4}', k) and int(k[13:]) > 0 and str(v).strip()}
@@ -890,11 +953,24 @@ def refresh_names(i18n, commit=None, out=None):
             forms.setdefault(good, forms[bad])
     if len(species) < 900 or len(forms) < 200:
         raise SystemExit('refusing to write: %d species / %d forms looks like the wrong file' % (len(species), len(forms)))
-    src = 'PokeMiners/pogo_assets Texts/Latest APK/JSON/i18n_english.json%s, built %s' % ((' @ ' + commit) if commit else '', datetime.date.today().isoformat())
-    text = json.dumps({'_src': src, 'species': {str(k): species[k] for k in sorted(species)}, 'forms': {k: forms[k] for k in sorted(forms)}},
-                      ensure_ascii=False, indent=0) + '\n'
+    if not os.path.exists(gm):
+        raise SystemExit('refusing to write: no client game master at %s -- the quest wording is built from its evolutionQuestTemplate '
+                         'entries (python tools/pogo_data.py pull, or --gm FILE)' % gm)
+    try:
+        old = json.load(open(out, encoding='utf-8')).get('quests') or {}
+    except (OSError, ValueError, AttributeError):
+        old = {}
+    quests, n_tpl, lost, plural = _build_quests(kv, gm, old)
+    src = 'PokeMiners/pogo_assets Texts/Latest APK/JSON/i18n_english.json%s, built %s' % ((' @ ' + commit) if commit else '', built or datetime.date.today().isoformat())
+    text = json.dumps({'_src': src, 'species': {str(k): species[k] for k in sorted(species)}, 'forms': {k: forms[k] for k in sorted(forms)},
+                       'quests': quests}, ensure_ascii=False, indent=0) + '\n'
     _atomic_text(out, text)
-    print('wrote %s: %d species, %d forms (%d KB)' % (out, len(species), len(forms), len(text.encode('utf-8')) // 1024))
+    print('wrote %s: %d species, %d forms, %d quest texts for %d evolution quests (%d KB)' % (
+        out, len(species), len(forms), len(quests), n_tpl, len(text.encode('utf-8')) // 1024))
+    for tid in lost:
+        print('note: %s displays a text this i18n file does not have; the generated wording covers it' % tid)
+    if plural:
+        print('note: %d quest(s) name a singular text for a goal above 1 -- the plural text is used with their own number: %s' % (len(plural), ', '.join(plural)))
     return 0
 
 
@@ -921,8 +997,10 @@ def main(argv):
         return refresh_index(tree, clone, commit, committed) if not a and bool(tree) != bool(clone) else usage()
     if a and a[0] == '--refresh-names':
         a.pop(0)
-        i18n, commit = opt('--i18n'), opt('--commit')
-        return refresh_names(i18n, commit) if not a and i18n else usage()
+        if any(f in a and a.index(f) == len(a) - 1 for f in ('--i18n', '--commit', '--gm')):
+            return usage()                                 # a flag with no value is a guess, never a default
+        i18n, commit, gm = opt('--i18n'), opt('--commit'), opt('--gm')
+        return refresh_names(i18n, commit, gm=gm) if not a and i18n else usage()
     return usage()
 
 
@@ -1376,6 +1454,56 @@ def _selftest_body(ck, tmp, random, os):
     okjson = P(tmp, 'ok.json')
     json.dump({'sha': 'f' * 40, 'truncated': False, 'tree': [{'path': f, 'type': 'blob'} for f in full] + [{'path': 'Images', 'type': 'tree'}]}, open(okjson, 'w'))
     ck(run_quiet(refresh_index, tree=okjson, out=out_ix) == 0 and pd.read_index(out_ix)[2].get('commit') == 'tree-' + 'f' * 12, 'a complete trees-API listing is accepted, its tree sha stamped')
+    # ---- the game's own words for the evolution quests (2026-09-30): templates shaped like the client game master's, the texts like
+    # the game's i18n_english.json (committed reference = the same strings, rebuilt by refresh_names)
+    import evolvable_forms as ef
+    QTXT = {'challenge_buddy_affection_plural': 'Earn {0} hearts with your buddy', 'challenge_buddy_affection_single': 'Earn a heart with your buddy',
+            'challenge_buddy_treat_plural': 'Give your buddy {0} treats', 'challenge_buddy_treat_single': 'Give your buddy a treat',
+            'quest_buddy_walk_km_plural': 'Walk {0} km with your buddy',
+            'quest_catch_type_dark_plural': 'Catch {0} Dark-type Pok\xe9mon', 'quest_catch_type_dark_singular': 'Catch a Dark-type Pok\xe9mon',
+            'quest_defeat_dark_or_steel_type_raid': 'Defeat {0} Dark- or Steel-type Raid Bosses',
+            'quest_defeat_dark_type_raid_and_max_battle': 'Defeat {0} Dark-type Pok\xe9mon in raids or Max Battles',
+            'quest_defeat_water_type_raid_and_max_battle': 'Defeat {0} Water-type Pok\xe9mon in raids or Max Battles',
+            'quest_fight_type_ghost_psychic_plural': 'Defeat {0} Psychic- or Ghost-type Pok\xe9mon',
+            'quest_incense_plural': 'Use {0} Incense', 'quest_incense_singular': 'Use an Incense',
+            'quest_land_excellent_plural': 'Make {0} Excellent Throws', 'quest_land_excellent_singular': 'Make an Excellent Throw',
+            'quest_win_raid_plural': 'Win {0} raids', 'quest_win_raid_singular': 'Win a raid'}
+
+    def qtpl(tid, qtype, n, key, *conds):
+        return {'templateId': tid, 'data': {'templateId': tid, 'evolutionQuestTemplate': {
+            'questTemplateId': tid, 'questType': qtype, 'goals': [dict({'target': n}, **({'condition': list(conds)} if conds else {}))],
+            'context': 'EVOLUTION_QUEST', 'display': {'description': key, 'title': key}}}}
+    ctype = lambda t: {'type': 'WITH_POKEMON_TYPE', 'withPokemonType': {'pokemonType': ['POKEMON_TYPE_' + x for x in t]}}
+    cfight = lambda t: {'type': 'WITH_OPPONENT_POKEMON_BATTLE_STATUS', 'withOpponentPokemonBattleStatus': {'requireDefeat': True, 'opponentPokemonType': ['POKEMON_TYPE_' + x for x in t]}}
+    ccomb = lambda c: {'type': 'WITH_COMBAT_TYPE', 'withCombatType': {'combatType': ['COMBAT_TYPE_' + x for x in c]}}
+    cwin, craid, cthrow = {'type': 'WITH_WIN_BATTLE_STATUS'}, {'type': 'WITH_WIN_RAID_STATUS'}, {'type': 'WITH_THROW_TYPE', 'withThrowType': {'throwType': 'ACTIVITY_CATCH_EXCELLENT_THROW'}}
+    HEARTS, WALK = 'QUEST_BUDDY_EARN_AFFECTION_POINTS', 'QUEST_BUDDY_EVOLUTION_WALK'
+    # (what it is, the template, the game's text, the generated wording when the game's text is not on file)
+    gold_q = [
+        ("Sirfetch'd: Excellent (the old 'land throw 10 times' dropped it)", qtpl('SIRFETCHD_EVOLUTION_QUEST', 'QUEST_LAND_THROW', 10, 'quest_land_excellent_plural', cthrow),
+         'Make 10 Excellent Throws', 'Make 10 Excellent Throws'),
+        ("Bisharp: defeat the raid BOSSES (the old text read as raids won WITH Dark/Steel mons)", qtpl('BISHARP_KINGAMBIT_EVOLUTION_QUEST', 'QUEST_COMPLETE_BATTLE', 15, 'quest_defeat_dark_or_steel_type_raid', cwin, ccomb(['RAID']), ctype(['DARK', 'STEEL'])),
+         'Defeat 15 Dark- or Steel-type Raid Bosses', 'Defeat 15 Dark- or Steel-type Raid Bosses'),
+        ("Kubfu Rapid Strike: raids OR Max Battles (the old text said raids only)", qtpl('KUBFU_RAPID_STRIKE_EVOLUTION_QUEST', 'QUEST_COMPLETE_BATTLE', 30, 'quest_defeat_water_type_raid_and_max_battle', cwin, ccomb(['RAID', 'DMAX', 'GMAX']), ctype(['WATER'])),
+         'Defeat 30 Water-type Pok\xe9mon in raids or Max Battles', 'Defeat 30 Water-type Pok\xe9mon in raids or Max Battles'),
+        ("Kubfu Single Strike", qtpl('KUBFU_SINGLE_STRIKE_EVOLUTION_QUEST', 'QUEST_COMPLETE_BATTLE', 30, 'quest_defeat_dark_type_raid_and_max_battle', cwin, ccomb(['RAID', 'DMAX', 'GMAX']), ctype(['DARK'])),
+         'Defeat 30 Dark-type Pok\xe9mon in raids or Max Battles', 'Defeat 30 Dark-type Pok\xe9mon in raids or Max Battles'),
+        ("Overqwil: WIN raids (the old text said 'complete raid battle 10 times')", qtpl('OVERQWIL_EVOLUTION_QUEST', 'QUEST_COMPLETE_RAID_BATTLE', 10, 'quest_win_raid_plural', craid), 'Win 10 raids', 'Win 10 raids'),
+        ("Runerigus", qtpl('RUNERIGUS_EVOLUTION_QUEST', 'QUEST_COMPLETE_RAID_BATTLE', 10, 'quest_win_raid_plural', craid), 'Win 10 raids', 'Win 10 raids'),
+        ("Florges: the SINGULAR hearts key on a goal of 20 must say 20 hearts", qtpl('FLORGES_EVOLUTION_QUEST', HEARTS, 20, 'CHALLENGE_BUDDY_AFFECTION_SINGLE'), 'Earn 20 hearts with your buddy', 'Earn 20 hearts with your buddy'),
+        ("Sylveon: the same key on a goal of 70", qtpl('SYLVEON_EVOLUTION_QUEST', HEARTS, 70, 'CHALLENGE_BUDDY_AFFECTION_SINGLE'), 'Earn 70 hearts with your buddy', 'Earn 70 hearts with your buddy'),
+        ("Sylveon Community Day: a goal of 7", qtpl('SYLVEON_CD_EVOLUTION_QUEST', HEARTS, 7, 'CHALLENGE_BUDDY_AFFECTION_SINGLE'), 'Earn 7 hearts with your buddy', 'Earn 7 hearts with your buddy'),
+        ("Snom: the plural key (the old 'earn hearts with 10 times')", qtpl('SNOM_FROSMOTH_EVOLUTION_QUEST', HEARTS, 10, 'CHALLENGE_BUDDY_AFFECTION_PLURAL'), 'Earn 10 hearts with your buddy', 'Earn 10 hearts with your buddy'),
+        ("a singular key on a goal of 1 keeps the singular text", qtpl('X_EVOLUTION_QUEST', HEARTS, 1, 'CHALLENGE_BUDDY_AFFECTION_SINGLE'), 'Earn a heart with your buddy', 'Earn a heart with your buddy'),
+        ("Swirlix (the old 'feed 25 times')", qtpl('SWIRLIX_EVOLUTION_QUEST', 'QUEST_BUDDY_FEED', 25, 'CHALLENGE_BUDDY_TREAT_PLURAL'), 'Give your buddy 25 treats', 'Give your buddy 25 treats'),
+        ("Spritzee (the old 'use incense 1 times')", qtpl('SPRITZEE_EVOLUTION_QUEST', 'QUEST_USE_INCENSE', 1, 'quest_incense_singular'), 'Use an Incense', 'Use an Incense'),
+        ("Sudowoodo: walk with your buddy", qtpl('SUDOWOODO_EVOLUTION_QUEST', WALK, 15, 'quest_buddy_walk_km_plural'), 'Walk 15 km with your buddy', 'Walk 15 km with your buddy'),
+        ("Swoobat: a km gate of 1 stays 1 km", qtpl('SWOOBAT_EVOLUTION_QUEST', WALK, 1, 'quest_buddy_walk_km_plural'), 'Walk 1 km with your buddy', 'Walk 1 km with your buddy'),
+        ("Annihilape: the game lists its types Psychic, Ghost", qtpl('ANNIHILAPE_EVOLUTION_QUEST', 'QUEST_FIGHT_POKEMON', 30, 'quest_fight_type_ghost_psychic_plural', cfight(['GHOST', 'PSYCHIC'])),
+         'Defeat 30 Psychic- or Ghost-type Pok\xe9mon', 'Defeat 30 Ghost- or Psychic-type Pok\xe9mon'),
+        ("a plural key on a goal of 1 takes the game's singular text", qtpl('Y_EVOLUTION_QUEST', 'QUEST_CATCH_POKEMON', 1, 'quest_catch_type_dark_plural', ctype(['DARK'])),
+         'Catch a Dark-type Pok\xe9mon', 'Catch 1 Dark-type Pok\xe9mon'),
+    ]
     fake_i18n = P(tmp, 'i18n.json')
     kvs = []
     for d in range(1, 951):
@@ -1383,9 +1511,16 @@ def _selftest_body(ck, tmp, random, os):
     for k in range(260):
         kvs += ['form_x%d_y' % k, 'Form %d' % k]
     kvs += ['form_squakabilly_white', 'White Plumage', 'form_change_button', 'Change', 'form_warn_x', 'Warn', 'form_normal', ' ', 'pokemon_name_0025_0001', 'Mega X']
+    for k_, v_ in sorted(QTXT.items()):
+        kvs += [k_, v_]
+    kvs += ['quest_spin_unreferenced_plural', 'Spin {0} PokeStops', 'quest_blank_plural', '  ']            # decoys: no template displays them
     json.dump({'data': kvs}, open(fake_i18n, 'w'))
+    fake_gm = P(tmp, 'gm.json')
+    tpls = [t_ for _w, t_, _g, _f in gold_q] + [qtpl('FILL%d_EVOLUTION_QUEST' % i, WALK, i + 1, 'quest_buddy_walk_km_plural') for i in range(8)]
+    tpls += [{'templateId': 'V0001_POKEMON_BULBASAUR', 'data': {'pokemonSettings': {'pokemonId': 'BULBASAUR'}}}]
+    json.dump(tpls, open(fake_gm, 'w'))
     out_nm = P(tmp, 'names_out.json')
-    ck(run_quiet(refresh_names, fake_i18n, out=out_nm) == 0, 'refresh_names from an i18n file')
+    ck(run_quiet(refresh_names, fake_i18n, out=out_nm, gm=fake_gm, built='2026-01-01') == 0, 'refresh_names from an i18n file and a game master')
     nn = pd.Names.load(path=out_nm)
     ck(nn.on and nn.species(25, '') == 'Mon25' and len(nn.species_map) == 950 and 'x3y' in nn.forms and 'squawkabillywhite' in nn.forms
        and 'changebutton' not in nn.forms and 'warnx' not in nn.forms and 'normal' not in nn.forms, 'names file: species, forms, the typo fix, no UI strings, no blank text')
@@ -1394,16 +1529,112 @@ def _selftest_body(ck, tmp, random, os):
         ck(False, 'a wrong file must be refused by refresh_names')
     except (SystemExit, ValueError, KeyError):
         ck(True, '')
+    # ---- the 'quests' section: exactly the texts the game master's quests display + the other number of each pair, sorted, byte-reproducible
+    b1 = open(out_nm, 'rb').read()
+    q1 = json.loads(b1.decode('utf-8'))['quests']
+    ck(q1 == QTXT and list(q1) == sorted(q1), 'quests section: every displayed text and its pair sibling, no decoy, sorted: %s' % sorted(set(q1) ^ set(QTXT)))
+    ck('quest_spin_unreferenced_plural' not in q1 and 'quest_blank_plural' not in q1, 'an i18n text no quest displays (or a blank one) is not stored')
+    run_quiet(refresh_names, fake_i18n, out=out_nm, gm=fake_gm, built='2026-01-01')
+    ck(open(out_nm, 'rb').read() == b1 and b1.endswith(b'\n') and b'\r' not in b1, 'the refresh is byte-reproducible (same inputs, same bytes, LF)')
+    ck(pd.Names.load(path=out_nm).on, 'Names.load ignores the quests section and still loads the names')
+    ck(all(ef._quest_text(t_['data']['evolutionQuestTemplate'], q1) == want for _w, t_, want, _f in gold_q),
+       'every golden template reads as the game words it from the file the refresh just wrote')
+
+    def refuses(outp, **kw):
+        before = open(outp, 'rb').read()
+        try:
+            run_quiet(refresh_names, fake_i18n, out=outp, built='2026-01-01', **kw)
+            return False
+        except SystemExit as e:
+            return 'refusing' in str(e) and open(outp, 'rb').read() == before
+    gm_few, gm_far, big = P(tmp, 'gm_few.json'), P(tmp, 'gm_far.json'), P(tmp, 'names_big.json')
+    json.dump(tpls[:5], open(gm_few, 'w'))
+    json.dump([qtpl('FAR%d_EVOLUTION_QUEST' % i, 'QUEST_CATCH_POKEMON', 5, 'quest_not_in_i18n_%d' % i) for i in range(25)], open(gm_far, 'w'))
+    json.dump({'quests': {'k%d' % i: 'v' for i in range(40)}}, open(big, 'w'))
+    ck(refuses(out_nm, gm=gm_few), 'a game master with 5 evolution quests is refused (floor %d), nothing written' % QUEST_MIN_TEMPLATES)
+    ck(refuses(out_nm, gm=P(tmp, 'nope.json')), 'a missing game master is refused, nothing written')
+    ck(refuses(out_nm, gm=gm_far), 'quests whose texts the i18n file lacks (0 texts) are refused as a shrink, nothing written')
+    ck(refuses(big, gm=fake_gm), 'fewer quest texts (17) than 90% of the committed 40 is refused as a shrink, nothing written')
+    # ---- how the wording is read: the game's text, the number agreement, and a generated fallback that is still TRUE
+    qref = ef._quest_ref()
+    ck(len(qref) >= QUEST_MIN_STRINGS and all(v.strip() and set(re.findall(r'\{\d+\}', v)) <= {'{0}'} for v in qref.values()),
+       'the committed quests section is readable: %d texts, placeholders {0} only' % len(qref))
+    for what, t_, want, gen in gold_q:
+        q_ = t_['data']['evolutionQuestTemplate']
+        ck(ef._quest_text(q_) == want, '%s: the game\'s words %r, got %r' % (what, want, ef._quest_text(q_)))
+        ck(ef._quest_text(q_, {}) == gen, '%s: the generated fallback %r, got %r' % (what, gen, ef._quest_text(q_, {})))
+    florges = gold_q[6][1]['data']['evolutionQuestTemplate']
+    only_single = {'challenge_buddy_affection_single': QTXT['challenge_buddy_affection_single']}
+    ck(ef._game_words('challenge_buddy_affection_single', 20, only_single) is None and ef._quest_text(florges, only_single) == 'Earn 20 hearts with your buddy',
+       'a singular text is never used for a goal of 20 (no plural on file -> the generated wording)')
+    ck(ef._game_words('k_plural', 3, {'k_plural': 'Win {0} of {1}'}) is None, 'a text with another placeholder is refused')
+    ck(ef._quest_text({'questType': 'QUEST_BUDDY_PET', 'goals': [{'target': 5}]}, {}) == 'Play with your buddy 5 times', 'fallback: play with your buddy')
+    ck(ef._quest_text({'questType': 'QUEST_CATCH_POKEMON', 'goals': [{'target': 5, 'condition': [ctype(['DARK']), {'type': 'WITH_DAILY_STREAK'}]}]}, {})
+       == 'Catch 5 Dark-type Pok\xe9mon (also: daily streak)', 'a condition the fallback does not model is NAMED, never dropped')
+    ck(ef._quest_text({'questType': 'QUEST_SPIN_POKESTOP', 'goals': [{'target': 7, 'condition': [{'type': 'WITH_FRIEND'}]}]}, {}) == 'spin pokestop 7 times (also: friend)',
+       'an unknown quest type keeps its number and its conditions')
+    ck(ef._quest_text({'questType': 'QUEST_COMPLETE_RAID_BATTLE', 'goals': [{'target': 4}]}, {}) == 'Complete 4 raids', 'without a win condition a raid quest says Complete, not Win')
+    two = {'questType': 'QUEST_CATCH_POKEMON', 'display': {'description': 'quest_catch_type_dark_plural'},
+           'goals': [{'target': 3, 'condition': [ctype(['DARK'])]}, {'target': 4, 'condition': [ctype(['FIRE'])]}]}
+    ck(ef._quest_text(two) == 'Catch 3 Dark-type Pok\xe9mon; Catch 4 Fire-type Pok\xe9mon', 'a template with several goals is worded goal by goal, never by the one text')
+    ck(ef._quest_text({'questType': 'QUEST_CATCH_POKEMON', 'display': {'description': 'quest_not_in_the_file'}, 'goals': [{'target': 9, 'condition': [ctype(['ICE'])]}]})
+       == 'Catch 9 Ice-type Pok\xe9mon', 'a key the file lacks falls back to the generated wording')
+    ck(all(isinstance(ef._quest_text(j), str) for j in (None, {}, {'goals': None}, {'goals': 'x'}, {'goals': [None]}, {'questType': 5, 'goals': [{'target': 'many'}]})),
+       'a template this cannot read is a string, never an exception')
+    ck(ef.quest_keys('CHALLENGE_BUDDY_AFFECTION_SINGLE') == ['challenge_buddy_affection_single', 'challenge_buddy_affection_singular', 'challenge_buddy_affection_plural']
+       and ef.quest_keys('quest_defeat_dark_or_steel_type_raid') == ['quest_defeat_dark_or_steel_type_raid'] and ef.quest_keys('') == [], 'singular / plural pairing')
+    # ---- the evolvable_forms cache holds RENDERED quest text: an old version or another wording must rebuild it, the same one must not
+    gm_c = P(tmp, 'gm_cache.json')
+    json.dump([gold_q[0][1]], open(gm_c, 'w'))
+    SIR = 'SIRFETCHD_EVOLUTION_QUEST'
+    saved_ef = (ef._GM, ef._CACHE, ef._qref)
+    try:
+        ef._GM, ef._CACHE, ef._qref = gm_c, P(tmp, 'ef_cache.json'), {'quest_land_excellent_plural': 'Make {0} Excellent Throws'}
+        ef._table = None
+        ef._load()
+        c1 = json.load(open(ef._CACHE, encoding='utf-8'))
+        ck(c1.get('v') == 11 and c1.get('qsig') == ef._quest_sig() != '' and c1['quests'] == {SIR: 'Make 10 Excellent Throws'}, 'the cache is written as version 11 with the wording fingerprint')
+        c1['v'], c1['quests'] = 10, {SIR: 'land throw 10 times'}
+        json.dump(c1, open(ef._CACHE, 'w'))
+        ef._table = None
+        ef._load()
+        ck(ef._quests[SIR] == 'Make 10 Excellent Throws', 'a version-10 cache (the hand-built wording) is not trusted: rebuilt')
+        ef._qref, ef._table = {'quest_land_excellent_plural': 'Land {0} Excellent Throws'}, None
+        ef._load()
+        ck(ef._quests[SIR] == 'Land 10 Excellent Throws', 'a refreshed reference rebuilds the cache though the game master did not change')
+        c2 = json.load(open(ef._CACHE, encoding='utf-8'))
+        c2['quests'] = {SIR: 'kept'}
+        json.dump(c2, open(ef._CACHE, 'w'))
+        ef._table = None
+        ef._load()
+        ck(ef._quests[SIR] == 'kept', 'an up-to-date cache (same game master, same wording) is reused')
+    finally:
+        ef._GM, ef._CACHE, ef._qref = saved_ef
+        ef._table = None                                     # the fake game master's tables must not outlive this check
+    # ---- against the REAL game master when this machine has the data store (CI does not): every evolution quest is worded, none falls back
+    if os.path.exists(pd.GM_PATH):
+        real_q = [t_['data']['evolutionQuestTemplate'] for t_ in json.load(open(pd.GM_PATH, encoding='utf-8')) if (t_.get('data') or {}).get('evolutionQuestTemplate')]
+        texts = [ef._quest_text(q_) for q_ in real_q]
+        ck(len(real_q) >= QUEST_MIN_TEMPLATES and all(t_ and '{' not in t_ for t_ in texts), 'the real game master: %d evolution quests, each worded, no placeholder left' % len(real_q))
+
+        def has_text(q_):
+            g_ = q_.get('goals') or []
+            return len(g_) == 1 and any(ef._game_words((q_.get('display') or {}).get(k), g_[0].get('target') or 1, qref) for k in ('description', 'title'))
+        gen = [q_['questTemplateId'] for q_ in real_q if not has_text(q_)]
+        if gen:
+            print('note: %d evolution quest(s) have no text in official_names_en.json yet (the generated wording is used; '
+                  'python bag_art.py --refresh-names --i18n FILE): %s' % (len(gen), ', '.join(gen)))
     ck(pd.read_index()[3] is None and pd.Names.load().error is None, 'the committed reference files were not touched')
     # ---- CLI: unknown arguments print usage and run nothing
     saved = sys.stdout
     try:
         import io
         sys.stdout = io.StringIO()
-        rcs = [main(a) for a in (['--help'], [], ['--refresh-index'], ['--refresh-index', '--tree'], ['--refresh-names'], ['--bogus'], ['--selftest', 'x'])]
+        rcs = [main(a) for a in (['--help'], [], ['--refresh-index'], ['--refresh-index', '--tree'], ['--refresh-names'], ['--bogus'], ['--selftest', 'x'],
+                                 ['--refresh-names', '--i18n', 'x', '--gm'], ['--refresh-names', '--i18n'], ['--refresh-names', '--i18n', 'x', '--commit'])]
     finally:
         sys.stdout = saved
-    ck(rcs == [2] * 7, 'unknown / incomplete arguments must exit 2: %s' % rcs)
+    ck(rcs == [2] * 10, 'unknown / incomplete arguments must exit 2: %s' % rcs)
 
 
 if __name__ == '__main__':
