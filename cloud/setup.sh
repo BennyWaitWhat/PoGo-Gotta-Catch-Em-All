@@ -29,6 +29,9 @@ fi
 # Python: frida MUST match the phone's gadget (17.9.11); frida-tools pinned with it (newer ones need frida >= 17.10).
 # Two tries with retries/timeouts; the image's own python3 (3.11 on 2026-09-29) is fine -- frida ships abi3 wheels.
 PIP="python3 -m pip install --break-system-packages --retries 5 --timeout 120 --progress-bar off"
+# 2026-09-30: Debian's python3-blinker 1.7 has no RECORD file, so pip can't upgrade it to flask's blinker>=1.9 and the
+# whole install below failed (flask + frida-tools missing). Install the new one beside it (earlier on sys.path).
+python3 -c 'import flask' 2>/dev/null || timeout 300 $PIP --ignore-installed 'blinker>=1.9' || log "blinker install failed"
 for try in 1 2; do
   timeout 600 $PIP frida==17.9.11 frida-tools==14.8.2 s2sphere flask protobuf && break
   log "pip install failed (try $try)"; sleep 5
