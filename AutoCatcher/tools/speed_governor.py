@@ -122,7 +122,7 @@ def main():
     wr = csv.writer(fh)
     if new:
         wr.writerow(["time", "lat", "lng", "kmh", "bearing", "place", "vis", "track", "pend", "caught", "gone",
-                     "target", "sent", "why"])
+                     "target", "sent", "why", "full"])
     end = time.time() + a.minutes * 60
     signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))   # a stop from outside still runs the restore below
     last_fix, target, last_busy, hold_until, last_gone, alarm, said = None, None, 0.0, 0.0, None, None, ""
@@ -192,7 +192,7 @@ def main():
                 ["%.6f" % f[0], "%.6f" % f[1], "%.1f" % f[2], "%.0f" % f[3],
                  next((p for p, poly in PARKS.items() if inside(poly, f[0], f[1])), "street")] if f else [""] * 5)
                 + ([c["vis"], c["track"], c["pend"], c["caught"], c["gone"]] if c else [""] * 5)
-                + [target or "", sent, why])
+                + [target or "", sent, why, int(bool(c and c["full"]))])      # full: the bag was full (no catch possible)
             fh.flush()
             time.sleep(max(0.5, SAMPLE_S - (time.time() - t0)))
     except KeyboardInterrupt:

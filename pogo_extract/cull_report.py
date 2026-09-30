@@ -567,6 +567,7 @@ def main():
                     if k not in best_kept or rk < best_kept[k][0]:
                         best_kept[k] = (rk, x)
     close, checks, floor_notes, close_calls, species_notes, uncollected = None, [], [], [], [], []
+    over_cap = []                                        # top-N spreads this copy can never play (2026-09-30)
     unc_best = set()                                     # leagues whose uncollected shadows a close call says nothing kept beats
     _ubc = {}
     def _ub(x, lg):
@@ -603,8 +604,12 @@ def main():
                 capreach = CAPS[lg] is not None and pv.maxcp(st, BS) > CAPS[lg] + pv.VIABILITY_MARGIN
                 if capreach and (close is None or rk < close[0]):
                     close = (rk, m, NAMES[lg], st, CAPS[lg] is None or pv.fits(m, st, CAPS[lg], BS))
-                if capreach and rk <= pv.READY_RANK:
+                if capreach and rk <= pv.READY_RANK and (CAPS[lg] is None or pv.fits(m, st, CAPS[lg], BS)):
                     checks.append('%s is %s #%d as %s (a top-%d spread)' % (desc(m, False), NAMES[lg], rk, st, pv.READY_RANK))
+                elif capreach and rk <= pv.READY_RANK:
+                    # user 2026-09-30: "Why would I keep any GL and UL pokemon that cant participate?" -- lawful, but say so
+                    over_cap.append('%s is %s #%d as %s, but its CP is already over that league cap there, so it can never '
+                                    'play it' % (desc(m, False), NAMES[lg], rk, st.replace('_', ' ').title()))
                 elif capreach and rk <= CLOSE_CALL and (CAPS[lg] is None or pv.fits(m, st, CAPS[lg], BS)):
                     # a strong spread that is only second-best (a 1/15/14 Raticate GL #21 behind a #20, 2026-09-24):
                     # lawful to release, but he decides -- a Favorite keeps it
@@ -910,7 +915,7 @@ def main():
         if checks:
             out.extend('- ***CHECK: %s***' % c for c in checks)
         else:
-            out.append('- none is a top-%d spread%s' % (pv.READY_RANK, (' -- closest: %s at %s #%d as %s%s'
+            out.append('- none is a top-%d spread%s%s' % (pv.READY_RANK, ' it can still play' if over_cap else '', (' -- closest: %s at %s #%d as %s%s'
                         % (desc(close[1], False), close[2], close[0], close[3].replace('_', ' ').title(),
                            '' if close[4] else ' (its CP is already over that league cap, so it can never play there)')) if close else ''))
             # a floor note IS a copy that beats every copy kept at that stage (bk is None or rk < bk[0]) -- the summary must
@@ -927,6 +932,8 @@ def main():
             _fn.setdefault((u, who), []).append(what)
         for (u, who), whats in _fn.items():
             out.append('- %s is your best %s -- outside your #%d cut-off, so no Best is kept there' % (who, '; '.join(whats), floor))
+        for n in over_cap:
+            out.append('- %s' % n)
         for n in close_calls:
             # user 2026-09-24: "I want whichever is best. Spares are not ok." -- say which one wins, never offer to keep both
             out.append('- close call: %s' % n)

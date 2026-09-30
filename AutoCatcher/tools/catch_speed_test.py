@@ -1,11 +1,14 @@
 """Does the auto-catcher keep catching at speed? SPEED (GPS Joystick Pro API) steps, catcher log as the record.
 
-  python tools/catch_speed_test.py 10.6 15 20 25 30      [SEG seconds per speed, default 120]
+  SEG=300 python tools/catch_speed_test.py 10.5 16 20 24 28 28 24 20 16 10.5     [SEG s per window, default 120]
 
 Per speed: SPEED X, 15 s settle, then SEG seconds counted from the catcher's own log on the phone:
 caught / escaped / fled (from its cumulative run counters), every other outcome word (NORESULT, errors...),
-"no Pokemon seen" refreshes and the average Pokemon visible/tracked; plus the measured real speed.
-Stays well under the 32.19 km/h "too fast" warning (8.9408 m/s). Ends back on 10.6.
+"no Pokemon seen" refreshes and the average Pokemon visible/tracked; plus the measured real speed and km.
+Give the speeds up then down (ABBA) so where-on-the-route and time-of-day even out; a summary per speed ends it.
+Safety (2026-09-30): never above speed_governor.MAX_KMH (28); before every SPEED the governor's guard() must pass
+(joystick overlay alive, no joystick screen in front), else it stops and sends nothing more; a full bag (the
+catcher's "Pokemon storage is full") ends the test, since nothing can be caught. Ends on the speed it found.
 """
 import math
 import os
@@ -13,7 +16,10 @@ import re
 import subprocess
 import sys
 import time
-from collections import Counter
+from collections import Counter, defaultdict
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from speed_governor import MAX_KMH, guard   # noqa: E402
 
 DEV = os.environ.get("ADB_TARGET", "100.98.158.56:5555")   # cloud: the Tailscale bridge exports ADB_TARGET
 LOG = "/data/data/com.termux/files/home/pogo/system/analysis/pokemod/catch_loop.log"
@@ -34,12 +40,13 @@ def lines_since(n):
 
 
 def fix():
-    m = re.search(r"Location\[gps ([-0-9.]+),([-0-9.]+) .*?et=\+(?:(\d+)h)?(?:(\d+)m)?(?:(\d+)s)?(?:(\d+)ms)?.*?vel=([0-9.]+)",
+    m = re.search(r"Location\[gps ([-0-9.]+),([-0-9.]+) .*?et=\+(?:(\d+)d)?(?:(\d+)h)?(?:(\d+)m)?(?:(\d+)s)?(?:(\d+)ms)?.*?vel=([0-9.]+)",
                   adb("dumpsys location | grep -m1 'last mock location'"))
     if not m:
         return None
-    et = int(m[3] or 0) * 3600 + int(m[4] or 0) * 60 + int(m[5] or 0) + int(m[6] or 0) / 1000
-    return float(m[1]), float(m[2]), et, float(m[7]) * 3.6
+    # et= is uptime and gains a day field after 24 h ("+1d21h18m28s184ms"); without (\d+)d the whole match came back 0
+    et = int(m[3] or 0) * 86400 + int(m[4] or 0) * 3600 + int(m[5] or 0) * 60 + int(m[6] or 0) + int(m[7] or 0) / 1000
+    return float(m[1]), float(m[2]), et, float(m[8]) * 3.6
 
 
 def meters(a, b):
@@ -61,10 +68,16 @@ def main():
     speeds = [float(x) for x in sys.argv[1:]]
     if "Pixel" not in adb("getprop ro.product.model"):
         sys.exit("not the phone")
-    if max(speeds) >= 32:
-        sys.exit("refusing: at or above the 32.19 km/h warning")
+    if max(speeds) > MAX_KMH:
+        sys.exit("refusing: above the %.0f km/h cap" % MAX_KMH)
+    start = fix()
+    back = round(start[3], 1) if start and start[3] > 1 else None      # the speed it found, to put back
     rows = []
     for sp in speeds:
+        bad = guard()
+        if bad:
+            print(f"{time.strftime('%H:%M:%S')} ALERT: {bad} -- test stopped, nothing sent", flush=True)
+            return
         adb(f"am start-foreground-service -a theappninjas.gpsjoystick.SPEED --ef speed {sp}")
         time.sleep(15)
         n0 = lines_count()
@@ -97,14 +110,34 @@ def main():
         dt = time.time() - t0
         real = moved / dt * 3.6
         d = [b - a for a, b in zip(c0, c1)] if (c0 and c1) else [catches, 0, 0]
-        row = (sp, real, min(labels or [0]), max(labels or [0]), d[0], d[1], d[2], catches / dt * 60,
-               sum(vis) / len(vis) if vis else 0, sum(trk) / len(trk) if trk else 0, empty, dict(words))
-        rows.append(row)
+        if d[0] < 0:                          # the catcher restarted inside the window: count its CATCH lines
+            d = [catches, 0, 0]
+        full = any("storage is full" in ln for ln in new)
+        row = (sp, real, min(labels or [0]), max(labels or [0]), d[0], d[1], d[2], d[0] / dt * 60,
+               sum(vis) / len(vis) if vis else 0, sum(trk) / len(trk) if trk else 0, empty, dict(words), moved, dt)
         print(f"{time.strftime('%H:%M:%S')} SET {sp:5.1f} | real {real:5.2f} km/h (label {row[2]:.1f}..{row[3]:.1f}) | "
-              f"caught {d[0]} escaped {d[1]} fled {d[2]} in {dt:.0f}s = {row[7]:.1f}/min | visible avg {row[8]:.1f} "
-              f"tracked {row[9]:.1f} | 'no Pokemon' refreshes {empty} | other outcomes {dict(words) or '-'}", flush=True)
-    adb("am start-foreground-service -a theappninjas.gpsjoystick.SPEED --ef speed 10.6")
-    print("back on 10.6. done", flush=True)
+              f"caught {d[0]} escaped {d[1]} fled {d[2]} in {dt:.0f}s = {row[7]:.1f}/min, {d[0] / max(moved / 1000, 0.01):.0f}/km "
+              f"| visible avg {row[8]:.1f} tracked {row[9]:.1f} | 'no Pokemon' refreshes {empty} | other outcomes "
+              f"{dict(words) or '-'}", flush=True)
+        if full:
+            print(f"{time.strftime('%H:%M:%S')} BAG FULL -- the catcher holds; this window is not counted and the test stops",
+                  flush=True)
+            break
+        rows.append(row)
+    tot = defaultdict(lambda: [0, 0, 0, 0.0, 0.0, 0])
+    for r in rows:
+        t = tot[r[0]]
+        t[0] += r[4]; t[1] += r[5]; t[2] += r[6]; t[3] += r[12]; t[4] += r[13]; t[5] += 1
+    print("SUMMARY (per speed, all its windows):", flush=True)
+    for sp in sorted(tot):
+        c, e, f, m, sec, n = tot[sp]
+        print(f"  {sp:5.1f} km/h: {n} window(s) {sec / 60:4.1f} min {m / 1000:5.2f} km | caught {c} = {c / sec * 60:5.1f}/min "
+              f"{c / max(m / 1000, 0.01):5.1f}/km | escaped {e} fled {f}", flush=True)
+    if back and guard() is None:
+        adb(f"am start-foreground-service -a theappninjas.gpsjoystick.SPEED --ef speed {back}")
+        print(f"back on {back} km/h (what it found). done", flush=True)
+    else:
+        print("done -- speed NOT put back (no starting speed, or the guard failed)", flush=True)
 
 
 if __name__ == "__main__":

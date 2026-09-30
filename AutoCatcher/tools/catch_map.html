@@ -77,6 +77,16 @@ th { font-family: var(--display); font-weight: 600; text-transform: uppercase; l
     <h2>Why the loop runs where it does</h2>
     <ol id="why"></ol>
   </section>
+  <section class="why bands" id="lanesec">
+    <h2>The loop, side by side</h2>
+    <p class="sub" style="margin:0 0 8px">Catches per km on each side of the loop at 28 km/h, before the bag filled. The weakest sides are the ones to drop or swap.</p>
+    <table id="lanes"><thead><tr><th>Side</th><th>km walked</th><th>Caught</th><th>Per km</th></tr></thead><tbody></tbody></table>
+  </section>
+  <section class="why bands" id="stsec">
+    <h2>Speed test</h2>
+    <p class="sub" id="stnote" style="margin:0 0 8px"></p>
+    <table id="speed"><thead><tr><th>Speed</th><th>Real km/h</th><th>Minutes</th><th>Caught</th><th>Per min</th><th>Per km</th><th>Escaped</th><th>Fled</th></tr></thead><tbody></tbody></table>
+  </section>
   <section class="why bands">
     <h2>Catches per km, south to north</h2>
     <table id="bands"><thead><tr><th>Stretch</th><th>km walked</th><th>Caught</th><th>Per km</th></tr></thead><tbody></tbody></table>
@@ -153,7 +163,7 @@ for (const z of [1, 2, 3]) document.getElementById("z" + z).onclick = () => {
 
 document.getElementById("sub").textContent =
   `Mid Central Park to Bryant Park · catches measured ${D.asof.slice(11, 16)} · the loop: ${D.lap_km} km a lap, about ${Math.round(D.lap_km / 27.8 * 60)} min at 28 km/h`;
-const Z = [["Loop so far", "The loop so far"], ["Bryant Park", "Bryant Park"], ["street", "Midtown streets"], ["Central Park", "Central Park"]];
+const Z = [["Loop so far", "The loop, 28 km/h"], ["Old route", "Old route, 28 km/h"], ["Bryant Park", "Bryant Park"], ["street", "Midtown streets"], ["Central Park", "Central Park"]];
 document.getElementById("stats").innerHTML = Z.filter(z => D.zones[z[0]]).map(([k, name]) => {
   const z = D.zones[k];
   return `<div class="stat"><div class="k">${name}</div><div class="n">${Math.round(z.per_km)}<small>per km</small></div>` +
@@ -186,4 +196,17 @@ document.querySelector("#bands tbody").innerHTML = Object.keys(B).map(Number).so
   const r = B[b], km = r.d / 1000, per = r.c / km;
   return `<tr><td><i class="cell" style="background:${heat(per)}"></i>${approxSt(b * 400)}th – ${approxSt(b * 400 + 400)}th St</td><td>${km.toFixed(2)}</td><td>${Math.round(r.c)}</td><td>${per.toFixed(0)}</td></tr>`;
 }).join("");
+// the loop's sides, best first
+const LB = document.querySelector("#lanes tbody");
+if (D.lanes && D.lanes.length) LB.innerHTML = D.lanes.map(r =>
+  `<tr><td><i class="cell" style="background:${heat(r[3])}"></i>${r[0]}</td><td>${r[1].toFixed(2)}</td><td>${r[2]}</td><td>${r[3].toFixed(0)}</td></tr>`).join("");
+else document.getElementById("lanesec").hidden = true;
+// the speed test, per speed
+if (D.speedtest && D.speedtest.by_speed.length) {
+  const W = D.speedtest.windows;
+  document.getElementById("stnote").textContent =
+    `${W.length} of 10 five-minute windows done (last ${W[W.length - 1].t}). Speeds go up, then back down, so where on the loop and the time of day even out.`;
+  document.querySelector("#speed tbody").innerHTML = D.speedtest.by_speed.map(r =>
+    `<tr><td>${r.set} km/h</td><td>${r.real.toFixed(1)}</td><td>${r.min}</td><td>${r.caught}</td><td><b>${r.per_min.toFixed(1)}</b></td><td>${r.per_km.toFixed(0)}</td><td>${r.esc}</td><td>${r.fled}</td></tr>`).join("");
+} else document.getElementById("stsec").hidden = true;
 </script>

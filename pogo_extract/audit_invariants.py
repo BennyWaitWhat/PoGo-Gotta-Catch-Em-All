@@ -4030,7 +4030,9 @@ def check_tag_vocabulary(con):
              '(Evolve_Next.txt, Stop_*.txt ...) means build_tagsets did not run its RETIRED sweep -- re-run it.')
     else:
         ok('no orphan tagset file (every .txt is planned or exempt)')
-    order, act = _module_const('system/scripts/order_tags.py', 'ORDER'), list(ev) + list(dust)
+    # Transfer counts as an action tag (user 2026-09-30: "put the transfers tag on top"): it heads ORDER, then the evolve
+    # and dust tags, then the reference tags.
+    order, act = _module_const('system/scripts/order_tags.py', 'ORDER'), ['Transfer'] + list(ev) + list(dust)
     if not isinstance(order, (list, tuple)):
         fail(WARN, 'order_tags.ORDER is not readable as a literal list -- cannot say the action tags sit on top',
              'Keep ORDER a plain list literal in system/scripts/order_tags.py.')

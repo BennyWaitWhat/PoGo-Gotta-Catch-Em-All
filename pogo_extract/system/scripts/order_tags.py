@@ -23,11 +23,11 @@ os.chdir(ROOT)
 # THE ORDER (user 2026-09-24 "Ok"): things you act on, then PvP reference, then collection reference. Tags not listed
 # keep their relative order after these.
 ORDER = [
+    'Transfer',                        # FIRST (user 2026-09-30: "can you please put the transfers tag on top?")
     # WHAT TO DO, ON TOP (user 2026-09-26: "And always put them on top."): Stop at <stage> (spliced in below), then the
     # dust advice. Names say the action (granular_tags POWER_UP_GL / SECOND_MOVE).
     'Evolve Once', 'Evolve Twice', 'Evolve Gated', 'Evo Best GL', 'Evo Best UL',   # the fold (2026-09-29)
     'Power Up to 1500', 'Power Up to 2500', 'Unlock 2nd Move',
-    'Transfer',
     'GL Rank 1-5', 'UL Rank 1-5', 'Evo GL Rank 1-5', 'Evo UL Rank 1-5', 'Best GL', 'Best UL', 'Best ML', '0-15-15',
     'Hundo', 'Nundo', 'XXL', 'Shiny - Only One', 'Shiny #4+', 'Legacy Moves', 'Adventure Effect', 'Ultra Beast',
     'Never Cull', 'Traded by E+F', 'Variant #1', 'Variant #2', 'Variant #3', 'Variant #4+',
@@ -273,15 +273,17 @@ def keep_order(pg, sess, svc, log=print):
         drift = sorted(t['name'] for t in tags if t['sort'] != target[t['name']])
         by = {t['name']: t for t in tags}
         seq = sorted(target.items(), key=lambda kv: kv[1])
-        for k, (n, i) in enumerate(seq):
-            if not edit(sc, svc, by[n], i, notify=(k == len(seq) - 1)):
-                log('TAG ORDER stopped at %s: the server refused (%d out of place: %s)' % (n, len(drift), ', '.join(drift)))
-                return k, False
+        # One refused tag no longer stops the rest (2026-09-30: XXL's EditTag threw NullReferenceException twice and
+        # the pass stopped there, so Transfer and everything after XXL kept their old places). A refused edit is put
+        # back by edit(); the others still move; the next cull retries the refused ones. Only SortIndex is written.
+        refused = [n for k, (n, i) in enumerate(seq) if not edit(sc, svc, by[n], i, notify=(k == len(seq) - 1))]
         after = sc.exports_sync.read(svc)
-        ok = all(t['sort'] == plan(after)[t['name']] for t in after)
-        log('TAG ORDER restored: %d out of place (%s); %d edits, every one confirmed by the server%s'
-            % (len(drift), ', '.join(drift), len(seq), '' if ok else ' -- but the read-back still differs'))
-        return len(seq), ok
+        ok = not refused and all(t['sort'] == plan(after)[t['name']] for t in after)
+        top = [t['name'] for t in sorted(after, key=lambda t: (t['sort'], t['name'] or ''))][:3]
+        log('TAG ORDER %s: %d out of place (%s); %d edits sent, %d confirmed by the server%s; top now: %s'
+            % ('restored' if not refused else 'partly restored', len(drift), ', '.join(drift), len(seq),
+               len(seq) - len(refused), (' -- REFUSED: ' + ', '.join(refused)) if refused else '', ', '.join(top)))
+        return len(seq) - len(refused), ok
     finally:
         sc.unload()
 

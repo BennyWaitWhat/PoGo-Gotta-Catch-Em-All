@@ -15,6 +15,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(HERE))
 sys.path.insert(0, ROOT)
 import keep_config   # single source of truth for every tunable cap/roster (dashboard-editable)
+from pvp_iv_rule import plays
 from pvp_iv_rule import (qualifies as pvp_iv_qualifies, pvid, GL_CAP, UL_CAP, ML_CAP, maxcp as pvp_maxcp,
                          READY_RANK, VIABILITY_MARGIN, usable_best)
 import costume_forms
@@ -1429,10 +1430,10 @@ def main():
     # 0/11/12), under-cap hundos, AND over-cap mons (a cp2494 Gardevoir is UL, not GL).
     for r in rows:
         if pvp_iv_qualifies(r['species_name'], r['form'], r['iv_atk'], r['iv_def'],
-                            r['iv_sta'], r['gl_stage'], r['gl_rank'], GL_FLOOR, BS, r['cp'], GL_CAP):
+                            r['iv_sta'], r['gl_stage'], r['gl_rank'], GL_FLOOR, BS, r['cp'], GL_CAP, row=r):
             mark(r['uid_hex'], 'gl_iv')
         if pvp_iv_qualifies(r['species_name'], r['form'], r['iv_atk'], r['iv_def'],
-                            r['iv_sta'], r['ul_stage'], r['ul_rank'], UL_FLOOR, BS, r['cp'], UL_CAP):
+                            r['iv_sta'], r['ul_stage'], r['ul_rank'], UL_FLOOR, BS, r['cp'], UL_CAP, row=r):
             mark(r['uid_hex'], 'ul_iv')
     # PvP-perfect 0/15/15 spread kept outright (user-named), regardless of rank/CP.
     _trophy = keep_config.pvp_spread_keep()
@@ -1450,13 +1451,15 @@ def main():
         return bool(stage) and pvp_maxcp(stage, BS) > cap + VIABILITY_MARGIN
 
     def _pvp_asset(r):
-        # CP-BLIND ON PURPOSE. Gating this on "can this copy still get under the cap" was tried 2026-09-19 and
-        # the lost-keeper fixtures rejected it on the spot: 9 real spreads -- a GL#1 Eevee, a UL#2 Krabby -- went
-        # straight to the irreversible pile, because a pre-evo sitting at a high level can never make an under-cap
-        # evolved form. That is the Mareep shape. The SPREAD is what rule 15b protects; whether this copy can field
-        # it is a question for the LABEL (granular_tags cap-gates the Rank tags), never for the keep.
-        return ((r['gl_rank'] is not None and r['gl_rank'] <= READY_RANK and _viable(r['gl_stage'], GL_CAP))
-                or (r['ul_rank'] is not None and r['ul_rank'] <= READY_RANK and _viable(r['ul_stage'], UL_CAP)))
+        # ONLY A COPY THAT CAN PLAY (user 2026-09-30: "Why would I keep any GL and UL pokemon that cant participate?
+        # powering up is fine, but if its impossible in its best form for pvp, then wtf"). pvp_iv_rule.plays(): a
+        # top-READY_RANK stage in the chain that reaches the cap AND that this copy fits under -- now at its own
+        # stage, or after evolving at its true level (fits(); unknown data => fits, so missing data never strips
+        # protection). Until 2026-09-30 this was CP-blind: gating it was tried 2026-09-19 and sent 9 real spreads to
+        # the pile, because it was then their ONLY PvP protection; the usable-only Best GL/UL rule (15d) and this
+        # per-stage sweep came after. On the 12:19 walk this gate changed 0 keeps (the 4 over-cap top-5 copies were
+        # all kept for a league they CAN play).
+        return plays(r, 'gl', GL_CAP, BS) is not None or plays(r, 'ul', UL_CAP, BS) is not None
     for r in rows:
         if _pvp_asset(r):
             mark(r['uid_hex'], 'pvp_rank')

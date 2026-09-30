@@ -17,6 +17,7 @@ down 5th, east on S, up Park, east on N, down 3rd to 42nd, west on 42nd (Grand C
 
   python tools/dense_loop.py [--south 32] [--north 53] [--speed 28] [--laps 2]          plan only (prints km, minutes)
   python tools/dense_loop.py --send ...                                                    hand it to GPS JoyStick WALK
+  python tools/dense_loop.py --record "Midtown Dense Loop"      save it as a joystick route while the walk runs it
 It never teleports: the walk starts at the far corner of the loop side nearest the current fix (the corner ahead,
 so a re-send mid-lap carries straight on) and the joystick walks there.
 """
@@ -77,6 +78,53 @@ def loop(south, north):
     return seq
 
 
+def record(pts, corners, name):
+    """Save the loop as a GPS JoyStick route. RECORD_ADD takes no coordinates -- it adds the CURRENT position
+    (theappninjas.com/docs/pro-intents-api/route/) -- so this rides the running walk: RECORD_START at the next corner
+    ahead, RECORD_ADD as the avatar reaches each corner, the first corner again to close the loop, then
+    RECORD_STOP name=... (at least 2 points). Before every command speed_governor.guard() must pass; if the walk
+    stops or a corner is not reached in time, it stops the recording WITHOUT a name, which saves nothing."""
+    from speed_governor import guard
+    def cmd(action, extra=""):
+        bad = guard()
+        if bad:
+            raise SystemExit("%s ALERT: %s -- recording abandoned, nothing more sent" % (time.strftime("%H:%M:%S"), bad))
+        ch.api(action, extra)
+    here = ch.fix()
+    i = (min(range(len(pts)), key=lambda k: off_side(here[:2], pts[k], pts[(k + 1) % len(pts)])) + 1) % len(pts)
+    order = [(i + k) % len(pts) for k in range(len(pts))] + [i]
+    started = False
+    for n, k in enumerate(order):
+        best, t0, anchor, moved = 1e9, time.time(), None, time.time()
+        while True:
+            f = ch.fix()
+            if not f:
+                time.sleep(1)
+                continue
+            d = ch.meters(f[:2], pts[k])
+            reach = max(8.0, f[3] / 3.6 * 1.2)        # one poll's worth of travel at the current speed
+            if d <= reach or (best < 40 and d > best + 5):   # at the corner, or just past it
+                break
+            best = min(best, d)
+            if anchor is None or ch.meters(anchor, f[:2]) > 3:
+                anchor, moved = f[:2], time.time()
+            if time.time() - t0 > 20 * 60 or time.time() - moved > 60:
+                if started:
+                    ch.api("RECORD_STOP")               # no name = nothing saved
+                raise SystemExit("%s corner %s not reached (%s) -- recording discarded" % (
+                    time.strftime("%H:%M:%S"), corners[k], "the walk stopped" if time.time() - moved > 60 else "20 min"))
+            time.sleep(0.7)
+        if not started:
+            cmd("RECORD_START")
+            started = True
+            time.sleep(1)
+        cmd("RECORD_ADD")
+        print("%s %2d/%d  %s St & %s Ave  added %.0f m from the corner" % (
+            time.strftime("%H:%M:%S"), n + 1, len(order), corners[k][1], corners[k][0], d), flush=True)
+    cmd("RECORD_STOP", '--es name "%s"' % name)
+    print("%s RECORD_STOP name=%s -- %d points" % (time.strftime("%H:%M:%S"), name, len(order)), flush=True)
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--south", type=int, default=32)
@@ -85,6 +133,8 @@ def main():
     ap.add_argument("--laps", type=int, default=2)
     ap.add_argument("--send", action="store_true", help="hand the loop to GPS JoyStick (WALK); default: plan only")
     ap.add_argument("--out", help="write the lap as JSON (for the map page)")
+    ap.add_argument("--record", metavar="NAME", help="save the loop as a joystick route while the walk runs it")
+    ap.add_argument("--gpx", metavar="PATH", help="write one closed lap as a GPX route (GPS JoyStick: Routes > import)")
     a = ap.parse_args()
     if a.speed > 28.0:
         sys.exit("speed cap is 28 km/h")
@@ -101,6 +151,20 @@ def main():
         json.dump({"south": a.south, "north": a.north, "speed": a.speed, "lap_km": round(lap_m / 1000, 2),
                    "corners": [{"ave": c[0], "st": c[1], "lat": p[0], "lng": p[1]} for c, p in zip(corners, pts)]},
                   open(a.out, "w"), indent=1)
+    if a.gpx:
+        import html
+        name = os.path.splitext(os.path.basename(a.gpx))[0].replace("_", " ")
+        gpx = ['<?xml version="1.0" encoding="UTF-8"?>',
+               '<gpx version="1.1" creator="pogo-dense-loop" xmlns="http://www.topografix.com/GPX/1/1">',
+               "<rte><name>%s</name>" % html.escape(name)] + \
+              ['<rtept lat="%.6f" lon="%.6f"/>' % p for p in pts + pts[:1]] + ["</rte></gpx>"]
+        open(a.gpx, "w").write("\n".join(gpx) + "\n")
+        print("wrote %s: route '%s', %d points (closed lap)" % (a.gpx, name, len(pts) + 1))
+    if a.record:
+        # 2026-09-30: RECORD_START STOPPED the running WALK (the avatar sat at 0 km/h until the walk was re-sent), so
+        # riding the walk does not work. Kept for a stopped avatar only; prefer --gpx and the app's route import.
+        record(pts, corners, a.record)
+        return
     if not a.send:
         return
     if "Pixel" not in ch.adb("getprop ro.product.model"):

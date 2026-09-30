@@ -48,7 +48,8 @@ qualify ONLY because keep_config pvp.viability_margin is currently 0.
     Abra    13/15/15 -> GL #3   (second copy)
     Abra    14/15/13 -> GL #4,  same 1517
     Wailmer 10/15/15 -> UL #3 via wailord, L50-hundo CP 2577, i.e. cap+77
-Rule 15b keeps a mon only if its ranked stage's L50-hundo CP EXCEEDS cap + viability_margin. Raise
+Rule 15b keeps a mon only if its ranked stage's L50-hundo CP EXCEEDS cap + viability_margin (and, since
+2026-09-30, only a copy that fits under the cap at that stage -- fixture_cp builds them that way). Raise
 the margin to 100 and all four stop qualifying -- not because the engine broke, but because the
 policy changed. Those four carry margin_sensitive=True and this script says so IN THE FAILURE TEXT,
 so a future margin change produces an explained failure instead of a mystery. The user rejected
@@ -248,18 +249,26 @@ def derive_ranks(cache, pokemon_db, fx):
 
 
 def fixture_cp(pokemon_db, fx, sid):
-    """CP of the specimen BUILT FOR THE LEAGUE THAT PROTECTS IT -- highest level under that cap.
+    """CP of the specimen BUILT FOR THE LEAGUE THAT PROTECTS IT: the level at which its RANKED STAGE sits at its highest
+    level under that cap -- a copy that can actually PLAY the spread.
 
-    CP is not what saves any of these mons (rule 15b never looks at it), but rule 15's READY branch
-    refuses a mon already OVER its league cap, and CP is a topn() tiebreak. Deriving it from the real
-    compute_cp at the real cap is the honest reconstruction; inventing a round number is not.
+    Since 2026-09-30 CP decides it (user: "Why would I keep any GL and UL pokemon that cant participate? powering up is
+    fine, but if its impossible in its best form for pvp, then wtf"): rules 15 / 15b keep a top-5 spread only on a copy
+    that fits under the cap at that stage, now or after evolving at its level (pvp_iv_rule.plays / fits). Until then
+    the level came from the PRE-EVO's own cap (an Eevee at L50 is under 1,500, its Umbreon is not), which built
+    specimens that could never play the league they protect -- 9 of these fixtures then failed the new law for the
+    right reason. The spread is the same; only the copy is now one a correct engine keeps. The stage is the recorded
+    chain's end for the protecting league (assertion A re-derives it); the own-species CP is taken at that level.
     """
-    b = (pokemon_db.get(sid) or pokemon_db[TRUE_SID[fx['label']]])['baseStats']
+    own = (pokemon_db.get(sid) or pokemon_db[TRUE_SID[fx['label']]])['baseStats']
+    use = fx['gl'] if (fx['gl'] and fx['gl'][0] <= READY_RANK) else fx['ul']
     cap = GL_CAP if (fx['gl'] and fx['gl'][0] <= READY_RANK) else UL_CAP
+    stage = str(use[2]).split('->')[-1].strip() if (use and len(use) > 2 and use[2]) else None
+    tgt = ((pokemon_db.get(stage) or {}).get('baseStats') if stage else None) or own
     a, d, s = fx['ivs']
-    idx = rc.find_max_idx(b['atk'], b['def'], b['hp'], a, d, s, cap, False)
+    idx = rc.find_max_idx(tgt['atk'], tgt['def'], tgt['hp'], a, d, s, cap, False)
     idx = min(max(idx, 0), rc.MAX_LEVEL_IDX)
-    return rc.compute_cp(b['atk'], b['def'], b['hp'], a, d, s, rc.CPM[idx], False), idx
+    return rc.compute_cp(own['atk'], own['def'], own['hp'], a, d, s, rc.CPM[idx], False), idx
 
 
 # ---------------------------------------------------------------------------------------------
@@ -287,6 +296,10 @@ def build_sandbox(sandbox):
     for fn in ROOT_INPUTS:
         shutil.copyfile(os.path.join(ROOT, fn), os.path.join(sandbox, fn))
     return sb_db
+
+
+OVERCAP_UID = 'REGRESSOVERCAP000'
+RANK_AXES = frozenset({'pvp_rank', 'gl_iv', 'ul_iv'})
 
 
 def insert_fixtures(sb_db, pokemon_db, derived):
@@ -334,6 +347,17 @@ def insert_fixtures(sb_db, pokemon_db, derived):
             raise SystemExit('FAIL setup: pokemon.db schema has no column(s) %s -- the fixture row '
                              'cannot be built. Re-run the crawl/migration.' % missing)
         rows.append(r)
+    # OVER-CAP TWIN (2026-09-30 -- the other half of the law): the Eevee 0/15/14 spread again, at the level the PRE-EVO's
+    # own Great League cap allows (L50). As Umbreon (GL #1) and Leafeon (UL #5) it is then over 1,500 / 2,500, so this
+    # copy can never play the spread. A correct engine gives it NO PvP-rank axis (other axes may still keep it).
+    ev = next(k for k, fx in enumerate(FIXTURES) if fx['label'] == 'Eevee 0/15/14')
+    b = pokemon_db[derived[ev][0]]['baseStats']
+    a, d, s = FIXTURES[ev]['ivs']
+    ti = min(max(rc.find_max_idx(b['atk'], b['def'], b['hp'], a, d, s, GL_CAP, False), 0), rc.MAX_LEVEL_IDX)
+    twin = dict(rows[ev])
+    twin.update(uid_hex=OVERCAP_UID, cp=rc.compute_cp(b['atk'], b['def'], b['hp'], a, d, s, rc.CPM[ti], False),
+                level=1 + ti / 2.0, cp_multiplier=rc.CPM[ti])
+    rows.append(twin)
     keys = sorted(rows[0])
     con.executemany('INSERT INTO pokemon (%s) VALUES (%s)'
                     % (','.join(keys), ','.join('?' * len(keys))),
@@ -622,6 +646,14 @@ def main():
             print('%-31s %-8s %-40s %s'
                   % (fx['label'][:31], verdict, ','.join(why) or '-',
                      ('saved by ' + ','.join(saved_by)) if saved_by else ''))
+        twy = sorted(reasons.get(OVERCAP_UID, []))
+        bad = sorted(set(twy) & RANK_AXES)
+        if bad:
+            fails.append('FAIL over-cap twin: Eevee 0/15/14 at L50 is over the cap as Umbreon (GL) and Leafeon (UL), so it '
+                         'can never play the spread, yet the engine still gives it %s (law 2(a), user 2026-09-30: "Why '
+                         'would I keep any GL and UL pokemon that cant participate?")' % bad)
+        print('%-31s %-8s %-40s %s' % ('Eevee 0/15/14 OVER-CAP twin', 'NO PVP' if not bad else 'PVP!',
+                                       ','.join(twy) or '- (pile)', 'over the cap in both leagues: no rank axis'))
         if verbose:
             print('\n--- sandbox keep_policy log ---')
             for l in log.splitlines():
