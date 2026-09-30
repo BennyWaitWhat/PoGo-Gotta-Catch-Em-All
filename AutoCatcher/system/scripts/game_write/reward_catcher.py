@@ -81,7 +81,8 @@ var BALL=1, TYPES=[], FRAME=0, RUN=false, MAX=0, CAUGHT=0;
 var ST=0, stFrame=0, curProto=ptr(0), lastId="0", curId="0";
 var SAMESTALL=0, SKIPTYPE={}, TYPEIDX=0, STUCKOUT=0;   // loop-breaker state (see STUCK escalation below)
 var OPEN_LAG=52, SETTLE=18, STUCK=150, NUDGE=42;   // frames @ ~60fps  (STUCK 480->150: blocked-throw recovery ~2.5s not ~8s)
-var STALLS=0, REOPENED=false, LOST=0, throwFrame=-100000, LOSTWAIT=150;   /* LOSTWAIT ~2.5 s: a registered catch clears its reward well inside that */
+var STALLS=0, REOPENED=false, LOST=0, throwFrame=-100000, LOSTWAIT=90;   /* ~1.5 s (was 150 = 2.5 s): 2026-09-30, 105 catches -- every clean catch took <=1.9 s from open (the throw
+   to the box rise <=0.7 s), and the 17 lost throws each sat out the full wait, ~20% of the run. A box that rises = slowconf, never a 2nd throw */
 var BAG=ptr(0), boxAtThrow=-1, SLOWCONF=0, slowNoted=false;              /* box (PokemonOnlyCount) = proof a throw registered */
 var THROWS={}, MAXTHROWS=6, STUCKIDS={};                                   /* per-reward throw cap (a break-out needs a few, never infinite) */
 rpc.exports.setBag=function(p){BAG=ptr(p);};
