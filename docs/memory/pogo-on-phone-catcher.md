@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: 8fde11a7-6340-4cdf-8f4e-02a95910c52b
-  modified: 2026-09-30T00:46:55.228Z
+  modified: 2026-09-30T02:53:34.674Z
 ---
 
 # CONTRACT WITH THE CULL (2026-09-29, Pokemon Inventory session)
@@ -19,10 +19,16 @@ and logs `GRAPH`; the cull refuses on a tie instead. See [[pogo-stale-service-gr
 # REBUILT 2026-09-24 — read this first (corrected 21:30 after the evening's crashes)
 **WHERE THE CODE LIVES NOW:** `Phone Maintenance/AutoCatcher/` (the AutoCatcher session's folder, a desktop mirror of
 the phone's `~/pogo` tree): `system/scripts/game_write/catch_loop_fast.py` (+`catch_phone.py`, `reward_catcher.py`,
-`reward_phone.py`), `catcher_ctl.sh`, `run_catch.sh`, its OWN `pogo_il2cpp.py`, `ondevice_toggle/` (install scripts +
-Auto-Catcher APK source, moved out of pogo_extract), `deploy.sh` (md5-verified push, `--restart`). `pogo_extract/` is
-the Pokemon Inventory (cull) session's; the two sessions do not edit each other's folders. Fallback build:
-`catch_loop_fast.v1-pause.py` = the old stable catcher + propagate + pause handshake.
+`reward_phone.py`), `catcher_ctl.sh`, `run_catch.sh`, the desktop's OWN `pogo_il2cpp.py`, `ondevice_toggle/` (the
+Auto-Catcher APK source, the boot starter, the live listen config, the phone guide, the Termux build/repair scripts,
+and the PHONE's own library as `phone_pogo_il2cpp.py`), `deploy.sh` (md5-verified push, `--restart`; it maps
+`ondevice_toggle/phone_pogo_il2cpp.py` -> `~/pogo/pogo_il2cpp.py` and REFUSES the desktop `pogo_il2cpp.py`, exit 2).
+`pogo_extract/` is the Pokemon Inventory (cull) session's; the two sessions do not edit each other's folders.
+2026-09-29 (PRs #6 and #9): untracked but still on the PC:
+- the June config-swap toggles, installers and docs. They force-stopped PoGo or swapped the gadget to script mode;
+  `setup_pogo.sh` wiped ~/pogo; `grant_root.sh` wrote Magisk grants.
+- `catch_loop_fast.v1-pause.py`.
+The phone copies of the four dangerous scripts are in the root-only `/data/local/tmp/retired_2026-09-29/`.
 Rules, each one a crash:
 1. **NativeFunction `{exceptions:'propagate'}` on EVERY il2cpp call.** Frida's default `'steal'` grabs faults ART raises
    ON PURPOSE (CMC GC compaction pages, implicit suspend checks), longjmps out mid-ART, and the next MarkCompact stack
@@ -129,7 +135,7 @@ files** in app_data_file but **cannot read, exec, or create SYMLINKS** there. Te
   app context FAILS — su-context testing is misleading. Test the real path via RUN_COMMAND.
 - **Fix (as root, persists on disk):**
   - `$PREFIX/bin` + `$PREFIX/libexec`: replace symlinks with **hardlinks** to their real target
-    (`fix_bin.sh`, `fix_libexec.sh` in `system/ondevice_toggle/`). Zero extra space; app can exec.
+    (`fix_bin.sh`, `fix_libexec.sh` in `AutoCatcher/ondevice_toggle/`). Zero extra space; app can exec.
   - `$PREFIX/lib` .so symlinks: dereference-copy all into `~/applibs/` (real files), then run the
     catcher with `LD_LIBRARY_PATH=$HOME/applibs:$PREFIX/lib` (`build_applibs.sh`).
 - `pkg upgrade` re-creates symlinks → re-breaks everything. DON'T upgrade; re-run the 3 fix scripts if needed.
@@ -168,13 +174,13 @@ E sshd: error: server_accept_loop: startup pipe 0 (fd=9): read Connection reset 
   Magisk `service.d/termux_boot.sh` fires Termux:Boot after each boot (verified across a reboot 2026-09-22).
 - `pkill/pgrep -f catch_phone.py` self-matches the control command's own cmdline — use the **gadget
   connection count** (distinct client ports to :27047) as ground truth, and `ps`/pgrep exclude their own pid internally.
-- Source of all scripts: `pogo_extract/system/ondevice_toggle/`. Guide: `AUTO_CATCHER_PHONE.html`.
+- Source of all scripts: `AutoCatcher/ondevice_toggle/` (the retired ones were untracked 2026-09-29). Guide: `AUTO_CATCHER_PHONE.html`.
 
 ### The REAL toggle UI = an installed APK (don't forget this exists — I once told the user it didn't)
 `com.benny.autocatcher/.MainActivity` — a native app, NOT a script/webview. Home-screen label **"Auto-Catcher"** (the
 application label; its launcher activity has no label of its own); the control page it opens is titled "PoGo Auto"
 (MainActivity.java:89).
-Source + build: `pogo_extract/system/ondevice_toggle/apk/` (`src/com/benny/autocatcher/MainActivity.java`,
+Source + build: `AutoCatcher/ondevice_toggle/apk/` (`src/com/benny/autocatcher/MainActivity.java`,
 `build.ps1` = aapt2→javac→d8→zipalign→apksigner, `debug.keystore`, CN=AutoCatcher — same cert upgrades in place).
 Build+install: run `build.ps1`, then `adb install -r apk/AutoCatcher.apk`.
 

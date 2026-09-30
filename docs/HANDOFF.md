@@ -90,6 +90,13 @@ the store) — expect it slower than the ~80 s the PC took.
 - AutoCatcher #9 (merged at handoff): the phone's own helper library is in git as `AutoCatcher/ondevice_toggle/phone_pogo_il2cpp.py`,
   and `deploy.sh` refuses to push the desktop copy to the phone.
 - Old research notes in `pogo_extract/*.md` link to data files that are not in git (expected, 12 links).
+- **AutoCatcher at handoff** (its own report, 2026-09-29 ~23:10):
+  - the phone still runs the UNSTUBBED `~/pogo/pogo_il2cpp.py` until the next `deploy.sh`, which waits for Benny's go;
+  - `tools/joystick_round.py` (now refuses while PoGo is open) is untested on the phone;
+  - the on-phone catcher has been on HOLD since 22:23 — out of balls at its floors (P5 G4 U5) — and spins still get
+    `res2` (server OutOfRange; see `docs/memory/reference-pogo-limit-detection.md`);
+  - folding reward catching into the catcher (so nothing ever pauses it) is still open;
+  - retired phone scripts that force-stopped PoGo now sit in the root-only `/data/local/tmp/retired_2026-09-29/` (nothing deleted).
 
 ## 7. Unverified until the first real cloud run
 Tailscale through the cloud's HTTPS proxy · whether the VM allows `ip addr add` on loopback (else the bridge uses

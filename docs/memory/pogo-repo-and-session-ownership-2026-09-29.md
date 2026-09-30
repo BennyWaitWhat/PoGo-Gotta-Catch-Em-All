@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: 565701b0-1a11-42dd-894a-3bb423b9a491
-  modified: 2026-09-30T02:30:32.271Z
+  modified: 2026-09-30T02:56:10.696Z
 ---
 
 2026-09-29, user: "Work with the Pokemon Inventory (fork) session."
@@ -42,6 +42,12 @@ metadata:
 - **Every tool must read `ADB_TARGET`** (`os.environ.get("ADB_TARGET", "100.98.158.56:5555")`). Done in all 13 AutoCatcher tools, pogo_il2cpp.py and deploy.sh.
 - tools/gym_loop.py belongs to Gym Battle (told).
 - deploy.sh is portable (cygpath only if present; Linux OK; honours ADB_TARGET; clears stale .pyc).
+- **PR flow (v1.0.0, late 2026-09-29):** branch -> PR -> CI (offline checks) -> `gh pr merge --squash --delete-branch`.
+  - Never switch branches in the shared PC checkout. Build the branch in a temp `git worktree` from origin/main.
+  - After the merge, stage your own paths, then `git merge --ff-only`.
+  - A peer's local commit can block the ff. Leave it alone; reset only your own paths, whose content is already on main.
+  - Don't untrack with `git commit -- <paths>`: `--only` re-adds `rm --cached` files that are still on disk.
+  - AutoCatcher PRs: #6 (89921e0, force-stop paths) and #9 (ad1242a, the phone's own pogo_il2cpp.py; deploy.sh refuses the desktop copy).
 
 **Repo polish + PR flow (2026-09-29 ~22:20):** v1.0.0 released (tag at 798d7ed). Changes land as branch -> PR -> squash-merge; CI (`.github/workflows/ci.yml`) runs offline only: compile every .py, `bash -n` every .sh, the self-tests, the full_audit no-data/unknown-flag guards (both rc 2) and a secret scan. Dependabot = GitHub Actions ONLY (never pip: frida 17.9.11 / frida-tools 14.8.2 are pinned to the phone). Labels incl. `policy`, `safety`, `area: *`. `restart_pogo_and_wait()` raises in BOTH pogo_il2cpp copies (#4 + AutoCatcher). The ccd PR monitor cannot read this repo's checks (app GitHub account lacks access): read `gh pr checks N` once with the BennyWaitWhat token, never poll.
 
