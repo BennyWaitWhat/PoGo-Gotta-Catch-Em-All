@@ -18,10 +18,12 @@ belongs to the **Pokemon Inventory** session. No session edits another's files.
 | **Cloud session** (Linux VM, the phone via the bridge) — the default place for AutoCatcher work | Everything the desktop does: deploys, toggles, reward catcher, probes, analysis | same files; `ADB_TARGET` is exported by the session hook |
 | **Desktop** (Windows, adb over Tailscale) — fallback | Same as the cloud | `reward_catcher.py`, `tools/*.py` (attach through `pogo_il2cpp.get_session`) |
 
-The desktop `pogo_il2cpp.py` is AutoCatcher's own copy. The phone has its own `pogo_il2cpp.py`, and `catch_phone.py`
-points `get_session` at the local gadget (`127.0.0.1:27047`, `dev.attach("Gadget")`).
+The desktop `pogo_il2cpp.py` is AutoCatcher's own copy. The phone runs its own, older `pogo_il2cpp.py`. Git keeps it
+as `ondevice_toggle/phone_pogo_il2cpp.py`. `catch_phone.py` points `get_session` at the local gadget
+(`127.0.0.1:27047`, `dev.attach("Gadget")`).
 
 `ondevice_toggle/` holds the phone-side setup:
+- the phone's own library, `phone_pogo_il2cpp.py`;
 - the Auto-Catcher app (`apk/`);
 - the Termux:Boot starter `20-pogo-catcher.sh`;
 - the gadget's listen config `config.listen.so` (the same bytes as the phone's live `/data/local/tmp/re.zyg.fri/libgadget.config.so`);
@@ -59,6 +61,9 @@ recorders all work from the cloud, with the same rules as on the PC:
 `deploy.sh` runs on Linux (the cloud VM) and on Git Bash (it uses `cygpath` only when it exists). It needs `adb`,
 `md5sum` and root on the phone, and it honours `ADB_TARGET`. It also deletes the phone's stale
 `__pycache__/*.pyc` for every `.py` it deploys.
+
+`deploy.sh` puts `ondevice_toggle/phone_pogo_il2cpp.py` at `~/pogo/pogo_il2cpp.py`. It refuses the desktop
+`pogo_il2cpp.py`, which has never run on the phone.
 
 Verify on the phone:
 - the `attached ...` line in `~/pogo/system/analysis/pokemod/catch_loop.log`;
