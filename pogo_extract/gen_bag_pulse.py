@@ -50,6 +50,13 @@ days = list(bydays.keys())
 P = lambda r: round((r['iv_total'] or 0) / 45 * 100)
 mean = lambda xs: (sum(xs) / len(xs)) if xs else 0
 N = len(rows)
+# THE GAME'S OWN COUNT (2026-09-30): storage holds Pokemon AND eggs in incubators. The page said "1 free" while the game
+# said 0 (5,849 Pokemon + 1 egg). Use this walk's bag_count.json when it describes the bag just read, else the Pokemon count.
+try:
+    _bc = json.load(open(os.path.join('system', 'analysis', 'bag_count.json'), encoding='utf-8'))
+    USED = int(_bc['game_count']) if int(_bc.get('pokemon_only', -1)) == N else N
+except Exception:
+    USED = N
 kept = [r for r in rows if r['uid_hex'] not in pile]
 shiny = [r for r in rows if r['fresh_shiny']]
 shiny_kept = [r for r in shiny if r['uid_hex'] not in pile]
@@ -171,7 +178,8 @@ for e in reversed(hist[-40:]):
     pl = e.get('_pile') or []
     _pn = e.get('_pile_names') or {}                       # stamped by ladder_report at write time (released rows leave the DB)
     labs = [('%s %d%%' % (_nm[u][0], _nm[u][1])) if u in _nm else (_pn[u] + ' (released)') for u in pl if u in _nm or u in _pn]
-    passes.append({'ts': e['ts'], 'bag': e.get('bag'), 'free': (cap_total - e['bag']) if e.get('bag') else None, 'pile': len(pl),
+    _used = USED if (e is hist[-1] and e.get('bag') == N) else e.get('bag')    # eggs are known for this walk only
+    passes.append({'ts': e['ts'], 'bag': e.get('bag'), 'free': (cap_total - _used) if e.get('bag') else None, 'pile': len(pl),
                    'caught': e.get('caught', 0), 'released': e.get('released', 0), 'evolved': e.get('evolved', 0), 'picks': e.get('promises_kept', 0),
                    'improved': e.get('stage_best_improved', 0), 'hundos': e.get('new_hundos', 0), 'ladder': e.get('resident_mean_iv'),
                    'pile_list': ', '.join(labs[:14]) + (' ...' if len(labs) > 14 else '')})
@@ -210,7 +218,7 @@ for i, p in enumerate(passes):                       # newest first: hist[-1-i];
 DATA = {
     'window': WINDOW,
     'generated': time.strftime('%Y-%m-%d %H:%M', time.localtime(os.path.getmtime('pokemon.db'))), 'history_from': days[0], 'history_to': days[-1],
-    'kpi': {'bag': N, 'cap': cap_total, 'kept': len(kept), 'pile': len(pile), 'species': len(species), 'identities': len(ident),
+    'kpi': {'bag': N, 'used': USED, 'cap': cap_total, 'kept': len(kept), 'pile': len(pile), 'species': len(species), 'identities': len(ident),
             'hundos': len(hundo), 'hundos_today': S('new_hundos'), 'shinies': len(shiny), 'shiny_iv': round(mean([P(r) for r in shiny]), 1),
             'ladder_iv': cur, 'ladder_iv_delta': round(cur - first_iv, 1) if first_iv is not None else None,
             'nonpvp_iv': round(mean([P(r) for r in nonpvp]), 1), 'nonpvp_n': len(nonpvp),
@@ -372,7 +380,7 @@ el('rings').innerHTML = [
   ring(k.ladder_iv, 100, tok('--accent'), fx(k.ladder_iv), '%', 'Ladder IV', k.ladder_iv_delta == null ? 'average of the ladder' : '<span class="up">' + (k.ladder_iv_delta >= 0 ? '+' : '') + k.ladder_iv_delta + ' pts</span> since ' + D.history_from.slice(5).replace('-', '/')),
   ring(k.nonpvp_iv, 100, tok('--pvp'), fx(k.nonpvp_iv), '%', 'Non-PvP keepers', num(k.nonpvp_n) + ' plain slot holders'),
   ring(k.shiny_iv, 100, tok('--shiny'), fx(k.shiny_iv), '%', 'Shiny IV', num(k.shinies) + ' shinies'),
-  ring(k.bag, k.cap, k.cap - k.bag < 50 ? tok('--accent') : tok('--hundo'), (100 * k.bag / k.cap).toFixed(0), '%', 'Storage', num(k.bag) + ' / ' + num(k.cap) + ' · ' + (k.cap - k.bag) + ' free'),
+  ring(k.used, k.cap, k.cap - k.used < 50 ? tok('--accent') : tok('--hundo'), (100 * k.used / k.cap).toFixed(0), '%', 'Storage', num(k.used) + ' / ' + num(k.cap) + ' · ' + (k.cap - k.used) + ' free' + (k.used > k.bag ? ' · incl. ' + (k.used - k.bag) + ' egg' + (k.used - k.bag > 1 ? 's' : '') + ' in incubators' : '')),
 ].join('');
 el('kpis').innerHTML = [
   ['Hundos', '<span class="hu">' + num(k.hundos) + '</span>', (k.hundos_today ? '+' + k.hundos_today + ' today' : 'none new today'), ''],
