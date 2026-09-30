@@ -142,6 +142,12 @@ def extract_tar(tar_path, root=ROOT, skip=frozenset()):
 
 
 # ---------------------------------------------------------------------------------------------------------------- phone
+def _xfer_timeout(nbytes):
+    """adb push/pull deadline: the tailnet link has measured ~1 MB/s (2026-09-29; a 1.6 GB push died at a flat 900 s),
+    so allow 200 KB/s with a 15-minute floor."""
+    return max(900, nbytes / 200e3)
+
+
 def adb(*args, timeout=900):
     r = subprocess.run(['adb', '-s', DEV] + list(args), capture_output=True, timeout=timeout)
     if r.returncode != 0:
@@ -169,7 +175,7 @@ def phone_put(local_path, name):
     """adb push to a temp name, check its sha256 on the phone, then rename into place (readers never see half a file)."""
     adb('shell', 'mkdir -p %s' % PHONE_DIR)
     tmp = '%s/.%s.tmp' % (PHONE_DIR, name)
-    adb('push', local_path, tmp)
+    adb('push', local_path, tmp, timeout=_xfer_timeout(os.path.getsize(local_path)))
     want = sha256_file(local_path)
     got = adb('shell', 'sha256sum %s' % tmp).decode().split()[0]
     if got != want:
@@ -218,7 +224,7 @@ def cmd_pull(a):
         with tempfile.TemporaryDirectory() as td:
             dst = os.path.join(td, g + '.tar.gz')
             t0 = time.time()
-            adb('pull', '%s/%s.tar.gz' % (PHONE_DIR, g), dst)
+            adb('pull', '%s/%s.tar.gz' % (PHONE_DIR, g), dst, timeout=_xfer_timeout(m['bytes']))
             if sha256_file(dst) != m['sha256']:
                 raise SystemExit('%s: the download does not match its meta sha -- nothing extracted (a push in flight? retry)'
                                  % g)
