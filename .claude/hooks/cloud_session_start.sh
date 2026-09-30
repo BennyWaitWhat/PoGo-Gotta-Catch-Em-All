@@ -32,8 +32,9 @@ bridge() {
     # userspace networking: no /dev/net/tun needed; control + DERP traffic leaves over HTTPS (honours HTTPS_PROXY)
     nohup tailscaled --tun=userspace-networking --state=mem: --socket="$SOCK" >>"$LOG" 2>&1 &
     for _ in $(seq 1 15); do [ -S "$SOCK" ] && break; sleep 1; done
-    tailscale --socket="$SOCK" up --authkey="$TAILSCALE_AUTHKEY" --hostname="claude-cloud-pogo" \
-        --accept-dns=false --accept-routes=false >>"$LOG" 2>&1 || { note "tailscale up failed"; return 1; }
+    # bounded: a proxy that blocks the control plane must not eat the whole hook (nothing below would print)
+    timeout 40 tailscale --socket="$SOCK" up --authkey="$TAILSCALE_AUTHKEY" --hostname="claude-cloud-pogo" \
+        --accept-dns=false --accept-routes=false >>"$LOG" 2>&1 || { note "tailscale up failed or timed out (40 s)"; return 1; }
   fi
   mkdir -p ~/.android
   [ -n "${ADB_KEY_B64:-}" ] && { echo "$ADB_KEY_B64" | base64 -d > ~/.android/adbkey; chmod 600 ~/.android/adbkey; }
@@ -52,7 +53,7 @@ bridge() {
   fi
   TARGET="$bind:$PHONE_PORT"
   adb start-server >>"$LOG" 2>&1
-  for _ in 1 2 3; do adb connect "$TARGET" >>"$LOG" 2>&1; adb -s "$TARGET" get-state 2>/dev/null | grep -q device && break; sleep 3; done
+  for _ in 1 2; do timeout 12 adb connect "$TARGET" >>"$LOG" 2>&1; adb -s "$TARGET" get-state 2>/dev/null | grep -q device && break; sleep 3; done
   # every project tool reads ADB_TARGET (pogo_il2cpp, walk_tripwires, pogo_data, AutoCatcher, gym)
   [ -n "${CLAUDE_ENV_FILE:-}" ] && echo "export ADB_TARGET=$TARGET" >>"$CLAUDE_ENV_FILE"
   return 0

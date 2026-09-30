@@ -863,6 +863,10 @@ def filename(tag):
 if __name__ == '__main__':
     if '--audit' in sys.argv:
         # Offline registry audit -- no DB, no device, no Frida. Run it after touching any tag label.
+        if not os.path.isdir(tagset_dir()) or not any(f.endswith('.txt') for f in os.listdir(tagset_dir())):
+            # a fresh checkout has no tagsets until the data pull: every tag would read "NO FILE (skipped)" = a false green
+            sys.exit('granular_tags --audit: NOT RUN -- no tagset files in %s (fresh checkout? run '
+                     '`python tools/pogo_data.py pull` from the repo root first)' % tagset_dir())
         _plan = registry()
         _orph, _missing = audit_registry(_plan, strict=False)
         _vocab = sorted(all_tags())
