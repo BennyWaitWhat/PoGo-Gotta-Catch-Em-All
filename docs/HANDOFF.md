@@ -41,7 +41,7 @@ the store) — expect it slower than the ~80 s the PC took.
 ## 3. Where things stand
 | Thing | State (2026-09-29) |
 |---|---|
-| Repo | `main` = a8c89b3 at handoff (PRs #1–#9 merged), release **v1.0.0** (tag at 798d7ed), CI green, 1 branch, 0 open PRs |
+| Repo | PRs #1–#10 merged at handoff (`git log` for anything newer), release **v1.0.0** (tag at 798d7ed), CI green, 1 branch, 0 open PRs; `python tools/triple_check.py --fresh` = ALL CLEAR |
 | Phone data store | `inventory` v2 (334 files, 51.1 MB, 21:53) · `catcher` v1 (16 files, 13.4 MB) · `gym` v1 (90 files, 0.3 MB) — sha256 on the phone matches each meta; the PC changed nothing after seeding |
 | `inventory-cold` | **Not seeded** (1.6 GB: all DB snapshots + `archive_main_account_20260926/`, keep forever). The PC holds it. Push from the PC when the phone is idle (~25 min) |
 | Last cull | 21:28 ET: 11/11 PASS, **pile 27** tagged `Transfer`, the server answered Success for 1/1 tag batch, last walk: bag 5,706/5,850. Its post-DONE steps (Remote Trade + Evolve-for-Size tags) were cut off by a broken pipe — the next cull refreshes them |
