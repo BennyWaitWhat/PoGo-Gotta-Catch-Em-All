@@ -115,14 +115,16 @@ def newer_here(tar_path, root=ROOT):
     with tarfile.open(tar_path, mode='r:gz') as tf:
         for m in tf.getmembers():
             p = os.path.join(root, m.name)
-            if m.isfile() and os.path.isfile(p) and os.path.getmtime(p) > m.mtime + 2 and os.path.getsize(p) != m.size:
+            if (m.isfile() and os.path.isfile(p) and os.path.getsize(p) > 0 and os.path.getmtime(p) > m.mtime + 2
+                    and os.path.getsize(p) != m.size):
                 out.append(m.name)
     return out
 
 
-def extract_tar(tar_path, root=ROOT):
+def extract_tar(tar_path, root=ROOT, skip=frozenset()):
+    """Extract into the checkout, except paths in `skip` (git-tracked files: a pull never rolls code back)."""
     with tarfile.open(tar_path, mode='r:gz') as tf:
-        members = tf.getmembers()
+        members = [m for m in tf.getmembers() if m.name not in skip]
         for m in members:
             if m.name.startswith('/') or '..' in m.name.split('/') or not (m.isfile() or m.isdir()):
                 raise SystemExit('refusing tar member %r (outside the checkout or not a plain file)' % m.name)
@@ -133,9 +135,9 @@ def extract_tar(tar_path, root=ROOT):
                     if os.path.exists(p):
                         os.remove(p)
         if sys.version_info >= (3, 12):
-            tf.extractall(root, filter='data')
+            tf.extractall(root, members=members, filter='data')
         else:
-            tf.extractall(root)
+            tf.extractall(root, members=members)
         return len(members)
 
 
@@ -200,7 +202,7 @@ def cmd_status(_a):
 
 
 def cmd_pull(a):
-    metas = phone_meta()
+    metas, skip = phone_meta(), tracked()
     groups = a.group or sorted(g for g in metas if not g.endswith('-cold'))
     if not groups:
         raise SystemExit('no data on the phone yet (%s) -- seed it from the PC: push --group <g> --force' % PHONE_DIR)
@@ -221,7 +223,7 @@ def cmd_pull(a):
                 raise SystemExit('%s: the download does not match its meta sha -- nothing extracted (a push in flight? retry)'
                                  % g)
             lose = [] if a.force else newer_here(dst)
-            n = 0 if lose else extract_tar(dst)
+            n = 0 if lose else extract_tar(dst, skip=skip)
             size = os.path.getsize(dst)
         if lose:
             print('%s: REFUSED -- %d local file(s) are newer than the phone copy v%s (a pull would lose them): %s%s\n'
@@ -297,6 +299,11 @@ def cmd_selftest(_a):
         p = os.path.join(out, 'a', 'snaps', 's4.gz')
         open(p, 'wb').write(b'local work, longer')           # newer AND different -> a pull must refuse
         assert newer_here(data, out) == ['a/snaps/s4.gz']
+        open(p, 'wb').close()                                # 0 bytes (an accidental sqlite3.connect) never blocks
+        assert newer_here(data, out) == []
+        out2 = os.path.join(td, 'out2')
+        os.makedirs(out2)
+        assert extract_tar(data, out2, skip={'a/db.db'}) == 2 and not os.path.exists(os.path.join(out2, 'a', 'db.db'))
     print('pogo_data selftest: OK')
     return 0
 

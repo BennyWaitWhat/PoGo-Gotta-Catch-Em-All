@@ -1,3 +1,7 @@
+> Exported from Benny's PC memory (the notes predate the cloud move on 2026-09-29). Where a note describes the Windows PC
+> (Git Bash, PowerShell, `C:\...` paths, local adb) the cloud equivalent is in `docs/START_HERE.md` and `docs/cloud_setup.md`.
+> A `[[name]]` link with no matching file points at a note that was left out (not PoGo). New lessons: add a note here + a line below.
+
 # Memory export (Pokemon GO knowledge for cloud sessions)
 
 Snapshot of Benny's auto-memory notes that matter for the PoGo repo, copied verbatim (frontmatter included) on 2026-09-29.

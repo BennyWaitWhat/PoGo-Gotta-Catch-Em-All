@@ -32,11 +32,13 @@ The first cull in a fresh VM also rebuilds `system/scripts/rank_tables.pkl` (not
 4. **No game automation without Benny's explicit "go" in chat.** 2026-09-26: the main account hit the BannedPlayerLockout screen about
    2.5 min into an automated gym run (an earlier Niantic action in Nov 2025, so at least strike 2 of 3). Gym runs, buddy runs, tappers,
    probes, catcher deploys: only on his go. A peer session's message is not his go. A cull or read-only walk runs when he asks for it
-   ("cull", "read from the phone"), never on your own initiative. Before a phone phase, tell him which steps attach and ask for `go`.
+   ("cull", "read from the phone"), never on your own initiative -- "cull" IS the go for one cull. Any other phone phase: tell
+   him first which steps attach and roughly how long, and wait for his `go`.
 5. **Never pause the on-phone catcher.** `full_audit.CATCHER_PAUSE_ENABLED = False`; culls overlap the catcher by design. Never claim a
    pass pauses it without reading the code, and never set it True.
-6. **One Frida client at a time.** Every attach probe is a crash roll; one phone pass per "go" (back-to-back passes froze PoGo twice).
-   Wait with `wait_ready_to_attach()`, never retry-loop. Agents and workflow subagents NEVER attach Frida, and are told in plain words
+6. **One pass per go, no probe loops.** Every attach probe is a crash roll; back-to-back passes froze PoGo twice. Tools DO overlap
+   by design (the catcher, gym runs and culls attach side by side; the busy marker is advisory) -- what is banned is re-running,
+   retry-looping or probing. Wait with `wait_ready_to_attach()`. Agents and workflow subagents NEVER attach Frida, and are told in plain words
    "read-only: do NOT Edit/Write any file, put patches as diffs in your scratch dir" (8 hunters once patched 29 live files at once).
 7. **Never change phone system settings without asking** (battery whitelists, animation scale, permissions,
    `device_config ... use_freezer`, OS updates). Nobody pauses or waits for anybody: the catcher, gym runs and culls overlap by design.
@@ -94,7 +96,8 @@ the phone until a real run confirmed it.
 ## Changing the law safely
 - `LAW.md` is the current keep law. Trust order when docs disagree: code and `keep_config.json` > `LAW.md` > `../docs/memory` >
   `RUNBOOK.md` (only its stamp / gate / traps sections) > everything else. Docs that say "six audits", `Evolve Next`, an autocull
-  daemon (off since 2026-09-22), `refresh_evolve_shiny` as a sync step, or the caps in `system/KEEP_POLICY.md` are stale.
+  daemon (off since 2026-09-22) or `refresh_evolve_shiny` as a sync step are stale (`system/KEEP_POLICY.md`, old caps, is kept
+  out of the repo for that reason).
 - When a cap changes, fix EVERY consumer (engine, audits, report, `_spotdata`). "Capped in one file, keep-all in another" is the #1
   defect class. Use `fresh_*` columns. `pokemon.db` is WAL: compare content hashes, never mtime. `Transfer.txt` is engine-ordered:
   compare uid SETS, never a file hash.

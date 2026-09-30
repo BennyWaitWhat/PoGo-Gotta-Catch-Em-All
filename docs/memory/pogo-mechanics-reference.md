@@ -7,7 +7,7 @@ metadata:
   originSessionId: b5e83127-eb4b-45c2-bb2c-3416996bd829
 ---
 
-Durable rules I should not have to re-research each session. Last verified 2026-05-27. Full sourced details: [pogo_extract/research_2026-05-27/01_core_mechanics.md](../../../../Desktop/Claude%20Operations/Phone%20Maintenance/pogo_extract/research_2026-05-27/01_core_mechanics.md).
+Durable rules I should not have to re-research each session. Last verified 2026-05-27. Full sourced details: [pogo_extract/research_2026-05-27/01_core_mechanics.md](../../pogo_extract/research_2026-05-27/01_core_mechanics.md).
 
 ## CP & level
 - `CP = floor(Atk × √Def × √HP × CPM² / 10)`, minimum 10.

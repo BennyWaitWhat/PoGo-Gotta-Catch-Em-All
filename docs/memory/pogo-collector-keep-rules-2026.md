@@ -7,7 +7,7 @@ metadata:
   originSessionId: b5e83127-eb4b-45c2-bb2c-3416996bd829
 ---
 
-What makes a Pokémon irreplaceable in 2026, beyond the classic IV/PvP/Legacy-move criteria. Full details: [pogo_extract/research_2026-05-27/03_tag_cosmetic_systems.md](../../../../Desktop/Claude%20Operations/Phone%20Maintenance/pogo_extract/research_2026-05-27/03_tag_cosmetic_systems.md) and [04_recent_framework.md](../../../../Desktop/Claude%20Operations/Phone%20Maintenance/pogo_extract/research_2026-05-27/04_recent_framework.md).
+What makes a Pokémon irreplaceable in 2026, beyond the classic IV/PvP/Legacy-move criteria. Full details: [pogo_extract/research_2026-05-27/03_tag_cosmetic_systems.md](../../pogo_extract/research_2026-05-27/03_tag_cosmetic_systems.md) and [04_recent_framework.md](../../pogo_extract/research_2026-05-27/04_recent_framework.md).
 
 ## Adventure Effect roster
 

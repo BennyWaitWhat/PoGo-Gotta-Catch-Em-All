@@ -2,15 +2,15 @@
 
 Benny's Pokémon GO tooling for one rooted Pixel 9 Pro. Since 2026-09-29 **all PoGo work runs in Claude cloud sessions**: this repo holds
 the code and docs, the phone holds the game data, and each cloud session reaches the phone over Tailscale (the SessionStart hook sets up
-the bridge and prints a `PHONE BRIDGE:` line below this page). Benny talks to you in plain words and has ADHD: lead with the action,
-number multi-step work, keep lists short, restate where things stand, end with one next action.
+the bridge and prints a `PHONE BRIDGE:` line below this page). How Benny wants answers: lead with the action,
+number multi-step work, keep lists short (<= 5), restate where things stand, end with one next action.
 
 ## 1. Which session are you?
 | Session | Owns (only the owner edits these) | Read next |
 |---|---|---|
-| **Pokemon Inventory** | `pogo_extract/`, `docs/`, `tools/`, `cloud/`, `.claude/`, root files, data groups `inventory`, `inventory-cold` | `pogo_extract/CLAUDE.md` |
-| **AutoCatcher** | `AutoCatcher/` (except the gym files below), data group `catcher` | `AutoCatcher/README.md` |
-| **Gym Battle** | `AutoCatcher/tools/gym_*.py`, `gym_tapper.py`, `buddy_tapper.py`, `live_graph_js.py`, `test_graph_pick.py`, data group `gym` | `AutoCatcher/tools/GYM.md` |
+| **Pokemon Inventory** | `pogo_extract/`, `pokegenie_work/`, `docs/`, `tools/`, `cloud/`, `.claude/`, root files; data groups `inventory`, `inventory-cold` | `pogo_extract/CLAUDE.md` |
+| **AutoCatcher** | `AutoCatcher/` except the gym files below (incl. `tools/buddy_run.py`); data group `catcher` | `AutoCatcher/README.md` |
+| **Gym Battle** | `AutoCatcher/tools/gym_*` (scripts, `GYM.md`, `gym_state/`), `buddy_tapper.py`, `live_graph_js.py`, `test_graph_pick.py`; data group `gym` | `AutoCatcher/tools/GYM.md` |
 
 Not sure which one you are? Ask Benny in one line. Need a change in a file you don't own? Write it as a numbered request for its owner.
 Then read `docs/memory/INDEX.md` and the notes under "How I should work" and "safety rules": each rule has the incident behind it.
@@ -24,8 +24,9 @@ Then read `docs/memory/INDEX.md` and the notes under "How I should work" and "sa
 ## 3. End of work
 1. **Data:** after anything that changed game data, `python tools/pogo_data.py push --group <your group>`. Refused = another session pushed
    since your pull: pull, redo, push. Never `--force` over someone else's work.
-2. **Code:** commit on your session branch, push, open a PR to `main` and merge it (`gh pr merge --squash --delete-branch`). If merging is
-   refused, give Benny the PR link. Other sessions only see your code once it is on `main`.
+2. **Code:** commit on your session branch and push it. Then open a PR to `main` and merge it (`gh pr create --fill` +
+   `gh pr merge --squash --delete-branch`) if `gh` works here; if it doesn't, give Benny the branch link and say "merge me". Other
+   sessions only see your code once it is on `main`.
 3. Never commit data, secrets or anything the `.gitignore` files keep out. `git add` explicit paths, not `-A`.
 
 ## 4. Rules that apply to everyone (full text + stories in `docs/memory/`)

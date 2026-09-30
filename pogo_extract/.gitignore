@@ -138,6 +138,39 @@ niantic_api_replay_research.md
 /main_agent
 /vpgp_agent
 
+# 5i. scripts that break the hard rules (release, tag nukes outside safe_nuke_tags.py, force-stopping PoGo, unattended
+#     daemons). They stay on the PC for the record; the repo the cloud runs from -- with the phone reachable -- never
+#     carries them (repo-prep critic, 2026-09-29).
+/bulk_release.py
+/_nuke_all_tags.py
+/_nuke_tags.py
+/system/scripts/nuke_all_tags.py
+/fix_remote_trade_binding.py
+/fix_remote_trade_dupe.py
+/autocull_watch.py
+/start_autocull.vbs
+/run_bulk_tag.py
+/self_update.py
+/SELF_UPDATE.md
+/_commons_trim_more.py
+/orchestrate.py
+/run_rename.py
+/spawn_inject.py
+/diag_hook.py
+# 5j. stale policy docs (old caps -- dangerous to act on) and third-party RE research the tooling does not use
+/system/KEEP_POLICY.md
+/system/analysis/KEEP_POLICY_DRYRUN.md
+/existing_tools_survey.md
+/ipogo_features.md
+/ipogo_features_v2.md
+/ipogo_filter_schema.md
+/libnotmain_decrypt_research.md
+/dump_libnotmain.sh
+/mem_write_codeexec_research.md
+/niantic_replay.py
+/pokemod_extraction_attempt.md
+/zygote_injection_research.md
+
 # --- 6. DENY: DIRECTORIES (must stay last) -----------------------------------
 # 6a. personal game data / DB snapshots / per-account trees  (~1.7 GB)
 /.db_snapshots/

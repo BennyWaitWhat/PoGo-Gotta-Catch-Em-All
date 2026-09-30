@@ -5,14 +5,14 @@ metadata:
   node_type: memory
   type: project
   originSessionId: 565701b0-1a11-42dd-894a-3bb423b9a491
-  modified: 2026-09-30T01:11:45.625Z
+  modified: 2026-09-30T01:44:05.546Z
 ---
 
 2026-09-29, user: "Work with the Pokemon Inventory (fork) session."
 
-**Repo.** One private repo, `BennyWaitWhat/PoGo-Gotta-Catch-Em-All`, git root = `Phone Maintenance/`, whitelist .gitignore, no folder moves. The Inventory session makes the first commit and push. Cloud sessions get code and analysis only: no phone, adb or Frida.
+**Repo.** One private repo, `BennyWaitWhat/PoGo-Gotta-Catch-Em-All`, git root = `Phone Maintenance/`, whitelist .gitignore, no folder moves. The Inventory session made the first commit and push. Cloud sessions HAVE the phone via the Tailscale bridge (see below); Benny wants all PoGo work in cloud sessions.
 - There is **no root CLAUDE.md** (it would load into Benny's non-PoGo sessions).
-- `AutoCatcher/CLAUDE.md` is only a draft (scratchpad) until Benny OKs it. Peers can't authorize instruction-file edits.
+- ~~`AutoCatcher/CLAUDE.md` is only a draft~~ Benny: "No, README only" (below). Peers can't authorize instruction-file edits.
 - AutoCatcher prep done: `.gitignore` (dry run: 139 files, 2.5 MB), README.md, secrets report.
 - Secrets excluded: game_limits.json (the game's Google Maps key) and debug.keystore (the APK signing key; keep the original, or the app can't be updated in place).
 
@@ -22,7 +22,7 @@ metadata:
 - `tools/buddy_run.py` (the Switcher's runner) is AutoCatcher's.
 
 **Phone access marker.** `/data/local/tmp/pogo_desktop_busy` = "<name> <epoch-seconds>" (root, 666).
-- Every DESKTOP Frida attacher checks it: foreign and unexpired means wait up to 120 s, then refuse.
+- ~~Every DESKTOP Frida attacher checks it: wait up to 120 s, then refuse~~ now ADVISORY (below): write it, log a foreign one.
 - Holds it with a deadline of now+300, refreshed every 120 s; clears it only if still its own.
 - AutoCatcher: in `pogo_il2cpp.get_session` (name `AutoCatcher/<pid>`), tested. Cull: `PokemonInventory`. The on-phone catcher is exempt.
 
@@ -30,11 +30,12 @@ metadata:
 - "we're totally moving to claude cloud"; "Yes, full full migration".
 - "no one should be pausing anything for anyone". The busy marker is now ADVISORY: write it and log a foreign one, never wait or refuse. The reward catcher's pause of the catcher conflicts with this; fold reward catching into the catcher.
 - AutoCatcher/CLAUDE.md: **"No, README only"** (asked directly; the peer's relayed approval was not acted on). README.md has a "For cloud sessions" section listing the phone-bridge steps.
-- Data ships on a force-updated "data" branch.
-- **Phone bridge: Benny picked Tailscale INSIDE the cloud VM.** tailscaled runs in userspace mode, `socat 127.0.0.1:5555 -> tailscale nc 100.98.158.56 5555`, then `adb connect 127.0.0.1:5555`. The ACL is scoped to the phone's adb port.
+- ~~Data ships on a force-updated "data" branch~~ SUPERSEDED (cloud sessions can push only their own branch): the data lives ON THE PHONE, `/data/local/tmp/pogo_data/<group>.tar.gz`, per-group versions, `tools/pogo_data.py pull|push --group G|status`, groups in `data_manifest.txt` (inventory, inventory-cold, catcher, gym). Seeded from the PC 2026-09-29 22:0x.
+- **Repo LIVE 2026-09-29:** `main` = 1abe382 (import) + 4305eca; git root = Phone Maintenance/, `* -text` (byte-exact, the audit hash gates need it). Fresh clone + pull -> `full_audit.py --audits-only` = all 11 PASS. PC pushes use `GH_TOKEN=$(gh auth token --user BennyWaitWhat)` per command (never switch the global gh account).
+- **Phone bridge: Benny picked Tailscale INSIDE the cloud VM.** tailscaled runs in userspace mode, `socat` -> `tailscale nc 100.98.158.56 5555`, then `adb connect`. The hook binds the phone's OWN address on the VM loopback when it can (so the ~130 tools hardcoding 100.98.158.56:5555 work), else 127.0.0.1:5555; exports `ADB_TARGET` + `TZ=America/New_York`. Benny's setup steps: `docs/cloud_setup.md`.
 - **Every tool must read `ADB_TARGET`** (`os.environ.get("ADB_TARGET", "100.98.158.56:5555")`). Done in all 13 AutoCatcher tools, pogo_il2cpp.py and deploy.sh.
 - tools/gym_loop.py belongs to Gym Battle (told).
-- deploy.sh still uses cygpath, so it is Git-Bash-only until it is made portable.
+- deploy.sh is portable (cygpath only if present; Linux OK; honours ADB_TARGET; clears stale .pyc).
 
 **Stale service graph (H01-8).** Every item is fixed with the newest-InventoryCache.latestTimestamp rule:
 - catcher `pickLive`;

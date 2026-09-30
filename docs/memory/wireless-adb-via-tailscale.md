@@ -27,7 +27,9 @@ USB serial (no ':' in it) that has com.nianticlabs.pokemongo installed. If a pas
 check `tailscale status` first -- the Pixel row shows "offline, last seen Nh ago" when its Tailscale app is off.
 
 **Cloud sessions (Benny, 2026-09-29):**
-- The phone bridge is Tailscale INSIDE the cloud VM: a userspace `tailscaled` plus `socat 127.0.0.1:5555 -> tailscale nc 100.98.158.56 5555`.
-- The session-start hook exports `ADB_TARGET=127.0.0.1:5555`.
+- The phone bridge is Tailscale INSIDE the cloud VM: a userspace `tailscaled` plus `socat` -> `tailscale nc 100.98.158.56 5555`.
+- The session-start hook binds the phone's OWN address (100.98.158.56:5555) on the VM loopback when it can, else 127.0.0.1:5555,
+  and exports `ADB_TARGET` accordingly (plus `TZ=America/New_York`). The phone re-enables adb over TCP 5555 at every boot
+  (Magisk `/data/adb/service.d/adb_tcp_5555.sh`).
 - Every tool reads `os.environ.get('ADB_TARGET', '100.98.158.56:5555')`: pogo_il2cpp, cutoff_hunt.DEV and the gym tools.
 - Never a bare `adb` without `-s`: a TV shares the local adb server.

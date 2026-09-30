@@ -29,6 +29,6 @@ Pokémon GO's structural state changed materially in 2024–2026; what was true 
 - Don't assume Spotlight Hour is on Tuesdays — Showcase is.
 - Treat anything caught in the last 30 days as remote-trade-locked (matters when the user asks "can I trade X to my friend").
 - When the user mentions Niantic, remember Scopely owns the game; news may be filed under either name.
-- The full live-meta snapshot (raid bosses, GBL season, recent debuts) lives in [pogo_extract/research_2026-05-27/02_live_meta.md](../../../../Desktop/Claude%20Operations/Phone%20Maintenance/pogo_extract/research_2026-05-27/02_live_meta.md); refresh from web before quoting current event/raid state — it goes stale fast.
+- The full live-meta snapshot (raid bosses, GBL season, recent debuts) lives in [pogo_extract/research_2026-05-27/02_live_meta.md](../../pogo_extract/research_2026-05-27/02_live_meta.md); refresh from web before quoting current event/raid state — it goes stale fast.
 
 See also [[pogo-mechanics-reference]], [[pogo-collector-keep-rules-2026]], [[project-pogo-extract]].

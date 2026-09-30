@@ -5,7 +5,9 @@
 # NEVER add secrets: *.xml at pogo_extract/ (Pokemod/Niantic prefs), nia_secret_*, *.keystore, game_limits.json,
 # pogo_extract/system/analysis/pokemod/ (a captured refresh token). The phone already holds the originals.
 
-[inventory]                                     # owner: Pokemon Inventory (the cull). ~40 MB packed.
+[inventory]                                     # owner: Pokemon Inventory (the cull). ~55 MB packed.
+# (excluded below: binary-strings dumps of the Pokemod/game libraries, and old one-off release/untag lists that
+#  could be mistaken for a current pile -- none is read by the cull)
 pogo_extract/pokemon.db
 pogo_extract/*.json
 pogo_extract/*.txt
@@ -25,6 +27,14 @@ pogo_extract/accounts/*/pokemon.db
 pogo_extract/accounts/*/*.json
 pogo_extract/accounts/*/*.txt
 pogo_extract/accounts/*/system/**
+!pogo_extract/*strings*.txt
+!pogo_extract/injector_js_extracts.txt
+!pogo_extract/*xfer_list*.json
+!pogo_extract/shiny_xfer_*.json
+!pogo_extract/untag_*.json
+!pogo_extract/jumbo_tag_list.json
+!pogo_extract/*cull_plan*.csv
+!pogo_extract/iv_transfer_plan.csv
 !pogo_extract/**/*secret*
 !pogo_extract/**/*token*
 !pogo_extract/**/*.xml

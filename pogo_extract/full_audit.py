@@ -780,6 +780,12 @@ def main():
         print(__doc__)
         print('flags: %s\nunknown: %s -- NOTHING was run' % (' '.join(FLAGS), ' '.join(bad)))
         return 2
+    _db = os.path.join(ROOT, 'pokemon.db')
+    if not os.path.exists(_db) or os.path.getsize(_db) < 1_000_000:
+        # a fresh cloud checkout has no data until `pull`; running on nothing would judge (and later push) an empty bag
+        print('pokemon.db is missing or empty here -- run `python tools/pogo_data.py pull` from the repo root first. '
+              'NOTHING was run.')
+        return 2
     if not xxl_trim_end():                     # a killed trim run never leaves the trim on -- or a conflict stops here
         return 9
     if '--xxl-trim' in sys.argv[1:]:
