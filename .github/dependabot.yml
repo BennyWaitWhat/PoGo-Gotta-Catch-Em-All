@@ -1,0 +1,9 @@
+# Actions only. Python packages are deliberately NOT managed here: frida must match the phone's gadget (17.9.11) and
+# frida-tools is pinned with it (14.8.2) in cloud/setup.sh -- an automatic bump would break the phone connection.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    labels: [dependencies]

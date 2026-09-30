@@ -59,3 +59,4 @@ AutoCatcher/system/map/*.db
 [gym]                                           # owner: Gym Battle. Runner state and studies.
 AutoCatcher/tools/gym_state/**
 !AutoCatcher/tools/gym_state/runner_inbox/**
+!AutoCatcher/tools/gym_state/runner_cmd.json   # legacy single-slot command file: never replay it

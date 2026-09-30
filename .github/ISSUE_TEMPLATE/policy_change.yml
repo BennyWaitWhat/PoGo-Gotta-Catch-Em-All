@@ -1,0 +1,31 @@
+name: Keep-policy change
+description: Change what gets kept (a cap, a floor, a threshold, a new keep axis) — Benny's call
+labels: [policy]
+body:
+  - type: textarea
+    id: change
+    attributes:
+      label: The change
+      description: What should be kept or released differently, and why.
+    validations:
+      required: true
+  - type: textarea
+    id: options
+    attributes:
+      label: Numbered options
+      description: 2–4 options with what each keeps, what it frees, and the trade-off. Recommended one first.
+      placeholder: |
+        1. (recommended) …
+        2. …
+    validations:
+      required: true
+  - type: input
+    id: account
+    attributes:
+      label: Which account
+      description: oyebenny (main) or florandez (alt) — the caps differ per account.
+    validations:
+      required: true
+  - type: markdown
+    attributes:
+      value: "After Benny picks: edit `pogo_extract/LAW.md` first, then `keep_config.json`, fix EVERY consumer, and run the 11 audits."
