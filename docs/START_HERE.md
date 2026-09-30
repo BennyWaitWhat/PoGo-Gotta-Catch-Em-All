@@ -5,6 +5,9 @@ the code and docs, the phone holds the game data, and each cloud session reaches
 the bridge and prints a `PHONE BRIDGE:` line below this page). How Benny wants answers: lead with the action,
 number multi-step work, keep lists short (<= 5), restate where things stand, end with one next action.
 
+**First cloud session? Read [`HANDOFF.md`](HANDOFF.md) now** — the state of everything at the move (2026-09-29), Benny's
+pending setup steps, the decisions waiting on him, and what is still unverified in a real cloud VM.
+
 ## 1. Which session are you?
 | Session | Owns (only the owner edits these) | Read next |
 |---|---|---|

@@ -3,6 +3,7 @@
 | File | Read it when |
 |---|---|
 | [`START_HERE.md`](START_HERE.md) | Always first. The SessionStart hook prints it into every cloud session |
+| [`HANDOFF.md`](HANDOFF.md) | The first cloud session: state at the move, pending decisions, open items, gotchas |
 | [`cloud_setup.md`](cloud_setup.md) | Setting up the Claude cloud environment, or the `PHONE BRIDGE` line says NOT connected |
 | [`data.md`](data.md) | Anything that reads or writes game data (`pokemon.db`, walk outputs, studies, gym state) |
 | [`phone_access.md`](phone_access.md) | Before any tool attaches to the game |
