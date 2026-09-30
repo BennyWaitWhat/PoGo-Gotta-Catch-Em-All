@@ -105,7 +105,7 @@ def _runner(name, steps, gate=None, snap=None):
     try:
         if snap:
             # ROLLBACK POINT (2026-09-02 audit): db_safety has a sound snapshot API (sqlite backup() +
-            # gzip, retention "last 20 + one per day for 30 days") but the dashboard had never called
+            # gzip, retention: the newest 100) but the dashboard had never called
             # it -- four months of syncs with no restore point. Take one before the first step that can
             # mutate pokemon.db or the phone. Deliberately NON-FATAL: a failed snapshot must not become
             # a new way to block a job, but it is logged loudly so "there was no backup" is never a
@@ -114,6 +114,12 @@ def _runner(name, steps, gate=None, snap=None):
             try:
                 import db_safety
                 _append('snapshot: %s\n' % db_safety.snapshot(snap, DB))
+                # RETENTION (2026-09-30, Benny: "Just keep the last 100 culls."): the cull never pruned, so the PC grew
+                # 1.6 GB of ~4 MB copies. Keeps the newest 100, this one included; a failure only skips the cleanup.
+                try:
+                    _append('snapshots pruned: %d\n' % db_safety.prune(DB))
+                except Exception as e:
+                    _append('!! snapshot prune failed (%s) -- nothing deleted\n' % e)
             except Exception as e:
                 _append('!! SNAPSHOT FAILED (%s) -- continuing, but this run has NO restore point\n' % e)
         if gate:
