@@ -1,7 +1,7 @@
 """PER-POKEMON AUDIT OF EVERY GL / UL RANK TAG (user 2026-09-19: "recheck all the ivs for each and every pokemon you
 have tagged for gl and ul potential and current ... some are incorrect. some even over the cap").
 
-For every mon carrying `GL Rank 1`, `GL Rank 2-5`, `UL Rank 1`, `UL Rank 2-5`, `Evo GL/UL Rank ...` this re-derives
+For every mon carrying `GL/UL Rank 1-5` (own stage) or `GL/UL 1-5 No Evolve` (a later stage) this re-derives
 the answer from scratch -- the ranker's own tables, the stage chain, the league caps -- and reports every mon where
 the tag does not match. Five independent checks per mon:
 
@@ -26,7 +26,7 @@ import granular_tags as gt
 from pvp_iv_rule import pvid, maxcp, GL_CAP, UL_CAP, VIABILITY_MARGIN
 
 TAGS = {'GL Rank 1-5': ('gl', 1, 5, 'own'), 'UL Rank 1-5': ('ul', 1, 5, 'own'),          # merged 2026-09-23
-        'Evo GL Rank 1-5': ('gl', 1, 5, 'evo'), 'Evo UL Rank 1-5': ('ul', 1, 5, 'evo')}
+        'GL 1-5 No Evolve': ('gl', 1, 5, 'evo'), 'UL 1-5 No Evolve': ('ul', 1, 5, 'evo')}   # was Evo GL/UL Rank 1-5 (2026-09-30)
 CAP = {'gl': GL_CAP, 'ul': UL_CAP}
 
 

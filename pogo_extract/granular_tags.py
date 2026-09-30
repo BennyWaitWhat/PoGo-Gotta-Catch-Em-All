@@ -94,8 +94,18 @@ POWER_UP_GL, POWER_UP_UL, SECOND_MOVE = 'Power Up to 1500', 'Power Up to 2500', 
 # needs is pushed empty and retire_tags deletes the shell, exactly like any other empty managed tag.
 EVOLVE_ONCE, EVOLVE_TWICE = 'Evolve Once', 'Evolve Twice'   # THE evolve vocabulary (user 2026-09-29: "I either evolve once
 #                                                              or evolve twice"), + EVOLVE_GATED when the game blocks it and
-#                                                              'Evo Best GL' / 'Evo Best UL' beside them on a PvP comb-up
+#                                                              'Evolve for GL' / 'Evolve for UL' beside them on a PvP comb-up
 #                                                              ("I also like to see the separate PVP ones").
+# THE SECOND FOLD (2026-09-30, user: "So you want me to evolve all the pokemon tagged "Evo UL rank 1-5?"? Even if I have
+# dups?" -> "The tag is the bug ... fix it."). 'Evo GL / UL Rank 1-5' sat on EVERY kept copy a later stage ranks top 5
+# and read as "evolve this": 13 of its 14 UL members were copies of a stage he already owned as good or better (three
+# Pidgeotto beside two Pidgeot #1). An evolve word now sits ONLY where evolving is the advice: 'Evolve for GL' / 'Evolve
+# for UL' (was 'Evo Best GL' / 'Evo Best UL') on the one comb-up pick per target (pvp_combup.pick: it beats every copy
+# you own there), beside the count, and its Best GL / UL chip comes off (the Evolve tag says it). Every OTHER kept copy
+# a later stage ranks top 5 wears '<league> 1-5 No Evolve': a top-5 spread (still kept, rule 15b), not the copy to
+# evolve -- you own one as good or better, it is your best as it is, or the item / candy is missing (build(), below).
+EVOLVE_FOR = {'gl': 'Evolve for GL', 'ul': 'Evolve for UL'}
+NO_EVOLVE_FMT = '%s 1-5 No Evolve'
 EVOLVE_ADVICE = os.path.join(HERE, 'system', 'analysis', 'evolve_advice.json')   # {uid: {targets, steps, gated, gate, leagues, source, tags}}
 STOP_PREFIX = 'Stop at '
 STOP_PREFIXES = ('Stop at ', 'Stop ')            # 'Stop X' when 'Stop at X' would pass 18 characters (no ':' -- a filename)
@@ -117,14 +127,15 @@ RARITY_ROSTERS = (('Ultra Beast', ULTRA_BEAST_IDS),)   # 'Paradox' retired 2026-
 RARITY_NATIVE = frozenset(LEGENDARY_IDS) | frozenset(MYTHICAL_IDS)   # covered by a native chip -> no tag
 RARITY_OTHER = 'Rare Other'
 LEAGUES = (('gl', GL_CAP, 'GL'), ('ul', UL_CAP, 'UL'))
-# '%s Rank N' is the mon's OWN stage (what the Pokemod overlay prints for the mon on screen); 'Evo %s Rank N' is
-# the best rank a LATER stage of its line reaches (evolve it to get there). User 2026-09-08, a 0/15/15 Raboot:
-# "Why is Raboot tagged as GL rank 1 if... it isnt?" -- it is Raboot #7 / Cinderace #1, and one tag said "1".
+# '%s Rank N' is the mon's OWN stage (what the Pokemod overlay prints for the mon on screen). A LATER stage of its line
+# ranking top 5 was 'Evo %s Rank N' until 2026-09-30; now it is '%s 1-5 No Evolve' unless this copy is the one to
+# evolve (THE SECOND FOLD above). User 2026-09-08, a 0/15/15 Raboot: "Why is Raboot tagged as GL rank 1 if... it
+# isnt?" -- it is Raboot #7 / Cinderace #1, and one tag said "1".
 # GATED to stages that can reach the league cap (user 2026-09-09 "drop 13 + gate"): an under-cap species pins every
 # IV to L50, so its hundo ranks "#1" -- true, printed by Pokemod, and useless (UL Rank 1 sat on 352 mons, 89% hundos).
 # 'Best GL' / 'Best UL' were RETIRED 2026-09-09 as labels that decided nothing; since 2026-09-23 they label a KEEP
 # rule (keep_policy 15d, reasons pvp_best_gl / pvp_best_ul) and are emitted from SIMPLE, not re-derived here.
-LEAGUE_TAG_FMTS = ('%s Rank 1-5', 'Evo %s Rank 1-5')   # Rank 1 + Rank 2-5 merged 2026-09-23 (user: "call it 1-5 rank")
+LEAGUE_TAG_FMTS = ('%s Rank 1-5', NO_EVOLVE_FMT)   # own stage, later stage (Rank 1 + 2-5 merged 2026-09-23: "call it 1-5 rank")
 
 # 'Location Card' RETIRED 2026-09-09 (same day it was merged): the native Location Background + Special Background
 # chips list every holder (54 + 239 = 293 = the DB count).
@@ -145,10 +156,10 @@ SIMPLE = {
     'pvp_best_ul': 'Best UL',
     'pvp_best_ml': 'Best ML',     # Master League joins 2026-09-23
     # 2026-09-24 (user: "expanded to everyone so all ul and gl get combed up"): keep rule 15e / pvp_combup.pick -- EVOLVE
-    # this one: it would be a better Great / Ultra League copy of that stage than any you own. Rank-free (Evo GL/UL
-    # Rank 1-5 stays the top-5 spread chip).
-    'pvp_combup_gl': 'Evo Best GL',
-    'pvp_combup_ul': 'Evo Best UL',
+    # this one: it would be a better Great / Ultra League copy of that stage than any you own. Rank-free. Named 'Evo Best
+    # GL / UL' until 2026-09-30 (THE SECOND FOLD above).
+    'pvp_combup_gl': EVOLVE_FOR['gl'],
+    'pvp_combup_ul': EVOLVE_FOR['ul'],
     'rank_unknown': 'Safety Hold',       # was 'Rank Unknown' -- it is a HOLD, not a rank
     'data_incomplete': 'Safety Hold',    # same meaning: kept because the data was not trustworthy
 }
@@ -161,6 +172,11 @@ SIMPLE = {
 # rate-limited to 1-3 per session and mass deletes caused collateral -- see tag_ops note 7). Re-adding a name here to
 # the vocabulary is a deliberate act: the guard in all_tags() refuses a name that is both.
 RETIRED_TAGS = {
+    # 2026-09-30 THE SECOND FOLD (user: "The tag is the bug ... fix it"): an evolve word only where evolving is the advice.
+    'Evo Best GL':        'renamed Evolve for GL (2026-09-30): the one copy per target to evolve',
+    'Evo Best UL':        'renamed Evolve for UL (2026-09-30): the one copy per target to evolve',
+    'Evo GL Rank 1-5':    'split 2026-09-30: the copy to evolve wears Evolve for GL, any other later-stage top 5 GL 1-5 No Evolve',
+    'Evo UL Rank 1-5':    'split 2026-09-30: the copy to evolve wears Evolve for UL, any other later-stage top 5 UL 1-5 No Evolve',
     # 2026-09-29 THE FOLD (user: "fix the redundant tags? I either evolve once or evolve twice" + "I also like to see the
     # separate PVP ones"): every evolve advice is Evolve Once / Evolve Twice (by the number of evolutions to the target),
     # Evolve Gated when the game blocks it, and Evo Best GL / UL beside those on a PvP comb-up. One table: evolve_advice.json.
@@ -340,7 +356,7 @@ def is_stop_tag(name):
 for _t in _retired_stops():
     RETIRED_TAGS.setdefault(_t, 'folded into Evolve Once / Twice (2026-09-29)')
 
-EVOLVE_TAGS = (EVOLVE_ONCE, EVOLVE_TWICE, EVOLVE_GATED, 'Evo Best GL', 'Evo Best UL')   # every evolve tag of the vocabulary
+EVOLVE_TAGS = (EVOLVE_ONCE, EVOLVE_TWICE, EVOLVE_GATED, EVOLVE_FOR['gl'], EVOLVE_FOR['ul'])   # every evolve tag of the vocabulary
 _ADVICE_REASONS = {'evolve_1', 'evolve_2', 'pvp_combup_gl', 'pvp_combup_ul'}              # reasons the table labels, not SIMPLE
 _EVO_ADJ = None
 LAST_ADVICE = {}                                          # the table build() produced last -- build_tagsets writes it out
@@ -390,7 +406,7 @@ def evolve_advice(kept, reasons, pile):
     (refresh_evolve_shiny.compute_target) and the showcase picks (sync_evolve_size.picks). A shiny or size rule that
     cannot run is a HARD stop -- silently dropping its members would strip their tags under the empty-set contract.
     Tags: steps 1 -> Evolve Once, 2 -> Evolve Twice; a game-gated target -> Evolve Gated instead; a comb-up also wears
-    Evo Best GL / UL. Never a pile mon, never a fused component."""
+    Evolve for GL / UL. Never a pile mon, never a fused component."""
     A = os.path.join(HERE, 'system', 'analysis')
     load = lambda n: json.load(open(os.path.join(A, n), encoding='utf-8')) if os.path.exists(os.path.join(A, n)) else {}
     prom, cul = load('promises.json'), load('pvp_combup_labels.json')
@@ -456,7 +472,7 @@ def evolve_advice(kept, reasons, pile):
         put(pad(u), [e['target']], 'size')
     for u, e in out.items():
         e['tags'] = [EVOLVE_GATED if e['gated'] else (EVOLVE_TWICE if e['steps'] == 2 else EVOLVE_ONCE)]
-        e['tags'] += ['Evo Best %s' % lg.upper() for lg in e['leagues']]
+        e['tags'] += [EVOLVE_FOR[lg] for lg in e['leagues']]
     return out
 
 
@@ -660,11 +676,13 @@ def build(rows, pile, reasons):
     # OWN STAGE vs EVOLVED STAGE (2026-09-08). gl_rank/ul_rank is the chain's best VIABLE stage -- for a 0/15/15
     # Raboot that is Cinderace #1 while Raboot itself is #7, and the overlay the user reads shows #7. So:
     #   '%s Rank 1' / '%s Rank 2-5'         = the mon's OWN stage rank (what Pokemod prints for this mon)
-    #   'Evo %s Rank 1' / 'Evo %s Rank 2-5' = the best rank a LATER stage of its line reaches (evolve for it)
+    #   '%s 1-5 No Evolve'                  = a LATER stage of its line reaches rank 1-5 and this copy is NOT the one
+    #                                         to evolve (2026-09-30); the one to evolve wears Evolve for <league>
     # Both read the per-stage chain rank_cache already stores; nothing is gated (Pokemod labels).
     # GATED (2026-09-09): a stage earns a rank label only if it can reach the league cap (L50-hundo CP above
     # cap + keep_config pvp.viability_margin -- the same test pvp_iv_rule.qualifies uses for the keep decision).
     maxcp = _maxcp_fn()
+    _later5 = collections.defaultdict(set)            # a later stage ranks it 1-5 -> No Evolve unless advised (below)
     for league, cap, lbl in LEAGUES:
         _viable = (lambda _cap: (lambda sid: bool(sid) and maxcp(sid) > _cap + VIABILITY_MARGIN))(cap)
         for r in kept:
@@ -674,7 +692,7 @@ def build(rows, pile, reasons):
             if own is not None and own <= 5:
                 T[LEAGUE_TAG_FMTS[0] % lbl].add(r['uid_hex'])
             if evo is not None and evo <= 5:
-                T[LEAGUE_TAG_FMTS[1] % lbl].add(r['uid_hex'])   # evolve it for this rank (user: "so i know to do it")
+                _later5[lbl].add(r['uid_hex'])
 
     # An over-cap rank 1-5 keeper gets NO extra chip (user 2026-09-23: "why are they even tagged"). Best GL/UL is
     # USABLE-ONLY since 2026-09-23 (keep_policy 15d: the best copy that can ENTER the league), so an over-cap spread is
@@ -700,6 +718,14 @@ def build(rows, pile, reasons):
     LAST_ADVICE = evolve_advice(kept, reasons, pile)
     for _t, _us in evolve_tags(LAST_ADVICE).items():
         T[_t] |= _us
+    # THE SECOND FOLD (2026-09-30, user: "The tag is the bug ... fix it"): a later stage ranks it top 5 but no advice
+    # evolves it -> '<league> 1-5 No Evolve' (an evolve tag and No Evolve never sit on one copy); and the copy told to
+    # Evolve for <league> drops its Best <league> chip -- the Evolve tag already says it is the one. Labels only: the
+    # keep is unchanged (the Best ML-on-a-hundo precedent above).
+    for _lbl, _us in _later5.items():
+        T[NO_EVOLVE_FMT % _lbl] |= _us - set(LAST_ADVICE)
+    for _lg in ('gl', 'ul'):
+        T[SIMPLE['pvp_best_' + _lg]] -= T.get(EVOLVE_FOR[_lg], set())
     # LEGACY MOVES IS A FACT, NOT A KEEP REASON (2026-09-17). The legacy keep axis is now capped (best 10 per species,
     # user "Best 10"), so a copy past the cap that another axis keeps (shiny, dex copy ...) lost its 'legacy' reason --
     # but it still HAS legacy moves, and a label must be true for the mon on screen. Tag every kept legacy mover.

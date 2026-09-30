@@ -53,7 +53,7 @@ WHAT IT ASSERTS
                         a legal Windows filename, and reads back to itself through the DB mirror;
                         ONE evolve-advice table (evolve_advice.json) equals the five evolve tag
                         files exactly, every row a kept, unfused mon tagged by its own fields
-                        (Evolve Once / Twice / Gated + Evo Best GL / UL), each Once / Twice count
+                        (Evolve Once / Twice / Gated + Evolve for GL / UL), each Once / Twice count
                         confirmed by the client game master; the fold's retired names (Evolve
                         Next, every Stop tag, Evolve Shiny, Evolve for Size ...) stay retired and
                         off disk; the advice tags sit on kept mons only and never contradict each
@@ -3830,7 +3830,7 @@ def check_stat_line_fidelity(con):
 # THE FOLD (2026-09-29, user: "fix the redundant tags? I either evolve once or evolve twice" + "I also like to see the
 # separate PVP ones"): every evolve advice is ONE table, granular_tags.evolve_advice -> system/analysis/evolve_advice.json
 # ({uid: {targets, steps, gated, gate, leagues, source, tags}}), labelled Evolve Once / Evolve Twice by the number of
-# evolutions to the target, Evolve Gated when the game blocks it, plus Evo Best GL / UL on a PvP comb-up. The dynamic
+# evolutions to the target, Evolve Gated when the game blocks it, plus Evolve for GL / UL on a PvP comb-up. The dynamic
 # 'Stop at <stage>' tags, Evolve Next, Evo Best Gated, Evolve Shiny (+ Gated) and Evolve for Size are RETIRED: prune
 # strips them, retire_tags deletes the shells. Asserted here: the vocabulary, prune's PLAN, order_tags.ORDER and
 # RETIRED_TAGS agree; the table equals the five evolve tag files exactly and every row is a kept, unfused mon tagged by
@@ -3846,7 +3846,8 @@ _WIN_RESERVED = {'CON', 'PRN', 'AUX', 'NUL'} | {'COM%d' % i for i in range(10)} 
 # (2026-09-29) what the fold retired, pinned: a name dropped from granular_tags.RETIRED_TAGS is no longer stripped by
 # prune nor deleted by retire_tags, so the old label stays on the phone for good. The Stop names come from stop_tags.json.
 FOLD_RETIRED = ('Evolve Next', 'Stop at Mid Stage', 'Evo Best Gated', 'Evolve Shiny', 'Evolve Shiny Gated',
-                'Evolve for Size')
+                'Evolve for Size',
+                'Evo Best GL', 'Evo Best UL', 'Evo GL Rank 1-5', 'Evo UL Rank 1-5')   # THE SECOND FOLD (2026-09-30)
 
 
 def _calls_named(path, callee, skip_fn=None):
@@ -3992,6 +3993,11 @@ def check_tag_vocabulary(con):
     # ---- I8.2  the fold's vocabulary: evolve tags registered and on top; retired names out of it and off disk -----
     retired = set(gt.RETIRED_TAGS)
     bad = ['%s is not in all_tags() / registry()' % t for t in ev if t not in vocab or t not in reg]
+    # THE SECOND FOLD (2026-09-30, user: "The tag is the bug"): a keep label must never read as an evolve instruction.
+    # 'Evo UL Rank 1-5' did, and he asked whether to evolve 14 copies -- 13 of them copies of a stage he already owned
+    # as good or better. A managed name with an evolve word is an EVOLVE_TAGS member or says it in the negative.
+    bad += ['%r reads as an evolve instruction but is not an evolve tag' % t for t in sorted(vocab)
+            if re.search(r'\bEvo', t) and t not in ev and not t.endswith('No Evolve')]
     bad += ['%s is RETIRED and still managed' % t for t in sorted(retired & (set(vocab) | set(reg) | set(gt.EXEMPT_TAGS)))]
     stops = []
     try:
@@ -4162,7 +4168,7 @@ def check_tag_vocabulary(con):
         if rowbad or where or diff:
             fail(BLOCK, 'evolve_advice.json and the evolve tags disagree: %s' % ' | '.join((diff + where + rowbad)[:6]),
                  'THE RULE (2026-09-29): one table, one row per copy -- gated -> Evolve Gated, else steps 2 -> Evolve '
-                 'Twice, else Evolve Once, plus Evo Best GL / UL per comb-up league; never a pile mon, never a fused '
+                 'Twice, else Evolve Once, plus Evolve for GL / UL per comb-up league; never a pile mon, never a fused '
                  'component; the five tag files are exactly the table. build_tagsets writes both in one pass, so a gap '
                  'is a stale or hand-edited file (or a crash between the two writes): re-run build_tagsets.py; if it '
                  'persists, granular_tags.evolve_advice and the tag files disagree.')
