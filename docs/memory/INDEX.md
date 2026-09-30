@@ -21,6 +21,7 @@ Notes reference each other as [[note-name]] = the file `note-name.md` in this fo
 
 ## Pokemod + GPS JoyStick
 - [What Pokemod and GPS JoyStick do here](reference-pokemod-and-gps-joystick.md) -- Pokemod's own log path; Transfer on Catch releases most catches before any cull; FirstAidKit forces the frame rate; Pinap Master owns Pinaps; the JoyStick SPEED intent (2026-09-30).
+- [Midtown dense loop](reference-midtown-dense-loop.md) -- catches per km by place (Midtown ~2x Central Park); lap ~ one spawn's life (~25-30 min); `dense_loop.py --send`, `catch_map.py` map page (2026-09-30).
 
 ## How I should work
 - [Don't say things without checking](feedback-check-before-saying.md) -- every game/phone claim and every "next: do X" comes from this turn's read; the release prompt is said once, in the cull report (2026-09-30).
