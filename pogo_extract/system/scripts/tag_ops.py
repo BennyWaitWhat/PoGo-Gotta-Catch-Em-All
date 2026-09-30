@@ -413,9 +413,9 @@ def apply_members(bt, svc, tagproto, proto_list, batch=100):
                     ok = True
                     break
                 log.warning(
-                    "apply_members: batch %d/%d retry %d: built=%s requested=%d",
+                    "apply_members: batch %d/%d retry %d: built=%s requested=%d err=%s %s",
                     batch_num, total_batches, retry,
-                    r.get("built"), len(chunk),
+                    r.get("built"), len(chunk), r.get("err"), r.get("excClass") or '',
                 )
             except Exception as exc:
                 last_result = str(exc)
@@ -615,8 +615,8 @@ def apply_changes(bt, svc, changes, batch=150):
                     break
                 if _mm:
                     break
-                log.warning("apply_changes: batch %d/%d retry %d: built=%s requested=%d err=%s",
-                            bn, nb, retry, r.get("built"), len(chunk), r.get("err"))
+                log.warning("apply_changes: batch %d/%d retry %d: built=%s requested=%d err=%s %s",
+                            bn, nb, retry, r.get("built"), len(chunk), r.get("err"), r.get("excClass") or '')
             except Exception as exc:
                 last = str(exc)
                 log.warning("apply_changes: batch %d/%d retry %d threw: %s", bn, nb, retry, exc)
