@@ -45,7 +45,7 @@ thousands of times. This does all of it for you, straight from the game's own da
 
 Every cull also refreshes **Bag Pulse**, your collection at a glance:
 
-<div align="center"><img src="docs/assets/bag-pulse.jpg" alt="Bag Pulse: storage 5,755/5,850, ladder average IV 89.5%, 677 hundos, 1,378 shinies, PvP top-5 forms, the last 30 culls" width="80%"></div>
+<div align="center"><img src="docs/assets/bag-pulse.jpg" alt="Bag Pulse: score rings for ladder IV 89.5%, non-PvP keepers 88.6%, shiny IV 64.2% and storage 98%; 677 hundos, 1,378 shinies, PvP top-5 forms" width="80%"></div>
 
 ## ⚡ What it does
 **Sorting**

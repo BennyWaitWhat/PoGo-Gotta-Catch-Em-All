@@ -5,6 +5,10 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- Bag Pulse redesign: a night Pokédex frame from the README banner (Poké Ball header, navy-to-plum) with Oura-style data —
+  score rings, light numerals, pastel series, smooth lines with fading fills; the page now shows the real scan time.
+
 ### Changed
 - Root tidied: CONTRIBUTING / SECURITY / CODE_OF_CONDUCT moved to `.github/`, the CHANGELOG to `docs/`,
   `data_manifest.txt` to `tools/`, `wf_master.json` to `pogo_extract/`; `.editorconfig` removed.

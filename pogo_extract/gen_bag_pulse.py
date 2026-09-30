@@ -209,7 +209,7 @@ for i, p in enumerate(passes):                       # newest first: hist[-1-i];
     p['gl1'], p['ul1'] = _e.get('new_gl1', 0), _e.get('new_ul1', 0)
 DATA = {
     'window': WINDOW,
-    'generated': time.strftime('%Y-%m-%d %H:%M'), 'history_from': days[0], 'history_to': days[-1],
+    'generated': time.strftime('%Y-%m-%d %H:%M', time.localtime(os.path.getmtime('pokemon.db'))), 'history_from': days[0], 'history_to': days[-1],
     'kpi': {'bag': N, 'cap': cap_total, 'kept': len(kept), 'pile': len(pile), 'species': len(species), 'identities': len(ident),
             'hundos': len(hundo), 'hundos_today': S('new_hundos'), 'shinies': len(shiny), 'shiny_iv': round(mean([P(r) for r in shiny]), 1),
             'ladder_iv': cur, 'ladder_iv_delta': round(cur - first_iv, 1) if first_iv is not None else None,
@@ -245,46 +245,64 @@ DATA = {
 }
 
 TEMPLATE = r'''<title>Bag Pulse</title>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Sora:wght@600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@500&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Lilita+One&family=Manrope:wght@300;500;600;700&family=Nunito:wght@400;600;700;800&family=IBM+Plex+Mono:wght@500&display=swap">
 <style>
-:root{--bg:#f3f6f5;--surface:#ffffff;--ink:#16211f;--mut:#5f6f6b;--line:#dfe6e3;--accent:#0f7c7a;--accent-soft:#d6ecea;
---shiny:#c8931b;--shiny-soft:#f6e9c6;--hundo:#c8455e;--hundo-soft:#f8dbe1;--pvp:#3a6fb0;--proj:#8aa9a6;--warn:#b7791f;
---font-display:'Sora',system-ui,sans-serif;--font-body:'IBM Plex Sans',system-ui,sans-serif;--font-mono:'IBM Plex Mono',ui-monospace,Menlo,monospace}
-@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){color-scheme:dark;--bg:#0f1615;--surface:#172020;--ink:#e6eeec;--mut:#94a5a1;--line:#263331;
---accent:#3fb8b2;--accent-soft:#163533;--shiny:#e0b03a;--shiny-soft:#3a2f12;--hundo:#ea6f86;--hundo-soft:#43202a;--pvp:#7aa6e0;--proj:#5f7f7b;--warn:#e0a33a}}
-:root[data-theme="dark"]{color-scheme:dark;--bg:#0f1615;--surface:#172020;--ink:#e6eeec;--mut:#94a5a1;--line:#263331;
---accent:#3fb8b2;--accent-soft:#163533;--shiny:#e0b03a;--shiny-soft:#3a2f12;--hundo:#ea6f86;--hundo-soft:#43202a;--pvp:#7aa6e0;--proj:#5f7f7b;--warn:#e0a33a}
-body{background:var(--bg);color:var(--ink);font-family:var(--font-body);font-size:14px;line-height:1.45;margin:0}
+/* Night Pokedex: the README banner's world -- deep navy into plum, Poke Ball red, shiny gold. One dark look on purpose. */
+:root{color-scheme:dark;
+--bg:#080b14;--surface:#0f1629;--surface-2:#141d36;--ink:#eef1fb;--mut:#8e9bbd;--line:#1f2b4b;
+--accent:#ff6b81;--accent-soft:rgba(255,107,129,.16);--shiny:#ffc15e;--shiny-soft:rgba(255,193,94,.16);
+--hundo:#7ee0b0;--hundo-soft:rgba(126,224,176,.16);--pvp:#8fb3ff;--warn:#c3a6ff;--proj:#6b7899;
+--ball-red:#ff3b5c;--grid:rgba(142,155,189,.10);--font-num:'Manrope','Nunito',system-ui,sans-serif;
+--hero-a:#0a0f1f;--hero-b:#14224a;--hero-c:#2a0f2e;--ball-white:#e9edf8;--glow-violet:rgba(185,140,255,.10);
+--font-display:'Lilita One','Nunito',system-ui,sans-serif;--font-body:'Nunito',system-ui,sans-serif;--font-mono:'IBM Plex Mono',ui-monospace,Menlo,monospace}
+body{background:var(--bg);background-image:radial-gradient(900px 520px at 100% -10%,var(--accent-soft),transparent 60%),radial-gradient(760px 520px at -10% 110%,var(--glow-violet),transparent 60%);background-attachment:fixed;color:var(--ink);font-family:var(--font-body);font-size:14px;line-height:1.45;margin:0}
 .wrap{max-width:1080px;margin:0 auto;padding-block:22px 40px;padding-inline:16px}
-h1{font-family:var(--font-display);font-size:26px;margin:0;letter-spacing:-.01em;text-wrap:balance}
-.sub{color:var(--mut);margin:4px 0 18px;font-size:13px}
-h2{font-family:var(--font-display);font-size:15px;margin:0 0 10px;letter-spacing:.01em}
-.eyebrow{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--mut);font-weight:600}
+.hero{display:flex;align-items:center;gap:16px;background:linear-gradient(120deg,var(--hero-a),var(--hero-b) 55%,var(--hero-c));border:1px solid var(--line);border-radius:18px;padding:18px 20px;margin-bottom:16px;position:relative;overflow:hidden}
+.hero::after{content:"";position:absolute;right:-70px;top:-70px;width:230px;height:230px;border-radius:50%;border:10px solid var(--ball-red);opacity:.16;pointer-events:none}
+.hero > div{min-width:0}
+.ball{flex:none;width:46px;height:46px;border-radius:50%;position:relative;background:linear-gradient(var(--ball-red) 0 44%,var(--bg) 44% 56%,var(--ball-white) 56%);box-shadow:0 0 0 3px var(--bg),0 0 26px var(--accent-soft)}
+.ball::after{content:"";position:absolute;left:50%;top:50%;width:14px;height:14px;transform:translate(-50%,-50%);border-radius:50%;background:var(--ball-white);box-shadow:0 0 0 4px var(--bg)}
+h1{font-family:var(--font-display);font-weight:400;font-size:34px;line-height:1;margin:0;letter-spacing:.01em;text-wrap:balance}
+.sub{color:var(--mut);margin:6px 0 0;font-size:13px}
+h2{font-family:var(--font-num);font-weight:600;font-size:17px;margin:0 0 10px;letter-spacing:-.005em;text-wrap:balance}
+.eyebrow{font-size:11px;text-transform:uppercase;letter-spacing:.12em;color:var(--mut);font-weight:700}
+.hero .eyebrow,.card > .eyebrow{color:var(--shiny)}
 .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:18px}
-.kpi{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:12px 14px;display:flex;flex-direction:column;gap:4px}
-.kpi .v{font-family:var(--font-mono);font-size:26px;font-weight:500;line-height:1.1;font-variant-numeric:tabular-nums}
-.kpi .d{font-size:12px;color:var(--mut)}.up{color:var(--accent);font-weight:600}.hu{color:var(--hundo)}.sh{color:var(--shiny)}
-.bar{height:6px;background:var(--line);border-radius:3px;overflow:hidden;margin-top:6px}.bar i{display:block;height:100%;background:var(--accent)}
+.kpi{background:var(--surface);border:1px solid var(--line);border-radius:18px;padding:14px 16px;display:flex;flex-direction:column;gap:6px;transition:border-color .2s}
+.kpi:hover{border-color:var(--accent)}
+.kpi .v{font-family:var(--font-num);font-size:30px;font-weight:300;line-height:1.05;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+.rings{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:12px}
+.ring{background:var(--surface);border:1px solid var(--line);border-radius:22px;padding:16px 10px 14px;display:flex;flex-direction:column;align-items:center;gap:4px;text-align:center;min-width:0}
+.ring .dial{position:relative;width:118px;height:118px}.ring svg{width:100%;height:100%;transform:rotate(-90deg)}
+.ring .num{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-family:var(--font-num);font-weight:300;font-size:30px;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+.ring .num small{font-size:14px;font-weight:500;color:var(--mut);margin-left:1px}
+.ring .l{font-size:11px;text-transform:uppercase;letter-spacing:.12em;color:var(--mut);font-weight:700;margin-top:4px}
+.ring .s{font-size:12px;color:var(--mut)}
+.kpi .d{font-size:12px;color:var(--mut)}.up{color:var(--hundo);font-weight:700}.hu{color:var(--hundo)}.sh{color:var(--shiny)}
+.bar{height:6px;background:var(--line);border-radius:3px;overflow:hidden;margin-top:6px}.bar i{display:block;height:100%;background:linear-gradient(90deg,var(--accent),var(--shiny))}
 .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:14px;margin-bottom:14px}
-.card{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:14px 16px;min-width:0}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:14px 16px;min-width:0}
 .card.wide{grid-column:1/-1}
 .chart{position:relative;height:220px;width:100%}.chart.tall{height:260px}
 .note{color:var(--mut);font-size:12px;margin:8px 0 0}
 table{border-collapse:collapse;width:100%;font-size:13px;font-variant-numeric:tabular-nums}
-th,td{padding:6px 8px;border-bottom:1px solid var(--line);text-align:left;vertical-align:middle}th{color:var(--mut);font-weight:600;font-size:12px}
+th,td{padding:6px 8px;border-bottom:1px solid var(--line);text-align:left;vertical-align:middle}th{color:var(--mut);font-weight:700;font-size:12px}
+tr:hover td{background:var(--surface-2)}
 td.num,th.num{text-align:right}.tbl{overflow-x:auto}
 .mini{display:inline-block;height:8px;border-radius:4px;background:var(--accent);vertical-align:middle;margin-right:6px}
-.chips{display:flex;flex-wrap:wrap;gap:6px}.chip{border:1px solid var(--line);border-radius:999px;padding:3px 9px;font-size:12px;background:var(--bg)}
+.chips{display:flex;flex-wrap:wrap;gap:6px}.chip{border:1px solid var(--line);border-radius:999px;padding:3px 10px;font-size:12px;background:var(--surface-2)}
 .chip b{font-family:var(--font-mono);font-weight:500;color:var(--mut);margin-left:4px}
-.eta{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:10px}.eta div{background:var(--bg);border-radius:8px;padding:8px 10px}
+.eta{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:10px}.eta div{background:var(--surface-2);border-radius:10px;padding:8px 10px}
 .eta .t{font-size:12px;color:var(--mut)}.eta .w{font-family:var(--font-mono);font-size:15px}
-.legend{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--mut);margin-bottom:6px}.legend i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px;vertical-align:-1px}
-@media (max-width:480px){.eta{grid-template-columns:1fr}.kpi .v{font-size:22px}}
+.legend{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--mut);margin-bottom:6px}.legend i{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:5px;vertical-align:-1px}
+a{color:var(--shiny)}
+:focus-visible{outline:2px solid var(--shiny);outline-offset:2px}
+@media (max-width:480px){.eta{grid-template-columns:1fr}.kpi .v{font-size:22px}h1{font-size:28px}.ball{width:38px;height:38px}}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 </style>
 <div class="wrap">
-  <h1>Bag Pulse</h1>
-  <p class="sub" id="sub"></p>
+  <header class="hero"><span class="ball" aria-hidden="true"></span><div><h1>Bag Pulse</h1><p class="sub" id="sub"></p></div></header>
+  <div class="rings" id="rings"></div>
   <div class="kpis" id="kpis"></div>
   <div class="grid">
     <div class="card wide">
@@ -341,10 +359,22 @@ const pct = v => (v == null ? '-' : (typeof v === 'number' ? v.toFixed(1) : v) +
 const num = v => v == null ? '-' : v.toLocaleString();
 const k = D.kpi;
 el('sub').textContent = 'From the ' + D.generated + ' scan. History ' + D.history_from + ' to ' + D.history_to + '. Every figure is what the cull itself uses.';
+const ring = (val, max, color, big, unit, label, sub) => {
+  const r = 50, c = 2 * Math.PI * r, f = Math.max(0, Math.min(1, (val || 0) / max));
+  return '<div class="ring"><div class="dial"><svg viewBox="0 0 120 120" aria-hidden="true">' +
+    '<circle cx="60" cy="60" r="' + r + '" fill="none" stroke="' + tok('--line') + '" stroke-width="9"/>' +
+    '<circle cx="60" cy="60" r="' + r + '" fill="none" stroke="' + color + '" stroke-width="9" stroke-linecap="round" stroke-dasharray="' + (c * f).toFixed(1) + ' ' + c.toFixed(1) + '"/>' +
+    '</svg><div class="num">' + big + (unit ? '<small>' + unit + '</small>' : '') + '</div></div>' +
+    '<div class="l">' + label + '</div><div class="s">' + sub + '</div></div>';
+};
+const fx = v => v == null ? '-' : v.toFixed(1);
+el('rings').innerHTML = [
+  ring(k.ladder_iv, 100, tok('--accent'), fx(k.ladder_iv), '%', 'Ladder IV', k.ladder_iv_delta == null ? 'average of the ladder' : '<span class="up">' + (k.ladder_iv_delta >= 0 ? '+' : '') + k.ladder_iv_delta + ' pts</span> since ' + D.history_from.slice(5).replace('-', '/')),
+  ring(k.nonpvp_iv, 100, tok('--pvp'), fx(k.nonpvp_iv), '%', 'Non-PvP keepers', num(k.nonpvp_n) + ' plain slot holders'),
+  ring(k.shiny_iv, 100, tok('--shiny'), fx(k.shiny_iv), '%', 'Shiny IV', num(k.shinies) + ' shinies'),
+  ring(k.bag, k.cap, k.cap - k.bag < 50 ? tok('--accent') : tok('--hundo'), (100 * k.bag / k.cap).toFixed(0), '%', 'Storage', num(k.bag) + ' / ' + num(k.cap) + ' · ' + (k.cap - k.bag) + ' free'),
+].join('');
 el('kpis').innerHTML = [
-  ['Storage', num(k.bag) + ' / ' + num(k.cap), (k.cap - k.bag) + ' free', '<div class="bar"><i style="width:' + (100 * k.bag / k.cap).toFixed(1) + '%"></i></div>'],
-  ['Ladder average IV', pct(k.ladder_iv), k.ladder_iv_delta == null ? '' : '<span class="up">' + (k.ladder_iv_delta >= 0 ? '+' : '') + k.ladder_iv_delta + ' pts</span> since ' + D.history_from.slice(5).replace('-', '/'), ''],
-  ['Non-PvP keepers', pct(k.nonpvp_iv), num(k.nonpvp_n) + ' plain slot holders', ''],
   ['Hundos', '<span class="hu">' + num(k.hundos) + '</span>', (k.hundos_today ? '+' + k.hundos_today + ' today' : 'none new today'), ''],
   ['Shinies', '<span class="sh">' + num(k.shinies) + '</span>', 'average ' + pct(k.shiny_iv), ''],
   ['XXL winners', num(k.xxl_winners), '≥ ' + k.xxl_min + ' pts, best 2 per species', ''],
@@ -353,13 +383,23 @@ el('kpis').innerHTML = [
   ['Species', num(k.species), num(k.identities) + ' battle forms', ''],
 ].map(([t, v, d, x]) => '<div class="kpi"><div class="eyebrow">' + t + '</div><div class="v">' + v + '</div><div class="d">' + d + '</div>' + x + '</div>').join('');
 
-Chart.defaults.color = tok('--mut'); Chart.defaults.borderColor = tok('--line'); Chart.defaults.font.family = tok('--font-body');
+Chart.defaults.color = tok('--mut'); Chart.defaults.borderColor = tok('--grid'); Chart.defaults.font.family = tok('--font-body');
+Chart.defaults.elements.bar.borderRadius = 6; Chart.defaults.plugins.tooltip.backgroundColor = tok('--surface-2');
+Chart.defaults.plugins.tooltip.borderColor = tok('--line'); Chart.defaults.plugins.tooltip.borderWidth = 1; Chart.defaults.plugins.tooltip.padding = 10;
+const rgba = (hex, a) => { const h = hex.replace('#', ''); if (h.length !== 6) return hex;
+  return 'rgba(' + parseInt(h.slice(0, 2), 16) + ',' + parseInt(h.slice(2, 4), 16) + ',' + parseInt(h.slice(4, 6), 16) + ',' + a + ')'; };
+Chart.register({id: 'softFill', beforeDatasetsDraw(chart) {
+  const a = chart.chartArea; if (!a) return;
+  chart.data.datasets.forEach(ds => { if (!ds.fill || typeof ds.borderColor !== 'string' || ds.borderColor[0] !== '#') return;
+    const g = chart.ctx.createLinearGradient(0, a.top, 0, a.bottom);
+    g.addColorStop(0, rgba(ds.borderColor, .32)); g.addColorStop(1, rgba(ds.borderColor, 0)); ds.backgroundColor = g; });
+}});
 const mono = {family: tok('--font-mono'), size: 11};
-const ax = extra => Object.assign({grid: {color: tok('--line')}, ticks: {font: mono}}, extra || {});
-const pctAx = extra => Object.assign({grid: {color: tok('--line')}, ticks: {font: mono, callback: v => v + '%'}}, extra || {});
+const ax = extra => Object.assign({grid: {color: tok('--grid')}, border: {display: false}, ticks: {font: mono}}, extra || {});
+const pctAx = extra => Object.assign({grid: {color: tok('--grid')}, border: {display: false}, ticks: {font: mono, callback: v => +(+v).toFixed(2) + '%'}}, extra || {});
 const line = (id, labels, datasets, scales) => new Chart(el(id), {type: 'line', data: {labels, datasets}, options: {
   responsive: true, maintainAspectRatio: false, interaction: {mode: 'index', intersect: false}, plugins: {legend: {display: false}},
-  scales: scales || {x: ax(), y: ax()}, elements: {point: {radius: 3}, line: {tension: .25}}}});
+  scales: scales || {x: ax(), y: ax()}, elements: {point: {radius: 0, hoverRadius: 4}, line: {tension: .4, borderWidth: 2.5, borderCapStyle: 'round'}}}});
 const W = D.window, WS = W.series;
 const sgn = (v, nd) => v == null ? '—' : (v > 0 ? '+' : '') + (nd == null ? v : v.toFixed(nd));
 const dcls = v => v > 0 ? 'up' : (v < 0 ? 'hu' : '');
@@ -392,10 +432,10 @@ line('c_ladder', lab, [
 const etaTxt = e => e ? e.days + ' days · ' + e.date : '—';
 { const a = tight(WS.ladder, 0.15), b = tight(WS.best, 0.15);
   new Chart(el('c_pp_iv'), {type: 'line', data: {labels: W.labels, datasets: [
-    {data: WS.ladder, borderColor: tok('--accent'), backgroundColor: tok('--accent-soft'), fill: true, borderWidth: 2.5, pointRadius: 2.5, yAxisID: 'y'},
-    {data: WS.best, borderColor: tok('--hundo'), borderDash: [4, 4], borderWidth: 2, pointRadius: 2, yAxisID: 'y2'}]},
+    {data: WS.ladder, borderColor: tok('--accent'), backgroundColor: tok('--accent-soft'), fill: true, borderWidth: 2.5, pointRadius: 0, yAxisID: 'y'},
+    {data: WS.best, borderColor: tok('--hundo'), borderDash: [4, 4], borderWidth: 2, pointRadius: 0, yAxisID: 'y2'}]},
     options: {responsive: true, maintainAspectRatio: false, interaction: {mode: 'index', intersect: false}, plugins: {legend: {display: false}},
-      scales: {x: ppx, y: pctAx({min: a.min, max: a.max}), y2: {position: 'right', grid: {display: false}, min: b.min, max: b.max, ticks: {font: mono, callback: v => v + '%'}}},
+      scales: {x: ppx, y: pctAx({min: a.min, max: a.max}), y2: {position: 'right', grid: {display: false}, min: b.min, max: b.max, ticks: {font: mono, callback: v => +(+v).toFixed(2) + '%'}}},
       elements: {line: {tension: .25}}}}); }
 new Chart(el('c_pp_pvp'), {type: 'line', data: {labels: W.labels, datasets: [
   {label: 'GL top 5', data: WS.gl5, borderColor: tok('--pvp'), borderWidth: 2.5, pointRadius: 2},
