@@ -22,8 +22,14 @@ per avenue (avenues ~270 m apart, the game shows Pokemon within ~140 m).
 **The loop** (`AutoCatcher/tools/dense_loop.py`): 8th, 7th, 6th, 5th, Park, 3rd Ave between 32nd and 53rd St, back
 along 42nd St. 11.45 km, ~25 min at 28 km/h. `--send` hands it to GPS JoyStick `WALK` (`--ez teleport false`),
 starting at the corner nearest the fix, 2 laps. Sent 03:35:36: no jump, PoGo stayed in front, no Pro gate.
-First 5 min: 28.4 caught/min vs 15.7 on the old route (03:16-03:35). Lap 2 (returning to cleared blocks) is the
-real test -- update this line with it. OpenStreetMap trap: `manhattan_ways.json` includes New Jersey (a Park Ave
+**Result (the catcher's own 5-min run lines):** lap 1 (03:36-04:01) 23.4 caught/min; lap 2 until the bag filled
+(04:01-04:11) 22.9/min -- the same, so a 25-min lap does NOT come back to cleared blocks. Old route: 15.7/min
+(03:16-03:35). So ~+50% from where you walk alone, at the same 28 km/h.
+**The bag is the limit:** it filled ~04:13 (catcher `HOLD ...: Pokemon storage is full`, catches stopped, 'gone'
+climbed +300 by 05:31) after ~1,340 catches since the catcher's 03:02 start. Transfer on Catch keeps only a few
+(6 of 97 at 02:48-02:52), yet the bag still fills: cull + release before a long run.
+The governor now ignores 'gone' while the catcher holds on a full bag (it read every lost Pokemon as an escape
+and sat at 16 km/h) and prints BAG FULL once. OpenStreetMap trap: `manhattan_ways.json` includes New Jersey (a Park Ave
 & 42nd St in Weehawken), so corners are clipped to a Midtown box; Park Ave meets 42nd St only on the viaduct.
 
 **Map page:** `tools/catch_map.py` (template `tools/catch_map.html`) -> https://claude.ai/artifact/X896FsYaPb2YbM4nTzGXRZ

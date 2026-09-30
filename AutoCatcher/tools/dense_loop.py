@@ -17,7 +17,8 @@ down 5th, east on S, up Park, east on N, down 3rd to 42nd, west on 42nd (Grand C
 
   python tools/dense_loop.py [--south 32] [--north 53] [--speed 28] [--laps 2]          plan only (prints km, minutes)
   python tools/dense_loop.py --send ...                                                    hand it to GPS JoyStick WALK
-It never teleports: the walk starts at the loop point nearest the current fix and the joystick walks there.
+It never teleports: the walk starts at the far corner of the loop side nearest the current fix (the corner ahead,
+so a re-send mid-lap carries straight on) and the joystick walks there.
 """
 import argparse, json, math, os, re, sys, time
 from collections import defaultdict
@@ -60,6 +61,15 @@ def intersections(streets):
     return {k: (sum(p[0] for p in v) / len(v), sum(p[1] for p in v) / len(v)) for k, v in out.items()}
 
 
+def off_side(p, a, b):
+    """Metres from point p to the segment a-b (flat projection; fine at block scale)."""
+    k = 111320.0 * math.cos(math.radians(p[0]))
+    ax, ay, bx, by, px, py = a[1] * k, a[0] * 111320.0, b[1] * k, b[0] * 111320.0, p[1] * k, p[0] * 111320.0
+    dx, dy = bx - ax, by - ay
+    t = max(0.0, min(1.0, ((px - ax) * dx + (py - ay) * dy) / (dx * dx + dy * dy or 1.0)))
+    return math.hypot(px - ax - t * dx, py - ay - t * dy)
+
+
 def loop(south, north):
     """The corner sequence of one lap (see the docstring)."""
     seq = [(8, 42), (8, north), (7, north), (7, south), (6, south), (6, north), (5, north), (5, south),
@@ -100,8 +110,8 @@ def main():
     here = ch.fix()
     if not here:
         sys.exit("no mock fix")
-    # start at the corner that is nearest and ahead-ish: nearest corner, then the loop order
-    i = min(range(len(pts)), key=lambda k: ch.meters(here[:2], pts[k]))
+    # start at the END of the loop side we are on (or nearest to), so a re-send never turns back
+    i = (min(range(len(pts)), key=lambda k: off_side(here[:2], pts[k], pts[(k + 1) % len(pts)])) + 1) % len(pts)
     seq = [pts[(i + k) % len(pts)] for k in range(len(pts) * a.laps + 1)]
     wp = ";".join("%.6f,%.6f" % p for p in seq)
     ch.api("WALK", '--es waypoints "%s" --ez teleport false --ef speed %.1f' % (wp, a.speed))
