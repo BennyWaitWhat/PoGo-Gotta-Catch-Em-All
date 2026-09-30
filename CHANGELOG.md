@@ -5,6 +5,11 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+- AutoCatcher: every path that force-stopped PoGo is retired (#6): `restart_pogo_and_wait` raises, `tools/joystick_round.py`
+  refuses while PoGo is open, and 41 retired `ondevice_toggle/` files plus `catch_loop_fast.v1-pause.py` left git (they stay on the PC).
+- `docs/memory` re-synced with the PC memory (#7).
+
 ## [1.0.0] — 2026-09-29 — the move to the cloud
 
 Before this release the tooling lived only on Benny's Windows PC (bag curation since 2026-05, the on-phone catcher
