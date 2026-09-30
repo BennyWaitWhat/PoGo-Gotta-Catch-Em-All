@@ -1,0 +1,189 @@
+<title>Midtown Catch Map</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Barlow:wght@400;500;600&family=JetBrains+Mono:wght@500&display=swap">
+<style>
+/* Layout: one column; key numbers, then the map turned so the avenues run straight up, then the reasons. */
+:root {
+  --ground: #eef1ec; --paper: #f8faf6; --ink: #17201b; --muted: #5c6a61; --line: #d3dad2;
+  --street: #b9c2bb; --path: #9dbb9f; --park: #d3e6cf; --stop: #2f6fb0; --gym: #6b3fa0; --lure: #d0287a;
+  --loop: #0d3b2e; --me: #e0501b;
+  --h1: #8fb8de; --h2: #5aa36a; --h3: #e1b12c; --h4: #e0782b; --h5: #c21f1f;
+  --display: "Barlow Condensed", "Arial Narrow", "Roboto Condensed", sans-serif;
+  --body: "Barlow", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --ground: #0f1512; --paper: #151d19; --ink: #e4ebe6; --muted: #93a39a; --line: #2a3530;
+  --street: #3a4741; --path: #35553b; --park: #1b3322; --stop: #6fa8e0; --gym: #b08be0; --lure: #ff5fa8;
+  --loop: #7fe0c0; --me: #ff7a45;
+  --h1: #5b86b0; --h2: #4f9e60; --h3: #e6be3c; --h4: #f08a3c; --h5: #ff4a4a; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --ground: #0f1512; --paper: #151d19; --ink: #e4ebe6; --muted: #93a39a; --line: #2a3530;
+  --street: #3a4741; --path: #35553b; --park: #1b3322; --stop: #6fa8e0; --gym: #b08be0; --lure: #ff5fa8;
+  --loop: #7fe0c0; --me: #ff7a45;
+  --h1: #5b86b0; --h2: #4f9e60; --h3: #e6be3c; --h4: #f08a3c; --h5: #ff4a4a; color-scheme: dark }
+body { background: var(--ground); color: var(--ink); font-family: var(--body); font-size: 15px; line-height: 1.5; }
+.wrap { max-width: 980px; margin: 0 auto; padding-inline: 16px; padding-block: 20px 40px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 18px; }
+.wrap > * { min-width: 0; }
+h1 { font-family: var(--display); font-weight: 700; font-size: 2.1rem; letter-spacing: .01em; line-height: 1.05; margin: 0; text-wrap: balance; }
+.sub { color: var(--muted); margin: 4px 0 0; font-size: .93rem; }
+.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
+.stat { background: var(--paper); border: 1px solid var(--line); border-radius: 6px; padding: 10px 12px; min-width: 0; }
+.stat .k { font-family: var(--display); font-weight: 600; text-transform: uppercase; letter-spacing: .06em; font-size: .8rem; color: var(--muted); }
+.stat .n { font-family: var(--display); font-weight: 700; font-size: 2.2rem; line-height: 1; font-variant-numeric: tabular-nums; }
+.stat .n small { font-size: .95rem; font-weight: 600; color: var(--muted); margin-left: 3px; }
+.stat .d { font-family: var(--mono); font-size: .74rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+.bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.bar button { font: 600 .82rem var(--display); letter-spacing: .05em; text-transform: uppercase; color: var(--ink);
+  background: var(--paper); border: 1px solid var(--line); border-radius: 4px; padding: 5px 10px; cursor: pointer; }
+.bar button[aria-pressed="true"] { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+.bar button:focus-visible { outline: 2px solid var(--me); outline-offset: 2px; }
+.bar .sep { width: 1px; height: 20px; background: var(--line); }
+.mapbox { overflow: auto; border: 1px solid var(--line); border-radius: 6px; background: var(--paper); max-height: 78vh; }
+#map { display: block; width: 100%; height: auto; }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: .84rem; color: var(--muted); align-items: center; }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.sw { width: 26px; height: 6px; border-radius: 3px; display: inline-block; }
+.dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
+.ring { width: 12px; height: 12px; border-radius: 50%; border: 2px solid var(--lure); display: inline-block; }
+.why { background: var(--paper); border: 1px solid var(--line); border-radius: 6px; padding: 14px 16px; }
+.why h2 { font-family: var(--display); font-weight: 700; font-size: 1.3rem; margin: 0 0 6px; }
+.why ol { margin: 0; padding-left: 20px; display: grid; gap: 6px; max-width: 70ch; }
+.bands { overflow-x: auto; }
+table { border-collapse: collapse; font-size: .86rem; font-variant-numeric: tabular-nums; min-width: 320px; }
+th, td { text-align: right; padding: 4px 10px; border-bottom: 1px solid var(--line); }
+th:first-child, td:first-child { text-align: left; }
+th { font-family: var(--display); font-weight: 600; text-transform: uppercase; letter-spacing: .05em; font-size: .78rem; color: var(--muted); }
+.cell { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; vertical-align: -1px; }
+@media (prefers-reduced-motion: no-preference) { .me-pulse { animation: pulse 2s ease-in-out infinite; } }
+@keyframes pulse { 50% { opacity: .35; } }
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>Midtown Catch Map</h1>
+    <p class="sub" id="sub">Mid Central Park to Bryant Park</p>
+  </header>
+  <section class="stats" id="stats" aria-label="Catches per km walked"></section>
+  <div class="bar" role="toolbar" aria-label="Map controls">
+    <button id="z1" aria-pressed="true">1×</button><button id="z2" aria-pressed="false">2×</button><button id="z3" aria-pressed="false">3×</button>
+    <span class="sep"></span>
+    <button id="lCatch" aria-pressed="true">Catches</button><button id="lLoop" aria-pressed="true">Loop</button>
+    <button id="lStops" aria-pressed="true">Stops</button><button id="lLure" aria-pressed="true">Lure history</button>
+  </div>
+  <div class="mapbox" id="mapbox"><svg id="map" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Map of Midtown and Central Park, avenues vertical"></svg></div>
+  <div class="legend" id="legend"></div>
+  <section class="why">
+    <h2>Why the loop runs where it does</h2>
+    <ol id="why"></ol>
+  </section>
+  <section class="why bands">
+    <h2>Catches per km, south to north</h2>
+    <table id="bands"><thead><tr><th>Stretch</th><th>km walked</th><th>Caught</th><th>Per km</th></tr></thead><tbody></tbody></table>
+  </section>
+</div>
+
+<script>
+const D = /*DATA*/null;
+const NS = "http://www.w3.org/2000/svg";
+const svg = document.getElementById("map");
+const W = D.V[1] - D.V[0], H = D.U[1] - D.U[0];
+const X = v => (v - D.V[0]).toFixed(1), Y = u => (D.U[1] - u).toFixed(1);
+svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+const SCALE = [[15, "--h1"], [30, "--h2"], [45, "--h3"], [60, "--h4"], [1e9, "--h5"]];
+const heat = k => `var(${SCALE.find(s => k < s[0])[1]})`;
+
+function el(tag, attrs, parent) {
+  const e = document.createElementNS(NS, tag);
+  for (const k in attrs) e.setAttribute(k, attrs[k]);
+  (parent || svg).appendChild(e);
+  return e;
+}
+function pathOf(lines) {
+  return lines.map(l => "M" + l.map(p => X(p[1]) + " " + Y(p[0])).join("L")).join("");
+}
+const gBase = el("g", {});
+for (const k in D.parks) el("polygon", { points: D.parks[k].map(p => X(p[1]) + "," + Y(p[0])).join(" "), fill: "var(--park)" }, gBase);
+el("path", { d: pathOf(D.paths), fill: "none", stroke: "var(--path)", "stroke-width": ".7", "vector-effect": "non-scaling-stroke" }, gBase);
+el("path", { d: pathOf(D.roads), fill: "none", stroke: "var(--street)", "stroke-width": "1", "vector-effect": "non-scaling-stroke" }, gBase);
+
+const gStops = el("g", {}), gLure = el("g", {});
+for (const f of D.forts) {
+  el("circle", { cx: X(f[1]), cy: Y(f[0]), r: f[2] ? 16 : 10, fill: f[2] ? "var(--gym)" : "var(--stop)", opacity: .75 }, gStops);
+  if (f[3]) el("circle", { cx: X(f[1]), cy: Y(f[0]), r: 22 + 7 * Math.min(f[3], 8), fill: "none", stroke: "var(--lure)",
+    "stroke-width": "1.6", "vector-effect": "non-scaling-stroke", opacity: .85 }, gLure);
+}
+const gCatch = el("g", {});
+for (const s of D.seg) el("line", { x1: X(s[1]), y1: Y(s[0]), x2: X(s[3]), y2: Y(s[2]), stroke: heat(s[4]),
+  "stroke-width": "5", "stroke-linecap": "round", "vector-effect": "non-scaling-stroke" }, gCatch);
+
+const defs = el("defs", {});
+const mk = el("marker", { id: "arw", viewBox: "0 0 10 10", refX: "5", refY: "5", markerWidth: "7", markerHeight: "7", orient: "auto-start-reverse" }, defs);
+el("path", { d: "M1 1L9 5L1 9z", fill: "var(--loop)" }, mk);
+const gLoop = el("g", {});
+const lp = D.loop.concat([D.loop[0]]);
+const mids = [];
+for (let i = 0; i < lp.length - 1; i++) mids.push(lp[i], [(lp[i][0] + lp[i + 1][0]) / 2, (lp[i][1] + lp[i + 1][1]) / 2]);
+mids.push(lp[lp.length - 1]);
+el("polyline", { points: mids.map(p => X(p[1]) + "," + Y(p[0])).join(" "), fill: "none", stroke: "var(--loop)", "stroke-width": "3.2",
+  "stroke-linejoin": "round", "vector-effect": "non-scaling-stroke", "marker-mid": "url(#arw)", opacity: .92 }, gLoop);
+
+const gLab = el("g", { "font-family": "Barlow Condensed, Arial Narrow, sans-serif", "font-weight": "600", fill: "var(--muted)" });
+for (const [name, v] of D.aves) el("text", { x: X(v), y: 70, "text-anchor": "middle", "font-size": 70 }, gLab).textContent = name;
+for (const [st, u] of D.sts) el("text", { x: 20, y: +Y(u) + 22, "font-size": 64 }, gLab).textContent = st + " St";
+for (const k in D.parks) {
+  const p = D.parks[k], cv = p.reduce((a, q) => a + q[1], 0) / p.length;
+  const cu = Math.min(p.reduce((a, q) => a + q[0], 0) / p.length, D.U[1] - 700);   // Central Park runs off the top
+  el("text", { x: X(cv), y: Y(cu), "text-anchor": "middle", "font-size": k === "Central Park" ? 90 : 48, fill: "var(--muted)",
+    "font-weight": "700", opacity: .8 }, gLab).textContent = k;
+}
+const me = el("g", {});
+el("circle", { cx: X(D.me[1]), cy: Y(D.me[0]), r: 60, fill: "none", stroke: "var(--me)", "stroke-width": "2", "vector-effect": "non-scaling-stroke", class: "me-pulse" }, me);
+el("circle", { cx: X(D.me[1]), cy: Y(D.me[0]), r: 26, fill: "var(--me)" }, me);
+
+function toggle(id, g) {
+  const b = document.getElementById(id);
+  b.onclick = () => { const on = b.getAttribute("aria-pressed") !== "true"; b.setAttribute("aria-pressed", on); g.style.display = on ? "" : "none"; };
+}
+toggle("lCatch", gCatch); toggle("lLoop", gLoop); toggle("lStops", gStops); toggle("lLure", gLure);
+for (const z of [1, 2, 3]) document.getElementById("z" + z).onclick = () => {
+  svg.style.width = (100 * z) + "%";
+  for (const k of [1, 2, 3]) document.getElementById("z" + k).setAttribute("aria-pressed", k === z);
+};
+
+document.getElementById("sub").textContent =
+  `Mid Central Park to Bryant Park · catches measured ${D.asof.slice(11, 16)} · the loop: ${D.lap_km} km a lap, about ${Math.round(D.lap_km / 27.8 * 60)} min at 28 km/h`;
+const Z = [["Loop so far", "The loop so far"], ["Bryant Park", "Bryant Park"], ["street", "Midtown streets"], ["Central Park", "Central Park"]];
+document.getElementById("stats").innerHTML = Z.filter(z => D.zones[z[0]]).map(([k, name]) => {
+  const z = D.zones[k];
+  return `<div class="stat"><div class="k">${name}</div><div class="n">${Math.round(z.per_km)}<small>per km</small></div>` +
+    `<div class="d">${z.caught} caught · ${z.km} km · ${z.per_min}/min</div></div>`;
+}).join("");
+document.getElementById("legend").innerHTML =
+  SCALE.map((s, i) => `<span><i class="sw" style="background:var(${s[1]})"></i>${i ? SCALE[i - 1][0] : 0}${s[0] < 1e9 ? "–" + s[0] : "+"}/km</span>`).join("") +
+  `<span><i class="sw" style="background:var(--loop)"></i>the loop</span><span><i class="dot" style="background:var(--stop)"></i>stop</span>` +
+  `<span><i class="dot" style="background:var(--gym)"></i>gym</span><span><i class="ring"></i>lured (Sep 25 night, bigger = more often)</span>` +
+  `<span><i class="dot" style="background:var(--me)"></i>you</span>`;
+document.getElementById("why").innerHTML = [
+  `<b>Density, measured tonight:</b> Bryant Park and the streets from 42nd to 50th gave about twice the catches per km of Central Park.`,
+  `<b>Lap length:</b> a wild spawn stays up about 30 minutes (the rule players have mapped). A lap of about ${Math.round(D.lap_km / 27.8 * 60)} minutes comes back when the spawns it caught have been replaced, instead of re-walking a block it just cleared.`,
+  `<b>One lane per avenue:</b> avenues are about 270 m apart and the game shows Pokémon within about 140 m, so each lane covers the ground to the next avenue.`,
+  `<b>Lures:</b> the lure history is thickest around Bryant Park and Times Square. The loop crosses that on 42nd St every lap.`,
+  `<b>Central Park is left out:</b> 24 per km against 43 to 58 in Midtown.`,
+].map(t => `<li>${t}</li>`).join("");
+
+// south-to-north bands along the walk: 400 m steps uptown
+const B = {};
+for (const s of D.seg) {
+  const u = (s[0] + s[2]) / 2, b = Math.floor(u / 400);
+  const d = Math.hypot(s[2] - s[0], s[3] - s[1]);
+  (B[b] = B[b] || { d: 0, c: 0, n: 0 });
+  B[b].d += d; B[b].n += 1; B[b].c += s[6];
+}
+const stAt = u => { let best = D.sts[0]; for (const s of D.sts) if (Math.abs(s[1] - u) < Math.abs(best[1] - u)) best = s; return best[0]; };
+const approxSt = u => Math.round(42 + u / 80.5);
+document.querySelector("#bands tbody").innerHTML = Object.keys(B).map(Number).sort((a, b) => a - b).filter(b => B[b].d > 250).map(b => {
+  const r = B[b], km = r.d / 1000, per = r.c / km;
+  return `<tr><td><i class="cell" style="background:${heat(per)}"></i>${approxSt(b * 400)}th – ${approxSt(b * 400 + 400)}th St</td><td>${km.toFixed(2)}</td><td>${Math.round(r.c)}</td><td>${per.toFixed(0)}</td></tr>`;
+}).join("");
+</script>

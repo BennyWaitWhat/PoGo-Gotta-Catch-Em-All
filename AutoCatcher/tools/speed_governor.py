@@ -15,7 +15,7 @@ On exit it puts the speed back to RESTORE_KMH. Every sample goes to a CSV, so ca
 
   python tools/speed_governor.py --csv <file> [--minutes 60] [--dry]
 """
-import argparse, csv, math, os, re, subprocess, sys, time
+import argparse, csv, math, os, re, signal, subprocess, sys, time
 
 ADB = os.environ.get("ADB_TARGET", "100.98.158.56:5555")
 LOG = "/data/data/com.termux/files/home/pogo/system/analysis/pokemod/catch_loop.log"
@@ -41,8 +41,9 @@ PARKS = {
     "Bryant Park": [(40.75247, -73.98483), (40.75400, -73.98126), (40.75501, -73.98200), (40.75347, -73.98559)],
     "Central Park": [(40.76812, -73.98186), (40.76440, -73.97296), (40.79690, -73.94935), (40.80053, -73.95813)],
 }
-# The corridor between them (a generous box around 5th-7th Ave, 38th-60th St plus the park): outside it, hands off.
-CORRIDOR = (40.748, 40.802, -73.992, -73.947)
+# Where it may drive: Midtown 30th-60th St, 9th Ave-3rd Ave, plus Central Park to 110th St. Outside it, hands off.
+# (2026-09-30 03:35: tools/dense_loop.py walks 32nd-53rd St, 8th Ave-3rd Ave.)
+CORRIDOR = (40.740, 40.802, -73.998, -73.947)
 
 
 def inside(poly, lat, lng):
@@ -122,6 +123,7 @@ def main():
         wr.writerow(["time", "lat", "lng", "kmh", "bearing", "place", "vis", "track", "pend", "caught", "gone",
                      "target", "sent", "why"])
     end = time.time() + a.minutes * 60
+    signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))   # a stop from outside still runs the restore below
     last_fix, target, last_busy, hold_until, last_gone, alarm = None, None, 0.0, 0.0, None, None
     print("speed governor: %s, cap %.0f km/h (fast %.0f / park %.0f / busy %.0f), restore %.0f on exit -> %s"
           % ("DRY RUN" if a.dry else "LIVE", MAX_KMH, FAST_KMH, PARK_KMH, BUSY_KMH, RESTORE_KMH, CSV), flush=True)
