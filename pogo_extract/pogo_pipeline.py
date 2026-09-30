@@ -226,64 +226,79 @@ function pipelineEnumBindings(svcAddrStr, protoToUid) {
 }
 
 function pipelineReadDex(dexAddrStr) {
-    var inst = ptr(dexAddrStr);
-    var dictAll = inst.add(0x10).readPointer();
-    var entries = dictAll.add(0x18).readPointer();
-    var maxLen = entries.add(0x18).readS32();
-    var data = entries.add(0x20);
-    var results = [];
-    for (var i = 0; i < maxLen; i++) {
-        var ep = data.add(i * 24);
-        var hashCode = ep.readS32();
-        if (hashCode < 0) continue;
-        var pidv = ep.add(8).readS32();
-        var protoPtr = ep.add(16).readPointer();
-        if (protoPtr.isNull()) continue;
-        var timesCaptured = protoPtr.add(0x18).readS32();
-        // CapturedForms RepeatedField<Form> @ +0x50 (count@+0x18, items@+0x10, data@+0x20 int32)
-        var capturedForms = [];
-        try {
-            var cf = protoPtr.add(0x50).readPointer();
-            if (!cf.isNull()) {
-                var cfn = cf.add(0x18).readS32();
-                // CLAMP, not cutoff: Pikachu is at 46 captured forms and climbing -- the old <60 guard
-                // silently dropped the WHOLE list past 60, blanking form-gap detection (audit F20)
-                if (cfn > 0 && cfn < 1000) {
-                    var cfx = Math.min(cfn, 256);
-                    var cfi = cf.add(0x10).readPointer();
-                    for (var ci = 0; ci < cfx; ci++) capturedForms.push(cfi.add(0x20 + ci*4).readS32());
-                }
+    // BY REFLECTION since game 0.431.0 (2026-09-30, pogo_il2cpp _pdx*): the species of EVERY Dictionary<Int32, PokedexEntryProto>
+    // PokedexImpl holds (ten since 0.431.0, one before), each species once; the proto fields by NAME. The Dictionary Entry
+    // struct is {int hashCode, int next, int key, <pad>, PokedexEntryProto value} = 24 bytes (unchanged, probe of 2026-09-30).
+    var inst = ptr(dexAddrStr), dicts = _pdxDicts(inst), seen = {}, results = [];
+    var L = {dicts: dicts.map(function (d) { return d.field + '@' + d.off + ':' + d.count; }), tc: -1, cf: -1, cs: -1, cats: 0};
+    var rfA = -1, rfN = -1, llOff = -1, hOff = -1, nOff = -1, iOff = -1, catOff = -1, acqOff = -1;
+    dicts.forEach(function (d) {
+        for (var i = 0; i < d.len; i++) {
+            var ep = d.entries.add(0x20 + i * 24);
+            if (ep.readS32() < 0) continue;
+            var pidv = ep.add(8).readS32();
+            if (seen[pidv]) continue;
+            var protoPtr = ep.add(16).readPointer();
+            if (protoPtr.isNull()) continue;
+            if (L.tc < 0) {                                  // the proto's own field names (TimesCaptured, CapturedForms, CategoryStatus)
+                L.tc = _pdxOff(protoPtr, /^timescaptured$/); L.cf = _pdxOff(protoPtr, /^capturedforms$/); L.cs = _pdxOff(protoPtr, /^categorystatus$/);
+                if (L.tc < 0) return;                        // not the proto we know: read nothing rather than guess
             }
-        } catch(e) {}
-        var hundoAcq = false, shinyHundoAcq = false, purifiedAcq = false;
-        var mapField = protoPtr.add(0x80).readPointer();
-        if (!mapField.isNull()) {
-            var list = mapField.add(0x18).readPointer();
-            if (!list.isNull()) {
-                var head = list.add(0x10).readPointer();
-                var lcount = list.add(0x18).readS32();
-                var node = head, iters = 0;
-                while (node && !node.isNull() && iters < lcount + 50) {
-                    try {
-                        var kvpVal = node.add(0x30).readPointer();
-                        if (!kvpVal.isNull()) {
-                            var catEnum = kvpVal.add(0x10).readS32();
-                            var acq = kvpVal.add(0x15).readU8();
-                            if (catEnum === 14 && acq) hundoAcq = true;
-                            if (catEnum === 102 && acq) shinyHundoAcq = true;
-                            if (catEnum === 16 && acq) purifiedAcq = true;
+            seen[pidv] = 1;
+            var timesCaptured = protoPtr.add(L.tc).readS32();
+            // CapturedForms: a RepeatedField<Form> {array, count}; CLAMP, not cutoff (Pikachu is past 46 forms -- audit F20)
+            var capturedForms = [];
+            try {
+                var cf = L.cf < 0 ? NULL : protoPtr.add(L.cf).readPointer();
+                if (!cf.isNull()) {
+                    if (rfA < 0) { rfA = _pdxOff(cf, /^array$/); rfN = _pdxOff(cf, /^count$/); }
+                    var cfn = rfN < 0 ? 0 : cf.add(rfN).readS32();
+                    if (cfn > 0 && cfn < 1000 && rfA >= 0) {
+                        var cfx = Math.min(cfn, 256), cfi = cf.add(rfA).readPointer();
+                        for (var ci = 0; ci < cfx; ci++) capturedForms.push(cfi.add(0x20 + ci*4).readS32());
+                    }
+                }
+            } catch(e) {}
+            // CategoryStatus: MapField<String, PokedexCategoryStatus> {.., LinkedList<KeyValuePair<..>> list}; each node's item is
+            // the KeyValuePair struct inline (key string @+0, value @+8); the status proto's category enum + Acquired flag by name
+            var hundoAcq = false, shinyHundoAcq = false, purifiedAcq = false;
+            try {
+                var mapField = L.cs < 0 ? NULL : protoPtr.add(L.cs).readPointer();
+                if (!mapField.isNull()) {
+                    if (llOff < 0) { var mf = _pdxFields(mapField); for (var q = 0; q < mf.length; q++) if (/LinkedList`?1?</.test(mf[q].type) && !/Node/.test(mf[q].type)) { llOff = mf[q].off; break; } }
+                    var list = llOff < 0 ? NULL : mapField.add(llOff).readPointer();
+                    if (!list.isNull()) {
+                        if (hOff < 0) hOff = _pdxOff(list, /^(head|first)$/);
+                        var lco = _pdxOff(list, /^count$/);
+                        var head = hOff < 0 ? NULL : list.add(hOff).readPointer();
+                        var lcount = lco < 0 ? 0 : list.add(lco).readS32();
+                        var node = head, iters = 0;
+                        while (node && !node.isNull() && iters < lcount + 50) {
+                            if (nOff < 0) { nOff = _pdxOff(node, /^(next|forward)$/); iOff = _pdxOff(node, /^item$/); }
+                            if (nOff < 0 || iOff < 0) break;
+                            var kvpVal = node.add(iOff + 8).readPointer();
+                            if (!kvpVal.isNull()) {
+                                if (catOff < 0) { catOff = _pdxOff(kvpVal, /category$/); acqOff = _pdxOff(kvpVal, /^acquired$/); }
+                                if (catOff >= 0 && acqOff >= 0) {
+                                    var catEnum = kvpVal.add(catOff).readS32(), acq = kvpVal.add(acqOff).readU8();
+                                    L.cats++;
+                                    if (catEnum === 14 && acq) hundoAcq = true;
+                                    if (catEnum === 102 && acq) shinyHundoAcq = true;
+                                    if (catEnum === 16 && acq) purifiedAcq = true;
+                                }
+                            }
+                            var next = node.add(nOff).readPointer();
+                            if (next.isNull() || next.equals(head)) break;
+                            node = next; iters++;
                         }
-                        var next = node.add(0x18).readPointer();
-                        if (next.isNull() || next.equals(head)) break;
-                        node = next;
-                    } catch(e) { break; }
-                    iters++;
+                    }
                 }
-            }
+            } catch(e) {}
+            results.push({pid: pidv, times: timesCaptured, forms: capturedForms, hundo: hundoAcq, shinyHundo: shinyHundoAcq, purified: purifiedAcq});
         }
-        results.push({pid: pidv, times: timesCaptured, forms: capturedForms, hundo: hundoAcq, shinyHundo: shinyHundoAcq, purified: purifiedAcq});
-    }
-    return {count: results.length, entries: results};
+    });
+    L.rf = [rfA, rfN]; L.map = [llOff, hOff, nOff, iOff, catOff, acqOff];
+    return {count: results.length, entries: results, layout: L};
 }
 
 rpc.exports.pipelineWalk = pipelineWalk;
@@ -609,14 +624,10 @@ rpc.exports.probeNumberOfTags = function(addr) {
 
 rpc.exports.probeDexCount = function(addr) {
     _ensureInit();
-    try {
+    try {                                   // by reflection since 0.431.0 (see _pdxDicts): +0x10 is no longer the dictionary
         var inst = ptr(addr);
-        var dict = inst.add(0x10).readPointer();
-        if (dict.isNull()) return {ok:false, err:'null dict'};
-        var entries = dict.add(0x18).readPointer();
-        if (entries.isNull()) return {ok:false, err:'null entries'};
-        var count = entries.add(0x18).readS32();
-        return {ok:true, n: count};
+        if (!_pdxDicts(inst).length) return {ok:false, err:'no Dictionary<Int32, PokedexEntryProto> field'};
+        return {ok:true, n: _pdxCount(inst)};
     } catch(e) { return {ok:false, err: e.toString()}; }
 };
 """
@@ -1808,6 +1819,9 @@ def step_read_dex(script, dex_addr):
         except Exception: pass
 
     r = script.exports_sync.pipeline_read_dex(dex_addr)
+    _L = r.get('layout') or {}
+    _tick(f"   dex layout: {len(_L.get('dicts') or [])} dictionaries ({', '.join((_L.get('dicts') or [])[:3])}...), TimesCaptured @{_L.get('tc')}, "
+          f"CapturedForms @{_L.get('cf')}, CategoryStatus @{_L.get('cs')} ({_L.get('cats')} category rows read)")
     # FLOOR GUARD (audit F19): a partially-loaded PokedexImpl walks to a tiny/empty list; persisting it
     # would blank dex_caught*.json -> the cull's dex_gap sees nothing caught -> mass over-protection,
     # and the hundo diff trashes. Norm is ~943 entries; refuse to persist anything implausibly small.

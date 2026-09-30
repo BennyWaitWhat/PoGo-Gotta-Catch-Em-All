@@ -84,6 +84,16 @@ def main():
     _base0 = granular_tags._base_form_map(list(rows.values()))
     _cf0 = lambda r: (r['form'] or 0) or _base0.get(r['pokemon_id'], 0)
     _form_n = collections.Counter((r['pokemon_id'], _cf0(r)) for r in rows.values() if not keep_config.is_fused_component(r))
+    # EVERY-LINE POOLS (keep_config.line_pool_all, florandez; 2026-09-30): a form may leave the bag while its LINE keeps copies
+    # -- the Pokedex is lifetime, and audit_cull's FORMS-wiped layer exempts pooled forms the same way -- so for a pooled copy
+    # the fact is "the last copy of its POOL", not of its form (the first line-pool cull since this check existed failed the
+    # gate on Pikipek / Pidgey / Grubbin comb-up promises whose lines keep 3-5 copies).
+    if keep_config.line_pool_all():
+        import pattern_pools as _ppl
+        _plk = lambda r: _ppl.pool_key(r['pokemon_id'], r['species_name'], r['form'] or 0, r.get('gender'))
+        _pool_n = collections.Counter(_plk(r) for r in rows.values() if _plk(r))
+    else:
+        _plk, _pool_n = (lambda r: None), collections.Counter()
 
     # The three switchable keep-all axes (keep_config rules) are facts only while their rule is ON: with a rule OFF the
     # engine no longer keeps by it (audit_cull's _R does the same), so the copy may lawfully be promoted -- ignoring the
@@ -98,7 +108,7 @@ def main():
             f.append('Mighty')
         if _RULE['adventure_effect'] and _AE_IDS and ae_moves.known(r, _AE_IDS):
             f.append('an Adventure-Effect move')
-        if _RULE['dex_only'] and _form_n[(r['pokemon_id'], _cf0(r))] <= 1:
+        if _RULE['dex_only'] and _form_n[(r['pokemon_id'], _cf0(r))] <= 1 and not (_plk(r) and _pool_n[_plk(r)] > 1):
             f.append('the last copy of its form')
         return f
     _tagfile = lambda t: os.path.join('system', 'analysis', 'tagsets', granular_tags.filename(t))
