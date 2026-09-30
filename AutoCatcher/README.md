@@ -94,6 +94,22 @@ Verify on the phone:
   `~/pogo/system/analysis/pokemod/catch_loop.log`, and `caught=` in `/data/local/tmp/pogo_state.txt`. Tell the Pokemon
   Inventory session before changing any of them.
 
+## The legendary skip list (`CFG["legendary"]` in `catch_loop_fast.py`)
+
+The catcher skips every species in this hand list (`walk()` runs `finish(enc, 'legendary')` before `priority` and before any
+catch); a species that is not listed is auto-thrown at, up to 12 balls. The list mirrors the client game master's
+`pokemonClass` LEGENDARY / MYTHIC / ULTRA_BEAST (111 dex today).
+
+- **2026-09-30 (Benny: "fix it"):** added the six Paradox legendaries the list had missed: 1009 Walking Wake, 1010 Iron Leaves,
+  1020 Gouging Fire, 1021 Raging Bolt, 1022 Iron Boulder, 1023 Iron Crown. **Code only: it ships at the next deploy, which needs
+  Benny's go.** Nothing was deployed or run.
+- **144 / 145 / 146 stay out on purpose.** The Galarian birds are in `CFG["priority"]` (opened first, best ball), and the skip runs
+  before it, so listing them would skip them.
+- **Drift guard:** `pogo_extract/audit_gamemaster.py` (check 1b, one of the 11 audits in the cull gate) parses the list from the
+  catcher's source text with `ast` (the catcher is never run) and BLOCKS when the game master classes a LEGENDARY / MYTHIC /
+  ULTRA_BEAST dex that is missing, except 144 / 145 / 146. It only WARNs about a listed dex the game master does not class so.
+  When a game master refresh brings a new legendary, add its dex to the list; the audit passes from the source text alone, no deploy needed.
+
 ## Offline tests (run after changing the logic)
 
 ```bash

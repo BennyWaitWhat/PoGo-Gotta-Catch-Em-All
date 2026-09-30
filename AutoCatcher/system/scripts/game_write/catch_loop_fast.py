@@ -57,12 +57,19 @@ CFG = {
                                           # Master feeds Pinaps too and kept our stock at 0-6. Was: every throw with no Razz
     "razz": True, "razzFloor": 5, "razzThresh": 0.45,   # Razz (701) only when the throw is hard
     # 706 Golden Razz / 708 Silver Pinap: never touched (standing instruction) -- not even in the item list.
+    # SKIP LIST (walk() runs finish(enc, 'legendary') BEFORE priority and before any catch): every species the client game master
+    # classes LEGENDARY / MYTHIC / ULTRA_BEAST; a missing one is auto-thrown at, up to 12 balls. 2026-09-30 (Benny: "fix it"): added
+    # the six Paradox legendaries the list had missed -- 1009 Walking Wake, 1010 Iron Leaves, 1020 Gouging Fire, 1021 Raging Bolt,
+    # 1022 Iron Boulder, 1023 Iron Crown. 144 / 145 / 146 stay OUT on purpose: the Galarian birds are in "priority" (opened first,
+    # best ball) and this skip runs before it. pogo_extract/audit_gamemaster.py parses this list from the source text on every
+    # cull gate and BLOCKS when the game master classes a dex that is missing here (its allowlist: 144 / 145 / 146). Ships at the next deploy.
     "legendary": [150, 151, 243, 244, 245, 249, 250, 251, 377, 378, 379, 380, 381, 382, 383, 384, 385, 386,
                   480, 481, 482, 483, 484, 485, 486, 487, 488, 489, 490, 491, 492, 493, 494, 638, 639, 640,
                   641, 642, 643, 644, 645, 646, 647, 648, 649, 716, 717, 718, 719, 720, 721, 772, 773, 785,
                   786, 787, 788, 789, 790, 791, 792, 793, 794, 795, 796, 797, 798, 799, 800, 801, 802, 803,
                   804, 805, 806, 807, 808, 809, 888, 889, 890, 891, 892, 893, 894, 895, 896, 897, 898, 905,
-                  1001, 1002, 1003, 1004, 1007, 1008, 1014, 1015, 1016, 1017, 1024, 1025],   # you catch these
+                  1001, 1002, 1003, 1004, 1007, 1008, 1009, 1010, 1014, 1015, 1016, 1017, 1020, 1021, 1022, 1023,
+                  1024, 1025],   # you catch these
     "priority": [999, 1000, 144, 145, 146],   # Gimmighoul/Gholdengo, Galarian birds: open first, best ball
     # Harvest Festival 2026 apple encounters (Applin, flower-crown Cottonee, Skiddo, Lechonk, Smoliv): a HIDDEN Pokemon of
     # these species near you is an apple reveal waiting to be caught. Event ends 2026-10-05 20:00.

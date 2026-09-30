@@ -41,6 +41,7 @@ jobs:
           python pogo_extract/bag_art.py --selftest
           python pogo_extract/independent_law.py
           python pogo_extract/system/scripts/check_constant_drift.py
+          python AutoCatcher/tools/test_gym_stab.py
 
       - name: Safety guards hold
         working-directory: pogo_extract
