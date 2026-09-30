@@ -20,6 +20,7 @@ Notes reference each other as [[note-name]] = the file `note-name.md` in this fo
 - [Phone thermal diagnosis 2026-09-29](phone-thermal-diagnosis-2026-09-29.md) -- read-only hot-phone recipe; PoGo automation = 2.5 cores = ~4.5 W; skin 43 C = status 2 cuts charging (chg_mdis 26); thresholds + where to read.
 
 ## How I should work
+- [Don't say things without checking](feedback-check-before-saying.md) -- every game/phone claim and every "next: do X" comes from this turn's read; the release prompt is said once, in the cull report (2026-09-30).
 - [Report >2x = watch, review, understand, improve](feedback-report-twice-watch-improve.md) -- 3rd report of anything: tool-printed counter, all occurrences, trigger from data, fix shipped; and ALWAYS look for the next improvement after every run (2026-09-30).
 - [Read screen TEXT, not just its name](feedback-read-screen-text-not-just-name.md) -- every warning/lockout: capture its text + a screencap.
 - [Agents on Opus 5.5](feedback-agents-opus-5-5.md) -- pin `model: 'claude-opus-5-5'` on every workflow agent.
