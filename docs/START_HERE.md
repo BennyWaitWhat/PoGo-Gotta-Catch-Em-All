@@ -40,9 +40,10 @@ Then read `docs/memory/INDEX.md` and the notes under "How I should work" and "sa
    For a handoff or release: `python tools/triple_check.py --fresh` (fresh clone + data pull + everything).
 1. **Data:** after anything that changed game data, `python tools/pogo_data.py push --group <your group>`. Refused = another session pushed
    since your pull: pull, redo, push. Never `--force` over someone else's work.
-2. **Code:** commit on your session branch and push it. Then open a PR to `main` and merge it (`gh pr create --fill` +
-   `gh pr merge --squash --delete-branch`) if `gh` works here; if it doesn't, give Benny the branch link and say "merge me". Other
-   sessions only see your code once it is on `main`.
+2. **Code:** commit on your session branch and push it. Then open a PR to `main` and merge it YOURSELF as soon as CI is green
+   (`gh pr create --fill` + `gh pr merge --squash --delete-branch`, or the GitHub MCP tools: mark the draft ready, then
+   squash-merge). Never leave a PR waiting on Benny's click (2026-09-30: "dont do that. i didnt even know. just do it.");
+   only when no tool here can merge, give him the link and say "merge me". Other sessions only see your code once it is on `main`.
 3. Never commit data, secrets or anything the `.gitignore` files keep out. `git add` explicit paths, not `-A`.
 
 ## 4. Rules that apply to everyone (full text + stories in `docs/memory/`)

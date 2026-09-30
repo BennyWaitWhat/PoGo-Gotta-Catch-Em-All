@@ -119,7 +119,7 @@ the phone until a real run confirmed it.
 `pogo_extract/` (including its own `pogo_il2cpp.py`), `docs/`, `tools/`, `cloud/`, `.claude/` and the root files = Pokemon Inventory.
 `AutoCatcher/` = AutoCatcher session, except the gym/buddy files listed in `../docs/START_HERE.md` (Gym Battle session). No session
 edits another's files. Need a change there? Write it up as a numbered request for the owner. Code reaches the other sessions only on
-`main`: commit on your branch, open a PR, merge it (or give Benny the link).
+`main`: commit on your branch, open a PR, merge it yourself as soon as CI is green (never wait on Benny's click: `../docs/START_HERE.md`).
 
 ## Phone busy marker (ADVISORY — `../docs/phone_access.md`)
 `/data/local/tmp/pogo_desktop_busy` = `<name> <deadline>`. `pogo_il2cpp.get_session()` writes ours (`PokemonInventory`), refreshes it,
