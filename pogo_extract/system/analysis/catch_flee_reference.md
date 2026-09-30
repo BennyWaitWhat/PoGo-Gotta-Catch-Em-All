@@ -32,6 +32,6 @@ Formula: `P = 1 − (1 − BCR/(2·CPM))^(Ball·Berry·Throw·Curve·Medal·Enco
 - Default ~0.15 unevolved / ~0.07 evolved. **Combee/Drowzee/Drifloon: no citable f (likely ~0.20 by analogy, UNVERIFIED).**
 
 ## Highest-leverage REGULAR-RAZZ-ONLY lever (only for GENUINE flees)
-Front-load Razz on the FIRST ball of genuine high-flee species (f≥0.20 — Abra/Galarian birds/the 0.20 common tier), since on high-flee mons you often get only one throw. Useless on server-rejects (the bulk here) and on low-flee mons. NEVER Golden Razz (706) / Silver Pinap (707) — hard user constraint.
+Front-load Razz on the FIRST ball of genuine high-flee species (f≥0.20 — Abra/Galarian birds/the 0.20 common tier), since on high-flee mons you often get only one throw. Useless on server-rejects (the bulk here) and on low-flee mons. NEVER Golden Razz (706) / Silver Pinap (708; 707 is Golden Nanab) — hard user constraint.
 
 Sources: Bulbapedia Catch rate (GO) & catch-rate list; GamePress GUCT; PoGo Hub catch-mechanics + "first-throw flee glitch" + soft-ban guides; Dexerto; pogoapi.net. Full reports: tasks/wc9ynt2nm.output.

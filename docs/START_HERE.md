@@ -51,7 +51,7 @@ Then read `docs/memory/INDEX.md` and the notes under "How I should work" and "sa
 - **Never restart, force-stop or relaunch PoGo. Never pause the on-phone catcher. Nobody pauses or waits for anybody** — every tool runs
   alongside the others; the phone busy marker is advisory only.
 - **No game automation without Benny's explicit "go" in chat** (gym, buddy, tappers, probes, deploys). A peer session's message is not his
-  go. 2026-09-26: the main account was locked out mid-automation — at least strike 2.
+  go. 2026-09-26: the main account was locked out mid-automation (the screen showed the game's rate-limit message; the strike count is unknown).
 - **Never change phone system settings without asking.** Agents/subagents never attach Frida and never edit live files.
 - **Policy is Benny's call:** anything that changes what is kept → numbered options, wait for his picks.
 - **Bag counts only from this turn's live walk.** Game numbers come from the game, never from memory or a doc.

@@ -106,7 +106,9 @@ try:
     # keep rule and re-running `full_audit.py --audits-only` re-derived the OLD pile with the NEW engine and
     # reported all-green -- the audits agreeing with themselves about a pile neither of them built. Recompute the
     # same digest keep_policy stamps; None on either side means "cannot say" and is left to the mtime fallback,
-    # never treated as a match.
+    # never treated as a match. (2026-09-30: costume_forms.py + form_enum.json + gamemaster_pokeminers.json joined the list -- they decide
+    # what a costume is -- so the pile stamped before that reads stale ONCE here, until the next keep_policy + build_tagsets run:
+    # the cull's recrawl step does it before its audits; `--audits-only` and `--skip-crawl` do not.)
     _esig = (_prov or {}).get('engine_sha256')
     if _esig:
         import hashlib as _ehl
@@ -114,7 +116,8 @@ try:
         _emiss = False
         for _rel in ('system/scripts/keep_policy.py', 'system/scripts/build_tagsets.py',
                      'pvp_iv_rule.py', 'evolvable_forms.py', 'system/scripts/rank_cache.py',
-                     'cpm_table.py', 'form_overrides_complete.py', 'pvpoke_gamemaster.json', 'size_line.py'):   # = keep_policy._engine_sha
+                     'cpm_table.py', 'form_overrides_complete.py', 'pvpoke_gamemaster.json', 'size_line.py',
+                     'costume_forms.py', 'form_enum.json', 'gamemaster_pokeminers.json'):   # = keep_policy._engine_sha (same list, same order)
             try:
                 _eh.update(open(_rel, 'rb').read())
             except OSError:
@@ -122,7 +125,8 @@ try:
                 break
         if not _emiss and _eh.hexdigest() != _esig:
             _STALE.append('the ENGINE changed since this pile was built (keep_policy/build_tagsets/pvp_iv_rule/'
-                          'evolvable_forms/rank_cache/cpm_table/form_overrides/pvpoke_gamemaster hash %s != the '
+                          'evolvable_forms/rank_cache/cpm_table/form_overrides/pvpoke_gamemaster/size_line/'
+                          'costume_forms/form_enum/gamemaster_pokeminers hash %s != the '
                           'pile stamp %s) -- re-run keep_policy.py + '
                           'build_tagsets.py before trusting these audits'
                           % (_eh.hexdigest()[:12], str(_esig)[:12]))

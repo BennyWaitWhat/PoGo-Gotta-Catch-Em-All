@@ -35,7 +35,10 @@ WHAT IS ASSERTED (all three are hard; any failure exits non-zero)
      or rank_unknown for the Mudbray). A fixture kept only by dex_only_copy or data_incomplete is a
      FAILURE: that is protection by accident, and it is how a silent regression hides.
   C. STANDING ANCHORS, verified twice against the user's own app and two in-game screenshots:
-       Armored Mewtwo (182/278/214) ULTRA 12/15/13 -> #1108/4096, 96.88%;  12/13/14 -> #1151, 96.82%
+       Armored Mewtwo (182/278/214) ULTRA 12/15/13 -> #1109/4096, 96.88%;  12/13/14 -> #1151, 96.82%
+       (12/15/13 was #1108 on the user's Pokemod overlay, which ranks on the older rounded half-level multipliers.
+       Since 2026-09-30 cpm_table.py carries the game's own values -- PvPoke's cpms agree to 7.9e-8 on all 101 --
+       and there 9/9/15, capped at L28.5, out-scores it: 4,544,518.8 vs 4,544,497.6. Not a tie; a real re-order.)
        HP  13/15/15 @ L27.5 -> 160     15/15/13 @ L50 -> 190
      eff_atk=(base+iv)*cpm, eff_def=(base+iv)*cpm, eff_sta=FLOOR((base+iv)*cpm), sp=atk*def*sta.
      Stamina is floored, the other two are not.
@@ -129,6 +132,11 @@ def F(label, pid, species, form, region, ivs, gl, ul, axis, why, margin_sensitiv
                 gl=gl, ul=ul, axis=axis, why=why, margin_sensitive=margin_sensitive)
 
 
+# 2026-09-30: eight recorded values re-derived after cpm_table.py's 20 half levels (L20.5-29.5, L41.5-50.5) were
+# corrected to the game's own multipliers (Benny: "Don't be lazy, do it right"). None is a keep rank: Meowth-Galarian
+# GL 676->675, Krabby GL 129->128, Abra UL 1994->1993 (x2) and 2566->2564, Dottler GL 1505->1504; Golduck / Bellsprout UL
+# 99.24->99.23% / 99.16->99.15% (the league's 100% spread sits at L48.5, a corrected level). An independent re-derivation
+# reproduces both the old and the new number of every one, and every rank flip is a spread at a corrected half level.
 # 2026-09-08: four anchors re-derived after the ranker became VIABILITY-AWARE (see Dottler fixture). The old values
 # named a stage that never reaches its cap (abra UL, meowth_galarian GL) -- the bug itself, frozen into the test.
 FIXTURES = [
@@ -145,7 +153,7 @@ FIXTURES = [
       (65, 98.48, 'krabby->krabby'), (2, 99.94, 'krabby->kingler'),
       PVP_AXES, 'UL#2 99.94% -- kingler'),
     F('Meowth-Galarian 2/15/15', 52, 'Meowth', 2335, 'galarian', (2, 15, 15),
-      (676, 96.75, 'meowth_galarian->perrserker'), (3, 99.75, 'meowth_galarian->perrserker'),
+      (675, 96.75, 'meowth_galarian->perrserker'), (3, 99.75, 'meowth_galarian->perrserker'),
       PVP_AXES, 'UL#3 -- perrserker (its GL stage is not even cap-viable)'),
     F('Qwilfish-Hisuian 1/15/12', 211, 'Qwilfish', 2788, 'hisuian', (1, 15, 12),
       (14, 98.83, 'qwilfish_hisuian->overqwil'), (3, 99.73, 'qwilfish_hisuian->overqwil'),
@@ -154,10 +162,10 @@ FIXTURES = [
       (479, 96.16, 'wailmer->wailmer'), (3, 99.62, 'wailmer->wailord'),
       PVP_AXES, 'UL#3 -- wailord; wailord L50-hundo CP is 2577 = cap+77', True),
     F('Golduck 2/13/15', 55, 'Golduck', 289, 'kantonian', (2, 13, 15),
-      (4, 99.86, 'golduck->golduck'), (73, 99.24, 'golduck->golduck'),
+      (4, 99.86, 'golduck->golduck'), (73, 99.23, 'golduck->golduck'),
       PVP_AXES, 'GL#4 -- ready as itself'),
     F('Bellsprout 2/15/14', 69, 'Bellsprout', 664, 'kantonian', (2, 15, 14),
-      (4, 99.71, 'bellsprout->victreebel'), (41, 99.16, 'bellsprout->victreebel'),
+      (4, 99.71, 'bellsprout->victreebel'), (41, 99.15, 'bellsprout->victreebel'),
       PVP_AXES, 'GL#4 -- victreebel'),
     F('Gastly 0/15/15', 92, 'Gastly', 1038, 'kantonian', (0, 15, 15),
       (5, 99.55, 'gastly->haunter'), (7, 99.23, 'gastly->gengar'),
@@ -169,19 +177,19 @@ FIXTURES = [
       (47, 98.77, 'growlithe->arcanine'), (5, 99.62, 'growlithe->arcanine'),
       PVP_AXES, 'UL#5 -- arcanine; 11 def would have failed any def/sta bulk floor'),
     F('Krabby 2/13/15', 98, 'Krabby', 870, 'kantonian', (2, 13, 15),
-      (129, 98.29, 'krabby->kingler'), (5, 99.80, 'krabby->kingler'),
+      (128, 98.29, 'krabby->kingler'), (5, 99.80, 'krabby->kingler'),
       PVP_AXES, 'UL#5 -- kingler'),
     F('Sprigatito 0/12/15', 906, 'Sprigatito', 3222, 'kantonian', (0, 12, 15),
       (6, 99.29, 'sprigatito->floragato'), (5, 99.61, 'sprigatito->meowscarada'),
       PVP_AXES, 'UL#5 -- meowscarada'),
     F('Abra 13/15/15 (a)', 63, 'Abra', 304, 'kantonian', (13, 15, 15),
-      (3, 99.64, 'abra->abra'), (1994, 95.91, 'abra->alakazam'),
+      (3, 99.64, 'abra->abra'), (1993, 95.91, 'abra->alakazam'),
       PVP_AXES, 'GL#3; abra L50-hundo CP is 1517 = cap+17', True),
     F('Abra 13/15/15 (b)', 63, 'Abra', 304, 'kantonian', (13, 15, 15),
-      (3, 99.64, 'abra->abra'), (1994, 95.91, 'abra->alakazam'),
+      (3, 99.64, 'abra->abra'), (1993, 95.91, 'abra->alakazam'),
       PVP_AXES, 'GL#3, second copy', True),
     F('Abra 14/15/13', 63, 'Abra', 304, 'kantonian', (14, 15, 13),
-      (4, 99.60, 'abra->abra'), (2566, 95.41, 'abra->alakazam'),
+      (4, 99.60, 'abra->abra'), (2564, 95.41, 'abra->alakazam'),
       PVP_AXES, 'GL#4; same cap+17 band', True),
     # THE IMPORTANT ONE. species_name is DELIBERATELY the unresolvable placeholder the crawl actually
     # produced. pvid('pid749', 3098) has no FORM_OVERRIDES entry and slugs to 'pid749', which is not a
@@ -199,7 +207,7 @@ FIXTURES = [
     # UL #3 (max CP 2,513) and every consumer saw a non-viable stage -> no PvP protection. Assertion A pins
     # the stage to orbeetle; assertion B demands a PvP axis. 2,232 of 5,738 rows changed when this was fixed.
     F('Dottler 15/15/15 (viable-stage guard)', 825, 'Dottler', 3164, None, (15, 15, 15),
-      (1505, 95.14, 'dottler->orbeetle'), (3, 99.99, 'dottler->orbeetle'),
+      (1504, 95.14, 'dottler->orbeetle'), (3, 99.99, 'dottler->orbeetle'),
       PVP_AXES, 'UL#3 99.99% -- orbeetle; guards the viability-blind best-stage bug'),
 ]
 # True base stats for the deliberately-unresolvable fixture. The specimen IS a Mudbray -- only the
@@ -415,7 +423,8 @@ def run_engine(sandbox, sb_db):
 def check_anchors(cache):
     """The numbers verified against the user's own app and two in-game screenshots."""
     out = []
-    for ivs, want_rank, want_pct in (((12, 15, 13), 1108, 96.88), ((12, 13, 14), 1151, 96.82)):
+    # 12/15/13: #1108 on the overlay's older rounded ladder, #1109 on the game's own multipliers (2026-09-30, see the docstring)
+    for ivs, want_rank, want_pct in (((12, 15, 13), 1109, 96.88), ((12, 13, 14), 1151, 96.82)):
         r = rc.compute_rank_for_iv(cache, 'mewtwo_armored', ivs[0], ivs[1], ivs[2], UL_CAP, False)
         got = (r['rank'], round(r['pct'], 2)) if r else (None, None)
         out.append(('Armored Mewtwo UL %d/%d/%d' % ivs, got == (want_rank, want_pct),

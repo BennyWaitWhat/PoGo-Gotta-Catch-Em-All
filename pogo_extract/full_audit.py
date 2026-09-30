@@ -814,8 +814,9 @@ def _main():
         return audits_only()
     say('dashboard %s' % ensure_dashboard())
     # 2026-09-08 (user: game master "should be checked often, at least once a month"). The refresh
-    # script self-skips when the file is under 30 days old, so this is free on normal runs. Exit 2 means
-    # a rebalance moved a keep decision across the rank<=5 line -- STOP before anything reaches the
+    # script self-skips its pvpoke half when that file is under 30 days old, so this is free on normal runs. Exit 2 means
+    # a rebalance moved a keep decision across the rank<=5 line -- or (2026-09-30, gm_guard: it asks PokeMiners on EVERY
+    # run) a NEW client game master flips an in-bag keep verdict -- STOP before anything reaches the
     # phone and let a human look. Exit 1 (download failed) leaves the old file in place and is not fatal.
     _review = os.path.join('system', 'analysis', 'gamemaster_review_pending.json')
     try:
@@ -834,9 +835,10 @@ def _main():
         # installing the new file (rc 1, killed) leaves its pending record behind: that stops the pass as well.
         for _l in _gm_line:
             say('gamemaster: %s' % _l[:220])
-        say('GAME MASTER REFRESH STOPPED THE PASS (rc %d) -- a keep decision moved across the rank<=5 line, or the refresh '
-            'itself could not finish (the lines above say which). Stopping before recrawl/sync. Review pending: %s; when '
-            'reviewed: python system/scripts/refresh_gamemaster.py --ack' % (_gm.returncode, 'YES' if os.path.exists(_review) else 'no'))
+        say('GAME MASTER REFRESH STOPPED THE PASS (rc %d) -- a keep decision moved (a rank<=5 crossing, or an in-bag verdict '
+            'of the client game master), or the refresh itself could not finish (the lines above say which). Stopping before '
+            'recrawl/sync. Review pending: %s; when reviewed: python system/scripts/refresh_gamemaster.py --ack'
+            % (_gm.returncode, 'YES' if os.path.exists(_review) else 'no'))
         return 5
     say('gamemaster: %s' % (_gm_line[-1][:110] if _gm_line else 'rc=%d' % _gm.returncode))
     _gw = job_warnings('\n'.join(_gm_line))

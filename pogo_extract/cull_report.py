@@ -4,7 +4,8 @@ shouldnt..." and "Where's my little thing about what got improved and why each t
 Compares this walk with the walk of the LAST REPORT (system/analysis/last_report.json: its snapshot stamp, pile,
 keep reasons and evolve targets), so "just caught / just evolved" means "since you last read a report" even when a
 pass in between was cut off. Everything comes from files the pass already wrote: pokemon.db, policy_reasons.json,
-tagsets/Transfer.txt, .db_snapshots/*.before_sync.*.gz, evolve_targets.
+tagsets/Transfer.txt, .db_snapshots/*.before_sync.*.gz, evolve_targets -- and, for the closing Power Up block (2026-09-30, report only), the
+Power Up tag files, the game master's Power Up tables and this walk's candy.json / inventory.json.
 
   python cull_report.py            # print the report and remember this walk as the last reported one
   python cull_report.py --dry-run  # print it, remember nothing
@@ -16,6 +17,26 @@ sys.path.insert(0, ROOT); sys.path.insert(0, os.path.join(ROOT, 'system', 'scrip
 os.chdir(ROOT)
 A = os.path.join(ROOT, 'system', 'analysis')
 STATE = os.path.join(A, 'last_report.json')
+# THE GAME'S OWN NAMES (2026-09-30, docs/memory/pogo-bag-pulse-sprites.md): DISPLAY ONLY. species_name, form ids and pvids stay the
+# walk's own strings; only the words a person reads change ('Nidoran F' -> 'Nidoran♀', 'Mr Mime' -> 'Mr. Mime', 'Ho Oh' -> 'Ho-Oh').
+# Every failure (no pogo_display, no names file, an id it cannot vouch for) prints what this report printed before.
+try:
+    import pogo_display as _pd
+    _NM = _pd.Names.load()
+except Exception:
+    _NM = None
+
+
+def species_label(r):
+    """The species as the game spells it; the walk's own species_name when there is nothing better."""
+    return _NM.species(r['pokemon_id'], r['species_name']) if _NM else r['species_name']
+
+
+def stage_name(sid, dex=None):
+    """A pvpoke speciesId for a person: 'mr_mime' -> 'Mr. Mime', 'raichu_alolan' -> 'Alolan Raichu'. Any id the names file cannot
+    vouch for (a form, a shadow, a mega, no dex) keeps today's title-cased rendering."""
+    return (_NM.stage(sid, dex) if _NM else None) or str(sid).replace('_', ' ').title()
+
 
 LABEL = {'variant_floor': 'ladder slot', 'shiny': 'shiny slot', 'xxl': 'XXL showcase spot',
          'location_card': 'location-card slot', 'pvp_best_gl': 'Best GL', 'pvp_best_ul': 'Best UL',
@@ -105,6 +126,8 @@ def main():
     import pvp_iv_rule as pv, keep_config
     _gm = json.load(open(os.path.join(ROOT, 'pvpoke_gamemaster.json'), encoding='utf-8'))
     BS = {q['speciesId']: q.get('baseStats', {}) for q in _gm['pokemon']}
+    _dex_of = {q['speciesId']: q.get('dex') for q in _gm['pokemon']}
+    stg = lambda s: stage_name(s, _dex_of.get(s))            # a pvpoke speciesId as the game spells it (display only)
     snaps = _snapshots()
     if not snaps:
         print('(no walk snapshot yet)'); return 0
@@ -217,7 +240,7 @@ def main():
         if r['fresh_alignment'] == 1: bits.append('shadow')
         g = sym.get(r['gender'], '') if ef.gender_key(r['pokemon_id'], r['gender']) else ''
         reg = {'alolan': 'Alolan ', 'galarian': 'Galarian ', 'hisuian': 'Hisuian ', 'paldean': 'Paldean '}.get(sid(r).split('_')[-1], '')
-        s = '%d%% %s%s%s%s' % (pct(r), ' '.join(bits) + ' ' if bits else '', reg, r['species_name'], g)
+        s = '%d%% %s%s%s%s' % (pct(r), ' '.join(bits) + ' ' if bits else '', reg, species_label(r), g)
         if not with_origin:
             return s
         if r['uid_hex'] in origin:
@@ -233,7 +256,7 @@ def main():
     def kind_of(r):
         """'Alolan Raichu' -- the PvP identity by name (the group an XXL spot or a Best is decided in)."""
         return {'alolan': 'Alolan ', 'galarian': 'Galarian ', 'hisuian': 'Hisuian ', 'paldean': 'Paldean '}.get(
-            sid(r).split('_')[-1], '') + r['species_name']
+            sid(r).split('_')[-1], '') + species_label(r)
 
     def xxl_why(r):
         """Why an XXL copy holds no XXL spot -- size_line.xxl_keepers' own tests, in its order (H05-1): no height /
@@ -349,14 +372,14 @@ def main():
                     took = sorted((x for x in C.values() if x['uid_hex'] in origin and old_t & set(prom_now.get(x['uid_hex']) or [])),
                                   key=lambda x: (-(x['iv_total'] or 0), -(x['cp'] or 0)))
                     if took:
-                        _lbl = '%s slot' % ' / '.join(sorted(t.replace('_', ' ').title() for t in old_t))
+                        _lbl = '%s slot' % ' / '.join(sorted(stg(t) for t in old_t))
                         to.setdefault(desc(took[0]), []).append(_lbl)
                         if desc(r, False) not in replaced[took[0]['uid_hex']]:
                             replaced[took[0]['uid_hex']].append(desc(r, False))
                         continue
                     # NO FALL-THROUGH (R-B review): no arrival is promised r's target, and the generic path below named any
                     # same-stage arrival holding an Evolve label ("lost its Evolve Once to the just-caught 89% Charcadet")
-                    _tg = ' / '.join(sorted(t.replace('_', ' ').title() for t in old_t))
+                    _tg = ' / '.join(sorted(stg(t) for t in old_t))
                     parts.append('lost its %s%s -- no just-arrived copy is promised %s' % (
                         LABEL[reason], (' (%s)' % _tg) if _tg else '', 'that target' if _tg else 'its target'))
                     continue
@@ -370,7 +393,7 @@ def main():
                             _now.append('%s unranked' % _l.upper())
                             continue
                         _reach = bool(_st) and pv.maxcp(_st, BS) > _cp + pv.VIABILITY_MARGIN
-                        _now.append('%s #%d as %s%s' % (_l.upper(), _rk, (_st or '?').replace('_', ' ').title(),
+                        _now.append('%s #%d as %s%s' % (_l.upper(), _rk, stg(_st or '?'),
                                                          '' if _reach else ', a stage that cannot reach the league'))
                     # "its ranks changed" only when they DID (R-B review): the same ranks with the spread dropped means the
                     # rank rule (keep_config READY_RANK / viability margin) or the stage's reach changed
@@ -475,7 +498,7 @@ def main():
             meant = prev_targets.get(norm(src['uid_hex'])) if src else None
             miss = ''
             if meant and not any(sid(r).startswith(t.split('_')[0]) for t in meant):
-                _m = ' or '.join(t.replace('_', ' ').title() for t in meant)
+                _m = ' or '.join(stg(t) for t in meant)
                 # went PAST the promised stage (a Dratini tagged Evolve Next for a Dragonair slot, evolved twice)
                 past = any(ef.can_reach_sid(t, sid(r)) for t in meant)
                 miss = (' It was tagged to stop at %s (that is where the open slot was); evolving it again made it an extra.' % _m
@@ -615,7 +638,7 @@ def main():
                     # lawful to release, but he decides -- a Favorite keeps it
                     bk = best_kept.get((lg, st, cls(m)))
                     _txt = '%s (%d/%d/%d) is %s #%d as %s' % (desc(m, False), m['iv_atk'], m['iv_def'], m['iv_sta'], NAMES[lg],
-                                                             rk, st.replace('_', ' ').title())
+                                                             rk, stg(st))
                     if bk and bk[0] <= rk:
                         close_calls.append(_txt + ' -- your best kept there is #%d, so the better one stays and this one goes.' % bk[0])
                     else:
@@ -628,7 +651,7 @@ def main():
                             _rule = '#%d is past your #%d %scut-off' % (rk, sfloor if cls(m) == 'shadow' else floor,
                                                                       'shadow ' if cls(m) == 'shadow' else '')
                         elif cls(m) == 'plain' and _species_best_beats(m, lg):
-                            _rule = 'your Best %s %s wins at another stage (one per species)' % (NAMES[lg], m['species_name'])
+                            _rule = 'your Best %s %s wins at another stage (one per species)' % (NAMES[lg], species_label(m))
                         else:
                             _rule = 'of nothing -- ***CHECK: no rule lets it go***'
                         close_calls.append(_txt + ' -- nothing you keep there is better (%s), so it goes only because %s.'
@@ -640,11 +663,11 @@ def main():
                     # not a CHECK: nothing of that kind is kept by law
                     if rk <= floor:
                         uncollected.append('%s is %s #%d as %s -- you no longer keep %s shadows'
-                                           % (desc(m, False), NAMES[lg], rk, st.replace('_', ' ').title(), NAMES[lg]))
+                                           % (desc(m, False), NAMES[lg], rk, stg(st), NAMES[lg]))
                     continue
                 bk = best_kept.get((lg, st, cls(m)))
                 if bk is None or rk < bk[0]:
-                    note = '%s is your best %s %s (#%d%s)' % (desc(m, False), NAMES[lg], st.replace('_', ' ').title(), rk,
+                    note = '%s is your best %s %s (#%d%s)' % (desc(m, False), NAMES[lg], stg(st), rk,
                                                                ', next best kept #%d' % bk[0] if bk else '')
                     # A SHADOW is kept by rule 7 only inside pvp.shadow_rank_floor -- legendaries too: the roster's "Best at
                     # any rank" (LAW 2b) is the NON-shadow Best (H09-4, 2026-09-29: caps.rarity_shadow piled shadow Dialgas
@@ -653,7 +676,7 @@ def main():
                     if rk > (sfloor if _sh else floor) and (_sh or m['pokemon_id'] not in ROSTER):
                         # ONE LINE PER MON (2026-09-26): the #150 cut turned this into ~110 near-identical lines
                         floor_notes.append((m['uid_hex'], desc(m, False), '%s %s #%d%s%s' % (
-                            NAMES[lg], st.replace('_', ' ').title(), rk, ' (next best kept #%d)' % bk[0] if bk else '',
+                            NAMES[lg], stg(st), rk, ' (next best kept #%d)' % bk[0] if bk else '',
                             (' -- the shadow cut-off is #%d' % sfloor) if _sh and sfloor != floor else '')))
                     elif cls(m) == 'plain' and _species_best_beats(m, lg):
                         # ONE BEST PER SPECIES (LAW 2b), counted at every stage it can reach: a copy that is the best
@@ -662,7 +685,7 @@ def main():
                         # note, not a CHECK; a CHECK stays for a copy nothing of its species beats.
                         _sb = _species_best_beats(m, lg)          # cached via _ub: the repeat call is free
                         species_notes.append(note + ' -- but your Best %s %s is the %s (#%d as %s), one per species'
-                                             % (NAMES[lg], m['species_name'], _sb[0], _sb[1], _sb[2].replace('_', ' ').title()))
+                                             % (NAMES[lg], species_label(m), _sb[0], _sb[1], stg(_sb[2])))
                     else:
                         checks.append(note)
 
@@ -869,7 +892,7 @@ def main():
             if not origin[x['uid_hex']]:
                 tag.append('new hundo' + (', your first' if first_hundo(x) else ''))
             elif first_hundo(x):
-                tag.append('your first hundo %s' % x['species_name'])
+                tag.append('your first hundo %s' % species_label(x))
         elif (not x['fresh_shiny'] and _ab.get(stage_ng(x)) is x and stage_ng(x) in best_prev
               and (x['iv_total'] or 0) > best_prev[stage_ng(x)]):
             tag.append('new best at its stage')
@@ -877,9 +900,9 @@ def main():
             # gl_rank / ul_rank is the CHAIN's best (gl_stage may be a later stage): judge that stage's reach, and name it
             _st = x[_lg + '_stage'] or sid(x)
             if x[_lg + '_rank'] == 1 and pv.maxcp(_st, BS) > _cap + pv.VIABILITY_MARGIN:
-                tag.append(_lg.upper() + ' #1' + ('' if _st == sid(x) else ' as ' + _st.replace('_', ' ').title()))
+                tag.append(_lg.upper() + ' #1' + ('' if _st == sid(x) else ' as ' + stg(_st)))
         src = origin[x['uid_hex']]
-        line = '**%s** (%s)%s: %s' % (desc(x, False), ('just evolved from %s' % src['species_name']) if src else 'just %s' % arrived(x),
+        line = '**%s** (%s)%s: %s' % (desc(x, False), ('just evolved from %s' % species_label(src)) if src else 'just %s' % arrived(x),
                                       (' **%s**' % ', '.join(tag)) if tag else '', ', '.join(rs))
         if replaced.get(x['uid_hex']):
             line += ' -- replaces your %s' % ' and '.join(replaced[x['uid_hex']])
@@ -916,7 +939,7 @@ def main():
             out.extend('- ***CHECK: %s***' % c for c in checks)
         else:
             out.append('- none is a top-%d spread%s%s' % (pv.READY_RANK, ' it can still play' if over_cap else '', (' -- closest: %s at %s #%d as %s%s'
-                        % (desc(close[1], False), close[2], close[0], close[3].replace('_', ' ').title(),
+                        % (desc(close[1], False), close[2], close[0], stg(close[3]),
                            '' if close[4] else ' (its CP is already over that league cap, so it can never play there)')) if close else ''))
             # a floor note IS a copy that beats every copy kept at that stage (bk is None or rk < bk[0]) -- the summary must
             # not say "none" above lines that say it is your best (H05-4)
@@ -955,6 +978,15 @@ def main():
     except Exception as e:
         out.append('(which way: not computed -- %s)' % e)
         targets = prev_targets
+    # POWER UP COSTS (2026-09-30, Benny: "yes" to the game master's exact prices). REPORT ONLY: it reads the tag files and the walk's
+    # balances and writes nothing -- no keep reason, no tag and no pile decision depends on it. Never fails the report.
+    try:
+        _pu = power_up_block(C, pile_set, why, lambda u: desc(C[u], False))
+        if _pu:
+            out.append('')
+            out.extend(_pu)
+    except Exception as e:
+        out.append('(power up costs: not computed -- %s)' % e)
     print('\n'.join(l for l in out if l is not None))
     if unsynced:
         # an unsynced walk has no before_sync snapshot: remembering it under cur_stamp would pair THIS pile and these
@@ -998,6 +1030,107 @@ def fodder_lines(fodder):
     return out
 
 
+POWER_UP_LINES = 12          # mons that get a full line; any beyond are still NAMED, in one short line (never a "+N more")
+
+
+def _power_up_verdict(e, brief=False):
+    """'doable now' / 'doable after exchanging N candy for M XL (if the game allows the exchange)' / 'short X' ... (status: see
+    game_opportunities.power_up_plan). brief = the short form for the one-line list of the mons past POWER_UP_LINES."""
+    f = lambda v: '{:,}'.format(v)
+    need, sh, st = e.get('need'), e.get('short') or {}, e['status']
+    if not need:
+        return 'no price' if brief else 'no price for it (the game master tables, its candy family or its levels are unknown)'
+    if st == 'now':
+        return 'doable now'
+    if st == 'exchange':
+        return ('doable after exchanging %s candy' % f(e['swap'])) if brief else (
+            'doable after exchanging %s candy for %s XL (if the game allows the exchange)' % (f(e['swap']), f(sh['xl'])))
+    if st == 'short':
+        v = 'short ' + ' + '.join(p for p in ('%s dust' % f(sh['dust']) if sh.get('dust') else '', '%s candy' % f(sh['candy']) if sh.get('candy') else '',
+                                              '%s XL' % f(sh['xl']) if sh.get('xl') else '') if p)
+        if not brief and sh.get('xl') and e.get('swap') and not sh.get('dust') and not sh.get('candy'):
+            v += ' (swapping candy for it would take %s; %s to spare)' % (f(e['swap']), f(max(e['spare'] or 0, 0)))
+        return v
+    if st == 'level':
+        return ('above your trainer-level cap (L%g)' % e['cap']) if not brief else 'above your trainer-level cap'
+    return 'a balance it needs was not read this walk' if not brief else 'balance not read'
+
+
+def _power_up_line(e, name):
+    """One mon of the Power Up block: what it costs, what the family holds of it, and the verdict."""
+    f = lambda v: '{:,}'.format(v)
+    lvl = lambda v: ('L%g' % v) if isinstance(v, (int, float)) else 'L?'
+    need, have = e.get('need'), e.get('have') or {}
+    head = '%s: %s -> %s' % (name(e['uid']), lvl(e.get('lv')), lvl(e.get('target')))
+    if not need:
+        return '%s: %s' % (head, _power_up_verdict(e))
+    price = ' + '.join(p for p in ('%s dust' % f(need['dust']), '%s candy' % f(need['candy']) if need['candy'] else '',
+                                   '%s XL' % f(need['xl']) if need['xl'] else '') if p)
+    hold = ' + '.join(p for p in ('%s candy' % f(have['candy']) if need['candy'] and have.get('candy') is not None else '',
+                                  '%s XL' % f(have['xl']) if need['xl'] and have.get('xl') is not None else '') if p)
+    return '%s: %s%s -- %s' % (head, price, (' (you hold %s)' % hold) if hold else '', _power_up_verdict(e))
+
+
+def power_up_lines(plan, name, tags):
+    """The Power Up block (2026-09-30, Benny: "yes" to the game master's exact prices): one line per mon a Power Up tag holds, best
+    news first -- what it costs, what its family holds, 'doable now' / 'doable after exchanging N candy' / 'short X' -- and a total.
+    REPORT ONLY: nothing here is a keep reason, a tag or a pile decision. `plan` = game_opportunities.power_up_plan's list, `name(uid)`
+    a mon as this report names it, `tags` = {'gl': tag name, 'ul': tag name}. The first POWER_UP_LINES get a full line; any beyond
+    that are still ALL named, with a short verdict, in one line -- Benny's rule is that no list in this report ends in "+N more"
+    (2026-09-26: "dont do this. always print it all out."). [] when the tags hold no one."""
+    if not plan:
+        return []
+    f = lambda v: '{:,}'.format(v)
+    out, shown, rest = [], plan[:POWER_UP_LINES], plan[POWER_UP_LINES:]
+    for lg in ('gl', 'ul'):
+        mine = [e for e in shown if e['league'] == lg]
+        if mine:
+            out.append('**%s**%s' % (tags[lg], '' if out else " (report only -- nothing here changes what you keep; the game master's prices "
+                                                                "against this walk's balances)"))
+            out.extend('- ' + _power_up_line(e, name) for e in mine)
+    if rest:
+        out.append('- and the other %d, in short: %s' % (len(rest), '; '.join('%s -- %s' % (name(e['uid']), _power_up_verdict(e, brief=True)) for e in rest)))
+    priced = [e for e in plan if e.get('need')]
+    tot = {k: sum(e['need'][k] for e in priced) for k in ('dust', 'candy', 'xl')}
+    held = next((e['have']['dust'] for e in plan if e.get('have') and e['have'].get('dust') is not None), None)
+    cnt = collections.Counter(e['status'] for e in plan)
+    said = ', '.join(t for t in ('%d doable now' % cnt['now'] if cnt['now'] else '',
+                                 '%d after exchanging candy' % cnt['exchange'] if cnt['exchange'] else '',
+                                 '%d short' % cnt['short'] if cnt['short'] else '', '%d above your trainer-level cap' % cnt['level'] if cnt['level'] else '',
+                                 '%d not read this walk' % cnt['unread'] if cnt['unread'] else '', '%d without a price' % cnt['unknown'] if cnt['unknown'] else '') if t)
+    # every line is judged on its own: two doable mons of ONE family draw on the same candy and XL candy, so say so
+    byfam = collections.defaultdict(list)
+    for e in plan:
+        if e.get('need') and e.get('family') is not None and e['status'] in ('now', 'exchange'):
+            byfam[e['family']].append(name(e['uid']))
+    clash = [n for v in byfam.values() if len(v) > 1 for n in v]
+    out.append('Total for all %d: %s dust (%s), %s candy, %s XL -- %s%s' % (
+        len(plan), f(tot['dust']), ('you hold %s' % f(held)) if held is not None else 'stardust not read this walk', f(tot['candy']), f(tot['xl']), said,
+        ('; %s come from one family and share its candy, so they are not all doable together' % ', '.join(clash)) if clash else ''))
+    return out
+
+
+def power_up_block(C, pile_set, why, name):
+    """The report's Power Up block for this walk: the members of the Power Up tags (the tag FILES -- what the game shows), each with
+    granular_tags.power_ups' own (level now, best level), priced by game_opportunities against this walk's balances. [] when both
+    tags are empty. C = {uid: bag row}, pile_set = the Transfer uids, why = policy_reasons.json, name(uid) = how the report names a mon."""
+    import granular_tags, game_opportunities
+    by = {norm(u): u for u in C}
+    tags = {'gl': granular_tags.POWER_UP_GL, 'ul': granular_tags.POWER_UP_UL}
+    mem = {}
+    for lg, tag in tags.items():
+        try:
+            mem[lg] = [by[norm(u)] for u in open(os.path.join(A, 'tagsets', granular_tags.filename(tag)), encoding='utf-8').read().split()
+                       if norm(u) in by]
+        except OSError:
+            mem[lg] = []
+    if not any(mem.values()):
+        return []
+    _sets, detail = granular_tags.power_ups([r for u, r in C.items() if u not in pile_set], why)
+    items = [(u, lg, *(detail.get((u, lg)) or (None, None))) for lg in ('gl', 'ul') for u in mem[lg]]
+    return power_up_lines(game_opportunities.power_up_plan(items, C), name, tags)
+
+
 def _selftest():
     rows = [('Bulbasaur', [91], '98%'), ('Cyndaquil', [71, 64], '96%, 91%, 89%'), ('Fletchling', [67, 67, 51], '84%')]
     got = fodder_lines(rows)
@@ -1008,7 +1141,72 @@ def _selftest():
     st = still_lines(['91% Bulbasaur', '71% Cyndaquil', '64% Cyndaquil', '62% shadow Dialga'])
     assert st[0] == 'Still here from last time: 4 mons, in the last pile too and not released yet.' and st[2:4] == ['| In the pile | IVs |', '|---|---|'], st
     assert st[4:7] == ['| Bulbasaur | 91% |', '| Cyndaquil | 71%, 64% |', '| shadow Dialga | 62% |'] and st[7:] == [''], st
-    print('cull_report fodder selftest: ok')
+    # official names (2026-09-30): display only, and every doubt falls back to today's rendering
+    global _NM
+    assert _NM is not None and _NM.on, 'official_names_en.json did not load: %s' % (_pd.Names.load().error,)
+    for sid, dex, want in (('mr_mime', 122, 'Mr. Mime'), ('ho_oh', 250, 'Ho-Oh'), ('nidoran_female', 29, 'Nidoran\u2640'),
+                           ('raichu_alolan', 26, 'Alolan Raichu'), ('farfetchd_galarian', 83, "Galarian Farfetch'd"), ('flabebe', 669, 'Flab\u00e9b\u00e9'),
+                           ('porygon_z', 474, 'Porygon-Z'), ('giratina_altered', 487, 'Giratina Altered'), ('machamp_shadow', 68, 'Machamp Shadow'),
+                           ('unknown_thing', None, 'Unknown Thing'), ('?', None, '?')):
+        assert stage_name(sid, dex) == want, (sid, stage_name(sid, dex), want)
+    assert species_label({'pokemon_id': 29, 'species_name': 'Nidoran F'}) == 'Nidoran\u2640', 'Nidoran F'
+    assert species_label({'pokemon_id': 1012, 'species_name': 'Poltchageist'}) == 'Poltchageist', 'a dex the game i18n lacks keeps the walk name'
+    _saved, _NM = _NM, None
+    try:
+        assert stage_name('mr_mime', 122) == 'Mr Mime' and species_label({'pokemon_id': 29, 'species_name': 'Nidoran F'}) == 'Nidoran F', 'no names: today'
+    finally:
+        _NM = _saved
+    # Power Up block (2026-09-30): the lines are pure text over game_opportunities.power_up_plan's dicts (the prices are tested there)
+    nm = {'m': '100% Mandibuzz', 'd': '100% Dusknoir', 'l': '93% Lickilicky', 'x': '91% Mimikyu', 'u': '90% Seaking', 'n': '80% Nobody'}
+    nd = lambda d, c, x: {'dust': d, 'candy': c, 'xl': x, 'steps': 0}
+    hv = lambda c, x, d=2462829: {'dust': d, 'candy': c, 'xl': x}
+    z = {'dust': 0, 'candy': 0, 'xl': 0}
+
+    def pe(uid, lg, lv, tg, need, have, short, status, swap=0, spare=None, **kw):
+        return dict({'uid': uid, 'league': lg, 'lv': lv, 'target': tg, 'need': need, 'have': have, 'short': short, 'status': status,
+                     'swap': swap, 'spare': spare}, **kw)
+    plan = [pe('m', 'ul', 16.0, 50.0, nd(492600, 264, 296), hv(4556, 601), z, 'now'),
+            pe('d', 'ul', 49.5, 50.0, nd(15000, 0, 20), hv(6488, 18), dict(z, xl=2), 'exchange', 200, 6488),
+            pe('l', 'ul', 43.0, 48.5, nd(142000, 0, 172), hv(982, 14), dict(z, xl=158), 'short', 15800, 982),
+            pe('x', 'ul', 40.0, 50.0, nd(250000, 0, 296), hv(4, 4, 100000), dict(z, dust=150000, xl=292), 'short', 29200, 4),
+            pe('u', 'ul', 40.0, 50.0, nd(250000, 0, 296), {'dust': None, 'candy': 1, 'xl': 1}, {}, 'unread'),
+            pe('n', 'ul', 40.0, 52.0, None, None, {}, 'unknown')]
+    tg = {'gl': 'Power Up to 1500', 'ul': 'Power Up to 2500'}
+    got = power_up_lines(plan, nm.get, tg)
+    want = ["**Power Up to 2500** (report only -- nothing here changes what you keep; the game master's prices against this walk's balances)",
+            '- 100% Mandibuzz: L16 -> L50: 492,600 dust + 264 candy + 296 XL (you hold 4,556 candy + 601 XL) -- doable now',
+            '- 100% Dusknoir: L49.5 -> L50: 15,000 dust + 20 XL (you hold 18 XL) -- doable after exchanging 200 candy for 2 XL (if the game allows the exchange)',
+            '- 93% Lickilicky: L43 -> L48.5: 142,000 dust + 172 XL (you hold 14 XL) -- short 158 XL (swapping candy for it would take 15,800; 982 to spare)',
+            '- 91% Mimikyu: L40 -> L50: 250,000 dust + 296 XL (you hold 4 XL) -- short 150,000 dust + 292 XL',
+            '- 90% Seaking: L40 -> L50: 250,000 dust + 296 XL (you hold 1 XL) -- a balance it needs was not read this walk',
+            '- 80% Nobody: L40 -> L52: no price for it (the game master tables, its candy family or its levels are unknown)',
+            'Total for all 6: 1,149,600 dust (you hold 2,462,829), 264 candy, 1,080 XL -- 1 doable now, 1 after exchanging candy, 2 short, '
+            '1 not read this walk, 1 without a price']
+    assert got == want, '\n'.join(got)
+    assert power_up_lines([], nm.get, tg) == [] and power_up_lines(None, nm.get, tg) == []
+    # past 12 lines no mon is dropped (Benny 2026-09-26: no list ends in "+N more"): the rest are all NAMED in one short line, and the total counts all
+    many = [pe('m', 'ul', 40.0, 50.0, nd(250000, 0, 296), hv(0, 400), z, 'now') for _ in range(14)] + [plan[2]]
+    got = power_up_lines(many, nm.get, tg)
+    assert len(got) == 1 + 12 + 1 + 1, got
+    assert got[-2] == '- and the other 3, in short: 100% Mandibuzz -- doable now; 100% Mandibuzz -- doable now; 93% Lickilicky -- short 158 XL', got[-2]
+    assert got[-1] == 'Total for all 15: 3,642,000 dust (you hold 2,462,829), 0 candy, 4,316 XL -- 14 doable now, 1 short', got[-1]
+    got = power_up_lines([plan[0]] * 12 + [plan[1], plan[3], plan[4], plan[5], pe('m', 'ul', 40.0, 50.0, nd(250000, 0, 296), hv(0, 400), {}, 'level', cap=40.0)], nm.get, tg)
+    assert got[-2] == ('- and the other 5, in short: 100% Dusknoir -- doable after exchanging 200 candy; 91% Mimikyu -- short 150,000 dust + 292 XL; '
+                       '90% Seaking -- balance not read; 80% Nobody -- no price; 100% Mandibuzz -- above your trainer-level cap'), got[-2]
+    both = power_up_lines([pe('m', 'gl', 30.0, 40.0, nd(10000, 15, 0), hv(20, 0), z, 'now'), pe('d', 'ul', 40.0, 50.0, nd(250000, 0, 296), hv(0, 400), z, 'now')],
+                          nm.get, tg)
+    assert both[0].startswith('**Power Up to 1500** (report only') and both[2] == '**Power Up to 2500**' and both[-1].startswith('Total for all 2:'), both
+    fam = power_up_lines([pe('m', 'ul', 40.0, 50.0, nd(250000, 0, 296), hv(0, 400), z, 'now', family=355), pe('d', 'ul', 49.5, 50.0, nd(15000, 0, 20), hv(6488, 18), dict(z, xl=2), 'exchange', 200, 6488, family=355),
+                          pe('l', 'ul', 43.0, 48.5, nd(142000, 0, 172), hv(982, 14), dict(z, xl=158), 'short', 15800, 982, family=355)], nm.get, tg)
+    assert fam[-1].endswith('; 100% Mandibuzz, 100% Dusknoir come from one family and share its candy, so they are not all doable together'), fam[-1]
+    two = power_up_lines([pe('m', 'ul', 40.0, 50.0, nd(250000, 0, 296), hv(0, 400), z, 'now', family=355), pe('d', 'ul', 49.5, 50.0, nd(15000, 0, 20), hv(6488, 18), dict(z, xl=2), 'exchange', 200, 6488, family=108)],
+                         nm.get, tg)
+    assert 'share its candy' not in two[-1] and 'share its candy' not in power_up_lines(plan, nm.get, tg)[-1], 'distinct families carry no note'
+    nodust = power_up_lines([pe('m', 'ul', 40.0, 50.0, nd(250000, 0, 296), hv(0, 400, None), z, 'unread')], nm.get, tg)
+    assert '(stardust not read this walk)' in nodust[-1], nodust
+    lv = power_up_lines([pe('m', 'ul', 40.0, 50.0, nd(250000, 0, 296), hv(0, 400), {}, 'level', cap=40.0)], nm.get, tg)
+    assert lv[1].endswith('-- above your trainer-level cap (L40)'), lv
+    print('cull_report selftest (fodder tables, official names, Power Up block): ok')
 
 
 if __name__ == '__main__':

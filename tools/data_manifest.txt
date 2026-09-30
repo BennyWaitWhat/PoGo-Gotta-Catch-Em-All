@@ -22,6 +22,7 @@ pogo_extract/system/analysis/pvpoke_rankings/**
 pogo_extract/system/analysis/dossiers/**
 pogo_extract/system/tags/**
 pogo_extract/pvpoke_gamemaster.json.downloaded
+pogo_extract/gamemaster_pokeminers.json.meta
 pogo_extract/.db_snapshots/* | newest 6
 pogo_extract/accounts/*/pokemon.db
 pogo_extract/accounts/*/*.json

@@ -378,6 +378,12 @@ def main():
                          "an unknown-and-therefore-costume, which empties the plain pool and disables the "
                          "evolve comb-up. Re-dump it with system/scripts/game_read/classify_all_forms.py."
                          % (costume_forms_load_error() or 'unknown reason'))
+    # THE GAME-MASTER COSTUME LAYER DEGRADES, IT DOES NOT ABORT (2026-09-30, costume option 5): with the game master unreadable the last
+    # cached flags stand in (nothing shrinks); with neither, the name rule alone decides and the forms only the game flags (e.g. Armored
+    # Mewtwo, Gimmighoul Coin A1) read plain again. Say so: full_audit echoes every [WARN] line of the recrawl job's log (keep_policy is its
+    # recompute step); audit_gamemaster warns too, but an audit's WARN lines stay in its own log on a passing cull.
+    if getattr(costume_forms, 'GM_SOURCE', 'game_master') != 'game_master':
+        print('[WARN] costume game-master layer is %s: %s' % (costume_forms.GM_SOURCE, getattr(costume_forms, 'GM_NOTE', None)), flush=True)
     _kc_loaded = getattr(keep_config, 'file_loaded', lambda: True)()   # getattr: an older keep_config.py degrades to the pre-guard behaviour
     if not _kc_loaded:
         raise SystemExit("ABORT keep_policy: keep_config.json did not load (%s). The shipped defaults are a "
@@ -492,17 +498,15 @@ def main():
     for r in rows:
         _f = r['form'] or 0
         _reg = (r['form_region'] or '').strip().lower()
-        # NOT-DONE, DELIBERATELY (2026-09-02) -- REPORTED FOR THE USER'S DECISION, see the handoff.
-        # Adding `and not is_costume_form(_f)` here is the CORRECT election rule: today COSTUME form ids
-        # are counted as candidate base forms, which (a) elects a costume as Bewear's canonical base form
-        # (760 -> 3021 BewearWildarea2025, the only base-region form on hand) and (b) for 11 species --
-        # Pikachu, Caterpie, Psyduck, Lapras, Ditto, Sudowoodo, Umbreon, Corsola, Delibird, Charjabug,
-        # Falinks -- makes the vote non-unanimous so base_form is DROPPED entirely and cf() stops folding
-        # form-0 onto the canonical base form. That silently gives those species TWO plain groups (one at
-        # cf=0, one at cf=<Normal>) and therefore DOUBLE the configured plain cap.
-        # The fix is not applied because its direction is to keep FEWER: re-merging the groups costs a
-        # form-0 Pikachu its dex_only_copy reason and puts it in the irreversible pile (verified under a
-        # tightened cosmetic cap). Tightening a cap is the user's call, never an unattended fix.
+        # A COSTUME IS NEVER A BASE FORM -- the exclusion on the next line was APPLIED 2026-09-23 (user: "fix them all"); this block said
+        # "NOT-DONE, DELIBERATELY (2026-09-02)" until 2026-09-30, when it was checked against the code and the live bag. Why the exclusion
+        # matters: a costume form id that votes makes the vote non-unanimous, so base_form is DROPPED for that species, cf() stops folding
+        # form-0 onto the canonical base form, and the species holds TWO plain groups (cf=0 and cf=<Normal>) = DOUBLE the plain cap (on
+        # 2026-09-02 a costume was even elected: Bewear 760 -> 3021 BewearWildarea2025). Re-run 2026-09-30 over the live bag: no costume id
+        # is left in the vote; without the exclusion 17 species would lose their base_form (the Charmander line, Caterpie, Pikachu, Psyduck,
+        # Lapras, Ditto, Mewtwo, Sudowoodo, Umbreon, Slowking, Delibird, Charjabug, Bewear, Falinks, Gimmighoul). Mewtwo and Gimmighoul are
+        # there because the game's isCostume flag now makes Armored Mewtwo / Gimmighoul Coin A1 costumes (costume_forms): each GAINS a
+        # base_form (135 / 2998) and no form-0 copy exists to fold. audit_cull.py and audit_tags_membership.py carry the same exclusion.
         if _f != 0 and _reg in ('', 'normal', 'kantonian', 'none', 'null') and not _is_regional_code(r['species_name'], _f) \
                 and not is_costume_form(_f):          # APPLIED 2026-09-23 (user: "fix them all"): a costume is never a base form
             _basecnt[r['pokemon_id']][_f] += 1
@@ -1963,7 +1967,9 @@ def main():
     #                            to them), but they are the WEAK signal: a WAL checkpoint rewrites the
     #                            db file, so mtime moves when no row did (measured: a zero-value write
     #                            bumped mtime with size unchanged). Prefer this key.
-    #   form_enum        obj   -- costume_forms.enum_stamp(): path/mtime/entries/max_known_form
+    #   form_enum        obj   -- costume_forms.enum_stamp(): path/mtime/entries/max_known_form + gm_layer (2026-09-30: which rung
+    #                            of the game-master costume ladder answered: game_master | stale_cache | none, and the flag counts)
+    #   engine_sha256    str   -- _engine_sha() below: the keep code AND the files that decide costumes; audit_cull.py recomputes it
     #   generated        str   -- local time, human-readable only; NEVER compare piles by timestamp
     # A consumer is stale iff its own recompute of config_sha256 differs, the pile file's hash differs,
     # or the db mtime/size/in_bag differ. A MISSING stamp must be treated as STALE, never as "fine":
@@ -1977,11 +1983,14 @@ def main():
             downstream reads as 'cannot say', never as 'matches'. cpm_table.py (every CP and viability),
             form_overrides_complete.py (pvid -> which base stats and which PvP identity) and pvpoke_gamemaster.json
             (base stats, evolution edges, viability) decide the pile as surely as the code does (added 2026-09-23);
-            audit_cull.py recomputes this exact list and order."""
+            so do costume_forms.py, form_enum.json and gamemaster_pokeminers.json, which decide what a COSTUME is (added
+            2026-09-30: a classifier, enum or game-master change moves the costume ladders, yet an old pile still read as
+            fresh to `full_audit.py --audits-only`); audit_cull.py recomputes this exact list and order."""
             _h = _hl.sha256()
             for _rel in ('system/scripts/keep_policy.py', 'system/scripts/build_tagsets.py',
                          'pvp_iv_rule.py', 'evolvable_forms.py', 'system/scripts/rank_cache.py',
-                         'cpm_table.py', 'form_overrides_complete.py', 'pvpoke_gamemaster.json', 'size_line.py'):
+                         'cpm_table.py', 'form_overrides_complete.py', 'pvpoke_gamemaster.json', 'size_line.py',
+                         'costume_forms.py', 'form_enum.json', 'gamemaster_pokeminers.json'):
                 try:
                     _h.update(open(os.path.join(ROOT, _rel), 'rb').read())
                 except OSError:

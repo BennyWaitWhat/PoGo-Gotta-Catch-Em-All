@@ -178,7 +178,7 @@ th,td{{padding:8px 12px;text-align:left;border-bottom:1px solid var(--line)}}th{
 <li><b>Speed is not the driver</b> — no need to slow/smooth the route for catch rate.</li>
 <li><b>The remaining losses are the soft-ban</b> — server-side, prob-indifferent, the ceiling. Not evaded.</li>
 <li><b>Catch mechanics are already maxed</b> — every throw is Excellent + curveball (verified live: a captured request showed reticle 1.944, spin=1, hit=1). p_real = 1 − (1 − X)<sup>≈3.4</sup>.</li>
-<li><b>Regular Razz (701) only</b>, narrow (threshold ≈0.45), only for genuinely high-flee species. It does NOT touch server-rejects. <b class="bad">Never Golden Razz (706) / Silver Pinap (707)</b> — hard constraint, honored throughout.</li>
+<li><b>Regular Razz (701) only</b>, narrow (threshold ≈0.45), only for genuinely high-flee species. It does NOT touch server-rejects. <b class="bad">Never Golden Razz (706) / Silver Pinap (708)</b> — hard constraint, honored throughout.</li>
 <li><b>The real win is shipped:</b> the stale-spawn gate. That's the lever that moved the rate.</li>
 </ul>
 <p class="note">Catch model reference: pogo_extract/system/analysis/catch_flee_reference.md</p>
