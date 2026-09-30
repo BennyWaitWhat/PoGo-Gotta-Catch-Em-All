@@ -24,8 +24,10 @@ does that make sense?"):** the shiny cap stays 6 per species + form (4 plain), b
 FIRST -- a plain one a plain slot, floor or not; with 2+ of a look only its best does (comb up). Engine + mirrors
 (audit_cull, _lawcheck, preflight_transfer). `Shiny - Only One` is per look too (483 -> 539) -- it also keeps those out of
 Remote Trade (remote_trade_picks NEVER_TAGS). The look's costume is `fresh_costume` ONLY: the legacy `costume` column holds
-junk (a Gengar read -958922464). 0 keeps changed that day; a synthetic test (7 shiny Donphans: the only female at 12/45
-and the only costumed one kept, the 3 weakest extra males piled) passed the engine, preflight and the 11 audits.
+junk (a Gengar read -958922464). 0 keeps changed that day; a synthetic test (8 shiny Donphans: the only female at 12/45
+and the only costumed one kept, the 3 weakest extra males piled) passed the engine, preflight and 10 of the 11 audits.
+The 11th, rank tags, flagged 16 stored-vs-fresh rank mismatches: all 8 synthetic rows x 2 leagues (they copied a real
+Donphan's stored ranks with new IVs) -- a test artifact, confirmed by a re-run of that audit alone.
 
 **How to apply:** "a look" is every visible difference he collects: form, costume, gender-look, background/card
 (collectible), shadow. Before any advice that CONSUMES a copy, ask "is this his only one of this look at this stage?"
