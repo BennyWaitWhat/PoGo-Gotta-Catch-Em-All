@@ -24,4 +24,6 @@ NAME -- a by-name delete could remove the copy that holds members, and `clear_db
 
 **Cleanup:** `python system/scripts/safe_nuke_tags.py --dry-run --empty-duplicates "Evolve for UL"`, then without
 --dry-run -- a phone write: only on Benny's word.
+Done 2026-09-30 ~14:15 on his "delete dup" (one attach, no dry run needed -- the run prints its plan first): kept
+tagId 17235619250798980709 (3 members), deleted the empty 14110252023802097929, every other tag unchanged.
 Related: [[pogo-tag-vocabulary-2026-09-09]], [[reference-pogo-tag-order]], [[feedback-action-tag-names-on-top]].
