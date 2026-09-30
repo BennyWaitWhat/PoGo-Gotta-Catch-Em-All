@@ -144,6 +144,7 @@ def advice(members=None, pile=None):
         if not branched and not stop:
             continue
         base = {'uid': u, 'species': r['species_name'], 'iv': round((r['iv_total'] or 0) * 100 / 45),
+                'ivs': '/'.join('?' if r[k] is None else str(r[k]) for k in ('iv_atk', 'iv_def', 'iv_sta')), 'cp': r['cp'],
                 'gender': r['gender'], 'tags': sorted(e['tags']), 'src': sid, 'key': key,
                 'own': sorted(_own) if tf is not tform else None, 'stop': stop}
         if e['fixed']:
@@ -196,8 +197,10 @@ def lines(adv=None):
             if a.get('stop'):
                 what += ', then STOP -- do not evolve it on to %s' % ' / '.join(a['stop'])
         g = {1: ' ♂', 2: ' ♀'}.get(a['gender'], '') if a['src'] in ('charcadet', 'kirlia', 'snorunt') else ''
-        out.append('%s %d%%%s (%s) -> %s%s' % (a['species'], a['iv'], g, ', '.join(a['tags']), what,
-                                               ('  [needs: %s]' % a['how']) if a['how'] else ''))
+        # WHICH COPY (2026-09-30): two 76% Smolivs printed the same line, so the second read as "standing, unchanged" --
+        # the IVs and CP name the copy he can find in the game (and a Dolliv still wearing the tag reads as done)
+        who = '%s %d%%%s' % (a['species'], a['iv'], g) + (' %s CP %s' % (a['ivs'], a.get('cp') or '?') if a.get('ivs') else '')
+        out.append('%s (%s) -> %s%s' % (who, ', '.join(a['tags']), what, ('  [needs: %s]' % a['how']) if a['how'] else ''))
     return out
 
 

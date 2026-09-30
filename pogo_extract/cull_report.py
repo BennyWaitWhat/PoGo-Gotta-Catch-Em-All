@@ -72,6 +72,14 @@ norm = lambda u: format(int(u, 16), 'x')
 sig = lambda r: (r['iv_atk'], r['iv_def'], r['iv_sta'], r['creation_date'])
 
 
+def _ww_short(line):
+    """A STANDING which-way line, short (2026-09-30): the copy and its target, not the whole instruction again --
+    'Smoliv 76% 5/14/15 CP 221 (Evolve Once) -> Dolliv, then STOP ...' -> 'Smoliv 76% 5/14/15 CP 221 -> Dolliv'."""
+    who, _, rest = line.partition(' (')
+    tgt = re.split(r',| \(|  \[| --', rest.partition(') -> ')[2])[0].strip()
+    return '%s -> %s' % (who, tgt) if tgt else who
+
+
 def _transfer_readback(txt):
     """prune's verify line for Transfer -> (read back, want, deferred uids), or None = not confirmed. `[OK]` with server < want
     means members the game has not tagged yet: a hatchling still flagged isEgg (the "deferred: N hatchling(s)" line after it)
@@ -679,6 +687,12 @@ def main():
                         uncollected.append('%s is %s #%d as %s -- you no longer keep %s shadows'
                                            % (desc(m, False), NAMES[lg], rk, stg(st), NAMES[lg]))
                     continue
+                # REACHES THE CAP FIRST (LAW 2b, pvp_iv_rule.usable_best): a GL/UL Best is judged at a stage that can reach
+                # the cap whenever this copy has one, so a better rank at a stage that cannot is no Best to lose (2026-09-30:
+                # a 93% Smoliv printed ***CHECK*** as "best Ultra League Dolliv #14" -- Dolliv tops out at 1,619 CP, and the
+                # law judged it as Arboliva, #3262)
+                if CAPS[lg] is not None and not capreach and (_ub(m, lg) or (1,))[0] == 0:
+                    continue
                 bk = best_kept.get((lg, st, cls(m)))
                 if bk is None or rk < bk[0]:
                     note = '%s is your best %s %s (#%d%s)' % (desc(m, False), NAMES[lg], stg(st), rk,
@@ -1004,7 +1018,7 @@ def main():
             _stand = [l for l in ww if l in _prev_ww]
             out.extend('- ' + l for l in _new)
             if _stand:
-                out.append('- standing, unchanged (%d): %s' % (len(_stand), ', '.join(l.split(' (')[0] for l in _stand)))
+                out.append('- standing, unchanged (%d): %s' % (len(_stand), '; '.join(_ww_short(l) for l in _stand)))
         targets = {u: (e['fixed'] or list(e['split'] or [])) for u, e in evolve_targets._targets().items()}
     except Exception as e:
         out.append('(which way: not computed -- %s)' % e)
@@ -1167,6 +1181,13 @@ def power_up_block(C, pile_set, why, name):
 
 
 def _selftest():
+    assert _ww_short('Smoliv 76% 5/14/15 CP 221 (Evolve Once, Evolve for GL) -> Dolliv, then STOP -- do not evolve it on to '
+                     'Arboliva') == 'Smoliv 76% 5/14/15 CP 221 -> Dolliv'
+    assert _ww_short('Gloom 91% 15/13/13 CP 800 (Evolve Once) -> Vileplume (via Gloom), not Bellossom  [needs: x]') == \
+        'Gloom 91% 15/13/13 CP 800 -> Vileplume'
+    assert _ww_short("Eevee 80% 12/12/12 CP 900 (Evolve Once) -> Umbreon -- don't press the plain Evolve button") == \
+        'Eevee 80% 12/12/12 CP 900 -> Umbreon'
+    assert _ww_short('Smoliv 76%') == 'Smoliv 76%', 'an old-format line keeps its label'
     ok = '  Transfer         server=72 want=72  [OK]\n  Adventure Effect server=1 want=1  [OK]\n'
     assert _transfer_readback(ok) == (72, 72, set()), _transfer_readback(ok)
     hat = ('  Transfer         server=71 want=72  [OK]\r\n      deferred: 1 hatchling(s) still flagged isEgg (tag write ignored by '
