@@ -1,5 +1,14 @@
 # tools
 
+## `triple_check.py` — run before you say "done"
+
+```bash
+python tools/triple_check.py            # git state, compile/parse, self-tests, guards, secrets (ALL history), doc links, data store
+python tools/triple_check.py --gate     # + the 11-audit gate (pull first)
+python tools/triple_check.py --fresh    # everything on a fresh clone of origin/main + a data pull
+```
+Read-only (no Frida; the phone is only read). Ends with `ALL CLEAR` (exit 0) or `NOT DONE` (exit 1). CI runs it on every push.
+
 ## `pogo_data.py` — the phone data store
 
 The game data never goes in git. It lives on the phone in `/data/local/tmp/pogo_data/`, one versioned tarball per group

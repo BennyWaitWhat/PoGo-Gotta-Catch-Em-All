@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: feedback
   originSessionId: d44dc321-2608-42e7-870c-24289b882f3e
-  modified: 2026-09-30T02:53:43.127Z
+  modified: 2026-09-30T02:57:04.142Z
 ---
 
 User (2026-08-14): "Stop crashing the app everytime you do an audit, its annoying." The audit cycle's
@@ -33,7 +33,7 @@ attach without killing and are fine.
 
 **2026-09-29: no tool in git kills or launches PoGo.** Cloud sessions reach the phone now.
 - `restart_pogo_and_wait` raises in all three copies: pogo_extract (PR #4), AutoCatcher desktop (#6), and the phone's
-  own `ondevice_toggle/phone_pogo_il2cpp.py` (#9, in git; the phone runs the unstubbed file until the next deploy).
+  own `ondevice_toggle/phone_pogo_il2cpp.py` (#9; deployed to the phone 2026-09-29 ~23:00, md5 3fa661a3).
 - `tools/joystick_round.py` refuses while PoGo is open. The user closes and reopens the game.
 - The June toggles and installers are untracked; their phone copies are in `/data/local/tmp/retired_2026-09-29/`.
 - `docs/START_HERE.md` section 4: "Never restart, force-stop or relaunch PoGo." A new tool must not add any of these.

@@ -25,6 +25,9 @@ Then read `docs/memory/INDEX.md` and the notes under "How I should work" and "sa
 3. Work in your folder. Phone steps follow `docs/phone_access.md`.
 
 ## 3. End of work
+0. **Triple check** (Benny: "Once done, triple check everything. Same for future posterity."):
+   `python tools/triple_check.py --gate` must end with **ALL CLEAR** before you tell him anything is done.
+   For a handoff or release: `python tools/triple_check.py --fresh` (fresh clone + data pull + everything).
 1. **Data:** after anything that changed game data, `python tools/pogo_data.py push --group <your group>`. Refused = another session pushed
    since your pull: pull, redo, push. Never `--force` over someone else's work.
 2. **Code:** commit on your session branch and push it. Then open a PR to `main` and merge it (`gh pr create --fill` +

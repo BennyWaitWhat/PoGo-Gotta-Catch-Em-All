@@ -32,6 +32,7 @@ line in `cloud_setup.md` → tell Benny the ONE thing to fix. Nothing about the 
 python tools/pogo_data.py status        # expect: inventory v2, catcher v1, gym v1 on the phone; inventory-cold not seeded
 python tools/pogo_data.py pull          # ~65 MB over the tailnet; ~1 min at ~1 MB/s (slower if relayed)
 cd pogo_extract && python full_audit.py --audits-only   # expect: ALL 11 AUDITS PASS (proven on a fresh clone 2026-09-29)
+cd .. && python tools/triple_check.py --gate              # everything in one go; must say ALL CLEAR
 ```
 Then do §0 (the first cull). After that, whenever Benny says **`cull`**: follow `.claude/skills/cull/SKILL.md` exactly (pull → `full_audit.py` → push
 `--group inventory` → publish Bag Pulse). The first cull in a fresh VM rebuilds `system/scripts/rank_tables.pkl` (333 MB, not in
@@ -106,6 +107,8 @@ Benny the branch link) · whether cloud sessions have the Artifact tool for Bag 
 a DERP relay.
 
 ## 8. Gotchas that cost time today
+- **"Done" means `python tools/triple_check.py --gate` says ALL CLEAR** (Benny: "triple check everything. Same for future
+  posterity.") — and every owning session confirmed its own area.
 - **Never run a script with `--help` to learn it** — `full_audit.py --help` ran a real cull (fixed: unknown flags → rc 2).
   Never pipe a phone script into `head`/`tail`: a broken pipe kills it mid-cycle.
 - **Heredocs mangle backslashes and quotes** in the agent shell: write patch scripts to a file, then run them.

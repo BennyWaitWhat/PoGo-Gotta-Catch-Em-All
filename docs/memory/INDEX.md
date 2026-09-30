@@ -29,6 +29,7 @@ Notes reference each other as [[note-name]] = the file `note-name.md` in this fo
 - [Session conduct: one known-good tool](feedback-pogo-session-conduct.md) -- extend the canonical pipeline; no agent fan-outs or one-off scripts.
 - [Do it yourself; workflows too slow](feedback-do-it-yourself-workflows-too-slow.md) -- PoGo changes inline, verify with the offline audits, then cull.
 - [Workflow hunters never edit live files](feedback-workflow-hunters-never-edit-live.md) -- say read-only in plain words; 09-29 hunters patched 29 files; finished by 2 reviewers; open: catcher picker, shiny ce labels, server replies.
+- [TRIPLE CHECK before "done"](feedback-triple-check-before-done.md) -- `python tools/triple_check.py --gate` must say ALL CLEAR (`--fresh` for handoffs) + every session's status; "Same for future posterity."
 - [Tell me what to expect](feedback-tell-me-what-to-expect.md) -- announce phone phases, ask for `go`; serial phone steps run myself.
 - [Never probe scripts with --help](feedback-never-probe-scripts-with-help.md) -- most ignore argv and RUN; `full_audit.py --help` ran a cull 09-29 (now rc 2); never pipe phone scripts into head.
 - [Don't change system settings without asking](feedback-dont-change-system-settings-without-asking.md) -- no battery/UI/permission changes without approval.
