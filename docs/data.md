@@ -15,7 +15,7 @@ python tools/pogo_data.py push --group inventory   # after a cull (owner only); 
 python tools/pogo_data.py selftest                 # offline check of the tool itself
 ```
 
-## Groups (`data_manifest.txt` says exactly which files)
+## Groups (`tools/data_manifest.txt` says exactly which files)
 | Group | Owner (only the owner pushes it) | What | Pulled by default |
 |---|---|---|---|
 | `inventory` | Pokemon Inventory | `pokemon.db`, walk outputs, tag sets, analysis state, per-account sets, newest 6 snapshots | yes |
@@ -35,7 +35,7 @@ python tools/pogo_data.py selftest                 # offline check of the tool i
 ## Not in the data store
 Secrets (Pokemod/Niantic prefs, `nia_secret_*`, keystores, `game_limits.json`, `pogo_extract/system/analysis/pokemod/`), RE dumps,
 binaries, logs, backups, and `system/scripts/rank_tables.pkl` (333 MB, rebuilds itself when missing — the first cull in a fresh VM is
-slower for it). To add a file: put its pattern in `data_manifest.txt` under the owning group (owner edits), then push that group.
+slower for it). To add a file: put its pattern in `tools/data_manifest.txt` under the owning group (owner edits), then push that group.
 
 ## The PC
 The Windows PC is no longer where PoGo work happens. It seeded the store on 2026-09-29 and still holds the original copies. If a PC

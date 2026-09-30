@@ -6,6 +6,10 @@ versions follow [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Changed
+- Root tidied: CONTRIBUTING / SECURITY / CODE_OF_CONDUCT moved to `.github/`, the CHANGELOG to `docs/`,
+  `data_manifest.txt` to `tools/`, `wf_master.json` to `pogo_extract/`; `.editorconfig` removed.
+
+### Changed
 - AutoCatcher: every path that force-stopped PoGo is retired (#6): `restart_pogo_and_wait` raises, `tools/joystick_round.py`
   refuses while PoGo is open, and 41 retired `ondevice_toggle/` files plus `catch_loop_fast.v1-pause.py` left git (they stay on the PC).
 - `docs/memory` re-synced with the PC memory (#7).

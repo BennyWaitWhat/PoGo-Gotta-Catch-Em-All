@@ -1,4 +1,4 @@
-# data_manifest.txt -- WHAT tools/pogo_data.py keeps on the phone (/data/local/tmp/pogo_data), one tarball per [group].
+# tools/data_manifest.txt -- WHAT tools/pogo_data.py keeps on the phone (/data/local/tmp/pogo_data), one tarball per [group].
 # Paths are repo-relative globs ("**" = any depth). "| newest N" keeps the N latest by mtime. "!pattern" excludes.
 # Anything git tracks is never packed (a pull cannot roll code back). Each group has one OWNER session, who pushes it;
 # every session may pull any group. "-cold" groups are never pulled by default (big, rarely needed).

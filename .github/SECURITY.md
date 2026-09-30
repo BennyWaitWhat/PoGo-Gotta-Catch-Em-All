@@ -16,7 +16,7 @@ data store is **on the phone**, and CI scans every push for key and token patter
 | GitHub access | the Claude GitHub app / the PC's `gh` login | Benny |
 
 The adb key gives **root** on the phone. Lock the cloud down to the phone's adb port with a Tailscale tag + ACL
-([`docs/cloud_setup.md`](docs/cloud_setup.md#lock-it-down-optional-once-the-bridge-works)).
+([`docs/cloud_setup.md`](../docs/cloud_setup.md#lock-it-down-optional-once-the-bridge-works)).
 
 ## If something leaks
 1. **Tailscale key:** admin console → Settings → Keys → revoke it; generate a new one; update the environment variable.

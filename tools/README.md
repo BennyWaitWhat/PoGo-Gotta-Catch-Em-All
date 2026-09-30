@@ -12,7 +12,7 @@ Read-only (no Frida; the phone is only read). Ends with `ALL CLEAR` (exit 0) or 
 ## `pogo_data.py` — the phone data store
 
 The game data never goes in git. It lives on the phone in `/data/local/tmp/pogo_data/`, one versioned tarball per group
-(groups and their files: [`../data_manifest.txt`](../data_manifest.txt)). Full story: [`../docs/data.md`](../docs/data.md).
+(groups and their files: [`data_manifest.txt`](data_manifest.txt)). Full story: [`../docs/data.md`](../docs/data.md).
 
 ```bash
 python tools/pogo_data.py status                   # phone version vs this checkout, per group

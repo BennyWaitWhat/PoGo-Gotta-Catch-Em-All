@@ -181,7 +181,7 @@ flowchart TB
 | [`pokegenie_work/`](pokegenie_work/) | PokeGenie backup tooling |
 
 **Sessions:** Pokemon Inventory (`pogo_extract/`, docs, tools), AutoCatcher (`AutoCatcher/`), Gym Battle (the gym/buddy files).
-Work goes branch → PR → squash-merge; `python tools/triple_check.py --gate` must say ALL CLEAR. See [`CONTRIBUTING.md`](CONTRIBUTING.md) and [`SECURITY.md`](SECURITY.md).
+Work goes branch → PR → squash-merge; `python tools/triple_check.py --gate` must say ALL CLEAR. See [`CONTRIBUTING`](.github/CONTRIBUTING.md) and [`SECURITY`](.github/SECURITY.md).
 
 </details>
 

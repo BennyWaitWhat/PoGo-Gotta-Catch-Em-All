@@ -5,7 +5,7 @@ import json, os, sys, html, datetime
 sys.stdout.reconfigure(encoding='utf-8', errors='replace')
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
-SRC = sys.argv[1] if len(sys.argv) > 1 else os.path.join(os.path.dirname(ROOT), 'wf_master.json')
+SRC = sys.argv[1] if len(sys.argv) > 1 else os.path.join(ROOT, 'wf_master.json')
 m = json.load(open(SRC, encoding='utf-8'))['master']
 
 CAT = {  # category -> chip color
