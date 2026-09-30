@@ -28,6 +28,9 @@ since 2026-06, the gym and buddy runners since 2026-09). This release puts it in
 - `evolvable_forms.py` writes its cache atomically (parallel cold starts crashed 6 of 25 rounds before, 0 after).
 - `dashboard.py` cancels jobs on Linux; `verify_tags_live.py` honours `ADB_TARGET`.
 - `granular_tags.py --audit` says NOT RUN instead of a false green when no tag sets exist.
+- `pogo_il2cpp.restart_pogo_and_wait()` refuses (#4): tools never force-stop or relaunch PoGo; `set_nicknames.py` stops
+  instead of restarting the game.
+- CI actions bumped by Dependabot: `actions/checkout` v7 (#2), `actions/setup-python` v7 (#3).
 
 ### Removed
 - From the repo (kept on the PC): scripts that break the hard rules — bulk release, tag nukes outside `safe_nuke_tags.py`,
