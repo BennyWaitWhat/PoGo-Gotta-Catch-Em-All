@@ -181,7 +181,7 @@ def main():
             if later and not any(evolvable_forms.gender_allows(r['pokemon_id'], r['gender'], DEX.get(x)) for x in later):
                 bad.append(nm + ': this gender reaches no later stage of the line')
     # THE BEST SHINY OF A LOOK NEVER EVOLVES (2026-09-30, user: "you dont keep my only anything when evolving shinies. for
-    # example the costumed whimsicott i evolved, now theres no costumed cottonee."): a look = species + form (form 0 folded
+    # example the costumed whimsicott i evolved, not theres no costumed cottonee."): a look = species + form (form 0 folded
     # into a species' single form) + costume + the gender where the game draws the two differently; its best in-bag
     # shiny (IV, then uid) is the look's trophy at that stage, whatever the producer.
     _fc0 = collections.defaultdict(set)

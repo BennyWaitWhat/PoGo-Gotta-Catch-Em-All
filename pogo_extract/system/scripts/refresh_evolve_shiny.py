@@ -126,7 +126,7 @@ def compute_target(why=None, spent=None, detail=None, gated=None, items_spent=No
             return next(iter(_formcnt[r['pid']]))
         return f
     # PER LOOK (user 2026-09-30: "you dont keep my only anything when evolving shinies. for example the costumed
-    # whimsicott i evolved, now theres no costumed cottonee."): a 51% flower-crown shiny Cottonee was a "spare" because a
+    # whimsicott i evolved, not theres no costumed cottonee."): a 51% flower-crown shiny Cottonee was a "spare" because a
     # 78% plain shiny Cottonee was the stage's best, so evolving it left no crowned shiny Cottonee. The trophy is kept per
     # look: species + form + costume + the gender where the game draws the two differently (evolvable_forms.gender_key).
     def _look(r):
