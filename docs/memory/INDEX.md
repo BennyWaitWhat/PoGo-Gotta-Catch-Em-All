@@ -14,7 +14,7 @@ Notes reference each other as [[note-name]] = the file `note-name.md` in this fo
 - [User phone setup](user-phone-setup.md) -- Pixel 9 Pro, OS/build, Magisk, Vector/LSPosed modules, boot scripts, root hiding.
 - [Phone root-app sources](phone-root-app-sources.md) -- repo map + update gotchas for sideloaded root apps/modules; `adb install -r` keeps LSPosed scope.
 - [APK install verification](apk-install-verification.md) -- verify version/size/SHA256 and show the user before install.
-- [Wireless ADB via Tailscale](wireless-adb-via-tailscale.md) -- use the stable Tailscale IP, not the LAN IP; a Bravia TV shares the adb server; cloud sessions: ADB_TARGET=127.0.0.1:5555 (Tailscale in the VM), never a bare adb.
+- [Wireless ADB via Tailscale](wireless-adb-via-tailscale.md) -- use the stable Tailscale IP, not the LAN IP; a Bravia TV shares the adb server; cloud sessions: the hook exports ADB_TARGET (the phone's own IP on the VM loopback, else 127.0.0.1:5555), never a bare adb.
 - [NEVER kill system-bound HALs](feedback-never-kill-system-bound-hals.md) -- `ctl.stop` on GNSS/modem HALs = crash loop into safe mode.
 - [dumpsys location et= field](reference-dumpsys-location-et-field.md) -- `et=` is elapsedRealtime since boot, NOT age.
 - [Phone thermal diagnosis 2026-09-29](phone-thermal-diagnosis-2026-09-29.md) -- read-only hot-phone recipe; PoGo automation = 2.5 cores = ~4.5 W; skin 43 C = status 2 cuts charging (chg_mdis 26); thresholds + where to read.
@@ -115,7 +115,7 @@ Notes reference each other as [[note-name]] = the file `note-name.md` in this fo
 - [On-phone autonomous catcher](pogo-on-phone-catcher.md) -- `AutoCatcher/`; `propagate`; liveness only before hooks; pause handshake; crash-loop breaker; no 706/708.
 - [Field Research reward catcher](pogo-field-research-reward-catcher.md) -- clears "Today" rewards (open Today once); v3: lost-throw re-throw by box proof, cap 6; `tools/reward_sim.py`.
 - [Map tappables / event apples](reference-pogo-map-tappables-apples.md) -- TAPPABLE_TYPE_MAPLE at Mossy-lured stops → apples 1151/1152/1155 or a hidden Pokémon; tap = gesture handler `void ?(Object, EventArgs)`, NOT Tapped(); `tools/apple_collector.py`.
-- [PoGo repo + session ownership 2026-09-29](pogo-repo-and-session-ownership-2026-09-29.md) -- one private repo (root Phone Maintenance/), one owner per folder/file, `pogo_desktop_busy` marker for desktop attaches, no root CLAUDE.md.
+- [PoGo repo + session ownership 2026-09-29](pogo-repo-and-session-ownership-2026-09-29.md) -- one private repo (root Phone Maintenance/, v1.0.0), branch->PR->squash + offline CI, data on the phone (`tools/pogo_data.py`), one owner per file, advisory busy marker, no root CLAUDE.md.
 - [Rate-limit detection](reference-pogo-limit-detection.md) -- "can't spin" = server OutOfRange (res2) at stops in range; account flags clean (GetPlayer warn/ban 0); catcher LIMIT line + spin back-off.
 - [GPS Joystick control](reference-gps-joystick-control.md) -- Pro Intents API (SPEED/WALK/...); timing fix 250/248; never stop it with PoGo open.
 - [Walk-credit speed curve](reference-pogo-walk-credit-speed-curve.md) -- KmWalked full to ~10.5 km/h, 0% from 11.9; updates every ~123 s.
