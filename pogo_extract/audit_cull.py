@@ -742,9 +742,12 @@ print('\nLAYER 5  variant integrity (nothing unique culled)')
 # For all 32 the layer said "covered" and would have blessed releasing the only copy of that variant.
 # bread mode is the raw Max mode (_bmn): every mode is its own variant (evolvable_forms.BREAD_MODES), so a piled
 # BREAD_SPECIAL_MODE copy with no same-ident sibling IS the sole copy of its variant -- an ORPHAN FAIL, correctly.
+# Alignment is shadow-or-not (2026-09-30): purified is no keep axis (docs/memory/pogo-tag-system-2026.md), so a piled
+# purified shiny under the shiny floor is covered by a kept normal shiny of its form -- a shiny purified Alolan Muk 29%
+# failed here while the law, the engine and _lawcheck all piled it lawfully.
 ident = lambda r: (r['pokemon_id'], cf(r), r.get('fresh_costume') or 0, 0,
                    r.get('fresh_natural_art_bg') or 0, deco(r), _bmn(r),
-                   1 if r.get('fresh_shiny') else 0, r.get('fresh_alignment') or 0,
+                   1 if r.get('fresh_shiny') else 0, 1 if r.get('fresh_alignment') == 1 else 0,
                    (r.get('fresh_form') or 0) if is_costume_form(r.get('fresh_form') or 0) else 0,
                    0 if __import__('costume_forms').card_folds_into_costume(r)   # costume + background = one look (2026-09-24)
                    else r.get('fresh_loc_card_enum') or (1 if r.get('fresh_has_location_card') == 1 else 0))
