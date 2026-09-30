@@ -4,14 +4,22 @@
 
 ### Say **“cull”**. Get back a tagged bag and a one-page report. Release the junk in two taps.
 
+![Android 17](https://img.shields.io/badge/Android-17-3DDC84?style=for-the-badge&logo=android&logoColor=white)
+![Root: Magisk + Zygisk](https://img.shields.io/badge/Root-Magisk%20%2B%20Zygisk-00AF9C?style=for-the-badge&logo=magisk&logoColor=white)
+![Pokémon GO 0.429.1](https://img.shields.io/badge/Pok%C3%A9mon%20GO-0.429.1-FFCB05?style=for-the-badge&logo=pokemon&logoColor=black)
+![Python 3.11+](https://img.shields.io/badge/Python-3.11%2B-3776AB?style=for-the-badge&logo=python&logoColor=white)
+![Frida 17](https://img.shields.io/badge/Frida-17.9.11-EF6456?style=for-the-badge)
+![SQLite](https://img.shields.io/badge/SQLite-data-003B57?style=for-the-badge&logo=sqlite&logoColor=white)
+![Tailscale](https://img.shields.io/badge/Tailscale-bridge-242424?style=for-the-badge&logo=tailscale&logoColor=white)
+![Claude Code](https://img.shields.io/badge/Claude%20Code-cloud-D97757?style=for-the-badge&logo=claude&logoColor=white)
+
 [![CI](https://github.com/BennyWaitWhat/PoGo-Gotta-Catch-Em-All/actions/workflows/ci.yml/badge.svg)](https://github.com/BennyWaitWhat/PoGo-Gotta-Catch-Em-All/actions/workflows/ci.yml)
-![Reads the live game](https://img.shields.io/badge/reads-the%20live%20game-ff3b5c)
+[![Release v1.0.0](https://img.shields.io/badge/release-v1.0.0-blue)](https://github.com/BennyWaitWhat/PoGo-Gotta-Catch-Em-All/releases/tag/v1.0.0)
 ![11 audits](https://img.shields.io/badge/audit%20gate-11%20independent%20checks-2ea44f)
 ![Tag only](https://img.shields.io/badge/releases-never%20(you%20do)-critical)
-![Android](https://img.shields.io/badge/Android%2017-rooted-3DDC84?logo=android&logoColor=white)
-![Runs in the cloud](https://img.shields.io/badge/runs%20in-Claude%20cloud-D97757)
-![Frida 17](https://img.shields.io/badge/frida-17.9.11-EF6456)
-![Status](https://img.shields.io/badge/status-active-brightgreen)
+![iPhone: not supported](https://img.shields.io/badge/iPhone-not%20supported-lightgrey?logo=apple&logoColor=white)
+![Status: active](https://img.shields.io/badge/status-active-brightgreen)
+[![License](https://img.shields.io/badge/license-all%20rights%20reserved-lightgrey)](LICENSE)
 
 [What it does](#-what-it-does) · [What you need](#-what-you-need) · [Set it up](#-set-it-up) · [What it keeps](#-what-it-always-keeps) · [Tags](#%EF%B8%8F-the-tags-youll-see-in-game) · [Report](#-a-real-report) · [Safety](#%EF%B8%8F-why-its-safe) · [Troubleshooting](#-troubleshooting) · [FAQ](#-faq)
 
