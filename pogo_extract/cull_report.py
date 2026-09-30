@@ -1004,8 +1004,11 @@ def main():
         _fn = collections.OrderedDict()
         for u, who, what in floor_notes:
             _fn.setdefault((u, who), []).append(what)
-        for (u, who), whats in _fn.items():
-            out.append('- %s is your best %s -- outside your #%d cut-off, so no Best is kept there' % (who, '; '.join(whats), floor))
+        if _fn:
+            # ONE LINE, EVERY MON NAMED (2026-09-30, token trim): 13 lines of per-stage ranks on a 39-mon pass were the
+            # longest part of the report; the near misses still get their own close-call lines below
+            out.append('- past your #%d cut-off, so no Best is kept, though each is your best of its kind at some stage: %s'
+                       % (floor, ', '.join(who for u, who in _fn)))
         for n in over_cap:
             out.append('- %s' % n)
         for n in close_calls:

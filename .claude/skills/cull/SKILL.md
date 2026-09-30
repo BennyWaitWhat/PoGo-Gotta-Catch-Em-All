@@ -5,34 +5,28 @@ description: Run the Pokemon GO cull cycle for this project - pull the game data
 
 # Cull
 
-Four steps, all from the repo root (a cloud session; the phone bridge must say `connected` — `docs/cloud_setup.md` if not):
+Four tool rounds per cull, from the repo root (a cloud session; the phone bridge must say `connected` —
+`docs/cloud_setup.md` if not). Every round re-reads the whole session, so keep it to these four:
 
-```bash
-python tools/pogo_data.py pull
-```
-(the game data lives on the phone — `docs/data.md`; skip only if this session already pulled and nothing pushed since)
+1. In the same message as loading this skill: `python tools/pogo_data.py status | grep '^inventory '; adb -s "$ADB_TARGET" shell pidof com.nianticlabs.pokemongo`.
+   Phone version != here -> `python tools/pogo_data.py pull` first (`docs/data.md`). A new PID since the last pass -> `FAILURES.md`.
+2. The cull, its report and the page's text in ONE command (log to a file: never pipe `full_audit.py` itself into
+   `head`/`tail`, a broken pipe kills it mid-cycle; never add a guessed flag, unknown flags stop it, rc 2):
+   ```bash
+   cd pogo_extract && python full_audit.py > system/analysis/last_cull.log 2>&1; echo "rc=$?"; grep -E "bag [0-9]|AUDIT GATE|DONE --|STOPPED|frozen|session is gone" system/analysis/last_cull.log; sed -n '/=== REPORT ===/,$p' system/analysis/last_cull.log | grep -v '^\['; python bag_art.py --text
+   ```
+   full_audit = dashboard up -> game master freshness -> **fresh bag recrawl** -> walk tripwires -> Adventure-Effect roster ->
+   **11 audits in parallel** -> tag sync -> ONE post-push session (reconcile, retire, Remote Trade, tag order) -> verify ->
+   the report -> pages (gen_artifacts, gen_bag_pulse) -> dashboard down.
+3. ONE message: the report (below), then two tool calls side by side:
+   - Bash (repo root): `python tools/pogo_data.py push --group inventory && python tools/triple_check.py --gate | tail -3`
+   - Artifact publish of the page `bag_art.py --text` just printed (in `pogo_extract/system/analysis/`):
+     `collection_stats.html` (`oyebenny`) -> `https://claude.ai/artifact/59FFz2wZBv8sNC4CZJBmKn`; `bag_pulse_alt.html` (any other
+     account) -> `https://claude.ai/artifact/BvcioQeAeZcposXoFHFE8Q`. No Artifact tool in this session? Say so in one line.
 
-```bash
-cd pogo_extract && python full_audit.py
-```
-That is: dashboard up -> game master freshness -> **fresh bag recrawl** -> walk tripwires -> Adventure-Effect roster ->
-**11 audits in parallel** -> tag sync to the phone -> ONE post-push session (reconcile, retire stale tag shells, Remote
-Trade tag, tag order) -> verify -> the report -> pages (gen_artifacts, gen_bag_pulse) -> dashboard down. Never add a guessed flag
-(unknown flags stop it, rc 2) and never pipe it into `head`/`tail` — a broken pipe kills it mid-cycle.
-
-Then ONE command (repo root) pushes the data and runs the final check:
-
-```bash
-python tools/pogo_data.py push --group inventory && python tools/triple_check.py --gate | tail -3
-```
-ALWAYS push after a phone pass, even when the gate failed (the walk still changed the data). Refused = another session
-pushed since your pull: tell Benny, don't `--force`. The last line must say ALL CLEAR before you call the pass done.
-
-Then publish Bag Pulse (Artifact tool, `url` = the link; read the page's text first, images stripped). The cull writes the
-ACTIVE account's page: `oyebenny` -> `pogo_extract/system/analysis/collection_stats.html` to
-`https://claude.ai/artifact/59FFz2wZBv8sNC4CZJBmKn`; any other account (`florandez`) -> `pogo_extract/system/analysis/bag_pulse_alt.html`
-(gen_bag_pulse writes it, titled "Alt Bag Pulse") to `https://claude.ai/artifact/BvcioQeAeZcposXoFHFE8Q`. No Artifact tool in
-this session? Say so in one line.
+   ALWAYS push after a phone pass, even when the gate failed (the walk still changed the data). Refused = another session
+   pushed since your pull: tell Benny, don't `--force`.
+4. One closing line. The final check must say ALL CLEAR before you call the pass done.
 
 ## The one rule that matters
 
