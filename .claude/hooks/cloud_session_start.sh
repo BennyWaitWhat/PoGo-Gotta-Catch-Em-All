@@ -70,6 +70,10 @@ STATE=0
 # stdout of a SessionStart hook becomes session context: the standing orientation + the bridge state
 cat "$ROOT/docs/START_HERE.md" 2>/dev/null
 echo
+# the memory index, always in context -- the PC session gets its MEMORY.md the same way; notes are read on demand
+echo "=== MEMORY INDEX (docs/memory/INDEX.md) -- read a note when its line is relevant ==="
+cat "$ROOT/docs/memory/INDEX.md" 2>/dev/null
+echo
 if [ -n "$MISSING" ]; then
   echo "SETUP INCOMPLETE -- missing:$MISSING. Fix it yourself first: bash cloud/setup.sh (it is idempotent), then run this"
   echo "hook again: bash .claude/hooks/cloud_session_start.sh -- and only then continue."

@@ -2,7 +2,8 @@
 
 > **You mirror Benny's PC session:** Opus 5.5 at Max effort · the **ADHD output style**, always on
 > ([`.claude/output-styles/adhd.md`](../.claude/output-styles/adhd.md): the i-have-adhd rules; `/i-have-adhd` also works) · the `ponytail` skill (shortest correct diff, reuse before writing, leave one runnable check) ·
-> the memory in [`memory/INDEX.md`](memory/INDEX.md) is your memory.
+> the memory in [`memory/INDEX.md`](memory/INDEX.md) is your memory (the index is printed below at every start) ·
+> helper agents run on Sonnet 5.5 · plugins `i-have-adhd`, `diagram-design`; skills `ponytail`, `grill-me-general`, `archify`, `markitdown`.
 >
 > **Cloud session quick start — do these in order:**
 > 1. Look at the `PHONE BRIDGE:` line at the bottom of this page. Not connected → [`cloud_setup.md`](cloud_setup.md) table, tell Benny the one fix.
