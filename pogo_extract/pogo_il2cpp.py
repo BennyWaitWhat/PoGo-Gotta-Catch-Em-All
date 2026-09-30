@@ -324,6 +324,72 @@ rpc.exports = {
         try { var k = cFN(ns, cls); if (k.isNull()) return false; return ptr(addrStr).readPointer().equals(k); } catch(e) { return false; }
     }
 };
+
+// ---- THE POKEDEX LAYOUT BY REFLECTION (2026-09-30, game 0.431.0) ----------------------------------------------------------
+// 0.431.0 split PokedexImpl's one Dictionary<Int32, PokedexEntryProto> (+0x10) into TEN (+0x20..+0x68, obfuscated names) and
+// moved PokedexEntryProto.CapturedForms +0x50 -> +0x30 (+0x50 became EncounteredForms). The fixed offsets read 0 entries -- and
+// would have read ENCOUNTERED forms as caught. Everything below is resolved at run time: the dictionaries by TYPE, the proto
+// fields by NAME (proto field names are not obfuscated), so a future layout change reads right or reads nothing (the walk's
+// 500-entry floor then keeps the previous file), never a wrong field.
+var _PDX = null;
+function _pdxInit() {
+    if (_PDX) return _PDX;
+    var X = {};
+    Process.findModuleByName('libil2cpp.so').enumerateExports().forEach(function (e) { if (e.name.indexOf('il2cpp_') === 0) X[e.name] = e.address; });
+    function f(n, r, a) { return X[n] ? new NativeFunction(X[n], r, a) : null; }
+    _PDX = {fields: f('il2cpp_class_get_fields', 'pointer', ['pointer', 'pointer']), name: f('il2cpp_field_get_name', 'pointer', ['pointer']),
+            off: f('il2cpp_field_get_offset', 'uint32', ['pointer']), flags: f('il2cpp_field_get_flags', 'int', ['pointer']),
+            type: f('il2cpp_field_get_type', 'pointer', ['pointer']), tname: f('il2cpp_type_get_name', 'pointer', ['pointer']),
+            parent: f('il2cpp_class_get_parent', 'pointer', ['pointer']), cname: f('il2cpp_class_get_name', 'pointer', ['pointer']), byClass: {}};
+    return _PDX;
+}
+function _pdxStr(p) { try { return p.isNull() ? '' : p.readCString(); } catch (e) { return ''; } }
+function _pdxFields(o) {                     // [{name, type, off}]: the INSTANCE fields of o's class and its parents (cached per class)
+    var D = _pdxInit(), k = o.readPointer(), key = k.toString();
+    if (D.byClass[key]) return D.byClass[key];
+    var out = [], c = k, depth = 0;
+    while (c && !c.isNull() && depth < 6) {
+        var it = Memory.alloc(Process.pointerSize); it.writePointer(NULL); var fd;
+        while ((fd = D.fields(c, it)) && !fd.isNull()) {
+            if (D.flags(fd) & 0x10) continue;                                      // static
+            out.push({name: _pdxStr(D.name(fd)), type: _pdxStr(D.tname(D.type(fd))), off: D.off(fd)});
+        }
+        var par = D.parent(c); if (!par || par.isNull() || _pdxStr(D.cname(par)) === 'Object') break; c = par; depth++;
+    }
+    D.byClass[key] = out;
+    return out;
+}
+function _pdxOff(o, re) {                    // offset of the first instance field whose NAME (letters only, lower case) matches re; -1 = none
+    var fs = _pdxFields(o);
+    for (var i = 0; i < fs.length; i++) if (re.test(fs[i].name.replace(/[^A-Za-z]/g, '').toLowerCase())) return fs[i].off;
+    return -1;
+}
+function _pdxDicts(inst) {                   // every Dictionary<Int32, PokedexEntryProto> of a PokedexImpl, biggest first
+    var out = [];
+    _pdxFields(inst).forEach(function (f) {
+        if (!/Dictionary`?2?<System\.Int32,\s*Holoholo\.Rpc\.PokedexEntryProto>/.test(f.type)) return;
+        try {
+            var d = inst.add(f.off).readPointer(); if (d.isNull()) return;
+            var eo = _pdxOff(d, /^entries$/), co = _pdxOff(d, /^count$/);
+            if (eo < 0 || co < 0) return;
+            var ent = d.add(eo).readPointer(); if (ent.isNull()) return;
+            out.push({field: f.name, off: f.off, dict: d, entries: ent, len: ent.add(0x18).readS32(), count: d.add(co).readS32()});
+        } catch (e) {}
+    });
+    out.sort(function (a, b) { return b.count - a.count; });
+    return out;
+}
+function _pdxCount(inst) {                   // the plausibility number the singleton pickers test (500..4000): distinct species keys
+    var seen = {}, n = 0;
+    _pdxDicts(inst).forEach(function (d) {
+        for (var i = 0; i < d.len; i++) {
+            var ep = d.entries.add(0x20 + i * 24);
+            if (ep.readS32() < 0) continue;
+            var k = ep.add(8).readS32(); if (!seen[k]) { seen[k] = 1; n++; }
+        }
+    });
+    return n;
+}
 """
 
 
@@ -774,14 +840,10 @@ rpc.exports.probeStardust = function(addr) {
 };
 rpc.exports.probeDexCount = function(addr) {
     _ensureInit();
-    try {
+    try {                                   // by reflection since 0.431.0 (see _pdxDicts): +0x10 is no longer the dictionary
         var inst = ptr(addr);
-        var dict = inst.add(0x10).readPointer();
-        if (dict.isNull()) return {ok:false, err:'null dict'};
-        var entries = dict.add(0x18).readPointer();
-        if (entries.isNull()) return {ok:false, err:'null entries'};
-        var count = entries.add(0x18).readS32();
-        return {ok:true, n: count};
+        if (!_pdxDicts(inst).length) return {ok:false, err:'no Dictionary<Int32, PokedexEntryProto> field'};
+        return {ok:true, n: _pdxCount(inst)};
     } catch(e) { return {ok:false, err: e.toString()}; }
 };
 """
