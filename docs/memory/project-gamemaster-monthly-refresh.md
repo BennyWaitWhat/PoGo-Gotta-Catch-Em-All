@@ -33,8 +33,10 @@ installed file on the 30-day clock with one check (>= 1500 pokemonSettings): no 
 80 in-bag rows: 22 held a move that went from "no normal roll" to "plain TM", 58 changed evolvability). Now
 `refresh_gamemaster.py` asks PokeMiners' 13-byte `latest/timestamp.txt` on EVERY run; a new batch is downloaded, diffed and judged
 against the bags BEFORE install (the active account's and every resting account's parked one: the file is shared) by `gm_guard.assess` (detect_legacy's two pool functions, evolvable_forms -- the form's
-evolvability, the whole evolution chain's requirements and the middle-stage flag that caps costume copies -- isTradable,
-isTransferable, rarity class: the engine's own code, run on the candidate). A flip installs it with a dated backup, writes the
+evolvability, the whole evolution chain's requirements and the middle-stage flag that caps costume copies -- size_line: the size
+numbers, XXL bounds and types an XXL keep is scored by, for the copy's own stage AND every later stage it can become (review
+2026-09-30: an XXL Ponyta is kept by its projected Rapidash points) -- isTradable, isTransferable, rarity class: the engine's own
+code, run on the candidate). A flip installs it with a dated backup, writes the
 SAME review record and exits 2 (`--ack` clears it); a candidate the engine cannot load is never installed. Every batch is stamped
 in `gamemaster_pokeminers.json.meta` (batch time, APK, sha256, last check; in data_manifest.txt); `audit_invariants` I2.7 WARNs
 when it is unstamped, behind the phone's APK, unchecked for 14 days or older than 150 days (PokeMiners' longest 2026 gap was 133).

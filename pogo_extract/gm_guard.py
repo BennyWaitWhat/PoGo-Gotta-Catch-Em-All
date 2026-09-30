@@ -11,8 +11,10 @@ orchestrator (network, install, review record).
     diff      diff_gm / digest_lines              what changed, on the fields the keep engine reads
     impact    load_bag / assess                   which IN-BAG rows (the active account's and every resting account's: the
                                                   file is shared) flip a keep verdict, by REUSING the engine's own
-                                                  functions (detect_legacy pools, evolvable_forms, remote_trade_picks,
-                                                  audit_gamemaster) against the candidate file BEFORE it is installed
+                                                  functions (detect_legacy pools, evolvable_forms, size_line,
+                                                  remote_trade_picks, audit_gamemaster) against the candidate file BEFORE
+                                                  it is installed. Axes: moves, evolve, size (numbers + types), tradable,
+                                                  transferable, rarity
     warn      freshness_findings                  the offline audit WARN (audit_invariants I2.7)
 
 FAIL CLOSED: a candidate the engine's own loaders cannot read is never installed; a baseline / bag / verdict that cannot
@@ -28,6 +30,7 @@ import io
 import json
 import os
 import re
+import shutil
 import sqlite3
 import sys
 import tempfile
@@ -259,6 +262,12 @@ def _forms(gm):
     return r
 
 
+def _extended_sizes(gm):
+    """{templateId: canonical sizeSettings} of the EXTENDED_V####_POKEMON_* templates (pokemonExtendedSettings)."""
+    return {t['templateId']: _canon(t['data']['pokemonExtendedSettings'].get('sizeSettings')) for t in gm
+            if isinstance(t.get('data'), dict) and isinstance(t['data'].get('pokemonExtendedSettings'), dict)}
+
+
 def _moves_str(x):
     return sorted(map(str, x or []))
 
@@ -301,10 +310,17 @@ def diff_gm(old, new):
             add('mega/primal (tempEvoOverrides) changed', short)
         if (a.get('shadow') is None) != (b.get('shadow') is None):
             add('shadow availability changed', short)
+        # NOT informational (2026-09-30, review): size_line.best_points scores a copy at every LATER stage it can become from
+        # THESE numbers (the live read only fixes a stage the bag holds), so a change here moves an XXL keep; the 'size' axis
+        # of assess() judges it per row, this label only says what moved
         sa = tuple(a.get(x) for x in ('pokedexHeightM', 'pokedexWeightKg', 'heightStdDev', 'weightStdDev')) + (_canon(a.get('sizeSettings')),)
         sb = tuple(b.get(x) for x in ('pokedexHeightM', 'pokedexWeightKg', 'heightStdDev', 'weightStdDev')) + (_canon(b.get('sizeSettings')),)
         if sa != sb:
-            add('size numbers changed (informational: the live read wins)', short)
+            add('size numbers changed', short)
+    XA, XB = _extended_sizes(old), _extended_sizes(new)          # the EXTENDED_V####_POKEMON_* bounds (XXL upper bound, size bands)
+    for k in sorted(set(XA) & set(XB)):
+        if XA[k] != XB[k]:
+            add('extended sizeSettings (XXL bound, size bands) changed', k.split('_POKEMON_', 1)[-1])
     fa, fb = _forms(old), _forms(new)
     for f in sorted(set(fb) - set(fa)):
         add('form added' + (' (costume)' if fb[f].get('isCostume') else ''), f)
@@ -349,6 +365,29 @@ def fresh_evolvable_forms(tag, gm_path, work_dir):
     return m
 
 
+def fresh_size_line(tag, gm_path, work_dir):
+    """A PRIVATE INSTANCE of size_line whose tables -- every form's height / weight / std-devs, the XXL upper bound and the six
+    size bands (pokemonSettings.sizeSettings and the EXTENDED_V####_POKEMON_* templates), the types -- are built by the module's
+    OWN _load() / _load_types() from `gm_path` (2026-09-30, review: the guard judged moves, evolution, tradability and rarity
+    but not the numbers size_line.best_points scores an XXL copy by, so a batch that moved them installed unseen).
+    size_line.py is not edited (it is in keep_policy._engine_sha, like evolvable_forms.py) and the live module is never
+    touched: _load / _load_types / _load_live read everything through the module global HERE, which points at a private
+    directory holding just this candidate and form_enum.json -- with no showcase_gm_live.json in it the live read is off, so
+    the two files are compared as the monthly dump says them (the live read is the same for both). Raises whatever _load()
+    raises on a file it cannot read: an unreadable candidate, never an install."""
+    d = os.path.join(work_dir, 'size_line_' + tag)
+    os.makedirs(d)
+    shutil.copyfile(gm_path, os.path.join(d, 'gamemaster_pokeminers.json'))
+    shutil.copyfile(os.path.join(ROOT, 'form_enum.json'), os.path.join(d, 'form_enum.json'))
+    spec = importlib.util.spec_from_file_location('size_line_gg_' + tag, os.path.join(ROOT, 'size_line.py'))
+    m = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(m)
+    m.HERE = d
+    m._load()
+    m._load_types()
+    return m
+
+
 class View(object):
     """Every client-game-master verdict the keep engine reads, built by the engine's OWN functions from one file."""
 
@@ -364,6 +403,7 @@ class View(object):
         self.trade = rtp.tradable_tables_from(gm)
         self.row_tradable = rtp.row_tradable
         self.ef = fresh_evolvable_forms(tag, gm_path, work_dir)
+        self.sl = fresh_size_line(tag, gm_path, work_dir)
 
 
 def evo_facts(ef, r):
@@ -373,7 +413,9 @@ def evo_facts(ef, r):
       is_middle_pid   the middle-stage flag that CAPS costume copies (costume_cap 3 -> 1, read by keep_policy / audit_cull /
                       preflight): a new non-baby pre-evolution ABOVE a held species flips it though its own branches did not move
       form hops       target_forms / can_reach (rank_cache reach, size_line) walk the branches to depth 4 (FlabebeRed ->
-                      FLOETTERED -> FLORGESRED): every hop's target forms + gender, gate reasons and gate detail
+                      FLOETTERED -> FLORGESRED): every hop's target forms + gender, gate reasons and gate detail -- read by the
+                      bare target AND by each target form: a REGIONAL branch is keyed by its form only ('slowbro_galarian', never
+                      'slowbro'), so a quest gate on the Galarian Slowpoke line is invisible to the bare key (2026-09-30, review)
       stages          path_cost / path_items / family (keep_policy._afford: a copy is held beyond its stage cap only for an
                       evolution its family can pay) walk the species chain to depth 4: every stage's candy, item, item count,
                       family and gendered target forms -- so a change further down the line flips the held pre-evolution too
@@ -384,12 +426,17 @@ def evo_facts(ef, r):
     gid = ef._dexname.get(pid)
     start = [k for k in (ef.form_name(fid), _norm(gid) if gid else '') if k]
     seen, frontier, hops = set(start), list(start), []
+    gn = ef.__dict__.get('_gg_gnorm')                    # normalised gate key -> gate key: once per file
+    if gn is None:
+        gn = ef.__dict__['_gg_gnorm'] = {_norm(g): g for g in ef._gated}
     for _ in range(4):                                   # target_forms' depth
         nxt = []
         for k in frontier:
             for t, forms in sorted((ef._tform.get(k) or {}).items()):
+                fg = tuple((gn[f], tuple(ef.gate_reason(gn[f])), json.dumps(ef._gdetail.get(gn[f], {}), sort_keys=True))
+                           for f, _g in sorted(tuple(x) for x in forms) if f in gn)
                 hops.append((k, t, tuple(sorted(tuple(x) for x in forms)), tuple(ef.gate_reason(t)),
-                             json.dumps(ef._gdetail.get(t, {}), sort_keys=True)))
+                             json.dumps(ef._gdetail.get(t, {}), sort_keys=True), fg))
                 for f, _g in forms:
                     if f not in seen:
                         seen.add(f)
@@ -415,6 +462,62 @@ def evo_facts(ef, r):
     return (ef.row_can_evolve(r), mid[pid], tuple(hops), stages)
 
 
+_SIZE_TABLES = ('numbers', 'base numbers', 'xxl bound', 'types')
+
+
+def _sid_facts(sl, sid):
+    """What size_line resolves for a LATER stage id (a pvpoke-style speciesId, 'rapidash' / 'slowbro_galarian'): the numbers
+    projected_points / showcase_points_at / project read, the XXL upper bound (showcase_points_at's own two-key line) and
+    the types xxl_keepers scores per type -- size_line's own lookups, in its own order."""
+    xup = sl._XUP.get(sl._norm(sid)) or sl._XUP.get(sl._norm(str(sid).split('_')[0]))
+    return (sid, sl._rec_for_sid(sid, own=True), sl._rec_for_sid(sid), xup, sl.types_for_sid(sid))
+
+
+def later_sids(v, r, evo):
+    """The LATER stage ids (pvpoke-style speciesIds) this row's size verdict reads, from the evolve walk (evo = evo_facts): the
+    species chain minus the row's own species, every branch target, and each regional / gendered target form as the id the engine
+    uses for it (SLOWBROGALARIAN -> 'slowbro_galarian'; a colour like FLORGESRED gives 'florges_red', which just falls back to
+    'florges': harmless). A superset of what keep_policy.pvp_later_stages hands best_points (measured on the real bag)."""
+    sl = v.sl
+    sids = {s[0].lower() for s in evo[3]} - {(v.ef._dexname.get(int(r['pokemon_id'] or 0)) or '').lower()}
+    for h in evo[2]:                                     # hops: (source key, target species, ((target form, gender), ...), ...)
+        sids.add(h[1])
+        tn = sl._norm(h[1])
+        for f, _g in h[2]:
+            if f.startswith(tn) and f[len(tn):] not in ('', 'NORMAL'):
+                sids.add('%s_%s' % (h[1], f[len(tn):].lower()))
+    return sids
+
+
+def size_facts(v, r, evo):
+    """The row's SIZE verdict (2026-09-30, review: the one keep input the first version did not judge): everything size_line
+    resolves from the client game master for THIS copy, under the candidate file -- (numbers, base numbers, xxl bound, types):
+      numbers / base numbers   height, weight and both std-devs (_OWN: the form's own record an evolution scales between;
+                               _BASE: the score / z baseline -- they differ only in a size-form family)
+      xxl bound                sizeSettings.xxlUpperBound (pokemonSettings, else the EXTENDED_V####_POKEMON_* template): the n
+                               every score divides by
+      types                    type / type2 (the xxl_per_type trim scores a copy once per type)
+    Resolved the way the engine resolves them, so a template that merely APPEARS for a form the bag already holds (same numbers
+    as the species it fell back to) is no change, and a number that moves is: for the row's OWN stage size_line's accessors
+    (_rec_for_row / _xup_for_row); for every LATER stage the evolve walk above reaches (the species chain, each branch target
+    and the regional / gendered target forms -- what pvp_later_stages hands best_points) _rec_for_sid / types_for_sid.
+    best_points is the max over the own stage and every later stage's PROJECTED points, so a later stage's numbers decide an
+    XXL keep; the live read fixes the stages the bag holds, never one it does not. Measured 2026-09-30 on the real bag: the
+    XXL Ponyta scores 983 at its own stage (live read) and 1082 as a projected Rapidash; scale the base sizes x0.6 and the
+    projection is 735, best_points falls to 983, under min_points (1000), and a copy kept only as 'xxl' leaves the keep."""
+    sl = v.sl
+    pid = int(r['pokemon_id'] or 0)
+    chain = []                                           # the keys size_line tries for this row's own stage, in its order
+    for f in (r['fresh_form'], r['form']):
+        nm = sl._norm(sl._ENUM.get(int(f or 0), ''))
+        if nm:
+            chain += ['DEX%d:%s' % (pid, nm), nm]
+    chain.append('DEX%d' % pid)
+    own = ('own', sl._rec_for_row(r, own=True), sl._rec_for_row(r), sl._xup_for_row(r),
+           next((sl._TYPES[k] for k in chain if sl._TYPES.get(k)), ()))
+    return (own,) + tuple(_sid_facts(sl, sid) for sid in sorted(later_sids(v, r, evo)))
+
+
 def row_verdict(v, r, enum):
     """{axis: verdict} of one in-bag row under View v. Raises on anything it cannot judge (the caller fails closed)."""
     pid = r['pokemon_id']
@@ -426,8 +529,10 @@ def row_verdict(v, r, enum):
             continue                       # empty slot / a move id the map cannot name: detect_legacy protects it anyway
         pool = v.pools.get(pid)
         mv.append((name, bool(pool) and name not in pool, name in (v.roll.get(pid) or ())))
+    evo = evo_facts(v.ef, r)
     return {'moves': tuple(mv),
-            'evolve': evo_facts(v.ef, r),
+            'evolve': evo,
+            'size': size_facts(v, r, evo),
             'tradable': bool(v.row_tradable(r, v.trade, enum)),
             'transferable': bool(v.row_transferable(r, enum, v.tf_form, v.tf_pid)),
             'rarity': tuple(sorted(k.replace('POKEMON_CLASS_', '') for k, ds in v.cls.items() if pid in ds))}
@@ -446,7 +551,7 @@ def _evo_change(ea, eb):
         if a is None or b is None:
             bits.append('%s%s>%s' % ('+' if a is None else '-', k[0], k[1]))
         elif a != b:
-            bits.append('%s>%s: %s' % (k[0], k[1], ', '.join('%s %s->%s' % (n, x, y) for n, x, y in zip(('forms', 'gates', 'detail'), a[2:], b[2:]) if x != y)))
+            bits.append('%s>%s: %s' % (k[0], k[1], ', '.join('%s %s->%s' % (n, x, y) for n, x, y in zip(('forms', 'gates', 'detail', 'form gates'), a[2:], b[2:]) if x != y)))
     sa, sb = {s[0]: s for s in ea[3]}, {s[0]: s for s in eb[3]}
     for s in sorted(set(sa) | set(sb)):
         a, b = sa.get(s), sb.get(s)
@@ -455,6 +560,14 @@ def _evo_change(ea, eb):
         elif a != b:
             bits.append('%s: %s' % (s, ', '.join('%s %s->%s' % (n, x, y) for n, x, y in zip(('candy', 'item', 'item_n', 'family', 'gender forms'), a[1:], b[1:]) if x != y)))
     return ('evolution chain: ' + ('; '.join(bits) or 'changed'))[:120]
+
+
+def _size_change(sa, sb):
+    """['KEY table+table', ...] for every key whose size / type numbers moved between two size_facts. Only keys BOTH files look
+    up for this row: a stage that appears or disappears is an evolution change, which the evolve axis already flags."""
+    da, db = {x[0]: x[1:] for x in sa}, {x[0]: x[1:] for x in sb}
+    return ['%s %s' % (k, '+'.join(n for n, x, y in zip(_SIZE_TABLES, da[k], db[k]) if x != y))
+            for k in sorted(set(da) & set(db)) if da[k] != db[k]]
 
 
 def _move_dir(a, b):
@@ -474,6 +587,9 @@ def compare_row(va, vb):
                 out.append(('moves', a[0], sp(a), sp(b), d))
     if va['evolve'] != vb['evolve']:
         out.append(('evolve', _evo_change(va['evolve'], vb['evolve']), '', '', 'CHANGED'))
+    sz = _size_change(va['size'], vb['size'])
+    if sz:
+        out.append(('size', ('size / types: ' + ', '.join(sz))[:120], '', '', 'CHANGED'))
     for ax in ('tradable', 'transferable'):
         if va[ax] != vb[ax]:
             out.append((ax, ax, str(va[ax]), str(vb[ax]), 'CHANGED'))
@@ -484,15 +600,19 @@ def compare_row(va, vb):
 
 
 def load_rows(db_path):
-    """[dict] of every in-bag row, read-only (the repo's own ro URI). Raises sqlite3.Error / OSError when unreadable."""
+    """[dict] of every in-bag row, read-only (the repo's own ro URI). Raises OSError NAMING the file when it is unreadable: a stray
+    0-byte accounts/<name>/pokemon.db (the repo's accidental-sqlite3.connect class) would otherwise only say 'no such table: pokemon'."""
     if not os.path.exists(db_path):
         raise OSError('no such file: %s' % db_path)
-    c = sqlite3.connect('file:%s?mode=ro' % db_path.replace('\\', '/'), uri=True)
-    c.row_factory = sqlite3.Row
     try:
-        return [dict(r) for r in c.execute('SELECT %s FROM pokemon WHERE in_bag=1' % ROW_COLS)]
-    finally:
-        c.close()
+        c = sqlite3.connect('file:%s?mode=ro' % db_path.replace('\\', '/'), uri=True)
+        c.row_factory = sqlite3.Row
+        try:
+            return [dict(r) for r in c.execute('SELECT %s FROM pokemon WHERE in_bag=1' % ROW_COLS)]
+        finally:
+            c.close()
+    except sqlite3.Error as e:
+        raise OSError('%s: %s: %s' % (db_path, type(e).__name__, e))
 
 
 def load_bag(db_path):
@@ -547,7 +667,9 @@ def assess(old_path, new_path, rows, move_map, enum, min_settings=None, min_rows
     try:
         old_gm, old_sha, old_n = load_gm(old_path, min_settings)
     except GMUnreadable as e:
-        return done('STOP', 'the INSTALLED client game master cannot be read, so nothing can be compared (%s)' % e)
+        return done('STOP', 'the INSTALLED client game master cannot be read, so nothing can be compared (%s) -- restore '
+                            'pogo_extract/gamemaster_pokeminers.json (python tools/pogo_data.py pull, or a dated '
+                            'gamemaster_pokeminers.json.bak-* copy) and run again' % e)
     res['old'] = {'sha256': old_sha, 'n': old_n}
     if old_sha == new_sha:
         return done('SAME', 'identical bytes')
@@ -557,7 +679,8 @@ def assess(old_path, new_path, rows, move_map, enum, min_settings=None, min_rows
     try:                                                       # lazily: identical bytes never need the bag
         rows, move_map, enum = [x() if callable(x) else x for x in (rows, move_map, enum)]
     except Exception as e:
-        return done('STOP', 'the bag or the move / form tables cannot be read, so nothing can be judged (%s: %s)' % (type(e).__name__, e))
+        return done('STOP', 'the bag or the move / form tables cannot be read, so nothing can be judged (%s: %s) -- restore the '
+                            'file it names from the data store (python tools/pogo_data.py pull) and run again' % (type(e).__name__, e))
     if len(rows) < min_rows:
         return done('STOP', 'only %d in-bag rows to judge (need %d): pokemon.db is missing, empty or not pulled -- "no rows" '
                             'must never read as "no flips"' % (len(rows), min_rows))
@@ -601,8 +724,8 @@ def review_lines(res, old_meta, new_meta_, bak, with_digest=True, max_lines=200)
         return '%s%s' % (m.get('batch_utc', '?')[:10] if m else 'unstamped', (' APK %s' % m['apk']) if m and m.get('apk') else '')
     L = ['CLIENT GAME MASTER %s -> %s: %s' % (ident(old_meta), ident(new_meta_), res['reason'])]
     if bak:
-        L.append('to REVERSE (in pogo_extract): copy %s over gamemaster_pokeminers.json, its .meta.bak-* over the .meta, and '
-                 'delete the review record' % os.path.basename(bak))
+        L.append('to REVERSE (in pogo_extract): copy %s over gamemaster_pokeminers.json, %s, and delete the review record'
+                 % (os.path.basename(bak), 'its .meta.bak-* over the .meta' if old_meta else 'delete the .meta (none was there before)'))
         if old_meta and old_meta.get('folder'):
             L.append('(no backup any more, e.g. a new VM? the old batch is public: raw.githubusercontent.com/PokeMiners/game_masters/'
                      'master/previous_game_masters/%s/game_master.json, sha256 %s)' % (old_meta['folder'], str(old_meta.get('sha256'))[:16]))
@@ -681,17 +804,28 @@ def _T(dex, key, **ps):
     return {'templateId': 'V%04d_POKEMON_%s' % (dex, key), 'data': {'pokemonSettings': ps}}
 
 
+def _X(dex, key, xxl):
+    """An EXTENDED_V####_POKEMON_<KEY> template: the size bands size_line reads the XXL upper bound from."""
+    return {'templateId': 'EXTENDED_V%04d_POKEMON_%s' % (dex, key), 'data': {'pokemonExtendedSettings': {
+        'uniqueId': key.split('_')[0], 'sizeSettings': {'xxsLowerBound': 0.5, 'xsLowerBound': 0.6, 'mLowerBound': 0.8, 'mUpperBound': 1.0,
+                                                        'xlUpperBound': 1.2, 'xxlUpperBound': xxl}}}}
+
+
 _MOVES = {'1': 'TACKLE_FAST', '2': 'DIG', '3': 'SWIFT', '4': 'WATER_GUN_FAST', '5': 'AQUA_TAIL'}
 
 
 def _fixture_gm(variant=None):
     """A tiny synthetic client game master in the real one's shape; `variant` moves exactly ONE fact."""
     ev = [{'evolution': 'GOLDUCK', 'candyCost': 50, 'form': 'GOLDUCK_NORMAL'}]
-    psy = dict(pokemonId='PSYDUCK', familyId='FAMILY_PSYDUCK', quickMoves=['WATER_GUN_FAST'], cinematicMoves=['AQUA_TAIL'])
+    num = lambda h, w: dict(pokedexHeightM=h, pokedexWeightKg=w, heightStdDev=round(h / 8, 3), weightStdDev=round(w / 8, 3), type='POKEMON_TYPE_WATER')
+    psy = dict(pokemonId='PSYDUCK', familyId='FAMILY_PSYDUCK', quickMoves=['WATER_GUN_FAST'], cinematicMoves=['AQUA_TAIL'], **num(0.8, 19.6))
+    gold = dict(pokemonId='GOLDUCK', familyId='FAMILY_PSYDUCK', **num(1.7, 76.6))
     eev = dict(pokemonId='EEVEE', familyId='FAMILY_EEVEE', quickMoves=['TACKLE_FAST'], cinematicMoves=['DIG'])
     mew, bul, cha = {}, {}, {}
-    fill = dict(pokemonId='FILLER', familyId='FAMILY_FILLER', quickMoves=['TACKLE_FAST'], cinematicMoves=['DIG'])
-    chain_cost, top_form = 50, 'TOPX_NORMAL'
+    fill = dict(pokemonId='FILLER', familyId='FAMILY_FILLER', quickMoves=['TACKLE_FAST'], cinematicMoves=['DIG'], **num(1.0, 10.0))
+    chain_cost, top_form, top_h = 50, 'TOPX_NORMAL', 1.6
+    xpsy, xgold, sx_h, sz_h, fy_h, nx_h = 1.4, 2.975, 1.5, 1.0, 1.6, 1.8
+    sz_ev = [{'evolution': 'SIZERX', 'candyCost': 25, 'form': 'SIZERX_ALOLA'}]
     if variant == 'chain_cost':        # a stage FURTHER DOWN the BABYX -> MIDX -> TOPX line: the held BABYX must flip too
         chain_cost = 100
     if variant == 'chain_form':        # the form the MIDX -> TOPX branch lands in: from BABYX only the two-hop form walk sees it
@@ -710,21 +844,77 @@ def _fixture_gm(variant=None):
         cha['isTradable'] = False
     if variant == 'unbagged':
         fill['quickMoves'] = ['TACKLE_FAST', 'DIG']
+    if variant == 'nontm':             # SWIFT enters the any-form pool (nonTmCinematicMoves) WITHOUT becoming a plain-TM move: only the pool answer flips
+        eev['nonTmCinematicMoves'] = ['SWIFT']
+    if variant == 'size':              # the held species' OWN height
+        psy['pokedexHeightM'] = 0.5
+    if variant == 'size_later':        # a LATER stage of the held Psyduck: best_points projects the copy onto Golduck's numbers
+        gold['pokedexWeightKg'] = 50.0
+    if variant == 'size_ext':          # that later stage's EXTENDED_ XXL upper bound (the n its points divide by)
+        xgold = 3.4
+    if variant == 'size_ext_own':      # the held species' own EXTENDED_ bound
+        xpsy = 1.9
+    if variant == 'type':              # a later stage's type (the xxl_per_type trim scores a copy once per type)
+        gold['type2'] = 'POKEMON_TYPE_PSYCHIC'
+    if variant == 'type_own':
+        psy['type2'] = 'POKEMON_TYPE_PSYCHIC'
+    if variant == 'size_chain':        # TWO stages down the BABYX -> MIDX -> TOPX line: only the held BABYX / MIDX rows look that far
+        top_h = 2.4
+    if variant == 'size_regional':     # a regional TARGET form's own template (SIZERX_ALOLA); the species-level SIZERX does not move
+        sx_h = 2.5
+    if variant == 'size_unheld':       # a species nobody holds or evolves from / into: in the digest, no stop
+        fill['pokedexHeightM'] = 9.9
+    if variant == 'size_free':         # a stage only the FORM-level walk reaches (its branch has no candy cost and no item)
+        fy_h = 2.0
+    if variant == 'size_noform':       # a stage only the SPECIES-level chain reaches (a species whose templates carry no form)
+        nx_h = 3.0
+    if variant == 'regional_gate':     # a gate on a REGIONAL branch: evolvable_forms keys it by the form only ('sizerx_alola'), never 'sizerx'
+        sz_ev[0]['mustBeBuddy'] = True
+    if variant == 'size_shape':        # a shape size_line cannot load (sizeSettings is a list) though evolvable_forms can: still an unreadable file
+        fill['sizeSettings'] = ['x']
+    forms = [{'form': 'FILLER_PLAIN'}, {'form': 'FILLER_HAT', 'isCostume': False}]
+    if variant == 'digest':            # every digest-only field, all on the species nobody holds (proves each label is computed)
+        fill.update(tempEvoOverrides=[{'tempEvoId': 'TEMPORARY_EVOLUTION_MEGA'}], shadow={'purificationStardustNeeded': 1000},
+                    stats={'baseAttack': 100}, isDeployable=False, allowNoevolveEvolution=['FILLER_HAT'], pokemonClass='POKEMON_CLASS_MYTHIC')
+        forms = [{'form': 'FILLER_HAT', 'isCostume': True}, {'form': 'FILLER_NEW', 'isCostume': True}]
     gm = [_T(54, 'PSYDUCK', evolutionBranch=ev, **psy), _T(54, 'PSYDUCK_NORMAL', form='PSYDUCK_NORMAL', evolutionBranch=ev, **psy),
-          _T(55, 'GOLDUCK', pokemonId='GOLDUCK', familyId='FAMILY_PSYDUCK'), _T(133, 'EEVEE', **eev),
+          _T(55, 'GOLDUCK', **gold), _T(133, 'EEVEE', **eev),
           _T(150, 'MEWTWO', pokemonId='MEWTWO', **mew), _T(1, 'BULBASAUR', pokemonId='BULBASAUR', **bul),
           _T(4, 'CHARMANDER', pokemonId='CHARMANDER', **cha), _T(999, 'FILLER', **fill)]
     for dex, key, nxt, cost, nform in ((996, 'BABYX', 'MIDX', 25, 'MIDX_NORMAL'), (995, 'MIDX', 'TOPX', chain_cost, top_form)):    # a 3-stage line, form templates like the real ones
         br = [{'evolution': nxt, 'candyCost': cost, 'form': nform}]
         if variant == 'gate' and key == 'BABYX':                # a plain gate: gate_reason changes, no item, no cost, no gate detail
             br[0]['mustBeBuddy'] = True
-        gm += [_T(dex, key, familyId='FAMILY_BABYX', evolutionBranch=br), _T(dex, key + '_NORMAL', form=key + '_NORMAL', pokemonId=key,
-                                                                          familyId='FAMILY_BABYX', evolutionBranch=br)]
-    gm.append(_T(994, 'TOPX', familyId='FAMILY_BABYX'))
+        gm += [_T(dex, key, familyId='FAMILY_BABYX', evolutionBranch=br, **num(0.3 if key == 'BABYX' else 0.6, 3.0)),
+               _T(dex, key + '_NORMAL', form=key + '_NORMAL', pokemonId=key, familyId='FAMILY_BABYX', evolutionBranch=br,
+                  **num(0.3 if key == 'BABYX' else 0.6, 3.0))]
+    gm.append(_T(994, 'TOPX', familyId='FAMILY_BABYX', **num(top_h, 30.0)))
+    # the size fixtures: EXTENDED_ bounds for Psyduck / Golduck; SIZER (held, in form UnownA) evolves into SIZERX's ALOLA form; FREEX
+    # -> FREEY has no candy cost and no item (only the form-level walk reaches FREEY); NOFORM -> NOFORMX sits on a template with no
+    # form (only the species-level chain reaches NOFORMX); a FORMS_ template and a GONER template for the digest labels
+    free = [{'evolution': 'FREEY', 'form': 'FREEY_NORMAL'}]
+    gm += [_X(54, 'PSYDUCK', xpsy), _X(55, 'GOLDUCK', xgold),
+           _T(993, 'SIZER', familyId='FAMILY_SIZER', evolutionBranch=sz_ev, **num(sz_h, 10.0)),
+           _T(993, 'SIZER_NORMAL', form='SIZER_NORMAL', pokemonId='SIZER', familyId='FAMILY_SIZER', evolutionBranch=sz_ev, **num(sz_h, 10.0)),
+           _T(992, 'SIZERX', familyId='FAMILY_SIZER', **num(1.5, 15.0)),
+           _T(992, 'SIZERX_ALOLA', form='SIZERX_ALOLA', pokemonId='SIZERX', familyId='FAMILY_SIZER', **num(sx_h, 15.0)),
+           _T(988, 'FREEX', familyId='FAMILY_FREEX', evolutionBranch=free, **num(1.0, 10.0)),
+           _T(988, 'FREEX_NORMAL', form='FREEX_NORMAL', pokemonId='FREEX', familyId='FAMILY_FREEX', evolutionBranch=free, **num(1.0, 10.0)),
+           _T(987, 'FREEY', familyId='FAMILY_FREEX', **num(fy_h, 20.0)),
+           _T(986, 'NOFORM', familyId='FAMILY_NOFORM', evolutionBranch=[{'evolution': 'NOFORMX', 'candyCost': 25}], **num(1.0, 10.0)),
+           _T(985, 'NOFORMX', familyId='FAMILY_NOFORM', **num(nx_h, 20.0)),
+           {'templateId': 'FORMS_V0999_POKEMON_FILLER', 'data': {'formSettings': {'pokemon': 'FILLER', 'forms': forms}}}]
+    if variant != 'digest':
+        gm.append(_T(990, 'GONER', familyId='FAMILY_GONER'))
+    if variant in ('form_new', 'form_new_diff'):   # a template APPEARS for the form the held Sizer is in (UnownA): the same numbers as the
+        gm.append(_T(993, 'SIZER_UNOWN_A', form='UNOWN_A', pokemonId='SIZER', familyId='FAMILY_SIZER',    # species it fell back to, or not
+                     **num(2.0 if variant == 'form_new_diff' else sz_h, 10.0)))
     if variant == 'pre':               # a NEW non-baby species that evolves INTO the held Psyduck: Psyduck becomes a middle stage
         gm.append(_T(997, 'FAKEPRE', familyId='FAMILY_PSYDUCK', evolutionBranch=[{'evolution': 'PSYDUCK', 'candyCost': 25, 'form': 'PSYDUCK_NORMAL'}]))
     if variant == 'unbagged':
         gm.append(_T(998, 'NEWFILLER', pokemonId='NEWFILLER', familyId='FAMILY_NEWFILLER'))
+    if variant == 'newmon':            # a species that had NO pool gets one: the held Ghost's SWIFT goes from 'unknown pool' to 'no normal roll'
+        gm.append(_T(991, 'GHOST', familyId='FAMILY_GHOST', quickMoves=['TACKLE_FAST'], cinematicMoves=['DIG']))
     if variant == 'int_form':          # the real 0.395.1 shape: an INTEGER branch form on a gated branch crashes evolvable_forms
         gm[1]['data']['pokemonSettings']['evolutionBranch'] = [{'evolution': 'GOLDUCK', 'candyCost': 50, 'form': 3290,
                                                                 'questDisplay': [{'questRequirementTemplateId': 'Q'}]}]
@@ -751,7 +941,11 @@ def selftest(rgm=None):
             dict(base, uid_hex='u_mew', species_name='Mewtwo', pokemon_id=150),
             dict(base, uid_hex='u_baby', species_name='Babyx', pokemon_id=996), dict(base, uid_hex='u_mid', species_name='Midx', pokemon_id=995),
             dict(base, uid_hex='u_bul', species_name='Bulbasaur', pokemon_id=1),
-            dict(base, uid_hex='u_cha', species_name='Charmander', pokemon_id=4)]
+            dict(base, uid_hex='u_cha', species_name='Charmander', pokemon_id=4),
+            dict(base, uid_hex='u_sizer', species_name='Sizer', pokemon_id=993, form=1, fresh_form=1),    # in form UnownA: its own template appears in a variant
+            dict(base, uid_hex='u_ghost', species_name='Ghost', pokemon_id=991, move1=3),                 # a species the game master has no pool for yet
+            dict(base, uid_hex='u_free', species_name='Freex', pokemon_id=988),                           # its evolution has no candy cost / item
+            dict(base, uid_hex='u_noform', species_name='Noform', pokemon_id=986)]                        # its templates carry no form
     saved = (MIN_POKEMON_SETTINGS, MIN_BAG_ROWS)
     globals()['MIN_POKEMON_SETTINGS'], globals()['MIN_BAG_ROWS'] = 3, 5
     try:
@@ -770,17 +964,68 @@ def selftest(rgm=None):
             r = same(A, A2)
             ok(r['verdict'] == 'CLEAR' and not r['flips'] and not r['nulled'] and not r['diff'],
                're-serialised identical content must be CLEAR with an empty diff, got %s %s' % (r['verdict'], dict(r['diff'])))
-            # 2. every axis flips exactly the row that holds it, and nothing else; a change nobody holds does not stop
-            want = {'move': ('moves', 'u_eev_swift', 'LOST'), 'evo_cost': ('evolve', 'u_psy', 'CHANGED'),
-                    'evo_gone': ('evolve', 'u_psy', 'CHANGED'), 'tradable': ('tradable', 'u_cha', 'CHANGED'),
-                    'transferable': ('transferable', 'u_bul', 'CHANGED'), 'rarity': ('rarity', 'u_mew', 'GAINED')}
-            for var, (axis, uid, d) in want.items():
+            # 2. every axis flips exactly the row that holds it, and nothing else; a change nobody holds does not stop. Each variant
+            #    also names the digest label that must say what moved (spec (b): every field of the digest is computed, not assumed)
+            xl = 'extended sizeSettings (XXL bound, size bands) changed'
+            want = {'move': ('moves', 'u_eev_swift', 'LOST', 'cinematicMoves changed'),
+                    'evo_cost': ('evolve', 'u_psy', 'CHANGED', 'evolutionBranch changed'),
+                    'evo_gone': ('evolve', 'u_psy', 'CHANGED', 'evolutionBranch changed'),
+                    'regional_gate': ('evolve', 'u_sizer', 'CHANGED', 'evolutionBranch changed'),
+                    'tradable': ('tradable', 'u_cha', 'CHANGED', 'isTradable changed'),
+                    'transferable': ('transferable', 'u_bul', 'CHANGED', 'isTransferable changed'),
+                    'rarity': ('rarity', 'u_mew', 'GAINED', 'pokemonClass changed'),
+                    # the SIZE axis (2026-09-30, review): the numbers size_line scores an XXL copy by, each from its own source --
+                    # the held species' own template, a LATER stage's template (best_points projects the copy onto it), the
+                    # EXTENDED_ XXL upper bound of either, the types (the xxl_per_type trim), a regional target form's own template
+                    'size': ('size', 'u_psy', 'CHANGED', 'size numbers changed'),
+                    'size_later': ('size', 'u_psy', 'CHANGED', 'size numbers changed'),
+                    'size_ext': ('size', 'u_psy', 'CHANGED', xl), 'size_ext_own': ('size', 'u_psy', 'CHANGED', xl),
+                    'type': ('size', 'u_psy', 'CHANGED', 'type2 changed'), 'type_own': ('size', 'u_psy', 'CHANGED', 'type2 changed'),
+                    'size_regional': ('size', 'u_sizer', 'CHANGED', 'size numbers changed'),
+                    # the two ways a later stage is found (evo_facts walks both, and they differ on the real bag): the form-level hops
+                    # see a branch with no candy cost, the species-level chain sees a species whose templates carry no form
+                    'size_free': ('size', 'u_free', 'CHANGED', 'size numbers changed'),
+                    'size_noform': ('size', 'u_noform', 'CHANGED', 'size numbers changed')}
+            for var, (axis, uid, d, label) in want.items():
                 r = same(A, put('new_%s.json' % var, _fixture_gm(var)))
                 fl = [(f['axis'], f['uid'], f['dir']) for f in r['flips']]
                 ok(r['verdict'] == 'FLIPS' and fl == [(axis, uid, d)] and r['axes'] == {axis: 1},
                    '%s: want FLIPS %s got %s %s' % (var, (axis, uid, d), r['verdict'], fl))
+                ok(label in r['diff'], '%s: the digest must say "%s", got %s' % (var, label, list(r['diff'])))
                 gm_lines = review_lines(r, None, None, 'bak')
                 ok(bool(gm_lines) and gm_lines[0].startswith('CLIENT GAME MASTER'), 'record lines')
+            r = same(A, put('new_regional_gate.json', _fixture_gm('regional_gate')))
+            ok('form gates' in r['flips'][0]['what'] and 'sizerx_alola' in r['flips'][0]['what'],
+               'a gate on a regional branch is named in the flip: %s' % r['flips'][0]['what'])
+            r = same(A, put('new_size.json', _fixture_gm('size')))
+            rl = review_lines(r, None, None, 'bak')
+            ok('size / types:' in ' '.join(rl), 'a size flip is named in the review record')
+            ok('delete the .meta' in rl[1] and '.meta.bak-' not in rl[1],
+               'the REVERSE line must not send anyone to a .meta backup that was never made (the baseline had no stamp): %s' % rl[1])
+            rl = review_lines(r, {'batch_utc': '2026-08-28 07:35:50', 'apk': None, 'sha256': 'ab'}, None, 'bak')
+            ok('.meta.bak-' in rl[1], 'with a stamped baseline the REVERSE line names its .meta backup: %s' % rl[1])
+            # 2a. the game's TWO pool functions, one at a time (spec (c): detect_legacy's _game_master_pools AND _game_master_rollable;
+            #     the 'move' variant flips both at once, so it cannot tell either from a neutered View): a move that enters the any-form
+            #     pool without becoming a plain-TM move flips ONLY the pool answer; a move already in the pool that becomes plain-TM
+            #     flips ONLY the plain-TM bit (it lifts the stale-elite protection). The reverse direction is GAINED.
+            r = same(A, put('new_nontm.json', _fixture_gm('nontm')))
+            fl = [(f['axis'], f['uid'], f['old'], f['new']) for f in r['flips']]
+            ok(r['verdict'] == 'FLIPS' and fl == [('moves', 'u_eev_swift', 'no normal roll', 'normal roll')],
+               'the pool answer alone (_game_master_pools) must flip a held move: %s %s' % (r['verdict'], fl))
+            ok('nonTmCinematicMoves changed' in r['diff'], 'the digest names the nonTm move pool')
+            r = same(put('old_nontm.json', _fixture_gm('nontm')), put('new_move3.json', _fixture_gm('move')))
+            fl = [(f['axis'], f['uid'], f['old'], f['new']) for f in r['flips']]
+            ok(r['verdict'] == 'FLIPS' and fl == [('moves', 'u_eev_swift', 'normal roll', 'plain TM')],
+               'the plain-TM bit alone (_game_master_rollable) must flip a held move: %s %s' % (r['verdict'], fl))
+            r = same(put('old_move4.json', _fixture_gm('move')), A)
+            fl = [(f['axis'], f['uid'], f['dir']) for f in r['flips']]
+            ok(r['verdict'] == 'FLIPS' and fl == [('moves', 'u_eev_swift', 'GAINED')], 'a move LEAVING the pool is a GAINED protection: %s %s' % (r['verdict'], fl))
+            #     a species the game master had NO pool for is 'not special' (detect_legacy: the pvpoke test stands alone then); the
+            #     day it gets one, the held move can be 'no normal roll' (the evolve axis moves too: the species became known)
+            r = same(A, put('new_newmon.json', _fixture_gm('newmon')))
+            fl = [(f['axis'], f['uid'], f['old'], f['new']) for f in r['flips']]
+            ok(('moves', 'u_ghost', 'normal roll', 'no normal roll') in fl and not [x for x in r['nulled']],
+               'a species that gets its first pool must flip its held move (an unknown pool is not special): %s %s' % (r['verdict'], fl))
             # 2b. the whole evolution chain, not only a row's own branches: a stage FURTHER DOWN the line flips its held
             #     pre-evolution too (keep_policy._afford reads path_cost), and a new pre-evolution ABOVE a held species flips its
             #     middle-stage flag (costume_cap 3 -> 1) -- both were invisible to an own-branch-only verdict
@@ -803,12 +1048,35 @@ def selftest(rgm=None):
             ok(r['verdict'] == 'CLEAR' and 'pokemon templates added' in r['diff'] and not r['flips'],
                'a change to species nobody holds is in the digest but does not stop: %s' % r['verdict'])
             ok(digest_lines(r['diff'])[0].lstrip().split()[0].isdigit(), 'digest lines start with a count')
+            # 2c. SIZE, further: a number TWO stages down the line flips the held pre-evolutions (best_points walks every later stage);
+            #     a number nobody holds or evolves to is in the digest but does not stop; a template that APPEARS for a form the bag
+            #     holds is no size change when it carries the numbers the row already resolved to (the species it fell back to) and
+            #     IS one when it does not (the evolve axis moves either way: None -> False is a real change for the engine)
+            r = same(A, put('new_size_chain.json', _fixture_gm('size_chain')))
+            fl = sorted((f['axis'], f['uid']) for f in r['flips'])
+            ok(r['verdict'] == 'FLIPS' and fl == [('size', 'u_baby'), ('size', 'u_mid')] and r['axes'] == {'size': 2},
+               'a number two stages down the line must flip the held pre-evolutions: %s %s' % (r['verdict'], fl))
+            r = same(A, put('new_size_unheld.json', _fixture_gm('size_unheld')))
+            ok(r['verdict'] == 'CLEAR' and 'size numbers changed' in r['diff'] and not r['flips'],
+               'a size change on a species nobody holds or evolves to is in the digest but does not stop: %s' % r['verdict'])
+            for var, axes in (('form_new', {'evolve'}), ('form_new_diff', {'evolve', 'size'})):
+                r = same(A, put('new_%s.json' % var, _fixture_gm(var)))
+                got = {f['axis'] for f in r['flips']}
+                ok(r['verdict'] == 'FLIPS' and got == axes and {f['uid'] for f in r['flips']} == {'u_sizer'},
+                   '%s: a form template appearing must flip %s on the Sizer only, got %s %s' % (var, sorted(axes), r['verdict'], sorted(got)))
+            # 2d. every field of the digest is computed: all on species nobody holds, so the verdict stays CLEAR
+            r = same(A, put('new_digest.json', _fixture_gm('digest')))
+            labels = ['pokemon templates removed', 'allowNoevolveEvolution changed (costumes that may evolve)', 'pokemonClass changed',
+                      'isDeployable changed', 'base stats changed', 'mega/primal (tempEvoOverrides) changed', 'shadow availability changed',
+                      'form added (costume)', 'form removed', 'form isCostume flipped']
+            ok(r['verdict'] == 'CLEAR' and not r['flips'] and all(x in r['diff'] for x in labels),
+               'the digest must name every field that moved: %s missing from %s' % ([x for x in labels if x not in r['diff']], list(r['diff'])))
             # 3. FAIL CLOSED: an unreadable / truncated / implausible / engine-unloadable file is never a pass
             good = json.dumps(_fixture_gm('move'))
             bad = {'truncated': good[:len(good) // 2], 'not_a_list': '{"a": 1}', 'not_templates': '[1, 2, 3]',
                    'no_data': '[{"templateId": "X"}]', 'empty': '', 'not_utf8': b'\xff\xfe\x00'.decode('latin-1'),
                    'tiny': json.dumps(_fixture_gm()[:2]), 'shrunk': json.dumps(_fixture_gm()[:4]),
-                   'int_form': json.dumps(_fixture_gm('int_form'))}
+                   'int_form': json.dumps(_fixture_gm('int_form')), 'size_shape': json.dumps(_fixture_gm('size_shape'))}
             for nm, txt in bad.items():
                 p = put('bad_%s.json' % nm, txt)
                 r = same(A, p)
@@ -819,7 +1087,8 @@ def selftest(rgm=None):
             r = same(A, put('missing.json', '')[:-len('missing.json')] + 'no_such_file.json')
             ok(r['verdict'] == 'UNREADABLE_NEW', 'a missing candidate is UNREADABLE_NEW')
             r = same(os.path.join(td, 'no_such_file.json'), A)
-            ok(r['verdict'] == 'STOP', 'a missing installed file must STOP (nothing to compare)')
+            ok(r['verdict'] == 'STOP' and 'no_such_file.json' in r['reason'] and 'restore' in r['reason'],
+               'a missing installed file must STOP, name the file and say how to restore it: %s' % r['reason'])
             r = same(A, put('new_move2.json', _fixture_gm('move')), rows=[])
             ok(r['verdict'] == 'STOP' and 'no flips' in r['reason'], 'an EMPTY bag must STOP, never read as "no flips": %s' % r['verdict'])
             bad_row = dict((k, v) for k, v in rows[1].items() if k != 'move1')                                  # complete but for move1
@@ -1129,8 +1398,16 @@ def _orchestrator_tests(rgm, td, put, rows, enum, ok):
         b_old = open(gmp, 'rb').read()
         rc, out = run()
         rec = json.load(open(rgm.REVIEW, encoding='utf-8'))
-        ok(rc == (2, False) and open(gmp, 'rb').read() == b_old and 'cannot be read' in rec['reason'],
-           'a parked bag that cannot be read is a STOP that installs nothing: %s %s' % (rc, rec['reason'][:120]))
+        ok(rc == (2, False) and open(gmp, 'rb').read() == b_old and 'cannot be read' in rec['reason']
+           and os.path.join('rest', 'pokemon.db') in rec['reason'] and 'pogo_data.py pull' in rec['reason'],
+           'a parked bag that cannot be read is a STOP that installs nothing, names the file and the remedy: %s %s' % (rc, rec['reason'][:160]))
+        with open(os.path.join(adir, 'rest', 'pokemon.db'), 'wb') as f:          # the accidental-sqlite3.connect class: an EMPTY file
+            f.write(b'')
+        reset(None)
+        rc, out = run()
+        rec = json.load(open(rgm.REVIEW, encoding='utf-8'))
+        ok(rc == (2, False) and open(gmp, 'rb').read() == b_old and os.path.join('rest', 'pokemon.db') in rec['reason'] and 'no such table' in rec['reason'],
+           'a stray empty parked pokemon.db is a STOP that names it: %s %s' % (rc, rec['reason'][:160]))
         os.remove(os.path.join(adir, 'rest', 'pokemon.db'))
         park('rest', 'u_rest_swift', extra=8)              # enough rows that only the ACTIVE bag's own count can stop the run
         c = sqlite3.connect(dbp)
@@ -1212,7 +1489,8 @@ def _orchestrator_tests(rgm, td, put, rows, enum, ok):
 def _live_check(rows, ok):
     """The 22 flips, reproduced from the REAL 0.407 / 0.427 game masters and the real bag -- only where those exist, and
     cross-checked against an independent count from the raw templates (the number moves with every walk, so it is printed,
-    never asserted). Also: 0.395.1's integer branch forms must read as an unreadable candidate."""
+    never asserted). Also: the size repro on the real files (every XXL copy flagged when the held species' base sizes shrink) and
+    0.395.1's integer branch forms must read as an unreadable candidate."""
     clone = os.environ.get('GM_GUARD_PM_CLONE', '/home/user/pokeminers/game_masters')
     p407 = os.path.join(clone, 'previous_game_masters', 'gm_v2_apk4070_2026.04.17-10.48.50', 'game_master.json')
     p427 = os.path.join(clone, 'latest', 'latest.json')
@@ -1226,7 +1504,10 @@ def _live_check(rows, ok):
     enum = {int(k): v for k, v in json.load(open(fep, encoding='utf-8')).items()}
     bag = load_rows(db)
     r = assess(p407, p427, bag, move_map, enum)
-    got = len({f['uid'] for f in r['flips'] if f['axis'] == 'moves'})
+    # ONLY the rows whose held move LEAVES 'no normal roll' (the direction `want` counts below): one (species, move) pair flips the
+    # other way on this very pair (Cramorant DRILL_PECK: plain -> no normal roll), so a bag holding such a Cramorant would
+    # otherwise fail this check in a data session although nothing is wrong
+    got = len({f['uid'] for f in r['flips'] if f['axis'] == 'moves' and f['old'] == 'no normal roll' and f['new'] != 'no normal roll'})
 
     def pools(path):                      # independent of detect_legacy: raw templates -> dex -> normal-roll move names
         out = defaultdict(set)
@@ -1256,8 +1537,36 @@ def _live_check(rows, ok):
         _c.close()
     if walk == '2026-09-30T01:42:49':                 # the walk the 22 was measured on (2026-09-30); later bags differ
         ok(got == 22, 'live: on the 2026-09-30 01:42:49 walk exactly 22 in-bag rows flip on a held move, got %d' % got)
-    print('gm_guard selftest: live 0.407 -> 0.427: %d in-bag rows lose "no normal roll" on a held move (evolve axis %d rows, %s)'
-          % (got, r['axes'].get('evolve', 0), r['verdict']))
+    print('gm_guard selftest: live 0.407 -> 0.427: %d in-bag rows lose "no normal roll" on a held move (evolve axis %d rows, size axis %d rows, %s)'
+          % (got, r['axes'].get('evolve', 0), r['axes'].get('size', 0), r['verdict']))
+    # THE SIZE REPRO ON THE REAL FILES (2026-09-30, review): the base height / weight of every species that has an XXL copy in the bag,
+    # scaled x0.6 in a copy of 0.427 -- what moved an XXL Ponyta out of the keep (its projection as a Rapidash falls 1082 -> 735, so
+    # best_points 983 is under min_points) while the first version of the guard said CLEAR. Every one of those XXL rows must be flagged.
+    _c = sqlite3.connect('file:%s?mode=ro' % db.replace('\\', '/'), uri=True)
+    try:
+        xxl = dict(_c.execute('SELECT uid_hex, pokemon_id FROM pokemon WHERE in_bag=1 AND pokemon_size_category=5').fetchall())
+    finally:
+        _c.close()
+    if xxl:
+        gm, held = json.load(open(p427, encoding='utf-8')), set(xxl.values())
+        for t in gm:
+            s = (t.get('data') or {}).get('pokemonSettings')
+            m = re.match(r'V(\d{4})_POKEMON_', t.get('templateId', ''))
+            if s and m and int(m.group(1)) in held:
+                for k in ('pokedexHeightM', 'pokedexWeightKg'):
+                    if s.get(k):
+                        s[k] = round(s[k] * 0.6, 3)
+        with tempfile.TemporaryDirectory(prefix='gm_guard_live_') as td:
+            cand = os.path.join(td, 'scaled_0427.json')
+            with open(cand, 'w', encoding='utf-8') as f:
+                json.dump(gm, f)
+            del gm
+            r2 = assess(p427, cand, bag, move_map, enum)
+        flagged = {f['uid'] for f in r2['flips'] if f['axis'] == 'size'}
+        ok(r2['verdict'] == 'FLIPS' and set(xxl) <= flagged,
+           'live: 0.427 with the held XXL species\' base sizes x0.6 must flag every XXL row on the size axis (%d of %d, %s)' % (
+               len(set(xxl) & flagged), len(xxl), r2['verdict']))
+        print('gm_guard selftest: live size check: base sizes x0.6 flag %d in-bag rows, all %d XXL copies among them' % (len(flagged), len(xxl)))
     if os.path.exists(p395):
         r = assess(p427, p395, bag, move_map, enum)
         ok(r['verdict'] == 'UNREADABLE_NEW', 'live: the engine cannot load 0.395.1 (integer forms) -- must be UNREADABLE_NEW, got %s' % r['verdict'])

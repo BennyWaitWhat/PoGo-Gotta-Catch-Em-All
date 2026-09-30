@@ -29,9 +29,10 @@ behind this script -- it is a tripwire, not the gate.
 THE CLIENT GAME MASTER (gamemaster_pokeminers.json), 2026-09-30: pokeminers_phase() runs on EVERY run -- it asks
 PokeMiners' 13-byte latest/timestamp.txt, not the 30-day pvpoke clock. A NEW batch is downloaded, DIFFED and judged against
 the bags (the active account's and every resting account's parked one: the file is shared) BEFORE it is installed
-(gm_guard.assess reuses detect_legacy's pool functions, evolvable_forms, isTradable,
-isTransferable and the rarity classes): if any in-bag keep verdict flips it is installed with a dated backup, the SAME
-review record is written and the run exits 2 (--ack clears it); a candidate the engine cannot load is never installed.
+(gm_guard.assess reuses detect_legacy's pool functions, evolvable_forms, size_line (the size numbers and types an
+XXL keep is scored by), isTradable, isTransferable and the rarity classes): if any in-bag keep verdict flips it is
+installed with a dated backup, the SAME review record is written and the run exits 2 (--ack clears it); a candidate
+the engine cannot load is never installed.
 The batch is stamped in gamemaster_pokeminers.json.meta (batch time, APK, sha256) for audit_invariants I2.7.
   --selftest     : offline proof of all of it on synthetic fixtures (touches nothing outside a temp dir)
 An unknown flag stops the run with exit 2 and does NOTHING (like full_audit.py).
@@ -336,7 +337,8 @@ def pokeminers_phase(argv, fetch=None, now=None, gm_path=None, meta_path=None, d
         print('   rows: %s -- after review: python system/scripts/refresh_gamemaster.py --ack' % os.path.relpath(REVIEW, ROOT))
         print('pokeminers: %s -- REFRESH APPLIED BUT NEEDS A HUMAN (exit 2)' % res['reason'])
         return 2, True
-    print('pokeminers: no in-bag keep verdict moves -- installed without a stop')
+    print('pokeminers: no in-bag keep verdict moves (move pools, evolution chain, size / types, tradable, transferable, rarity) '
+          '-- installed without a stop')
     return None, True
 
 
