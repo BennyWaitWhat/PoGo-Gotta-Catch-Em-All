@@ -67,7 +67,11 @@ def main():
     if rt_skip is not None:
         print('Remote Trade: same %d offers as the set verified %.1f h ago -- skipped (re-verified every %g h)'
               % (len(rt_want), rt_skip, RT_REVERIFY_H))
-    if rt_want is None:
+    # --reconcile / --retire (2026-09-30, cull speed pick 2): full_audit's post-push checks ride THIS session -- the
+    # reconcile report first (read-only; drift -> rc 3 and no label write at all), then retire's empty-shell deletions,
+    # Remote Trade and the tag order. One attach instead of three. A failed offer computation no longer skips them.
+    shared = '--reconcile' in sys.argv or '--retire' in sys.argv
+    if rt_want is None and not shared:
         return 1
     if '--dry-run' in sys.argv:
         print('--dry-run: no phone contact.'); return 0
@@ -76,9 +80,31 @@ def main():
     from ready_gate import ensure_ready_for_writes
     pg.wait_ready_to_attach(timeout_s=300)
     sess, pid = pg.get_session()
-    rc = 0
+    rc = 0 if rt_want is not None else 1
     try:
+        if '--reconcile' in sys.argv:
+            print('=== RECONCILE ===', flush=True)
+            import argparse, reconcile_tags
+            try:
+                _rr = reconcile_tags.run(argparse.Namespace(report=True, fix_db=False, fix_server=False, tags=None,
+                                                            verbose=False, allow_untag=False, force_mass=False),
+                                         sess=sess, pid=pid)
+            except Exception as e:
+                print('RECONCILE failed: %s: %s' % (type(e).__name__, e)); _rr = 1
+            if _rr:
+                print('RECONCILE rc=%d -- no label writes this pass' % _rr, flush=True)
+                return 3
         _rs = ensure_ready_for_writes(sess, pid)
+        if '--retire' in sys.argv:               # where the separate retire step ran: right after the push, before the
+            print('=== RETIRE ===', flush=True)  # tag order (which then fixes the order around any deleted shell)
+            try:                                 # fail-soft, like the step it replaces: never changes the rc
+                import retire_tags
+                _ta = retire_tags.args([])
+                _plan = retire_tags.plan(_ta)
+                if _plan is not None:
+                    retire_tags.run_on_session(sess, pid, _ta, *_plan)
+            except Exception as e:
+                print('RETIRE failed: %s: %s' % (type(e).__name__, e))
         bag = pg.pick_singleton(sess, 'Niantic.Holoholo.Internal', 'PokemonBagImpl')
         # the gate just picked AND probed TaggingRpcService in this session (Stage 2, 2026-09-24): no second pick
         svc = getattr(_rs, 'svc_addr', '') or pg.pick_singleton(sess, 'Niantic.Holoholo.Tagging', 'TaggingRpcService')
@@ -89,6 +115,9 @@ def main():
             name = marker.strip('= ')
             if rt_skip is not None:
                 continue                          # said above, before the attach
+            if want is None:
+                print('%s stopped: no offers computed (see above)' % name)
+                continue
             try:
                 os.remove(RT_STAMP)                 # R-B review: a push killed half-way (timeout, Ctrl-C) must not leave an
             except OSError:                         # older proof behind for an identical offer set to trust

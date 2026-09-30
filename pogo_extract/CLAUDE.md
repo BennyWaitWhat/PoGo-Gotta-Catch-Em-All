@@ -70,7 +70,10 @@ The first cull in a fresh VM also rebuilds `system/scripts/rank_tables.pkl` (not
 | `switch_account.py`, `account_guard.py` | Two accounts, one data set each (`accounts/`, `active_account.txt`). Only when Benny says; push `inventory` right after |
 
 Sync order today: `keep_policy` -> `build_tagsets` -> `preflight_transfer` -> `prune_tags --atomic` -> `set_db_tags_from_files` ->
-`reconcile_tags --report`. Also part of the cull: `system/scripts/derive_ae_roster.py` (Adventure-Effect roster), `reconcile_gamemaster.py`
+`reconcile_tags --report`. In the cull (2026-09-30) the first two are skipped when the tag files are still the bytes the 11 audits
+judged (`granular_tags.pushed_files_digest`), and the reconcile report runs in ONE post-push session with retire, Remote Trade and
+the tag order (`sync_post_tags.py --reconcile --retire`; drift there = SYNC FAILED, no label write): 3 game attaches per cull, not 5.
+Also part of the cull: `system/scripts/derive_ae_roster.py` (Adventure-Effect roster), `reconcile_gamemaster.py`
 (the game's own game master over pvpoke's), `independent_law.py` (independent re-derivations the audits use), `ladder_report.py`,
 `system/scripts/order_tags.py`. Most other `*.py` here are one-off research and old iterations: extend the map above, do not add new scripts.
 

@@ -16,8 +16,8 @@ python tools/pogo_data.py pull
 cd pogo_extract && python full_audit.py
 ```
 That is: dashboard up -> game master freshness -> **fresh bag recrawl** -> walk tripwires -> Adventure-Effect roster ->
-**11 audits in parallel** -> tag sync to the phone -> retire stale tag shells -> verify -> Remote Trade tag ->
-Evolve-for-Size tag -> the report -> pages (gen_artifacts, gen_bag_pulse) -> dashboard down. Never add a guessed flag
+**11 audits in parallel** -> tag sync to the phone -> ONE post-push session (reconcile, retire stale tag shells, Remote
+Trade tag, tag order) -> verify -> the report -> pages (gen_artifacts, gen_bag_pulse) -> dashboard down. Never add a guessed flag
 (unknown flags stop it, rc 2) and never pipe it into `head`/`tail` — a broken pipe kills it mid-cycle.
 
 ```bash

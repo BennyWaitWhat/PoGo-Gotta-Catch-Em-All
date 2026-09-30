@@ -303,7 +303,10 @@ def build_proto_to_uidhex(bag_walk_map, all_uid_hexes):
 # --------------------------------------------------------------------------- #
 #  Main logic                                                                  #
 # --------------------------------------------------------------------------- #
-def run(args):
+def run(args, sess=None, pid=None):
+    """sess / pid (2026-09-30, cull speed pick 2): sync_post_tags.py --reconcile passes its own post-push session, so
+    the report, Remote Trade, the tag order and retire share ONE attach. That session is still a fresh one next to
+    prune's (the independence this report exists for); it is left attached for its owner. None -> attach here."""
     # -- DB setup --------------------------------------------------------------
     conn = sqlite3.connect(DB_PATH)
     all_uid_hexes = {r[0] for r in conn.execute(
@@ -312,8 +315,10 @@ def run(args):
     print(f'DB: {len(all_uid_hexes)} in-bag pokemon')
 
     # -- Frida attach ----------------------------------------------------------
-    sess, pid = pg.get_session()
-    print(f'Frida attached, pid={pid}')
+    own = sess is None
+    if own:
+        sess, pid = pg.get_session()
+    print(f'Frida attached, pid={pid}' + ('' if own else ' (shared post-push session)'))
     try:
         bag_addr = pg.pick_singleton(
             sess, 'Niantic.Holoholo.Internal', 'PokemonBagImpl')
@@ -618,7 +623,8 @@ def run(args):
         return 1 if (pile_unreadable or (diffs_found and not (args.fix_db or args.fix_server))) else 0
 
     finally:
-        sess.detach()
+        if own:
+            sess.detach()
         conn.close()
 
 

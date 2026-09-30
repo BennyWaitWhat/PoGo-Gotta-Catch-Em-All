@@ -128,6 +128,7 @@ def _runner(name, steps, gate=None, snap=None):
                 return
         for label, argv in steps:
             _append('\n=== %s ===\n' % label)
+            _t0 = time.time()
             p = subprocess.Popen([sys.executable] + argv, cwd=HERE,
                                  stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                                  stdin=subprocess.DEVNULL, text=True, bufsize=1,
@@ -137,6 +138,7 @@ def _runner(name, steps, gate=None, snap=None):
             for line in p.stdout:
                 _append(line)
             p.wait()
+            _append('(step took %.1f s)\n' % (time.time() - _t0))   # where a job's time goes (cull speed study, 2026-09-30)
             _PROC['p'] = None
             if JOB.pop('cancelled', False):
                 _append('\n=== CANCELLED by user ===\n')
@@ -635,13 +637,29 @@ def api_sync():
     # exactly today's behaviour for the dashboard's own buttons).
     _exp = _body.get('audited_pile_members')
     _exp = _exp if isinstance(_exp, str) and __import__('re').fullmatch(r'[0-9a-f]{64}', _exp) else None
+    # THE AUDITED BYTES ARE THE PUSHED BYTES (2026-09-30, cull speed pick 1): full_audit sends the digest of the files the
+    # 11 audits just judged (granular_tags.pushed_files_digest). Unchanged -> no second keep_policy + build_tagsets (~5 s);
+    # the pile fingerprint gate below still runs. Changed, missing or unreadable -> the re-run, exactly as before.
+    _aud = _body.get('audited_tagsets')
+    _reuse = False
+    if not dry and isinstance(_aud, str) and __import__('re').fullmatch(r'[0-9a-f]{64}', _aud):
+        try:
+            import granular_tags as _gt
+            _reuse = _gt.pushed_files_digest() == _aud
+        except Exception:
+            _reuse = False
+    # RECONCILE ELSEWHERE (2026-09-30, cull speed pick 2): full_audit runs the reconcile report inside its post-sync session
+    # (sync_post_tags.py --reconcile), one attach instead of two. Every other caller keeps it here.
+    _rec = _body.get('reconcile', True) is not False
     steps = (
         # 1) REGENERATE the pile from the CURRENT config so the gate + push match what's configured
-        _recompute_steps()
+        ([('recompute: skipped -- the tag files are the exact bytes the 11 audits just judged',
+           _py('-c', 'print("recompute: reusing the audited tag files (digest matched)")'))]
+         if _reuse else _recompute_steps())
         # 2) KEEPER GATE -- preflight returns rc!=0 to ABORT here, before any phone write
         + _gate_steps(_exp)
         # 3) push to phone, then mirror the DB (see _push_steps for why that order)
-        + _push_steps(dry)
+        + _push_steps(dry, reconcile=_rec)
     )
     ok = start_job('sync' + (' (dry-run)' if dry else ''), steps,
                    snap=None if dry else 'before_sync')
