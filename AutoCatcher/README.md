@@ -21,6 +21,16 @@ belongs to the **Pokemon Inventory** session. No session edits another's files.
 The desktop `pogo_il2cpp.py` is AutoCatcher's own copy. The phone has its own `pogo_il2cpp.py`, and `catch_phone.py`
 points `get_session` at the local gadget (`127.0.0.1:27047`, `dev.attach("Gadget")`).
 
+`ondevice_toggle/` holds the phone-side setup:
+- the Auto-Catcher app (`apk/`);
+- the Termux:Boot starter `20-pogo-catcher.sh`;
+- the gadget's listen config `config.listen.so` (the same bytes as the phone's live `/data/local/tmp/re.zyg.fri/libgadget.config.so`);
+- the phone guide `AUTO_CATCHER_PHONE.html`;
+- the Termux build and repair scripts.
+
+The June config-swap toggles and installers are retired and not in git. They force-stopped PoGo, switched the gadget out of
+listen mode, wiped `~/pogo` or wrote Magisk root grants. Their phone copies are in `/data/local/tmp/retired_2026-09-29/`.
+
 ## For cloud sessions
 
 Cloud sessions reach the phone through the **bridge** that `.claude/hooks/cloud_session_start.sh` sets up. It runs

@@ -32,6 +32,30 @@ system/analysis/game_limits.json
 *.v3types
 *.v3vis
 archive/
+system/scripts/game_write/catch_loop_fast.v1-pause.py
+
+# ondevice_toggle: RETIRED 2026-09-29 -- a session must never run these. They force-stop or relaunch PoGo (or tell you
+# to), switch the gadget out of listen mode, wipe ~/pogo (setup_pogo.sh), write Magisk root grants (grant_root.sh), or
+# are stale copies of the live catcher_ctl.sh / run_catch.sh / catch_phone.py. They stay on the PC; git history has
+# them. Still tracked: apk/, 20-pogo-catcher.sh, 10-catcher-toggle.sh, config.listen.so, AUTO_CATCHER_PHONE.html and
+# the Termux build/repair scripts.
+ondevice_toggle/*.md
+ondevice_toggle/configswap_toggle/
+ondevice_toggle/shortcuts/
+ondevice_toggle/catch*.js
+ondevice_toggle/*config*.so
+!ondevice_toggle/config.listen.so
+ondevice_toggle/install.sh
+ondevice_toggle/install_ondevice_catcher*.sh
+ondevice_toggle/restore.sh
+ondevice_toggle/selftest.sh
+ondevice_toggle/termux_catch.py
+ondevice_toggle/termux_run_catcher.sh
+ondevice_toggle/setup_pogo.sh
+ondevice_toggle/grant_root.sh
+ondevice_toggle/catcher_ctl.sh
+ondevice_toggle/run_catch.sh
+ondevice_toggle/catch_phone.py
 
 # Gym Battle's runtime state (runner inbox, logs, studies) -- theirs; state, not code
 tools/gym_state/
