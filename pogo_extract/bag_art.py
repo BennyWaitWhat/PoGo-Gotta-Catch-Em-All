@@ -517,10 +517,13 @@ class Art:
         the cloud VM that has no business in a published artifact."""
         d = {k: v for k, v in self.stats.items() if k != 'cache'}
         d['cache_ok'] = not self.stats['cache']
+        if d.get('error'):          # an exception text can carry a local path (an unreadable index): keep only the file name
+            d['error'] = re.sub(r"(?:[A-Za-z]:)?[\\/][^'\"\s]*[\\/]([^\\/'\"\s]+)", r'\1', str(d['error']))
         return d
 
     def line(self, pile_uids):
-        """The one summary line the cull shows (gen_bag_pulse prints it BEFORE its KPI line: finish_step keeps only the last)."""
+        """The art summary line gen_bag_pulse prints BEFORE its KPI line. full_audit.finish_step shows only the LAST stdout line, so a
+        cull never shows this one: the page footnote is the in-cull signal that art degraded (review note, 2026-09-30)."""
         s = self.stats
         mine = {self.sprite_key(u) for u in pile_uids} - {None}
         age = index_age(s['listed'])

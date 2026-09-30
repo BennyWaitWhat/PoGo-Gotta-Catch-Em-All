@@ -736,7 +736,8 @@ def main():
     ap.add_argument("--no-feed-mate", dest="feed_mate", action="store_false", help="do not also feed the strongest teammate in your gyms")
     ap.add_argument("--topup", action="store_true", help="Berry Master: regular berries to defenders in quiet gaps (never golden)")
     ap.add_argument("--topup-reserve", type=int, default=30, help="keep at least this many of each regular berry")
-    ap.add_argument("--attack-report", type=float, default=1.5, help="s between the battle's attack reports (server setting 5; 0 = leave it)")
+    ap.add_argument("--attack-report", type=float, default=3.0,   # Benny 2026-09-30 ("Maybe middle ground?"): 3 s, was 1.5 -- 20 reports/min instead of 40
+                    help="s between the battle's attack reports (server setting 5; 0 = leave it)")
     ap.add_argument("--cmd", default=None, help="live command file (JSON, re-read when it changes): {go: fid} / {hunt: meters}")
     ap.add_argument("--join-first", default=None, help="fort id: go there first -- beat + place (enemy/empty) or join (red with room)")
     ap.add_argument("--study", default=None, help="append the feed-study JSON lines (gym readings, map flags, feed replies) here")

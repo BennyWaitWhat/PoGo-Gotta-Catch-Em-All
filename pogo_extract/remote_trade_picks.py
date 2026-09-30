@@ -44,10 +44,11 @@ def tradable_tables_from(gm):
         m = re.match(r'V(\d{4})_POKEMON_', t.get('templateId', ''))
         if not s or not m:
             continue
+        # absent = untradable: the game master prints isTradable only when true (Deoxys has none) -- see audit_gamemaster
         if s.get('form'):
-            by_form[_norm(s['form'])] = s.get('isTradable', True)
+            by_form[_norm(s['form'])] = bool(s.get('isTradable'))
         else:
-            by_dex.setdefault(int(m.group(1)), s.get('isTradable', True))
+            by_dex.setdefault(int(m.group(1)), bool(s.get('isTradable')))
     return by_form, by_dex
 
 

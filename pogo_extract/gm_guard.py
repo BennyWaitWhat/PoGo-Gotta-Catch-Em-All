@@ -821,7 +821,7 @@ def _fixture_gm(variant=None):
     psy = dict(pokemonId='PSYDUCK', familyId='FAMILY_PSYDUCK', quickMoves=['WATER_GUN_FAST'], cinematicMoves=['AQUA_TAIL'], **num(0.8, 19.6))
     gold = dict(pokemonId='GOLDUCK', familyId='FAMILY_PSYDUCK', **num(1.7, 76.6))
     eev = dict(pokemonId='EEVEE', familyId='FAMILY_EEVEE', quickMoves=['TACKLE_FAST'], cinematicMoves=['DIG'])
-    mew, bul, cha = {}, {}, {}
+    mew, bul, cha = {}, {'isTransferable': True}, {'isTradable': True}   # the real game master prints these flags only when true
     fill = dict(pokemonId='FILLER', familyId='FAMILY_FILLER', quickMoves=['TACKLE_FAST'], cinematicMoves=['DIG'], **num(1.0, 10.0))
     chain_cost, top_form, top_h = 50, 'TOPX_NORMAL', 1.6
     xpsy, xgold, sx_h, sz_h, fy_h, nx_h = 1.4, 2.975, 1.5, 1.0, 1.6, 1.8
@@ -839,9 +839,9 @@ def _fixture_gm(variant=None):
     if variant == 'rarity':
         mew['pokemonClass'] = 'POKEMON_CLASS_MYTHIC'
     if variant == 'transferable':
-        bul['isTransferable'] = False
+        del bul['isTransferable']      # absent = false: the game master never prints a literal false (2026-09-30)
     if variant == 'tradable':
-        cha['isTradable'] = False
+        del cha['isTradable']
     if variant == 'unbagged':
         fill['quickMoves'] = ['TACKLE_FAST', 'DIG']
     if variant == 'nontm':             # SWIFT enters the any-form pool (nonTmCinematicMoves) WITHOUT becoming a plain-TM move: only the pool answer flips

@@ -55,6 +55,10 @@ The charged-move pick is power x the game's effectiveness label x STAB (x1.2 whe
   - `STAB: a charge button has a settings object of another class` names the wrapper class.
   - The `related` fields in the first line list every button field that mentions a Pokemon, with its name: a field called `defenderSettings` answers the attacker/defender question at once.
 
+## Attack reports: 3 s by default (2026-09-30)
+The runner rewrites `GymBattleSettingsProto.AttackServerInterval` (the game's own value: 5 s) at every attach. It was 1.5 s through the run that ended in the 2026-09-26 lockout (`gym_v2_79`..`86`: "was [5]", then "was [1.5]"). Benny picked the middle ground: `--attack-report` now defaults to **3.0** (20 reports a minute instead of 40; the game sends 12). `--attack-report 0` leaves the game's 5 s alone. No causal link to the lockout is claimed: its screen text is the game's rate-limit string (`suspension_rate_limit_desc`), and nobody knows the trigger. The 3 s knockout windows are unmeasured (5 s gave 4-7 s, 1.5 s gave 2-4 s).
+Owner: since 2026-09-30 the cloud session carries the Gym Battle duties (the PC sessions are retiring). Nothing runs without Benny's go.
+
 ## Cloud sessions
 - **Where gym work happens:** Benny (2026-09-29) wants all PoGo work in Claude cloud sessions.
 - **The phone bridge exists:** `.claude/hooks/cloud_session_start.sh` runs Tailscale inside the VM. It exports `ADB_TARGET` (the phone's own address on the VM loopback when possible, else `127.0.0.1:5555`) and `TZ=America/New_York`.

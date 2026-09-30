@@ -67,10 +67,13 @@ def scan_client_gm(gm):
         d = int(m.group(1)); dex_of.setdefault(s['pokemonId'], d)
         if s.get('pokemonClass'):
             cls[s['pokemonClass']].add(d)
+    # ABSENT = FALSE (2026-09-30, PokeMiners deep dive): the client game master prints these flags only when true -- 0 literal
+    # false in 18,812 templates, while Mew/Celebi/Jirachi/Kyurem B-W (untransferable) and Deoxys (untradable) simply lack them.
+    # Reading a missing flag as True made check 3 blind (it printed 0 locked; the bag holds 21) and offered 2 Deoxys for trade.
         if s.get('form'):
-            tf_form[norm(s['form'])] = s.get('isTransferable', True)
+            tf_form[norm(s['form'])] = bool(s.get('isTransferable'))
         else:
-            tf_pid.setdefault(d, s.get('isTransferable', True))
+            tf_pid.setdefault(d, bool(s.get('isTransferable')))
         for b in s.get('evolutionBranch') or []:
             if b.get('evolution'):
                 gender_branch[(d, b['evolution'])].add(b.get('genderRequirement') or 'ANY')

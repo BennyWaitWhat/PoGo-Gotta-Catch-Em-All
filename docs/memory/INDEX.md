@@ -58,7 +58,7 @@ Notes reference each other as [[note-name]] = the file `note-name.md` in this fo
 - [Trade picks are GOOD ones](feedback-trade-picks-are-good-ones.md) -- Trade = top 10 of the remainder, never the worst copies.
 
 ## PoGo — safety rules for the irreversible pile
-- [BAN LOCKOUT 2026-09-26 04:55](pogo-ban-lockout-2026-09-26.md) -- main locked out mid-automation; NO game automation without his explicit go; >= strike 2.
+- [BAN LOCKOUT 2026-09-26 04:55](pogo-ban-lockout-2026-09-26.md) -- main locked out mid-automation; NO game automation without his explicit go; the screen was the game's rate-limit message (strike count unknown, 2026-09-30 addendum).
 - [TAG ONLY — never release](feedback-tag-only-never-release-no-xxs.md) -- I tag Transfer; HE releases in game. XXS is dead.
 - [Pre-flight Transfer on EVERY axis](feedback-transfer-preflight-every-axis.md) -- check the pile against every keep axis; RECRAWL first; no gym excuse.
 - [Pile gate: preflight stamp](pogo-pile-gate-2026-09.md) -- only route to Transfer: preflight_transfer -> prune_tags --atomic.
