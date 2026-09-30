@@ -1,25 +1,41 @@
 #!/usr/bin/env bash
 # CLOUD ENVIRONMENT SETUP SCRIPT -- the copy in the repo is cloud/setup.sh (keep them identical).
-# Runs once as root on Ubuntu 24.04; the result is cached (~7 days). Per-session work (tailnet + adb bridge) is
-# .claude/hooks/cloud_session_start.sh. Network access must be FULL (Trusted blocks Tailscale).
-set -euo pipefail
-
+# BEST-EFFORT ON PURPOSE: a failing setup script blocks the whole session (2026-09-29: pip died mid-download and the
+# session never started). Nothing here may fail hard; the SessionStart hook reports anything still missing, with the fix.
+# Network access must be FULL (Trusted blocks Tailscale).
+set -uo pipefail
+log() { echo "[setup] $*"; }
 export DEBIAN_FRONTEND=noninteractive
-apt-get update -y
-apt-get install -y --no-install-recommends android-tools-adb socat curl ca-certificates iproute2 procps sudo \
-    python3-pip python-is-python3 nodejs sqlite3 tzdata gh
+
+apt-get update -y >/dev/null 2>&1 || log "apt-get update failed"
+for pkgs in "android-tools-adb socat curl ca-certificates iproute2 procps tzdata sqlite3" \
+            "python3-pip nodejs sudo gh" "python-is-python3"; do
+  apt-get install -y --no-install-recommends $pkgs >/dev/null 2>&1 || log "apt could not install some of: $pkgs"
+done
 
 # Tailscale: the official installer; if it fails (no systemd in the container), the static build.
-if ! curl -fsSL https://tailscale.com/install.sh | sh; then
-  echo "tailscale install.sh failed -- falling back to the static build"
+if ! command -v tailscaled >/dev/null; then
+  curl -fsSL https://tailscale.com/install.sh | sh >/dev/null 2>&1 || log "tailscale install.sh failed -- trying the static build"
 fi
 if ! command -v tailscaled >/dev/null; then
-  TGZ=$(curl -fsSL 'https://pkgs.tailscale.com/stable/?mode=json' | python3 -c 'import json,sys; print(json.load(sys.stdin)["Tarballs"]["amd64"])')
-  curl -fsSL "https://pkgs.tailscale.com/stable/$TGZ" | tar xz -C /tmp
-  install -m 755 "/tmp/${TGZ%.tgz}/tailscale" "/tmp/${TGZ%.tgz}/tailscaled" /usr/local/bin/
+  TGZ=$(curl -fsSL 'https://pkgs.tailscale.com/stable/?mode=json' | python3 -c 'import json,sys; print(json.load(sys.stdin)["Tarballs"]["amd64"])' 2>/dev/null)
+  if [ -n "${TGZ:-}" ] && curl -fsSL "https://pkgs.tailscale.com/stable/$TGZ" | tar xz -C /tmp; then
+    install -m 755 "/tmp/${TGZ%.tgz}/tailscale" "/tmp/${TGZ%.tgz}/tailscaled" /usr/local/bin/ || log "tailscale static install failed"
+  else
+    log "tailscale static download failed"
+  fi
 fi
 
 # Python: frida MUST match the phone's gadget (17.9.11); frida-tools pinned with it (newer ones need frida >= 17.10).
-pip install --break-system-packages frida==17.9.11 frida-tools==14.8.2 s2sphere flask protobuf
+# Two tries with retries/timeouts; the image's own python3 (3.11 on 2026-09-29) is fine -- frida ships abi3 wheels.
+PIP="python3 -m pip install --break-system-packages --retries 5 --timeout 120 --progress-bar off"
+for try in 1 2; do
+  timeout 600 $PIP frida==17.9.11 frida-tools==14.8.2 s2sphere flask protobuf && break
+  log "pip install failed (try $try)"; sleep 5
+done
 
-echo "setup done: tailscale $(tailscale version | head -1), $(adb version | head -1), frida $(python3 -c 'import frida; print(frida.__version__)')"
+log "summary: tailscale=$(command -v tailscaled >/dev/null && echo ok || echo MISSING)" \
+    "adb=$(command -v adb >/dev/null && echo ok || echo MISSING)" \
+    "socat=$(command -v socat >/dev/null && echo ok || echo MISSING)" \
+    "frida=$(python3 -c 'import frida; print(frida.__version__)' 2>/dev/null || echo MISSING)"
+exit 0

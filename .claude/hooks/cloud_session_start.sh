@@ -60,12 +60,20 @@ bridge() {
 }
 
 bridge || true
+# tools the setup script may not have finished installing (it is best-effort so it can never block a session)
+MISSING=""
+for m in frida s2sphere flask; do python3 -c "import $m" 2>/dev/null || MISSING="$MISSING $m"; done
+for c in adb socat tailscaled; do command -v "$c" >/dev/null || MISSING="$MISSING $c"; done
 STATE=0
 [ -n "$TARGET" ] && STATE=$(adb devices 2>/dev/null | grep -c "^$TARGET[[:space:]]*device")
 
 # stdout of a SessionStart hook becomes session context: the standing orientation + the bridge state
 cat "$ROOT/docs/START_HERE.md" 2>/dev/null
 echo
+if [ -n "$MISSING" ]; then
+  echo "SETUP INCOMPLETE -- missing:$MISSING. Fix it yourself first: bash cloud/setup.sh (it is idempotent), then run this"
+  echo "hook again: bash .claude/hooks/cloud_session_start.sh -- and only then continue."
+fi
 if [ "$STATE" = "1" ]; then
   echo "PHONE BRIDGE: connected -- adb $TARGET -> $PHONE over Tailscale; ADB_TARGET=$TARGET. Log: $LOG"
   echo "DATA: run 'python tools/pogo_data.py pull' before any work that reads game data (docs/data.md)."
