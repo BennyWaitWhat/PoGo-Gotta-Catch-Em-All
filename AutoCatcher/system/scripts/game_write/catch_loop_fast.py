@@ -144,7 +144,8 @@ function il() {
 }
 function cstr(p) { try { return (!p || p.isNull()) ? '' : p.readCString(); } catch (e) { return ''; } }
 function images() {
-  var h = il(), sp = Memory.alloc(4), a = h.asms(h.domain(), sp), n = sp.readS32(), out = {};
+  var h = il(); if (!h) throw new Error('libil2cpp.so not loaded in the attached process (pid ' + Process.id + ')');
+  var sp = Memory.alloc(4), a = h.asms(h.domain(), sp), n = sp.readS32(), out = {};
   for (var i = 0; i < n; i++) { var im = h.asmImage(a.add(i * PS).readPointer()); out[cstr(h.imageName(im))] = im; }
   return out;
 }
@@ -390,6 +391,7 @@ function walk(now) {
     c[0]++;
     if (NEVER[cls]) { c[4]++; return; }
     var enc = encOf(o); if (!enc) { c[2]++; return; }
+    var gk = o.toString(); if (GAMEOPEN[gk]) { GOENC[enc] = GAMEOPEN[gk]; delete GAMEOPEN[gk]; }   /* bind the game's open to THIS encounter */
     if (DONE[enc] || (COOL[enc] && now < COOL[enc])) { c[5]++; return; }
     var e = E[enc]; if (e) { LIVE[enc] = o; e.seen = now; vis++; c[1]++; return; }
     /* Only a class that HAS the flag can say "not on the map". Incense and lure Pokemon have no get_VisibleOnMap;
@@ -398,7 +400,7 @@ function walk(now) {
     /* FRESH ONLY (2026-09-29 20:42): old reveals stay on the map hidden but are no longer catchable -- 70 of them queued at
        once gave 51 duds, a flee-hold and 0 catches in 50 s. Eligible: revealed < 3 min ago, or its encounter tappable is
        still live on the map (that refreshes the time every look). */
-    var appleMon = !!AP.revealed[enc] && now - AP.revealed[enc] < 180000 && !AP.gaveUp[enc];
+    var appleMon = !!AP.revealed[enc] && now - AP.revealed[enc] < 180000 && !(AP.gaveUp[enc] > now);   /* gaveUp = a cooldown, not forever */
     if (vm && !appleMon && u8(call(vm, o, [])) !== 1) {
       /* HIDDEN APPLE POKEMON: the hidden ones were ALL apple species (Applin x25, Smoliv x8, Skiddo x4, Cottonee x3, Lechonk x1,
          20:13) -- reveals whose ids a restart had forgotten. A hidden Pokemon of an apple species within reach is one. */
@@ -423,7 +425,10 @@ function due(now) {   /* anything that needs a fresh pointer this tick? (cheap: 
   for (var k in E) { var e = E[k]; if ((e.st === 'ready' || e.st === 'fed') && now >= e.due) return true; }
   return false;
 }
-var OPENING = false, GAMEOPEN = {};   /* GAMEOPEN: MapPokemon pointer -> when the GAME itself sent its encounter request */
+/* GAMEOPEN: MapPokemon pointer -> when the GAME itself sent its encounter request (the hook can't call into the game).
+   walk() binds it to the encounter id within 0.4 s: GOENC. Keyed by pointer alone, a pooled object handed the next hidden
+   apple Pokemon a stale "opened" -- throws at an encounter the game never opened: 64 duds, 8 dropped in 15 min (09-30). */
+var OPENING = false, GAMEOPEN = {}, GOENC = {};
 function openOne(enc, e, o, now) {
   OPENING = true;
   try { call(method(o, 'SendEncounterRequest', 0), o, []); } finally { OPENING = false; }
@@ -494,11 +499,12 @@ function catchTick(now) {
          before that is a dud (49 in 7 min). Wait for the game's own SendEncounterRequest on this object, then throw;
          if the game has not opened it within 8 s of our first sighting, open it ourselves (the old path). */
       if (!e.firstSeen) e.firstSeen = now;
-      var go = GAMEOPEN[o.toString()];
-      if (go) { e.st = 'ready'; e.tOpen = now; e.due = Math.max(now, go + 300); e.probs = AP.probs[enc] || null; e.gameOpened = 1; ST.appleGameOpen = (ST.appleGameOpen || 0) + 1; continue; }
-      if (now - e.firstSeen < 8000) { PEND.push(enc); continue; }
-      /* never opened by the game in 8 s = a stale reveal: 27 duds + 4 flees in 4 min came only from these, 0 from fresh ones */
-      AP.gaveUp[enc] = 1; delete AP.revealed[enc]; ST.appleStale = (ST.appleStale || 0) + 1; finish(enc, 'applestale'); continue;
+      var go = GOENC[enc];
+      if (go && go > (AP.goneAt[enc] || 0)) { e.st = 'ready'; e.tOpen = now; e.due = Math.max(now, go + 300); e.probs = AP.probs[enc] || null; e.gameOpened = 1; ST.appleGameOpen = (ST.appleGameOpen || 0) + 1; continue; }
+      if (now - e.firstSeen < 8000 || now - (AP.encTap[enc] || 0) < 8000) { PEND.push(enc); continue; }   /* appleTick re-taps its apple at 4 s */
+      /* never opened by the game = a stale reveal: 27 duds + 4 flees in 4 min came only from these, 0 from fresh ones.
+         Cool down 60 s, then try again while it is still on the map (appleTick taps its apple, as a hand would). */
+      AP.gaveUp[enc] = now + 60000; AP.goneAt[enc] = now; ST.appleStale = (ST.appleStale || 0) + 1; finish(enc, 'applestale'); continue;
     }
     openOne(enc, e, o, now); n++;
   }
@@ -528,7 +534,7 @@ function catchTick(now) {
       else if (e.apple && now - e.tThrow > 3000) {   /* a dud: nothing was sent. Drop its queue entry, try again in 0.8 s */
         for (var qd = REQQ.length - 1; qd >= 0; qd--) if (REQQ[qd].enc === enc) REQQ.splice(qd, 1);
         e.duds = (e.duds || 0) + 1; ST.appleDuds = (ST.appleDuds || 0) + 1; if (ITEMC[e.ball] >= 0) ITEMC[e.ball]++;
-        if (e.duds >= 5) { log('APPLEGONE ' + e.cls + ' #' + e.pid + ' [apple] 5 duds -- no longer catchable, dropped'); AP.gaveUp[enc] = 1; delete AP.revealed[enc]; finish(enc, 'appledud'); }
+        if (e.duds >= 3) { log('APPLEGONE ' + e.cls + ' #' + e.pid + ' enc=' + enc + ' [apple] 3 duds -- retry in 60 s while it is on the map'); AP.gaveUp[enc] = now + 60000; AP.goneAt[enc] = now; finish(enc, 'appledud'); }
         else { e.st = 'ready'; e.due = now + 800; }
       }
       else if (now - e.tThrow > 10000) { log('NORESULT ' + e.cls + ' #' + e.pid + ' ball=' + e.ball + (e.apple ? ' [apple]' : '') + ' (retry in 20 s)');
@@ -735,9 +741,11 @@ function tapTick() {
 var AP = {ctl: NULL, f: null, gos: [], handler: null, evF: NULL, ev: NULL, int32: NULL, cand: {}, dead: {}, tapped: {}, seen: {},
           last: 0, lastTap: 0, types: {TAPPABLE_TYPE_MAPLE: 1}, names: {}, inst: null,
           /* SPEED + RANGE (user 2026-09-29: "not picking up the apples as fast as the pokemon"; 697 sightings were skipped as
-             >60 m): nearest first, a tap every 0.5 s, and a range LEARNED from the server -- start 80 m, +10 m after a success
-             near the edge (cap 150 m = the game's visibleRadiusMeters), shrink below any ERROR_NOT_IN_RANGE (status 4). */
-          maxDist: 80, gap: 500, q: [], retry: {}, okD: 0, failD: 9999,
+             >60 m): nearest first, a tap every 0.5 s, and a range LEARNED from the server. Start at 150 m (the game's
+             visibleRadiusMeters) and shrink below the first ERROR_NOT_IN_RANGE (status 4), never below the farthest success.
+             (09-30: starting at 80 m and growing +10 m per edge success sat at 100 m with no failure ever seen.) */
+          maxDist: 150, gap: 500, q: [], retry: {}, okD: 0, failD: 9999,
+          encTap: {}, goneAt: {}, lastPtr: '',   /* encTap: enc -> when we tapped its apple Pokemon; goneAt: enc -> last give-up */
           /* APPLE POKEMON (user: "sometimes an apple is a pokemon you gotta catch"): a reveal leaves the Pokemon on the map as a
              HIDDEN wild (VisibleOnMap 0) that walk() used to skip -- census 'Wild 8/0 hidden=8'. Every revealed encounter id
              (reply to our tap, or an IsEncounter tappable seen on the map) goes here and walk() catches it. */
@@ -784,8 +792,18 @@ function appleTick(now) {   /* UnityMain, from pump() */
     if (!s) { delete AP.cand[k]; continue; }
     if (s.despawn && s.despawn < now) { delete AP.cand[k]; AP.dead[k] = s.enc; AP.st.expired++; continue; }
     var key = s.enc + ':' + s.isEnc;
-    if (s.isEnc && !AP.gaveUp[s.enc]) { if (!AP.revealed[s.enc]) OUT.revealed.push(s.enc); AP.revealed[s.enc] = now; }   /* live encounter tappable: keep it fresh */
-    if (AP.types[s.type] && !s.isEnc && !AP.seen[key]) { AP.seen[key] = 1; AP.st.live++; }
+    if (s.isEnc) { if (!AP.revealed[s.enc]) OUT.revealed.push(s.enc); AP.revealed[s.enc] = now; }   /* live encounter tappable: keep it fresh */
+    if (s.isEnc) {
+      /* An apple Pokemon still on the map that the game has not opened: tap its apple, as a hand would, so the game opens
+         it (then catchTick throws). Only once catchTick has waited 4 s for the game, and at most once a minute. */
+      var ee = E[s.enc];
+      if (!ee || ee.st !== 'new' || !ee.firstSeen || now - ee.firstSeen < 4000 || GOENC[s.enc] > (AP.goneAt[s.enc] || 0)
+          || now - (AP.encTap[s.enc] || 0) < 60000 || !s.ready || !me) continue;
+      var de = meters(me.lat, me.lng, s.lat, s.lng);
+      if (de <= AP.maxDist && (!best || de < best.d)) best = {o: o, key: key, d: de, enc: s.enc, isEnc: true};
+      continue;
+    }
+    if (AP.types[s.type] && !AP.seen[key]) { AP.seen[key] = 1; AP.st.live++; }
     if (AP.tapped[key] || s.isEnc || !AP.types[s.type] || !s.ready || !me) continue;
     if (AP.retry[key] && now < AP.retry[key]) continue;
     var d = meters(me.lat, me.lng, s.lat, s.lng);
@@ -794,7 +812,8 @@ function appleTick(now) {   /* UnityMain, from pump() */
   }
   if (best && now - AP.lastTap >= AP.gap) {   /* the nearest apple first */
     if (AP.ev.isNull() && !AP.evF.isNull()) { var box = Memory.alloc(PS); box.writePointer(NULL); il().staticGet(AP.evF, box); AP.ev = box.readPointer(); }
-    AP.lastTap = now; AP.tapped[best.key] = now; delete AP.retry[best.key];
+    AP.lastTap = now; delete AP.retry[best.key];
+    if (best.isEnc) { AP.encTap[best.enc] = now; AP.st.retaps = (AP.st.retaps || 0) + 1; } else AP.tapped[best.key] = now;
     call(AP.handler, best.o, [best.o.add(AP.f.gesture).readPointer(), AP.ev]);
     AP.st.taps++;
     if (!LASTOK) bump(AP.st.fails, 'tapexc');
@@ -804,8 +823,11 @@ function appleTick(now) {   /* UnityMain, from pump() */
   if (Object.keys(AP.dead).length > 3000) AP.dead = {};
   if (Object.keys(AP.seen).length > 3000) AP.seen = {};
   if (Object.keys(AP.retry).length > 3000) AP.retry = {};
-  for (var gk in GAMEOPEN) if (now - GAMEOPEN[gk] > 60000) delete GAMEOPEN[gk];
+  for (var gk in GAMEOPEN) if (now - GAMEOPEN[gk] > 3000) delete GAMEOPEN[gk];   /* walk() binds a live one within 0.4 s */
+  for (var ge in GOENC) if (now - GOENC[ge] > 60000) delete GOENC[ge];
   for (var rk in AP.revealed) if (now - AP.revealed[rk] > 600000) { delete AP.revealed[rk]; delete AP.probs[rk]; }
+  for (var uk in AP.goneAt) if (now - AP.goneAt[uk] > 600000) { delete AP.goneAt[uk]; delete AP.gaveUp[uk]; }
+  for (var tk in AP.encTap) if (now - AP.encTap[tk] > 600000) delete AP.encTap[tk];
   if (Object.keys(AP.gaveUp).length > 3000) AP.gaveUp = {};
 }
 function onTappableOut(s) {   /* ProcessTappableOutProto, any thread: memory reads only */
@@ -832,14 +854,19 @@ function onTappableOut(s) {   /* ProcessTappableOutProto, any thread: memory rea
     if (AP.capOff >= 0) var probs = readProbs(en.add(AP.capOff).readPointer());
   }
   if (st === 0 && !items.length && sp < 0) return;   /* an empty pass (the same reply goes through two parse methods) */
+  apReply(s.toString(), st, items, sp, cp, probs, now);
+}
+function apReply(sk, st, items, sp, cp, probs, now) {   /* the reply's effect, plain JS (tools/catcher_apple_sim.js runs it) */
+  /* The same reply goes through two parse methods: same object, same content -- count it once (a clone of it would be a new
+     object within ms, hence the 50 ms). Two TAPS with the same reward are two objects: the old content-only check over
+     400 ms merged them (9 logged vs +17 in the bag, 2026-09-30). */
   var sig = st + '|' + JSON.stringify(items) + '|' + sp + '|' + cp;
-  if (sig === AP.lastSig && now - AP.lastT < 400) return;
-  AP.lastSig = sig; AP.lastT = now; AP.st.replies++;
+  if (sig === AP.lastSig && (sk === AP.lastPtr || now - AP.lastT < 50)) { AP.st.dup = (AP.st.dup || 0) + 1; return; }
+  AP.lastSig = sig; AP.lastPtr = sk; AP.lastT = now; AP.st.replies++;
   while (AP.q.length && now - AP.q[0].t > 8000) AP.q.shift();
   var q = AP.q.shift();   /* replies come back in send order */
   if (q && st === 1 && q.d > AP.okD) AP.okD = q.d;
-  if (q && st === 1 && q.d >= AP.maxDist - 10 && AP.maxDist < Math.min(150, AP.failD - 5)) AP.maxDist = Math.min(150, AP.failD - 5, AP.maxDist + 10);
-  if (q && st === 4) { AP.failD = Math.min(AP.failD, q.d); AP.maxDist = Math.max(30, Math.min(AP.maxDist, q.d - 5)); delete AP.tapped[q.key]; AP.retry[q.key] = now + 3000; }
+  if (q && st === 4) { AP.failD = Math.min(AP.failD, q.d); AP.maxDist = Math.max(30, AP.okD, Math.min(AP.maxDist, q.d - 5)); delete AP.tapped[q.key]; AP.retry[q.key] = now + 3000; }
   if (st !== 1) { bump(AP.st.fails, 'status' + st); log('APPLEFAIL status=' + st + (st === 4 ? ' (not in range at ' + (q ? q.d : '?') + ' m -> range ' + AP.maxDist + ' m, retry when closer)' : st === 2 ? ' (not found)' : '')); return; }
   items.forEach(function (x) { var nm = AP.names[x[0]] || ('item ' + x[0]); AP.st.items[nm] = (AP.st.items[nm] || 0) + x[1]; log('APPLE +' + x[1] + ' ' + nm); });
   if (sp >= 0 && q) { AP.revealed[q.enc] = now; OUT.revealed.push(q.enc); if (probs) AP.probs[q.enc] = probs; }
@@ -1238,20 +1265,29 @@ def limit_part(stt, base, w):
     return f" | LIMIT {txt}"
 
 
+APPLE_BAG0 = {}   # item id -> the bag count at this process's first reading
+
+
 def apple_part(stt, it):
     """ | apples taps/got/revealed/fails + the bag's Sweet/Tart/Syrupy counts (read from the game every 3 s)."""
     ap = stt.get("apples")
     if not ap or not ap.get("on"):
         return ""
     a = ap["st"]
-    bag = "/".join(str(it.get(str(i), -1)) for i in ap.get("ids") or [])
+    ids = [str(i) for i in ap.get("ids") or []]
+    for i in ids:   # the bag at the first reading: "+N this run" is the GAME's own count of apples gained
+        if it.get(i, -1) >= 0:
+            APPLE_BAG0.setdefault(i, it[i])
+    bag = "/".join(str(it.get(i, -1)) for i in ids)
+    gain = "/".join(f"+{it[i] - APPLE_BAG0[i]}" if i in APPLE_BAG0 and it.get(i, -1) >= 0 else "?" for i in ids)
     got = ",".join(f"{k.replace(' Apple', '')}+{v}" for k, v in a["items"].items()) or "0"
     duds = (stt.get("st") or {}).get("appleDuds", 0)
     gopen = (stt.get("st") or {}).get("appleGameOpen", 0)
     stale = (stt.get("st") or {}).get("appleStale", 0)
-    return (f" | apples taps={a['taps']} got={got} revealed={a['mons']} seen={a['live']} duds={duds} gameopened={gopen} stale={stale}"
+    return (f" | apples taps={a['taps']} retaps={a.get('retaps', 0)} got={got} revealed={a['mons']} seen={a['live']} duds={duds}"
+            f" gameopened={gopen} stale={stale}" + (f" dup={a['dup']}" if a.get("dup") else "")
             + (f" fails={a['fails']}" if a["fails"] else "") + f" range={ap.get('range')}m (ok<={ap.get('okD')} fail>={ap.get('failD')})"
-            + f" bag S/T/Sy={bag}")
+            + f" bag S/T/Sy={bag} ({gain} this run)")
 
 
 def report(w, stt, t0, base):
@@ -1407,13 +1443,17 @@ def main():
             raise
         except Exception as e:
             fails += 1
-            w(f"--- error: {str(e)[:120]} -- retry in {min(15, 2 * fails)}s ---")
+            # PoGo up but its game library not loaded (still starting, or stuck): attach less often. 2026-09-29 22:58 it stayed
+            # unloaded for 5 min while we attached 21 times ("cannot read property 'asms' of null").
+            slow = "libil2cpp.so not loaded" in str(e)
+            delay = min(60, 4 * fails) if slow else min(15, 2 * fails)
+            w(f"--- error: {str(e)[:120]} -- retry in {delay}s ---")
             try:
                 if SESS["s"]:
                     SESS["s"].detach()
             except Exception:
                 pass
-            time.sleep(min(15, 2 * fails))
+            time.sleep(delay)
 
 
 main()

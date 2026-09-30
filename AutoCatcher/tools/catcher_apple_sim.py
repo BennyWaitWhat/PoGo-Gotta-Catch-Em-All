@@ -1,6 +1,5 @@
 """Offline test of the apple module inside catch_loop_fast.py (no phone): python tools/catcher_apple_sim.py
-Expected: expired []; live-once [2]; live-stays [3]; encounter []; far []; two-apples [6,7]; pool-reuse [9];
-other-type []; not-ready [11] (tapped only once its GameObjects exist)."""
+Every scenario states its expected result in catcher_apple_sim.js; the exit code is 1 when any of them fails."""
 import os, subprocess, sys, tempfile
 HERE = os.path.dirname(os.path.abspath(__file__))
 s = open(os.path.join(HERE, os.pardir, "system", "scripts", "game_write", "catch_loop_fast.py"), encoding="utf-8").read()
