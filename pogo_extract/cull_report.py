@@ -372,8 +372,14 @@ def main():
                 _how = '' if src == 'old' else (' (just evolved from %s)' % desc(src, False) if src else ' (just %s)' % arrived(r))
                 _xt = ('; XXL -- %s' % xxl_why(r)) if ((r['pokemon_size_category'] or 0) == 5
                                                         and 'xxl' not in (why.get(u) or ())) else ''
+                _keep = ', '.join(desc(x, False) for x in _mates[:3])
+                if src is None and not _xt and arrived(r) == 'caught':
+                    # JUST-CAUGHT FODDER -> the table (2026-09-30, "improve how we cull in respect to token usage"): 53
+                    # one-line-per-mon rows on a line-pool pass became one row per kind, like every other account
+                    grouped.setdefault((re.sub(r'^\d+% ', '', desc(r, False)), 'just caught', 'you keep ' + _keep, ''), []).append(pct(r))
+                    continue
                 lines.append('**%s**%s: the %s line keeps %s%s.' % (desc(r, False), _how, _et._nice(_lp[0][1][len('line:'):]),
-                                                                    ', '.join(desc(x, False) for x in _mates[:3]), _xt))
+                                                                    _keep, _xt))
                 continue
         if src == 'old':
             _was = prev_why.get(u) or _from_tags(P.get(u))
