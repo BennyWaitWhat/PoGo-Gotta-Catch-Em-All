@@ -56,6 +56,15 @@ cull for a day. Fix: prefer an evolvable rep. Pile identical before/after; only 
 `game_opportunities.hundo_at`, `ladder_report.prev_best`. `audit_gamemaster` now WARNs when the game names no
 target form for a multi-form stage (only Dunsparce -> DudunsparceTwo/Three, which is genuinely random).
 
+**It came back in new code (2026-09-30):** the H08 shiny-spot check `audit_promises._shiny_earns` (2026-09-29) keyed
+the shiny ladder by `pvid()` alone, so all five Florges colours shared 4 plain spots. The first cloud cull after
+105 reward catches blocked on `NO REASON: Floette 57% -> florges` -- 3 White + 2 Yellow Floettes promised, while the
+bag's only shiny Florges is Blue. The law and `keep_policy` key shinies by (pokemon_id, form). Fix: the spots are
+filed bare + form and a promise is judged on `stage_key()`'s form (commit "audit_promises: shiny spots per
+species+form"). Still form-blind: `refresh_evolve_shiny` (`sh_ivs` by pvid). It is only ever STRICTER than the
+law, so it can miss a shiny upgrade on a multi-form line but never over-promise. Any NEW pooled-by-pvid code is the
+same bug: grep for it when you add a ladder.
+
 **How to apply:** never treat a pvpoke speciesId as a stage identity. Read the target FORM from the client
 branch, and read it from the FORM template, never the formless one -- `V0422_POKEMON_SHELLOS` claims EAST for
 every Shellos, the same stale-base-template trap as Dugtrio's baseDefense in
