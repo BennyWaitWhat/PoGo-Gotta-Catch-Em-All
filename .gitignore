@@ -41,6 +41,9 @@
 !/.claude/skills/
 /.claude/skills/*
 !/.claude/skills/cull/
+!/.claude/skills/ponytail/
+!/.claude/skills/grill-me-general/
+!/.claude/output-styles/
 
 # never, at any depth
 __pycache__/

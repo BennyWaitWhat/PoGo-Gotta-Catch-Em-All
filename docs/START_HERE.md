@@ -1,5 +1,10 @@
 # START HERE — every PoGo session reads this first
 
+> **You mirror Benny's PC session:** Opus 5.5 at Max effort · the Concise output style + ADHD mode
+> ([`.claude/output-styles/concise.md`](../.claude/output-styles/concise.md); the `i-have-adhd` plugin — if `/i-have-adhd` is
+> available, run it once) · the `ponytail` skill (shortest correct diff, reuse before writing, leave one runnable check) ·
+> the memory in [`memory/INDEX.md`](memory/INDEX.md) is your memory.
+>
 > **Cloud session quick start — do these in order:**
 > 1. Look at the `PHONE BRIDGE:` line at the bottom of this page. Not connected → [`cloud_setup.md`](cloud_setup.md) table, tell Benny the one fix.
 > 2. `python tools/pogo_data.py status` — if `inventory` was last pushed `by pc-seed`, **run the first cull now** ([`HANDOFF.md`](HANDOFF.md) §0: Benny asked for it).
