@@ -84,7 +84,8 @@ def catcher():
         if m:
             g = re.search(r"'gone': (\d+)", m.group(7))
             return dict(t=m.group(1), run_s=int(m.group(2)), caught=int(m.group(3)), vis=int(m.group(4)),
-                        track=int(m.group(5)), pend=int(m.group(6)), gone=int(g.group(1)) if g else 0)
+                        track=int(m.group(5)), pend=int(m.group(6)), gone=int(g.group(1)) if g else 0,
+                        full="storage is full" in line)     # the catcher's "HOLD ..: Pokemon storage is full"
     return None
 
 
@@ -125,6 +126,7 @@ def main():
     end = time.time() + a.minutes * 60
     signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))   # a stop from outside still runs the restore below
     last_fix, target, last_busy, hold_until, last_gone, alarm, said = None, None, 0.0, 0.0, None, None, ""
+    bag_full = False
     print("speed governor: %s, cap %.0f km/h (fast %.0f / park %.0f / busy %.0f), restore %.0f on exit -> %s"
           % ("DRY RUN" if a.dry else "LIVE", MAX_KMH, FAST_KMH, PARK_KMH, BUSY_KMH, RESTORE_KMH, CSV), flush=True)
     try:
@@ -159,7 +161,8 @@ def main():
                 elif kmh < 1.0:
                     why = "not walking (route paused or stopped) -- hands off"
                 else:
-                    escaped = last_gone is not None and 0 < c["gone"] - last_gone < 50   # a restart resets it: ignore
+                    # a restart resets 'gone' (ignore); a full bag makes every Pokemon 'gone' -- not an escape
+                    escaped = last_gone is not None and 0 < c["gone"] - last_gone < 50 and not c["full"]
                     busy = c["pend"] >= BACKLOG_PEND or c["vis"] + c["track"] >= BACKLOG_SEEN or escaped
                     if busy:
                         last_busy = time.time()
@@ -173,6 +176,10 @@ def main():
                 last_fix = (lat, lng)
             if c is not None:
                 last_gone = c["gone"]
+                if c["full"] != bag_full:
+                    bag_full = c["full"]
+                    print("%s %s" % (time.strftime("%H:%M:%S"), "BAG FULL -- the catcher holds (Pokemon storage is full)"
+                                     if bag_full else "bag has room again -- the catcher catches"), flush=True)
             sent = ""
             if want is not None and want != target:
                 sent = set_speed(want, a.dry)
