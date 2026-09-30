@@ -4,7 +4,8 @@ shouldnt..." and "Where's my little thing about what got improved and why each t
 Compares this walk with the walk of the LAST REPORT (system/analysis/last_report.json: its snapshot stamp, pile,
 keep reasons and evolve targets), so "just caught / just evolved" means "since you last read a report" even when a
 pass in between was cut off. Everything comes from files the pass already wrote: pokemon.db, policy_reasons.json,
-tagsets/Transfer.txt, .db_snapshots/*.before_sync.*.gz, evolve_targets.
+tagsets/Transfer.txt, .db_snapshots/*.before_sync.*.gz, evolve_targets -- and, for the closing Power Up block (2026-09-30, report only), the
+Power Up tag files, the game master's Power Up tables and this walk's candy.json / inventory.json.
 
   python cull_report.py            # print the report and remember this walk as the last reported one
   python cull_report.py --dry-run  # print it, remember nothing
@@ -977,6 +978,15 @@ def main():
     except Exception as e:
         out.append('(which way: not computed -- %s)' % e)
         targets = prev_targets
+    # POWER UP COSTS (2026-09-30, Benny: "yes" to the game master's exact prices). REPORT ONLY: it reads the tag files and the walk's
+    # balances and writes nothing -- no keep reason, no tag and no pile decision depends on it. Never fails the report.
+    try:
+        _pu = power_up_block(C, pile_set, why, lambda u: desc(C[u], False))
+        if _pu:
+            out.append('')
+            out.extend(_pu)
+    except Exception as e:
+        out.append('(power up costs: not computed -- %s)' % e)
     print('\n'.join(l for l in out if l is not None))
     if unsynced:
         # an unsynced walk has no before_sync snapshot: remembering it under cur_stamp would pair THIS pile and these
@@ -1020,6 +1030,107 @@ def fodder_lines(fodder):
     return out
 
 
+POWER_UP_LINES = 12          # mons that get a full line; any beyond are still NAMED, in one short line (never a "+N more")
+
+
+def _power_up_verdict(e, brief=False):
+    """'doable now' / 'doable after exchanging N candy for M XL (if the game allows the exchange)' / 'short X' ... (status: see
+    game_opportunities.power_up_plan). brief = the short form for the one-line list of the mons past POWER_UP_LINES."""
+    f = lambda v: '{:,}'.format(v)
+    need, sh, st = e.get('need'), e.get('short') or {}, e['status']
+    if not need:
+        return 'no price' if brief else 'no price for it (the game master tables, its candy family or its levels are unknown)'
+    if st == 'now':
+        return 'doable now'
+    if st == 'exchange':
+        return ('doable after exchanging %s candy' % f(e['swap'])) if brief else (
+            'doable after exchanging %s candy for %s XL (if the game allows the exchange)' % (f(e['swap']), f(sh['xl'])))
+    if st == 'short':
+        v = 'short ' + ' + '.join(p for p in ('%s dust' % f(sh['dust']) if sh.get('dust') else '', '%s candy' % f(sh['candy']) if sh.get('candy') else '',
+                                              '%s XL' % f(sh['xl']) if sh.get('xl') else '') if p)
+        if not brief and sh.get('xl') and e.get('swap') and not sh.get('dust') and not sh.get('candy'):
+            v += ' (swapping candy for it would take %s; %s to spare)' % (f(e['swap']), f(max(e['spare'] or 0, 0)))
+        return v
+    if st == 'level':
+        return ('above your trainer-level cap (L%g)' % e['cap']) if not brief else 'above your trainer-level cap'
+    return 'a balance it needs was not read this walk' if not brief else 'balance not read'
+
+
+def _power_up_line(e, name):
+    """One mon of the Power Up block: what it costs, what the family holds of it, and the verdict."""
+    f = lambda v: '{:,}'.format(v)
+    lvl = lambda v: ('L%g' % v) if isinstance(v, (int, float)) else 'L?'
+    need, have = e.get('need'), e.get('have') or {}
+    head = '%s: %s -> %s' % (name(e['uid']), lvl(e.get('lv')), lvl(e.get('target')))
+    if not need:
+        return '%s: %s' % (head, _power_up_verdict(e))
+    price = ' + '.join(p for p in ('%s dust' % f(need['dust']), '%s candy' % f(need['candy']) if need['candy'] else '',
+                                   '%s XL' % f(need['xl']) if need['xl'] else '') if p)
+    hold = ' + '.join(p for p in ('%s candy' % f(have['candy']) if need['candy'] and have.get('candy') is not None else '',
+                                  '%s XL' % f(have['xl']) if need['xl'] and have.get('xl') is not None else '') if p)
+    return '%s: %s%s -- %s' % (head, price, (' (you hold %s)' % hold) if hold else '', _power_up_verdict(e))
+
+
+def power_up_lines(plan, name, tags):
+    """The Power Up block (2026-09-30, Benny: "yes" to the game master's exact prices): one line per mon a Power Up tag holds, best
+    news first -- what it costs, what its family holds, 'doable now' / 'doable after exchanging N candy' / 'short X' -- and a total.
+    REPORT ONLY: nothing here is a keep reason, a tag or a pile decision. `plan` = game_opportunities.power_up_plan's list, `name(uid)`
+    a mon as this report names it, `tags` = {'gl': tag name, 'ul': tag name}. The first POWER_UP_LINES get a full line; any beyond
+    that are still ALL named, with a short verdict, in one line -- Benny's rule is that no list in this report ends in "+N more"
+    (2026-09-26: "dont do this. always print it all out."). [] when the tags hold no one."""
+    if not plan:
+        return []
+    f = lambda v: '{:,}'.format(v)
+    out, shown, rest = [], plan[:POWER_UP_LINES], plan[POWER_UP_LINES:]
+    for lg in ('gl', 'ul'):
+        mine = [e for e in shown if e['league'] == lg]
+        if mine:
+            out.append('**%s**%s' % (tags[lg], '' if out else " (report only -- nothing here changes what you keep; the game master's prices "
+                                                                "against this walk's balances)"))
+            out.extend('- ' + _power_up_line(e, name) for e in mine)
+    if rest:
+        out.append('- and the other %d, in short: %s' % (len(rest), '; '.join('%s -- %s' % (name(e['uid']), _power_up_verdict(e, brief=True)) for e in rest)))
+    priced = [e for e in plan if e.get('need')]
+    tot = {k: sum(e['need'][k] for e in priced) for k in ('dust', 'candy', 'xl')}
+    held = next((e['have']['dust'] for e in plan if e.get('have') and e['have'].get('dust') is not None), None)
+    cnt = collections.Counter(e['status'] for e in plan)
+    said = ', '.join(t for t in ('%d doable now' % cnt['now'] if cnt['now'] else '',
+                                 '%d after exchanging candy' % cnt['exchange'] if cnt['exchange'] else '',
+                                 '%d short' % cnt['short'] if cnt['short'] else '', '%d above your trainer-level cap' % cnt['level'] if cnt['level'] else '',
+                                 '%d not read this walk' % cnt['unread'] if cnt['unread'] else '', '%d without a price' % cnt['unknown'] if cnt['unknown'] else '') if t)
+    # every line is judged on its own: two doable mons of ONE family draw on the same candy and XL candy, so say so
+    byfam = collections.defaultdict(list)
+    for e in plan:
+        if e.get('need') and e.get('family') is not None and e['status'] in ('now', 'exchange'):
+            byfam[e['family']].append(name(e['uid']))
+    clash = [n for v in byfam.values() if len(v) > 1 for n in v]
+    out.append('Total for all %d: %s dust (%s), %s candy, %s XL -- %s%s' % (
+        len(plan), f(tot['dust']), ('you hold %s' % f(held)) if held is not None else 'stardust not read this walk', f(tot['candy']), f(tot['xl']), said,
+        ('; %s come from one family and share its candy, so they are not all doable together' % ', '.join(clash)) if clash else ''))
+    return out
+
+
+def power_up_block(C, pile_set, why, name):
+    """The report's Power Up block for this walk: the members of the Power Up tags (the tag FILES -- what the game shows), each with
+    granular_tags.power_ups' own (level now, best level), priced by game_opportunities against this walk's balances. [] when both
+    tags are empty. C = {uid: bag row}, pile_set = the Transfer uids, why = policy_reasons.json, name(uid) = how the report names a mon."""
+    import granular_tags, game_opportunities
+    by = {norm(u): u for u in C}
+    tags = {'gl': granular_tags.POWER_UP_GL, 'ul': granular_tags.POWER_UP_UL}
+    mem = {}
+    for lg, tag in tags.items():
+        try:
+            mem[lg] = [by[norm(u)] for u in open(os.path.join(A, 'tagsets', granular_tags.filename(tag)), encoding='utf-8').read().split()
+                       if norm(u) in by]
+        except OSError:
+            mem[lg] = []
+    if not any(mem.values()):
+        return []
+    _sets, detail = granular_tags.power_ups([r for u, r in C.items() if u not in pile_set], why)
+    items = [(u, lg, *(detail.get((u, lg)) or (None, None))) for lg in ('gl', 'ul') for u in mem[lg]]
+    return power_up_lines(game_opportunities.power_up_plan(items, C), name, tags)
+
+
 def _selftest():
     rows = [('Bulbasaur', [91], '98%'), ('Cyndaquil', [71, 64], '96%, 91%, 89%'), ('Fletchling', [67, 67, 51], '84%')]
     got = fodder_lines(rows)
@@ -1045,7 +1156,57 @@ def _selftest():
         assert stage_name('mr_mime', 122) == 'Mr Mime' and species_label({'pokemon_id': 29, 'species_name': 'Nidoran F'}) == 'Nidoran F', 'no names: today'
     finally:
         _NM = _saved
-    print('cull_report selftest (fodder tables, official names): ok')
+    # Power Up block (2026-09-30): the lines are pure text over game_opportunities.power_up_plan's dicts (the prices are tested there)
+    nm = {'m': '100% Mandibuzz', 'd': '100% Dusknoir', 'l': '93% Lickilicky', 'x': '91% Mimikyu', 'u': '90% Seaking', 'n': '80% Nobody'}
+    nd = lambda d, c, x: {'dust': d, 'candy': c, 'xl': x, 'steps': 0}
+    hv = lambda c, x, d=2462829: {'dust': d, 'candy': c, 'xl': x}
+    z = {'dust': 0, 'candy': 0, 'xl': 0}
+
+    def pe(uid, lg, lv, tg, need, have, short, status, swap=0, spare=None, **kw):
+        return dict({'uid': uid, 'league': lg, 'lv': lv, 'target': tg, 'need': need, 'have': have, 'short': short, 'status': status,
+                     'swap': swap, 'spare': spare}, **kw)
+    plan = [pe('m', 'ul', 16.0, 50.0, nd(492600, 264, 296), hv(4556, 601), z, 'now'),
+            pe('d', 'ul', 49.5, 50.0, nd(15000, 0, 20), hv(6488, 18), dict(z, xl=2), 'exchange', 200, 6488),
+            pe('l', 'ul', 43.0, 48.5, nd(142000, 0, 172), hv(982, 14), dict(z, xl=158), 'short', 15800, 982),
+            pe('x', 'ul', 40.0, 50.0, nd(250000, 0, 296), hv(4, 4, 100000), dict(z, dust=150000, xl=292), 'short', 29200, 4),
+            pe('u', 'ul', 40.0, 50.0, nd(250000, 0, 296), {'dust': None, 'candy': 1, 'xl': 1}, {}, 'unread'),
+            pe('n', 'ul', 40.0, 52.0, None, None, {}, 'unknown')]
+    tg = {'gl': 'Power Up to 1500', 'ul': 'Power Up to 2500'}
+    got = power_up_lines(plan, nm.get, tg)
+    want = ["**Power Up to 2500** (report only -- nothing here changes what you keep; the game master's prices against this walk's balances)",
+            '- 100% Mandibuzz: L16 -> L50: 492,600 dust + 264 candy + 296 XL (you hold 4,556 candy + 601 XL) -- doable now',
+            '- 100% Dusknoir: L49.5 -> L50: 15,000 dust + 20 XL (you hold 18 XL) -- doable after exchanging 200 candy for 2 XL (if the game allows the exchange)',
+            '- 93% Lickilicky: L43 -> L48.5: 142,000 dust + 172 XL (you hold 14 XL) -- short 158 XL (swapping candy for it would take 15,800; 982 to spare)',
+            '- 91% Mimikyu: L40 -> L50: 250,000 dust + 296 XL (you hold 4 XL) -- short 150,000 dust + 292 XL',
+            '- 90% Seaking: L40 -> L50: 250,000 dust + 296 XL (you hold 1 XL) -- a balance it needs was not read this walk',
+            '- 80% Nobody: L40 -> L52: no price for it (the game master tables, its candy family or its levels are unknown)',
+            'Total for all 6: 1,149,600 dust (you hold 2,462,829), 264 candy, 1,080 XL -- 1 doable now, 1 after exchanging candy, 2 short, '
+            '1 not read this walk, 1 without a price']
+    assert got == want, '\n'.join(got)
+    assert power_up_lines([], nm.get, tg) == [] and power_up_lines(None, nm.get, tg) == []
+    # past 12 lines no mon is dropped (Benny 2026-09-26: no list ends in "+N more"): the rest are all NAMED in one short line, and the total counts all
+    many = [pe('m', 'ul', 40.0, 50.0, nd(250000, 0, 296), hv(0, 400), z, 'now') for _ in range(14)] + [plan[2]]
+    got = power_up_lines(many, nm.get, tg)
+    assert len(got) == 1 + 12 + 1 + 1, got
+    assert got[-2] == '- and the other 3, in short: 100% Mandibuzz -- doable now; 100% Mandibuzz -- doable now; 93% Lickilicky -- short 158 XL', got[-2]
+    assert got[-1] == 'Total for all 15: 3,642,000 dust (you hold 2,462,829), 0 candy, 4,316 XL -- 14 doable now, 1 short', got[-1]
+    got = power_up_lines([plan[0]] * 12 + [plan[1], plan[3], plan[4], plan[5], pe('m', 'ul', 40.0, 50.0, nd(250000, 0, 296), hv(0, 400), {}, 'level', cap=40.0)], nm.get, tg)
+    assert got[-2] == ('- and the other 5, in short: 100% Dusknoir -- doable after exchanging 200 candy; 91% Mimikyu -- short 150,000 dust + 292 XL; '
+                       '90% Seaking -- balance not read; 80% Nobody -- no price; 100% Mandibuzz -- above your trainer-level cap'), got[-2]
+    both = power_up_lines([pe('m', 'gl', 30.0, 40.0, nd(10000, 15, 0), hv(20, 0), z, 'now'), pe('d', 'ul', 40.0, 50.0, nd(250000, 0, 296), hv(0, 400), z, 'now')],
+                          nm.get, tg)
+    assert both[0].startswith('**Power Up to 1500** (report only') and both[2] == '**Power Up to 2500**' and both[-1].startswith('Total for all 2:'), both
+    fam = power_up_lines([pe('m', 'ul', 40.0, 50.0, nd(250000, 0, 296), hv(0, 400), z, 'now', family=355), pe('d', 'ul', 49.5, 50.0, nd(15000, 0, 20), hv(6488, 18), dict(z, xl=2), 'exchange', 200, 6488, family=355),
+                          pe('l', 'ul', 43.0, 48.5, nd(142000, 0, 172), hv(982, 14), dict(z, xl=158), 'short', 15800, 982, family=355)], nm.get, tg)
+    assert fam[-1].endswith('; 100% Mandibuzz, 100% Dusknoir come from one family and share its candy, so they are not all doable together'), fam[-1]
+    two = power_up_lines([pe('m', 'ul', 40.0, 50.0, nd(250000, 0, 296), hv(0, 400), z, 'now', family=355), pe('d', 'ul', 49.5, 50.0, nd(15000, 0, 20), hv(6488, 18), dict(z, xl=2), 'exchange', 200, 6488, family=108)],
+                         nm.get, tg)
+    assert 'share its candy' not in two[-1] and 'share its candy' not in power_up_lines(plan, nm.get, tg)[-1], 'distinct families carry no note'
+    nodust = power_up_lines([pe('m', 'ul', 40.0, 50.0, nd(250000, 0, 296), hv(0, 400, None), z, 'unread')], nm.get, tg)
+    assert '(stardust not read this walk)' in nodust[-1], nodust
+    lv = power_up_lines([pe('m', 'ul', 40.0, 50.0, nd(250000, 0, 296), hv(0, 400), {}, 'level', cap=40.0)], nm.get, tg)
+    assert lv[1].endswith('-- above your trainer-level cap (L40)'), lv
+    print('cull_report selftest (fodder tables, official names, Power Up block): ok')
 
 
 if __name__ == '__main__':

@@ -93,6 +93,9 @@ JUST CAUGHT or JUST EVOLVED (see memory feedback-just-caught-in-pile-explanation
 **Safety check:** N checked, none in any top 5 — closest <mon> at <league> #<n> as <stage>.
 
 **Which way to evolve** — every `which way:` line full_audit printed (evolve_targets.py), in plain words.
+
+**Power Up to 2500** — only when a Power Up tag holds mons: each one's exact price from the game master (dust / candy / XL candy)
+against what you hold, "doable now" / "doable after exchanging N candy (if the game allows the exchange)" / "short X". Report only.
 ```
 
 He expects all three sections EVERY cull (user 2026-09-24: "Where's my little thing about what got improved and
@@ -101,6 +104,10 @@ full_audit ends with `=== REPORT ===` (cull_report.py) — relay that block, add
 anything unusual from the log. Do not rebuild it by hand ("Why does it take you so long to make the report? it
 shouldnt..."). Send the report BEFORE any follow-up work (the data push and Bag Pulse come right after; the
 pages and the dashboard stop are already done by full_audit).
+
+The Power Up block at the end of that report (2026-09-30) is advice only: it reads the tag files and this walk's balances and changes
+nothing that is kept or tagged. Relay it as printed -- the exchange is the game's 100-candy-for-1-XL swap, which no tool here has ever
+done, so its "if the game allows the exchange" stays in.
 
 Then, briefly, only what is worth his attention: a count that moved, a new trophy, an audit that fired, an
 upgrade now affordable. Skip anything that reads the same as last time — repeating a steady number every pass
