@@ -79,7 +79,7 @@ def _open_snapshot(path):
 # last pass's keep reasons, read back from the TAGS the walk saw, for when last_report.json has none (first run)
 TAG_REASON = {'Best GL': 'pvp_best_gl', 'Best UL': 'pvp_best_ul', 'Best ML': 'pvp_best_ml', 'XXL': 'xxl',
               'Legacy Moves': 'legacy', 'Shiny - Only One': 'shiny', 'Shiny #4+': 'shiny', 'Nundo': 'nundo',
-              'GL Rank 1-5': 'pvp_rank', 'UL Rank 1-5': 'pvp_rank'}
+              'GL Rank 1-5': 'pvp_rank', 'UL Rank 1-5': 'pvp_rank', 'GL 1-5 No Evolve': 'pvp_rank', 'UL 1-5 No Evolve': 'pvp_rank'}
 
 
 def _from_tags(r):

@@ -3,7 +3,7 @@
 Every mon in an evolve tag whose evolution the game lets go more than one way (Gloom -> Vileplume OR Bellossom,
 Eevee -> 8 ways, Charcadet -> Armarouge OR Ceruledge), with the branch the cull meant. The branches, their gender
 locks and their forms are the client game master's (evolvable_forms._tform); the targets are the ones each tag was
-built from -- promises.json (Evolve Next / Twice / Gated), pvp_combup_labels.json (Evo Best GL / UL / Gated),
+built from -- promises.json (Evolve Next / Twice / Gated), pvp_combup_labels.json (Evolve for GL / UL / Gated),
 refresh_evolve_shiny (Evolve Shiny / Shiny Gated), sync_evolve_size (Evolve for Size). A tag whose line only goes
 one way is left out: there is nothing to choose.
 
@@ -15,7 +15,7 @@ sys.stdout.reconfigure(encoding='utf-8', errors='replace')
 ROOT = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, ROOT); sys.path.insert(0, os.path.join(ROOT, 'system', 'scripts'))
 
-EVOLVE_TAGS = ('Evolve Once', 'Evolve Twice', 'Evolve Gated', 'Evo Best GL', 'Evo Best UL')   # the fold, 2026-09-29
+EVOLVE_TAGS = ('Evolve Once', 'Evolve Twice', 'Evolve Gated', 'Evolve for GL', 'Evolve for UL')   # the folds, 2026-09-29/30
 # The Eevee name trick picks the eeveelution (once per account per name).
 EEVEE_NAMES = {'vaporeon': 'Rainer', 'jolteon': 'Sparky', 'flareon': 'Pyro', 'espeon': 'Sakura', 'umbreon': 'Tamao',
                'leafeon': 'Linnea', 'glaceon': 'Rea', 'sylveon': 'Kira'}

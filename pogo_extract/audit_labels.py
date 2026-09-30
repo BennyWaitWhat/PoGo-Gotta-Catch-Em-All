@@ -1,4 +1,4 @@
-"""LABEL LAW AUDIT -- every advisory evolve label (Evolve Once / Evolve Twice / Evolve Gated, Evo Best GL / UL beside them)
+"""LABEL LAW AUDIT -- every advisory evolve label (Evolve Once / Evolve Twice / Evolve Gated, Evolve for GL / UL beside them)
 must obey the bucket rules in LAW.md. A label asks the user to CONSUME a copy, so a copy kept as a trophy or collectible
 must never carry one. Read-only, DB + policy_reasons + the evolve advice table; no device contact. Exit 1 (BLOCK) on any
 violation. Written 2026-09-16 after four incidents in one day (protected Pichus, card Charmanders, legacy Primeapes, Pikachu key).
@@ -156,12 +156,14 @@ def main():
             bad.append(name + ': shiny carries an engine plain-ladder promise (a shiny climbs the shiny ladder)')
         if src == 'shiny' and not r['fresh_shiny']:
             bad.append(name + ': a shiny upgrade on a non-shiny')
-    # 'Evo GL/UL Rank N' IS AN INSTRUCTION TO EVOLVE TOO (2026-09-17): it names a rank only a LATER stage reaches,
+    # A LATER-STAGE RANK CHIP MUST BE TRUE FOR THE MON ON SCREEN (2026-09-17): it names a rank only a LATER stage reaches,
     # so the same two gates apply. A PikachuGofest2026CapYellow wore "Evo GL Rank 1" for a Raichu it can never become.
+    # Since 2026-09-30 (THE SECOND FOLD) the chips are '<league> 1-5 No Evolve' and, on the copy to evolve, 'Evolve for
+    # <league>'; the two never sit on one copy (checked right after).
     DEX = {p['speciesId']: p.get('dex') for p in gm['pokemon']}
     n_rank = 0
-    for fn, lg in (('Evo_GL_Rank_1-5', 'gl'), ('Evo_UL_Rank_1-5', 'ul'),   # merged 2026-09-23
-                   ('Evo_Best_GL', 'gl'), ('Evo_Best_UL', 'ul')):          # rule 15e comb-up chips (2026-09-24)
+    for fn, lg in (('GL_1-5_No_Evolve', 'gl'), ('UL_1-5_No_Evolve', 'ul'),
+                   ('Evolve_for_GL', 'gl'), ('Evolve_for_UL', 'ul')):      # rule 15e comb-up chips (2026-09-24)
         p = os.path.join('system', 'analysis', 'tagsets', fn + '.txt')
         if not os.path.exists(p):
             continue
@@ -178,10 +180,17 @@ def main():
             later = [x for x in stages if x != pvid(r['species_name'], r['form'] or 0)]
             if later and not any(evolvable_forms.gender_allows(r['pokemon_id'], r['gender'], DEX.get(x)) for x in later):
                 bad.append(nm + ': this gender reaches no later stage of the line')
+    # NEVER "evolve" AND "No Evolve" ON ONE COPY (2026-09-30, user: "The tag is the bug")
+    _noev = set().union(*(_members(granular_tags.NO_EVOLVE_FMT % _l) for _l in ('GL', 'UL')))
+    for u in sorted(_noev & set(worn)):
+        r = rows.get(u)
+        if r is not None:
+            bad.append('%s %d%% [%s]: told to evolve AND No Evolve' % (r['species_name'], (r['iv_total'] or 0) * 100 // 45,
+                                                                      ', '.join(sorted(worn[u]))))
     # THE EVOLVE TAGS (2026-09-29, the fold -- LAW "THE EVOLVE VOCABULARY"): 'Evolve Once' / 'Evolve Twice' by the number of
     # evolutions to the advised target -- the count IS the stop, so an Evolve Once whose target evolves again is right (a
-    # Tympole promised Palpitoad: the old Tympole trap) -- 'Evolve Gated' instead when the game blocks it, 'Evo Best GL' /
-    # 'Evo Best UL' only BESIDE one of those. Each copy's advice is judged by the law above; here: the files are exactly the
+    # Tympole promised Palpitoad: the old Tympole trap) -- 'Evolve Gated' instead when the game blocks it, 'Evolve for GL' /
+    # 'Evolve for UL' only BESIDE one of those. Each copy's advice is judged by the law above; here: the files are exactly the
     # table's tags, never on a pile mon or a fused component, every target a stage THIS copy can become (the engine's ONE
     # graph: form, costume, gender), and the count true -- counted on that graph, not read from the table: an Evolve Twice
     # one evolution away, an Evolve Once two away, or a count tag with a game gate anywhere on the way is a mislabel.
@@ -202,7 +211,7 @@ def main():
         nm = '%s %d%% [%s]' % (r['species_name'], (r['iv_total'] or 0) * 100 // 45, ', '.join(sorted(tags)) or 'no tag')
         counts = sorted(t for t in tags if t in COUNT)
         if tags and not counts:
-            bad.append(nm + ': Evo Best GL/UL with no Evolve Once / Twice / Gated beside it -- a marker with no evolution')
+            bad.append(nm + ': Evolve for GL/UL with no Evolve Once / Twice / Gated beside it -- a marker with no evolution')
         elif len(counts) > 1:
             bad.append(nm + ': two counts at once -- exactly one of Evolve Once / Twice / Gated')
         if u in pile:

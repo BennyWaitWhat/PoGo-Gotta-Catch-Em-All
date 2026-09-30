@@ -21,7 +21,7 @@ For each league (GL, UL) and each TARGET (a PvP stage, shadow or not -- a shadow
   * ONE copy, ONE target: targets are filled best-rank first and a copy already promised to another stage is skipped
     (an Eevee can become one eeveelution), so every opportunity has its own copy.
 
-ONE definition: keep_policy (reasons pvp_combup_gl / pvp_combup_ul -> tags 'Evo Best GL' / 'Evo Best UL'),
+ONE definition: keep_policy (reasons pvp_combup_gl / pvp_combup_ul -> tags 'Evolve for GL' / 'Evolve for UL'),
 preflight_transfer, audit_cull, _lawcheck, audit_tags_membership and audit_tag_truth all call pick() on the same inputs.
 """
 import json

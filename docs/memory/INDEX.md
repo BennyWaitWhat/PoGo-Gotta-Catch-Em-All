@@ -48,7 +48,7 @@ Notes reference each other as [[note-name]] = the file `note-name.md` in this fo
 - [Never pause the catcher; walks don't](feedback-no-catcher-pause-outside-cull.md) -- CATCHER_PAUSE_ENABLED=False since 09-24; read-only walks are WANTED for research ("read from the phone"); agents never attach Frida.
 - [NEVER restart PoGo from a cull](feedback-no-app-restart-while-playing.md) -- "never restart the game. ever."; restart_pogo() raises.
 - [Evolve into an open slot beats releasing](feedback-evolve-into-open-slot-beats-release.md) -- candy/item short = HOLD, never release.
-- [Action tag names, on top](feedback-action-tag-names-on-top.md) -- tags say WHAT TO DO, <= 18 chars, first in order; no Evolve tag on mid-stage targets.
+- [Action tag names, on top](feedback-action-tag-names-on-top.md) -- tags say WHAT TO DO, <= 18 chars, first in order; a keep label must never read as an action (Evo UL Rank 1-5, 2026-09-30).
 - [Labels must be true for the mon on screen](feedback-labels-true-for-the-mon-on-screen.md) -- literally true of THAT mon now.
 - [Never re-propose the plain shiny cap](feedback-never-repropose-plain-shiny-cap.md) -- 4 plain shinies; the lever is the IV floor; refused cap cuts listed.
 - [Bag Pulse cull-by-cull + PvP standing](pogo-bag-pulse-cull-by-cull.md) -- last 30 passes with IV/PvP series and cumulative wins; `ladder_report.pvp_metrics` + `--backfill-pvp` (2026-09-29).
@@ -80,7 +80,8 @@ Notes reference each other as [[note-name]] = the file `note-name.md` in this fo
 - [Granular keep tags 2026-09](pogo-granular-tags-2026-09.md) -- every keeper covered by a tag or chip; `full_audit.py` = one-command cycle.
 - [One speciesId, many plain forms](pogo-one-speciesid-many-plain-forms.md) -- a stage is (speciesId, FORM); Shellos/Floette traps.
 - [Gender is a look (2026-09-23)](pogo-gender-is-a-look-2026-09-23.md) -- plain ladder PER GENDER for 102 species; the target decides the key.
-- [Rank tags are per STAGE](pogo-rank-tags-per-stage-2026-09.md) -- `GL/UL Rank N` = own stage; `Evo GL/UL Rank N` = a later stage.
+- [Rank tags are per STAGE](pogo-rank-tags-per-stage-2026-09.md) -- `GL/UL Rank 1-5` = own stage; a later stage = `GL/UL 1-5 No Evolve`, or `Evolve for GL/UL` on THE copy to evolve (2026-09-30).
+- [Duplicate tag names](reference-duplicate-tag-names.md) -- the game takes two tags with one name; create_tag's retry made two 'Evolve for UL' (2026-09-30); by-id cleanup only.
 - [Tag ORDER on the phone](reference-pogo-tag-order.md) -- SortIndex@0x4c; order_tags.py ORDER; add new managed tags to ORDER.
 - [Tag inheritance + Evolve Shiny](reference-pogo-tag-inheritance.md) -- tags inherit through evolution; Evolve Shiny via build_tagsets.
 - [Comb-up bar ignored displacement](pogo-combup-bar-ignored-displacement-2026-09-13.md) -- labels must use the keep rule's occupancy model.

@@ -181,14 +181,15 @@ try:
 except Exception:
     _CUL = None
 _cus = lambda u: (_CUL.get(u) or {}).get('status') if _CUL is not None else 'now'
-# THE FOLD (2026-09-29): 'Evo Best Gated' is retired -- a pick labelled 'now' OR 'gated' (never 'hold') wears Evo Best
-# <league> BESIDE one of Evolve Once / Twice / Gated, whose own claim (the count, the gate) is checked further down.
+# THE FOLD (2026-09-29): 'Evo Best Gated' is retired -- a pick labelled 'now' OR 'gated' (never 'hold') wears Evolve for
+# <league> ('Evo Best <league>' until 2026-09-30) BESIDE one of Evolve Once / Twice / Gated, whose own claim (the count,
+# the gate) is checked further down.
 import evolvable_forms as _ef
 _EVC = set().union(*(tag(t) or set() for t in (_gt.EVOLVE_ONCE, _gt.EVOLVE_TWICE, _gt.EVOLVE_GATED)))
 _cu_pick = lambda r, lg: r['uid_hex'] in _CU[lg] and _cus(r['uid_hex']) in ('now', 'gated')
-check('Evo Best GL', 'a Great League comb-up labelled now / gated: evolving it gives a better GL copy of its target stage than any you own (fits the league there), beside Evolve Once / Twice / Gated',
+check('Evolve for GL', 'THE copy to evolve for Great League (one per target), labelled now / gated: evolving it gives a better GL copy of its target stage than any you own (fits the league there), beside Evolve Once / Twice / Gated',
       lambda r: _cu_pick(r, 'gl') and r['uid_hex'] in _EVC, every=lambda r: _cu_pick(r, 'gl'))
-check('Evo Best UL', 'an Ultra League comb-up labelled now / gated: evolving it gives a better UL copy of its target stage than any you own (fits the league there), beside Evolve Once / Twice / Gated',
+check('Evolve for UL', 'THE copy to evolve for Ultra League (one per target), labelled now / gated: evolving it gives a better UL copy of its target stage than any you own (fits the league there), beside Evolve Once / Twice / Gated',
       lambda r: _cu_pick(r, 'ul') and r['uid_hex'] in _EVC, every=lambda r: _cu_pick(r, 'ul'))
 check('XXL', 'XXL badge, showcase POINTS >= %d at its own stage or a stage it can evolve into, and one of the %d highest of its species+battle form (cosmetics fold)%s' % (_SC_MIN, keep_config.cap('xxl'), (' or of the %d highest that can enter a showcase of one of its types (XXL TRIM)' % keep_config.cap('xxl_per_type')) if keep_config.cap('xxl_per_type') else ''),
       lambda r: (r['pokemon_size_category'] or 0) == 5 and r['uid_hex'] in _SC_TOP, every=lambda r: r['uid_hex'] in _SC_TOP)
@@ -215,8 +216,10 @@ check('Shiny #4+', 'shiny, with at least 3 kept shinies of its species+form',
 for lg, cap in (('GL', GL_CAP), ('UL', UL_CAP)):
     check('%s Rank 1-5' % lg, 'rank 1-5 AS IT IS NOW, and its CP lets it enter the league',
           lambda r, lg=lg, cap=cap: usable_rank(r, lg.lower(), cap, True) is not None)
-    check('Evo %s Rank 1-5' % lg, 'a stage it can evolve into is rank 1-5 AND it would still fit the league there',
-          lambda r, lg=lg, cap=cap: usable_rank(r, lg.lower(), cap, False) is not None)
+    # THE SECOND FOLD (2026-09-30): no evolve word here -- the copy to evolve wears Evolve for <league> instead
+    check('%s 1-5 No Evolve' % lg, 'a stage it can evolve into is rank 1-5 AND it would still fit the league there, and '
+          'NO evolve tag is on it (not the copy to evolve)',
+          lambda r, lg=lg, cap=cap: usable_rank(r, lg.lower(), cap, False) is not None and r['uid_hex'] not in _EVC)
 # EVOLVE ONCE / TWICE / GATED -- THE FOLD (2026-09-29, user: "I either evolve once or evolve twice"). Every evolve advice
 # is ONE table, evolve_advice.json (granular_tags.evolve_advice: promises, PvP comb-ups, shiny upgrades, showcase picks).
 # Its TARGETS are the engine's record, trusted as promises.json / pvp_combup_labels.json always were; its steps / gated /

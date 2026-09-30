@@ -661,7 +661,12 @@ def main():
                     if removal:  print(f'      would remove: {sorted(removal)[:12]}')
                     if addition: print(f'      would add:    {sorted(addition)[:12]}')
                     continue
-                tagproto = tag_ops.create_tag(bt, svc, name, color)   # FRESH (needed for untag persistence)
+                try:
+                    tagproto = tag_ops.create_tag(bt, svc, name, color)   # FRESH (needed for untag persistence)
+                except tag_ops.DuplicateTagName as exc:           # (2026-09-30) never write into an ambiguous tag
+                    print(f'  !! {name}: SKIPPED this pass -- {exc}')
+                    write_failed = True
+                    continue
                 if atomic:
                     # accumulate this tag's deltas; one apply_changes after the loop
                     for uh in addition: _chg(uh, 'add', tagproto)
@@ -710,7 +715,12 @@ def main():
                 print(f'  {name}: RETIRED -> stripping {len(su)} member(s)' + (f' (+{unmapped} unmapped)' if unmapped else ''))
                 if dry:
                     continue
-                tagproto = tag_ops.create_tag(bt, svc, name, 0)   # exists -> returns its live tagproto; colour ignored
+                try:
+                    tagproto = tag_ops.create_tag(bt, svc, name, 0)   # exists -> returns its live tagproto; colour ignored
+                except tag_ops.DuplicateTagName as exc:
+                    print(f'  !! {name}: SKIPPED this pass -- {exc}')
+                    write_failed = True
+                    continue
                 if atomic:
                     for uh in su: _chg(uh, 'remove', tagproto)
                     continue
