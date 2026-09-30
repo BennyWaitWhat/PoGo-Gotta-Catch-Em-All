@@ -21,6 +21,10 @@ WHAT IT DOES
                    EVERY run exits 2 (system/analysis/gamemaster_review_pending.json), whatever the file's age. For a
                    refresh that died between installing the new file and diffing it, --ack ROLLS IT BACK instead (the
                    backup keeps its old mtime, so the next run downloads and diffs again).
+  --accept-smaller: ONLY on Benny's word. A new client game master the content canary refused as damaged (a count under 90%
+                   of the installed file's; audit I2.7 WARNs "REJECTED ... looks damaged") is let through to every other
+                   check: a genuine format change also drops counts (2021-11: 20% fewer forms). Its loaders, keep-verdict
+                   flips and review stop still apply.
 
 Rank changes are expected and fine (a rebalanced species re-ranks); a change that moves a mon ACROSS
 the keep line is the only thing that matters, and the pile gate (keep_policy -> preflight) still stands
@@ -30,9 +34,11 @@ THE CLIENT GAME MASTER (gamemaster_pokeminers.json), 2026-09-30: pokeminers_phas
 PokeMiners' 13-byte latest/timestamp.txt, not the 30-day pvpoke clock. A NEW batch is downloaded, DIFFED and judged against
 the bags (the active account's and every resting account's parked one: the file is shared) BEFORE it is installed
 (gm_guard.assess reuses detect_legacy's pool functions, evolvable_forms, size_line (the size numbers and types an
-XXL keep is scored by), isTradable, isTransferable and the rarity classes): if any in-bag keep verdict flips it is
-installed with a dated backup, the SAME review record is written and the run exits 2 (--ack clears it); a candidate
-the engine cannot load is never installed.
+XXL keep is scored by), costume_forms (a form the batch flags or unflags isCostume), isTradable, isTransferable and the
+rarity classes): if any in-bag keep verdict flips it is installed with a dated backup, the SAME review record is written
+and the run exits 2 (--ack clears it); a candidate the engine cannot load, or one under 90% of the installed file on any
+of gm_guard.content_counts' 14 structural counts, is never installed. Ids a batch prints as enum NUMBERS are named on
+download (gm_guard.normalize_file), before it is judged, stamped or installed.
 The batch is stamped in gamemaster_pokeminers.json.meta (batch time, APK, sha256) for audit_invariants I2.7.
   --selftest     : offline proof of all of it on synthetic fixtures (touches nothing outside a temp dir)
 An unknown flag stops the run with exit 2 and does NOTHING (like full_audit.py).
@@ -256,8 +262,28 @@ def pokeminers_phase(argv, fetch=None, now=None, gm_path=None, meta_path=None, d
         print('WARN pokeminers: download failed (%s) -- the client game master is left as it is' % e)
         _PM_NOTE[0] = 'pokeminers %s: download FAILED, kept' % _pm_ident(meta)
         return None, tail
-    res = gg.assess(gm_path, tmp, lambda: gg.load_bag(db_path), lambda: _pm_engine_inputs()[0], lambda: _pm_engine_inputs()[1])
+    # IDS AS NUMBERS (2026-09-30): 0.381.2 / 0.395.1 printed some ids as enum numbers (form 3290, pokemonId 1009); every reader
+    # keys on names, so they are named HERE, before the file is judged, stamped or installed (tested lossless on those batches)
+    try:
+        _en = _pm_engine_inputs()[1]
+    except Exception:
+        _en = {}                                             # assess() STOPs on the unreadable enum below; names come from the batch
+    try:
+        named, left = gg.normalize_file(tmp, _en, gm_path if state != 'no-file' else None)
+    except Exception as e:
+        _drop()
+        print('WARN pokeminers: the downloaded batch could not be rewritten with names (%s) -- the client game master is left as it is' % e)
+        _PM_NOTE[0] = 'pokeminers %s: new batch NOT judged, kept' % _pm_ident(meta)
+        return None, tail
+    if named or left:
+        print('pokeminers: the batch prints %d id(s) as enum numbers: %d named (its own templates, the installed file, the form enum)%s'
+              % (named + left, named, '; %d left as numbers (nothing names them: they read as unknown)' % left if left else ''))
+    res = gg.assess(gm_path, tmp, lambda: gg.load_bag(db_path), lambda: _pm_engine_inputs()[0], lambda: _pm_engine_inputs()[1],
+                    canary='--accept-smaller' not in argv)
     v = res['verdict']
+    if res.get('drops') and '--accept-smaller' in argv:
+        print('pokeminers: --accept-smaller: the content canary\'s drops are let through by hand (%s); every other check still runs'
+              % ', '.join('%s %d -> %d' % d for d in res['drops']))
     for l in gg.digest_lines(res['diff']) if res['diff'] else []:
         print('   ' + l)
     if v == 'UNREADABLE_NEW':
@@ -290,6 +316,8 @@ def pokeminers_phase(argv, fetch=None, now=None, gm_path=None, meta_path=None, d
         # leaves pvpoke's file drifted from the client game master)
         owed = bool(tail) or state == 'sha-mismatch'
         nm = gg.new_meta(up_ts, res['new']['sha256'], apk, folder, now, tail_pending=owed)
+        if named:
+            nm['ids_named'] = named                          # the stamped sha256 is of the NAMED bytes, not upstream's
         if meta and state == 'ok':                           # --force on an unchanged file: keep its install time and a known APK
             for k in ('downloaded_ts', 'downloaded_at'):
                 nm[k] = meta.get(k, nm[k])
@@ -302,6 +330,8 @@ def pokeminers_phase(argv, fetch=None, now=None, gm_path=None, meta_path=None, d
     # CLEAR or FLIPS: install with a dated, never-overwritten backup
     apk, folder = gg.lookup_apk(up_ts, fetch)
     nm = gg.new_meta(up_ts, res['new']['sha256'], apk, folder, now, tail_pending=True)
+    if named:
+        nm['ids_named'] = named                              # the stamped sha256 is of the NAMED bytes, not upstream's
     bak = gg.next_backup_path(gm_path)
     try:
         shutil.copy2(gm_path, bak)
@@ -337,7 +367,7 @@ def pokeminers_phase(argv, fetch=None, now=None, gm_path=None, meta_path=None, d
         print('   rows: %s -- after review: python system/scripts/refresh_gamemaster.py --ack' % os.path.relpath(REVIEW, ROOT))
         print('pokeminers: %s -- REFRESH APPLIED BUT NEEDS A HUMAN (exit 2)' % res['reason'])
         return 2, True
-    print('pokeminers: no in-bag keep verdict moves (move pools, evolution chain, size / types, tradable, transferable, rarity) '
+    print('pokeminers: no in-bag keep verdict moves (move pools, evolution chain, size / types, costume, tradable, transferable, rarity) '
           '-- installed without a stop')
     return None, True
 
@@ -388,7 +418,7 @@ def ranks(con):
         'SELECT uid_hex, gl_rank, ul_rank, ll_rank FROM pokemon WHERE in_bag=1')}
 
 
-FLAGS = ('--check-only', '--force', '--ack', '--selftest')
+FLAGS = ('--check-only', '--force', '--ack', '--selftest', '--accept-smaller')
 
 
 def main(argv):

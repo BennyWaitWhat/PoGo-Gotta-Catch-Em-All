@@ -48,9 +48,110 @@ _cenum = None      # costume id -> costume enum name
 _gdetail = None    # lowercase target speciesId -> {'km': 15.0, 'quest': 'template id', 'lure': ITEM_*, 'time': 'day'...}
 _quests = None     # quest template id -> its goal in the game's own words ('Win 10 raids'), see _quest_text
 _qref = None       # official_names_en.json 'quests': the game's quest texts, i18n key -> text with {0}; {} when unreadable
+_TID = re.compile(r'^V(\d{4})_POKEMON_(.+)$')
+_isint = lambda x: isinstance(x, int) and not isinstance(x, bool)
+
+
+def _snake(name):
+    """'PikachuWcs2025' -> 'PIKACHU_WCS_2025': an enum name in the game master's spelling. The LAST resort for a form nothing
+    else spells: exact on 1,439 of the 1,449 forms of the 0.427 game master and _norm-equal on all of them."""
+    return re.sub(r'(?<=[a-z])(?=[A-Z0-9])|(?<=[0-9])(?=[A-Za-z])|(?<=[A-Z])(?=[A-Z][a-z])', '_', name).upper()
+
+
+def _spellings(gm):
+    """(dex -> pokemonId, _norm(form) -> spelling, form id -> its OWN template's name) from the names one game master spells."""
+    pid, form, own = {}, {}, {}
+    for t in gm if isinstance(gm, list) else ():
+        d = t.get('data') if isinstance(t, dict) else None
+        if not isinstance(d, dict):
+            continue
+        m = _TID.match(str(t.get('templateId') or ''))
+        s = d.get('pokemonSettings')
+        forms = []
+        if isinstance(s, dict):
+            if m and isinstance(s.get('pokemonId'), str):
+                pid.setdefault(int(m.group(1)), s['pokemonId'])
+            if m and _isint(s.get('form')):
+                own.setdefault(s['form'], m.group(2))     # the templateId suffix IS the form's name (1,448 of 1,448 in 0.427)
+            forms = [s.get('form')] + [b.get('form') for b in s.get('evolutionBranch') or [] if isinstance(b, dict)]
+        fs = d.get('formSettings')
+        if isinstance(fs, dict):
+            forms += [f.get('form') for f in fs.get('forms') or [] if isinstance(f, dict)]
+        for f in forms:
+            if isinstance(f, str) and f:
+                form.setdefault(_norm(f), f)
+    return pid, form, own
+
+
+def normalize_ids(gm, enum, ref=None):
+    """NUMBERS BACK TO NAMES, in place (2026-09-30). Some batches print an id as the game's enum NUMBER instead of its name:
+    0.381.2 (2025-10-14) and 0.395.1 (2026-02-05) held 57 and 536 of them (form 3290 = ANNIHILAPE_NORMAL, pokemonId 1009 =
+    WALKINGWAKE, familyId 1012 = FAMILY_POLTCHAGEIST), 38 of PokeMiners' 240 batches hold at least one, and every reader here
+    keys on NAMES: _load crashed on the first .lower() and a number elsewhere silently read as 'unknown'.
+    A form's name comes from its OWN template (V0025_POKEMON_PIKACHU_WCS_2025 carries form 3017) when that agrees with the enum,
+    else from the batch's own spelling of the enum name, then `ref`'s (the installed game master), then _snake(enum name). A
+    pokemon id (a dex number) from a string pokemonId of that dex in the batch, then in `ref`, then the dex's shortest templateId
+    suffix; a familyId is FAMILY_ + its dex's name. A number nothing names STAYS a number (unknown, never a guess).
+    Fields: pokemonSettings pokemonId / parentPokemonId / familyId / form, evolutionBranch evolution / form, formSettings pokemon /
+    forms[].form, pokemonExtendedSettings uniqueId / form (location cards, bread tiers and display-only fields: no reader here).
+    -> (named, left): how many numbers it named, how many it could not. gm_guard runs it on every downloaded batch."""
+    pid, form, own = _spellings(gm)
+    rpid, rform, _ = _spellings(ref) if ref else ({}, {}, {})
+    short = {}             # 'NIDORAN' for both 29 and 32: so it is the last resort, after any pokemonId spelled for that dex
+    for t in gm if isinstance(gm, list) else ():
+        m = _TID.match(str(t.get('templateId') or '')) if isinstance(t, dict) else None
+        if m and len(m.group(2)) < len(short.get(int(m.group(1)), m.group(2) + '_')):
+            short[int(m.group(1))] = m.group(2)
+    dex = lambda x: pid.get(x) or rpid.get(x) or short.get(x)
+    fam = lambda x: dex(x) and 'FAMILY_' + dex(x)
+
+    def frm(x):
+        e, o = enum.get(x), own.get(x)
+        if o and (not e or _norm(o) == _norm(e)):
+            return o
+        return e and (form.get(_norm(e)) or rform.get(_norm(e)) or _snake(e))
+    n = [0, 0]
+
+    def fix(o, k, how):
+        if isinstance(o, dict) and _isint(o.get(k)) and o[k] > 0:      # 0 is the enum's Unset: no id at all, never renamed
+            v = how(o[k])
+            n[0 if v else 1] += 1
+            if v:
+                o[k] = v
+    for t in gm if isinstance(gm, list) else ():
+        d = t.get('data') if isinstance(t, dict) else None
+        if not isinstance(d, dict):
+            continue
+        s, fs, x = d.get('pokemonSettings'), d.get('formSettings'), d.get('pokemonExtendedSettings')
+        if isinstance(s, dict):
+            for k, how in (('pokemonId', dex), ('parentPokemonId', dex), ('familyId', fam), ('form', frm)):
+                fix(s, k, how)
+            for b in s.get('evolutionBranch') or []:
+                fix(b, 'evolution', dex)
+                fix(b, 'form', frm)
+        if isinstance(fs, dict):
+            fix(fs, 'pokemon', dex)
+            for f in fs.get('forms') or []:
+                fix(f, 'form', frm)
+        if isinstance(x, dict):
+            fix(x, 'uniqueId', dex)
+            fix(x, 'form', frm)
+    return n[0], n[1]
 
 
 def _load():
+    """ONE WHOLE TABLE OR AN EXCEPTION, never half (2026-09-30). A parse that raised part-way left _table half-filled, and every
+    later call returned early on it (0.395.1: forms 130 of 1,447, gated 2 of 98, family 0 of 1,024). Now the next call parses
+    again, and raises again: loud, never partial."""
+    global _table
+    try:
+        _load_once()
+    except BaseException:
+        _table = None
+        raise
+
+
+def _load_once():
     global _table, _enum, _costs, _family, _items, _gated, _icost, _gform, _noevo, _dexname, _cenum, _gdetail, _quests, _tform
     if _table is not None:
         return
@@ -76,6 +177,7 @@ def _load():
     if stamp:
         dex = {}
         gm = json.load(open(_GM, encoding='utf-8'))
+        normalize_ids(gm, _enum)                 # a batch that prints ids as numbers (gm_guard names them on download too)
         for t in gm:
             s = t.get('data', {}).get('pokemonSettings')
             if not s:

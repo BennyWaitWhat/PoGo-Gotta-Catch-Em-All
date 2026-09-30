@@ -21,6 +21,12 @@ versions follow [Semantic Versioning](https://semver.org/).
   `python game_opportunities.py --selftest` (offline, golden prices hand-checked against the tables) is in CI and `tools/triple_check.py`.
 
 ### Changed
+- Client game-master guard, three more checks (`gm_guard.py`, `refresh_gamemaster.py`, `evolvable_forms.py`, `costume_forms.py`):
+  each held form's costume flag is judged (a batch that flags or unflags one stops for review); a content canary refuses a batch
+  under 90% of the installed one on any of 14 counts (renamed templateIds, base stats, evolution table, flags, move lists ...;
+  0 false stops in the 154 PokeMiners batches since 2023; `--accept-smaller` lets a genuine format change through, only on
+  Benny's word); ids a batch prints as enum numbers (0.381.2, 0.395.1) are named on download and in `evolvable_forms`, which
+  crashed on them and then kept half a table. No keep decision changes (0 tags, 0 reasons, same 41-mon pile).
 - Evolution quests are worded in the game's own text ("Defeat 15 Dark- or Steel-type Raid Bosses", "Win 10 raids", "Earn 70 hearts
   with your buddy") in the gated-evolution `need` strings, the "Which way to evolve" lines and the ladder report. The hand-built
   wording was wrong for 14 of the 37 quests (Sirfetch'd lost "Excellent", Overqwil "complete" for "win", hearts on a goal of 20 said

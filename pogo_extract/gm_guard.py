@@ -9,12 +9,17 @@ orchestrator (network, install, review record).
     stamp     read_meta / write_meta / new_meta   {batch_ts, batch_utc, apk, folder, downloaded_at, sha256, ...}
     upstream  parse_ts / lookup_apk               the 13-byte latest/timestamp.txt; the APK from the history folder name
     diff      diff_gm / digest_lines              what changed, on the fields the keep engine reads
+    names     normalize_file                      a batch that prints ids as enum NUMBERS (0.381.2, 0.395.1) gets them named
+                                                  on download, before anything judges or installs it
+    canary    content_counts / canary_drops       14 structural counts (templates, base stats, evolution edges, flags, move
+                                                  lists, forms, classes ...): a candidate under 90% of the installed file on
+                                                  any of them is damaged and never installed
     impact    load_bag / assess                   which IN-BAG rows (the active account's and every resting account's: the
                                                   file is shared) flip a keep verdict, by REUSING the engine's own
-                                                  functions (detect_legacy pools, evolvable_forms, size_line,
+                                                  functions (detect_legacy pools, evolvable_forms, size_line, costume_forms,
                                                   remote_trade_picks, audit_gamemaster) against the candidate file BEFORE
-                                                  it is installed. Axes: moves, evolve, size (numbers + types), tradable,
-                                                  transferable, rarity
+                                                  it is installed. Axes: moves, evolve, size (numbers + types), costume,
+                                                  tradable, transferable, rarity
     warn      freshness_findings                  the offline audit WARN (audit_invariants I2.7)
 
 FAIL CLOSED: a candidate the engine's own loaders cannot read is never installed; a baseline / bag / verdict that cannot
@@ -48,6 +53,8 @@ PM_JSON_URL = PM_BASE + 'latest.json'
 PM_TREE_URL = 'https://api.github.com/repos/PokeMiners/game_masters/git/trees/master?recursive=1'
 MIN_POKEMON_SETTINGS = 1500     # what refresh_pokeminers() always required (18,8xx templates / 2,4xx pokemonSettings today)
 SHRINK_FLOOR = 0.9              # a candidate with < 90% of the installed pokemonSettings count looks truncated
+CANARY_FLOOR = 0.9              # ... and one under 90% of the installed file on ANY content_counts() count looks damaged
+CANARY_MIN = 10                 # an installed count under this is too small to judge by a ratio
 MIN_BAG_ROWS = 50               # fewer in-bag rows than this is not a bag: nothing can be judged -> STOP, never 'no flips'
 MAX_VERIFY_AGE_DAYS = 14        # the client GM was last compared with PokeMiners' latest longer ago than this -> WARN
 MAX_BATCH_AGE_DAYS = 150        # longest 2026 PokeMiners gap was 133 days (Apr 17 -> Aug 28); older than this -> WARN
@@ -90,6 +97,93 @@ def load_gm(path, min_settings=None):
     if n < min_settings:
         raise GMUnreadable('%s: only %d pokemonSettings (need %d) -- truncated?' % (os.path.basename(path), n, min_settings))
     return gm, sha, n
+
+
+_TID = re.compile(r'^V(\d{4})_POKEMON_')
+_ETID = re.compile(r'^EXTENDED_V\d{4}_POKEMON_')
+_IDNUM = re.compile(r'"(?:form|pokemonId|parentPokemonId|familyId|evolution|pokemon|uniqueId)"\s*:\s*-?\d')
+
+
+def content_counts(gm):
+    """{label: n}: the structure a whole client game master has, counted (2026-09-30). load_gm counts pokemonSettings by KEY, so a
+    file with renamed templateIds, renamed base stats or an emptied evolution table passed it (the first version of this guard
+    installed renamed base stats as CLEAR). Each count is something a reader here keys on; a candidate under CANARY_FLOOR of the
+    INSTALLED file on any of them is refused like a truncated one (assess: UNREADABLE_NEW). Never raises on any shape."""
+    c = OrderedDict((k, 0) for k in ('pokemon templates', 'base stats', 'evolution edges', 'isTransferable true', 'isTradable true',
+                                     'quick move lists', 'charged move lists', 'extended templates', 'extended size bands',
+                                     'forms', 'evolution quests'))
+    cls = defaultdict(set)
+    for t in gm if isinstance(gm, list) else ():
+        d = t.get('data') if isinstance(t, dict) else None
+        if not isinstance(d, dict):
+            continue
+        tid = str(t.get('templateId') or '')
+        s, x, fs = d.get('pokemonSettings'), d.get('pokemonExtendedSettings'), d.get('formSettings')
+        m = _TID.match(tid)
+        if isinstance(s, dict) and m:
+            c['pokemon templates'] += 1
+            c['base stats'] += int(isinstance(s.get('stats'), dict) and s['stats'].get('baseAttack') is not None)
+            c['evolution edges'] += sum(1 for b in s.get('evolutionBranch') or [] if isinstance(b, dict) and b.get('evolution'))
+            c['isTransferable true'] += int(s.get('isTransferable') is True)
+            c['isTradable true'] += int(s.get('isTradable') is True)
+            c['quick move lists'] += int(bool(s.get('quickMoves')))
+            c['charged move lists'] += int(bool(s.get('cinematicMoves')))
+            if s.get('pokemonClass'):
+                cls[str(s['pokemonClass'])].add(int(m.group(1)))
+        if isinstance(x, dict) and _ETID.match(tid):
+            c['extended templates'] += 1
+            c['extended size bands'] += int(isinstance(x.get('sizeSettings'), dict) and bool(x['sizeSettings'].get('xxlUpperBound')))
+        if isinstance(fs, dict):
+            c['forms'] += sum(1 for f in fs.get('forms') or [] if isinstance(f, dict))
+        c['evolution quests'] += int(isinstance(d.get('evolutionQuestTemplate'), dict))
+    for k, label in (('POKEMON_CLASS_LEGENDARY', 'legendary species'), ('POKEMON_CLASS_MYTHIC', 'mythical species'),
+                     ('POKEMON_CLASS_ULTRA_BEAST', 'ultra beast species')):
+        c[label] = len(cls.get(k, ()))
+    return c
+
+
+def canary_drops(old, new, floor=None, min_count=None):
+    """[(label, installed, candidate)] for every content_counts() count that fell under `floor` (CANARY_FLOOR) of the installed
+    file's; judged only where the installed count is at least `min_count` (CANARY_MIN). Backtest on every consecutive pair of
+    PokeMiners' 240 batches (2021-06-03 .. 2026-08-28): the numbers are in docs/memory/project-gamemaster-monthly-refresh.md."""
+    floor = CANARY_FLOOR if floor is None else floor
+    min_count = CANARY_MIN if min_count is None else min_count
+    return [(k, old[k], new.get(k, 0)) for k in old if old[k] >= min_count and new.get(k, 0) < floor * old[k]]
+
+
+def normalize_file(path, enum, ref_path=None):
+    """Name the ids a batch prints as enum NUMBERS (evolvable_forms.normalize_ids), rewriting `path` in place only when it held
+    any -> (named, left). The orchestrator runs it on every download BEFORE assess(), so the bytes that are judged, stamped and
+    installed all carry names and every reader of the installed file keys on names (0.381.2 / 0.395.1 printed 57 / 536 such ids,
+    38 of PokeMiners' 240 batches at least one). `ref_path` (the installed file) spells what the batch itself does not; an
+    unreadable one is no help, never an error. A file that is not JSON is left as it is (load_gm refuses it next)."""
+    try:
+        with open(path, 'r', encoding='utf-8') as f:
+            text = f.read()
+        if not _IDNUM.search(text):                      # the common case: no numeric id at all -> not even parsed
+            return 0, 0
+        gm = json.loads(text)
+    except (OSError, UnicodeDecodeError, ValueError, MemoryError):
+        return 0, 0
+    del text
+    ref = None
+    if ref_path:
+        try:
+            with open(ref_path, 'r', encoding='utf-8') as f:
+                ref = json.load(f)
+        except (OSError, UnicodeDecodeError, ValueError, MemoryError):
+            ref = None
+    named, left = _import_root('evolvable_forms').normalize_ids(gm, enum, ref)
+    if named:
+        tmp = '%s.%d.names' % (path, os.getpid())
+        try:
+            with open(tmp, 'w', encoding='utf-8') as f:
+                json.dump(gm, f, indent=4, ensure_ascii=False)
+            os.replace(tmp, path)
+        finally:
+            if os.path.exists(tmp):                      # a failed write never leaves a stray temp file behind
+                os.remove(tmp)
+    return named, left
 
 
 def _utc(ts, fmt='%Y-%m-%d %H:%M:%S'):
@@ -404,6 +498,14 @@ class View(object):
         self.row_tradable = rtp.row_tradable
         self.ef = fresh_evolvable_forms(tag, gm_path, work_dir)
         self.sl = fresh_size_line(tag, gm_path, work_dir)
+        # COSTUME STATUS (2026-09-30): costume_forms calls a form a costume when its enum NAME says so OR this file flags it
+        # (formSettings isCostume, add only), so a batch that flags or unflags a form the bag holds moves that copy between the
+        # costume ladder and the plain one. Its own parser and rule, on THIS file (never its cache or module state)
+        self.cf = _import_root('costume_forms')
+        self.cflags = self.cf._parse_gm(gm_path)
+        if not self.cflags:
+            raise GMUnreadable('%s lists no formSettings forms: the costume layer cannot read it' % os.path.basename(gm_path))
+        self.costumes = None                                    # costume_forms._costume_set over the form enum, built once
 
 
 def evo_facts(ef, r):
@@ -530,9 +632,12 @@ def row_verdict(v, r, enum):
         pool = v.pools.get(pid)
         mv.append((name, bool(pool) and name not in pool, name in (v.roll.get(pid) or ())))
     evo = evo_facts(v.ef, r)
+    if v.costumes is None:
+        v.costumes = v.cf._costume_set(enum, v.cflags)
     return {'moves': tuple(mv),
             'evolve': evo,
             'size': size_facts(v, r, evo),
+            'costume': tuple((enum.get(int(f or 0), str(f)), int(f or 0) in v.costumes) for f in (r['fresh_form'], r['form'])),
             'tradable': bool(v.row_tradable(r, v.trade, enum)),
             'transferable': bool(v.row_transferable(r, enum, v.tf_form, v.tf_pid)),
             'rarity': tuple(sorted(k.replace('POKEMON_CLASS_', '') for k, ds in v.cls.items() if pid in ds))}
@@ -590,6 +695,11 @@ def compare_row(va, vb):
     sz = _size_change(va['size'], vb['size'])
     if sz:
         out.append(('size', ('size / types: ' + ', '.join(sz))[:120], '', '', 'CHANGED'))
+    if va['costume'] != vb['costume']:
+        a, b = any(x[1] for x in va['costume']), any(x[1] for x in vb['costume'])
+        out.append(('costume', 'costume form ' + '/'.join(sorted({x[0] for x, y in zip(va['costume'], vb['costume']) if x != y})),
+                    'costume' if a else 'plain', 'costume' if b else 'plain',
+                    'GAINED' if b and not a else 'LOST' if a and not b else 'CHANGED'))
     for ax in ('tradable', 'transferable'):
         if va[ax] != vb[ax]:
             out.append((ax, ax, str(va[ax]), str(vb[ax]), 'CHANGED'))
@@ -643,18 +753,23 @@ def load_bag(db_path):
     return rows
 
 
-def assess(old_path, new_path, rows, move_map, enum, min_settings=None, min_rows=None):
+def assess(old_path, new_path, rows, move_map, enum, min_settings=None, min_rows=None, canary=True):
     """Compare the INSTALLED client game master with a CANDIDATE, on the in-bag rows. Never writes outside a private temp
-    dir. Returns a dict:
+    dir. canary=False (refresh_gamemaster.py --accept-smaller, on Benny's word) lets a candidate the content canary calls damaged
+    through to every other check: a genuine format change also drops counts, and a strict canary never recovers from one
+    (2021-11-17's formSettings held 20% fewer forms than 2021-07's; comparing each batch with the last one INSTALLED, every batch
+    for four years would have been refused). Returns a dict:
       rows / move_map / enum may each be a value or a zero-argument callable (read only when the bytes differ).
       verdict  SAME (identical bytes) | CLEAR (differs, no in-bag verdict moved) | FLIPS (>= 1 row moved or could not be
                judged) | UNREADABLE_NEW (the candidate is not a whole game master / the engine cannot load it: do NOT
                install, the installed one stays) | STOP (the baseline, the bag or a verdict cannot be read: nothing can
                be proven, so nothing is installed and a human is asked)
       reason   one ASCII line       diff  {label: [..]}      flips [dict]      nulled [uid]      axes {axis: rows}
+      drops    [(count, installed, candidate)] the content canary found (see content_counts), also when canary=False
       old / new  {'sha256', 'n'}"""
     min_rows = MIN_BAG_ROWS if min_rows is None else min_rows
-    res = {'verdict': None, 'reason': '', 'diff': OrderedDict(), 'flips': [], 'nulled': [], 'axes': {}, 'old': None, 'new': None}
+    res = {'verdict': None, 'reason': '', 'diff': OrderedDict(), 'flips': [], 'nulled': [], 'axes': {}, 'old': None, 'new': None,
+           'drops': []}
 
     def done(verdict, reason):
         res['verdict'], res['reason'] = verdict, reason
@@ -676,6 +791,10 @@ def assess(old_path, new_path, rows, move_map, enum, min_settings=None, min_rows
     if new_n < SHRINK_FLOOR * old_n:
         return done('UNREADABLE_NEW', 'the candidate has %d pokemonSettings against %d installed (< %d%%) -- looks truncated'
                     % (new_n, old_n, int(SHRINK_FLOOR * 100)))
+    res['drops'] = canary_drops(content_counts(old_gm), content_counts(new_gm))
+    if res['drops'] and canary:
+        return done('UNREADABLE_NEW', 'the candidate looks damaged: %s (under %d%% of the installed file)'
+                    % (', '.join('%s %d -> %d' % d for d in res['drops']), int(CANARY_FLOOR * 100)))
     try:                                                       # lazily: identical bytes never need the bag
         rows, move_map, enum = [x() if callable(x) else x for x in (rows, move_map, enum)]
     except Exception as e:
@@ -786,8 +905,9 @@ def freshness_findings(meta, game_version, now=None):
         rj = meta.get('rejected')
         if isinstance(rj, dict):
             out.append(('WARN', 'the newest PokeMiners batch (%s UTC) was REJECTED at %s UTC and is NOT installed -- %s; the client '
-                                'game master is still batch %s UTC. Every refresh retries it; a real fix is in the loaders '
-                                '(evolvable_forms / gm_guard)' % (rj.get('batch_utc', '?'), rj.get('at', '?'), str(rj.get('reason', '?'))[:200],
+                                'game master is still batch %s UTC. Every refresh retries it. Refused as damaged but genuinely '
+                                'smaller (a format change)? On Benny\'s word: refresh_gamemaster.py --accept-smaller. One the '
+                                'loaders cannot read needs a fix in evolvable_forms / gm_guard' % (rj.get('batch_utc', '?'), rj.get('at', '?'), str(rj.get('reason', '?'))[:200],
                                                                   meta['batch_utc']), do))
         if batch_age > MAX_BATCH_AGE_DAYS:
             out.append(('WARN', 'the client game master batch is %.0f days old (%s UTC; limit %d): PokeMiners may have '
@@ -873,6 +993,11 @@ def _fixture_gm(variant=None):
     if variant == 'size_shape':        # a shape size_line cannot load (sizeSettings is a list) though evolvable_forms can: still an unreadable file
         fill['sizeSettings'] = ['x']
     forms = [{'form': 'FILLER_PLAIN'}, {'form': 'FILLER_HAT', 'isCostume': False}]
+    pika = [{'form': 'PIKACHU_DOCTOR'}, {'form': 'PIKACHU_WCS_2025', 'isCostume': True}]
+    if variant == 'costume_add':       # the game starts flagging a held form only IT calls a costume (the name rule says plain)
+        pika[0]['isCostume'] = True
+    if variant == 'costume_off':       # ... or stops flagging one whose NAME already says costume (add only: nothing moves)
+        pika[1]['isCostume'] = False
     if variant == 'digest':            # every digest-only field, all on the species nobody holds (proves each label is computed)
         fill.update(tempEvoOverrides=[{'tempEvoId': 'TEMPORARY_EVOLUTION_MEGA'}], shadow={'purificationStardustNeeded': 1000},
                     stats={'baseAttack': 100}, isDeployable=False, allowNoevolveEvolution=['FILLER_HAT'], pokemonClass='POKEMON_CLASS_MYTHIC')
@@ -903,7 +1028,10 @@ def _fixture_gm(variant=None):
            _T(987, 'FREEY', familyId='FAMILY_FREEX', **num(fy_h, 20.0)),
            _T(986, 'NOFORM', familyId='FAMILY_NOFORM', evolutionBranch=[{'evolution': 'NOFORMX', 'candyCost': 25}], **num(1.0, 10.0)),
            _T(985, 'NOFORMX', familyId='FAMILY_NOFORM', **num(nx_h, 20.0)),
-           {'templateId': 'FORMS_V0999_POKEMON_FILLER', 'data': {'formSettings': {'pokemon': 'FILLER', 'forms': forms}}}]
+           {'templateId': 'FORMS_V0999_POKEMON_FILLER', 'data': {'formSettings': {'pokemon': 'FILLER', 'forms': forms}}},
+           {'templateId': 'FORMS_V0025_POKEMON_PIKACHU', 'data': {'formSettings': {'pokemon': 'PIKACHU', 'forms': pika}}}]
+    if variant == 'no_forms':          # a file the costume layer cannot read: no formSettings forms at all
+        gm = [t for t in gm if 'formSettings' not in t['data']]
     if variant != 'digest':
         gm.append(_T(990, 'GONER', familyId='FAMILY_GONER'))
     if variant in ('form_new', 'form_new_diff'):   # a template APPEARS for the form the held Sizer is in (UnownA): the same numbers as the
@@ -915,10 +1043,66 @@ def _fixture_gm(variant=None):
         gm.append(_T(998, 'NEWFILLER', pokemonId='NEWFILLER', familyId='FAMILY_NEWFILLER'))
     if variant == 'newmon':            # a species that had NO pool gets one: the held Ghost's SWIFT goes from 'unknown pool' to 'no normal roll'
         gm.append(_T(991, 'GHOST', familyId='FAMILY_GHOST', quickMoves=['TACKLE_FAST'], cinematicMoves=['DIG']))
-    if variant == 'int_form':          # the real 0.395.1 shape: an INTEGER branch form on a gated branch crashes evolvable_forms
+    if variant == 'int_form':          # the real 0.395.1 shape: an INTEGER branch form on a gated branch (it crashed evolvable_forms)
         gm[1]['data']['pokemonSettings']['evolutionBranch'] = [{'evolution': 'GOLDUCK', 'candyCost': 50, 'form': 3290,
                                                                 'questDisplay': [{'questRequirementTemplateId': 'Q'}]}]
     return gm
+
+
+def _numbered(gm, enum):
+    """-> (a deep copy of `gm` with every id evolvable_forms.normalize_ids names turned into the enum NUMBER a batch like 0.395.1
+    prints -- form ids from the form enum, pokemon / family ids from the dex in the templateIds -- where one exists, how many)."""
+    gm, n = json.loads(json.dumps(gm)), [0]
+    fid = {}
+    for k, v in sorted(enum.items()):
+        fid.setdefault(_norm(v), k)
+    dex = {}
+    for t in gm:
+        m = _TID.match(t.get('templateId', ''))
+        s = (t.get('data') or {}).get('pokemonSettings')
+        if m and isinstance(s, dict) and isinstance(s.get('pokemonId'), str):
+            dex.setdefault(s['pokemonId'], int(m.group(1)))
+
+    def num(o, k, kind):
+        v = o.get(k)
+        if isinstance(v, str):
+            i = fid.get(_norm(v)) if kind == 'form' else dex.get(v[7:] if kind == 'family' and v.startswith('FAMILY_') else v)
+            if i is not None:
+                o[k] = i
+                n[0] += 1
+    for t in gm:
+        d = t.get('data') or {}
+        s, fs, x = d.get('pokemonSettings'), d.get('formSettings'), d.get('pokemonExtendedSettings')
+        if isinstance(s, dict):
+            for k, kind in (('pokemonId', 'pid'), ('parentPokemonId', 'pid'), ('familyId', 'family'), ('form', 'form')):
+                num(s, k, kind)
+            for b in s.get('evolutionBranch') or []:
+                num(b, 'evolution', 'pid')
+                num(b, 'form', 'form')
+        if isinstance(fs, dict):
+            num(fs, 'pokemon', 'pid')
+            for f in fs.get('forms') or []:
+                num(f, 'form', 'form')
+        if isinstance(x, dict):
+            num(x, 'uniqueId', 'pid')
+            num(x, 'form', 'form')
+    return gm, n[0]
+
+
+def _padding(n, start=0):
+    """n synthetic species (dex 900 + i) holding every structure content_counts() counts, so a fixture reaches real-ish counts."""
+    out, forms = [], []
+    for i in range(start, start + n):
+        key = 'PAD%03d' % i
+        out.append(_T(900 + i, key, familyId='FAMILY_' + key, stats={'baseAttack': 100, 'baseDefense': 100, 'baseStamina': 100},
+                      isTransferable=True, isTradable=True, quickMoves=['TACKLE_FAST'], cinematicMoves=['DIG'],
+                      evolutionBranch=[{'evolution': key + 'X', 'candyCost': 25}],
+                      **({'pokemonClass': 'POKEMON_CLASS_LEGENDARY'} if i % 2 else {})))
+        out.append(_X(900 + i, key, 1.5))
+        out.append({'templateId': '%s_EVOLUTION_QUEST' % key, 'data': {'evolutionQuestTemplate': {'questType': 'QUEST_CATCH_POKEMON'}}})
+        forms.append({'form': key + '_NORMAL'})
+    out.append({'templateId': 'FORMS_PAD_%d' % start, 'data': {'formSettings': {'pokemon': 'PAD', 'forms': forms}}})
+    return out
 
 
 def selftest(rgm=None):
@@ -946,8 +1130,13 @@ def selftest(rgm=None):
             dict(base, uid_hex='u_ghost', species_name='Ghost', pokemon_id=991, move1=3),                 # a species the game master has no pool for yet
             dict(base, uid_hex='u_free', species_name='Freex', pokemon_id=988),                           # its evolution has no candy cost / item
             dict(base, uid_hex='u_noform', species_name='Noform', pokemon_id=986)]                        # its templates carry no form
-    saved = (MIN_POKEMON_SETTINGS, MIN_BAG_ROWS)
-    globals()['MIN_POKEMON_SETTINGS'], globals()['MIN_BAG_ROWS'] = 3, 5
+    doc, wcs = (next(k for k, v in enum.items() if _norm(v) == x) for x in ('PIKACHUDOCTOR', 'PIKACHUWCS2025'))
+    rows_c = rows + [dict(base, uid_hex='u_doc', species_name='Pikachu', pokemon_id=25, form=doc, fresh_form=doc),   # only the game calls it a costume
+                     dict(base, uid_hex='u_wcs', species_name='Pikachu', pokemon_id=25, form=wcs, fresh_form=wcs)]   # its NAME says costume
+    saved = (MIN_POKEMON_SETTINGS, MIN_BAG_ROWS, CANARY_MIN)
+    # the fixtures are far too small for the canary's ratios (one branch = 9% of their evolution edges): it is off for the battery
+    # and switched back on at its production floor for its own tests (3b), on a fixture padded to real-ish counts
+    globals()['MIN_POKEMON_SETTINGS'], globals()['MIN_BAG_ROWS'], globals()['CANARY_MIN'] = 3, 5, 10 ** 9
     try:
         with tempfile.TemporaryDirectory(prefix='gm_guard_selftest_') as td:
             def put(name, obj):
@@ -1071,12 +1260,27 @@ def selftest(rgm=None):
                       'form added (costume)', 'form removed', 'form isCostume flipped']
             ok(r['verdict'] == 'CLEAR' and not r['flips'] and all(x in r['diff'] for x in labels),
                'the digest must name every field that moved: %s missing from %s' % ([x for x in labels if x not in r['diff']], list(r['diff'])))
+            # 2e. COSTUME STATUS (costume_forms: the enum NAME or the game's isCostume flag, add only): a flag put on a form the bag holds
+            #     moves that copy onto the costume ladder (GAINED), taking it off moves it back (LOST); unflagging a form whose NAME
+            #     says costume moves nothing (add only) -- it is in the digest, never a stop
+            r = same(A, put('new_costume_add.json', _fixture_gm('costume_add')), rows=rows_c)
+            fl = [(f['axis'], f['uid'], f['dir'], f['old'], f['new']) for f in r['flips']]
+            ok(r['verdict'] == 'FLIPS' and fl == [('costume', 'u_doc', 'GAINED', 'plain', 'costume')] and r['axes'] == {'costume': 1}
+               and 'form isCostume flipped' in r['diff'], 'a new isCostume flag on a held form flips exactly that copy: %s %s' % (r['verdict'], fl))
+            ok('PikachuDoctor' in r['flips'][0]['what'] and any('costume' in x for x in review_lines(r, None, None, 'bak')),
+               'the flip names the form and reaches the review record: %s' % r['flips'][0]['what'])
+            r = same(put('old_costume_add.json', _fixture_gm('costume_add')), A, rows=rows_c)
+            fl = [(f['axis'], f['uid'], f['dir']) for f in r['flips']]
+            ok(r['verdict'] == 'FLIPS' and fl == [('costume', 'u_doc', 'LOST')], 'a flag taken off is a LOST costume status: %s %s' % (r['verdict'], fl))
+            r = same(A, put('new_costume_off.json', _fixture_gm('costume_off')), rows=rows_c)
+            ok(r['verdict'] == 'CLEAR' and not r['flips'] and 'form isCostume flipped' in r['diff'],
+               'unflagging a form whose NAME says costume moves nothing (add only): %s %s' % (r['verdict'], r['flips']))
             # 3. FAIL CLOSED: an unreadable / truncated / implausible / engine-unloadable file is never a pass
             good = json.dumps(_fixture_gm('move'))
             bad = {'truncated': good[:len(good) // 2], 'not_a_list': '{"a": 1}', 'not_templates': '[1, 2, 3]',
                    'no_data': '[{"templateId": "X"}]', 'empty': '', 'not_utf8': b'\xff\xfe\x00'.decode('latin-1'),
                    'tiny': json.dumps(_fixture_gm()[:2]), 'shrunk': json.dumps(_fixture_gm()[:4]),
-                   'int_form': json.dumps(_fixture_gm('int_form')), 'size_shape': json.dumps(_fixture_gm('size_shape'))}
+                   'size_shape': json.dumps(_fixture_gm('size_shape')), 'no_forms': json.dumps(_fixture_gm('no_forms'))}
             for nm, txt in bad.items():
                 p = put('bad_%s.json' % nm, txt)
                 r = same(A, p)
@@ -1094,6 +1298,83 @@ def selftest(rgm=None):
             bad_row = dict((k, v) for k, v in rows[1].items() if k != 'move1')                                  # complete but for move1
             r = same(A, A2, rows=rows + [dict(bad_row, uid_hex='u_bad'), {'uid_hex': 'u_bad2', 'species_name': 'X', 'pokemon_id': 54}])
             ok(r['verdict'] == 'FLIPS' and r['nulled'] == ['u_bad', 'u_bad2'], 'a row that cannot be judged must STOP, got %s %s' % (r['verdict'], r['nulled']))
+            # 3a. IDS AS NUMBERS (0.381.2 / 0.395.1 print some ids as enum numbers): normalize_file names every one, the named file is
+            #     the SAME game master (judged CLEAR against its twin, content equal), with or without the installed file to spell
+            #     from; a file without numbers is never rewritten; a RAW numbered file still loads (evolvable_forms names them too,
+            #     where it used to crash on the first .lower() and stay half-loaded) and is judged, not refused
+            twin, n_num = _numbered(_fixture_gm(), enum)
+            ok(n_num >= 30, 'the twin turns the fixture\'s ids into numbers (%d)' % n_num)
+            for ref in (A, None):
+                p = put('twin_%s.json' % bool(ref), twin)
+                ok(normalize_file(p, enum, ref) == (n_num, 0) and json.load(open(p, encoding='utf-8')) == _fixture_gm(),
+                   'every number is named back to the same content (installed file to spell from: %s)' % bool(ref))
+            r = same(A, p)
+            ok(r['verdict'] == 'CLEAR' and not r['flips'] and not r['nulled'] and not r['diff'], 'the named twin is CLEAR: %s %s' % (r['verdict'], dict(r['diff'])))
+            b0 = open(A, 'rb').read()
+            ok(normalize_file(A, enum, A) == (0, 0) and open(A, 'rb').read() == b0, 'a file with no numbers is not rewritten')
+            ok(normalize_file(put('junk_ids.json', '{"form": 5, not json'), enum) == (0, 0), 'a file that is not JSON is left to load_gm')
+            ef = _import_root('evolvable_forms')
+            g = [{'templateId': 'V0999_POKEMON_ZZZ', 'data': {'pokemonSettings': {'pokemonId': 999, 'evolutionBranch': [{'evolution': 1000, 'form': 987654}]}}},
+                 {'templateId': 'V0999_POKEMON_ZZZ_ODD', 'data': {'pokemonSettings': {'pokemonId': 999, 'form': 987655}}},
+                 {'templateId': 'FORMS_V0999_POKEMON_ZZZ', 'data': {'formSettings': {'pokemon': 999, 'forms': [{'form': 0}]}}}]
+            ok(ef.normalize_ids(g, {0: 'Unset'}) == (4, 2) and g[0]['data']['pokemonSettings'] == {'pokemonId': 'ZZZ', 'evolutionBranch': [{'evolution': 1000, 'form': 987654}]}
+               and g[1]['data']['pokemonSettings'] == {'pokemonId': 'ZZZ', 'form': 'ZZZ_ODD'} and g[2]['data']['formSettings']['forms'] == [{'form': 0}],
+               'a number nothing names stays a number (unknown, never a guess); a template\'s OWN form is its templateId; 0 (Unset) is no id: %s' % g)
+            r = same(A, put('raw_int_form.json', _fixture_gm('int_form')))
+            ok(r['verdict'] == 'FLIPS' and {f['uid'] for f in r['flips']} == {'u_psy'} and 'evolve' in r['axes'],
+               'a RAW numbered branch form loads and is judged (a new quest gate on the held Psyduck): %s %s' % (r['verdict'], r['reason']))
+            spec = importlib.util.spec_from_file_location('evolvable_forms_gg_half', os.path.join(ROOT, 'evolvable_forms.py'))
+            m = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(m)
+            m._GM, m._CACHE = put('half.json', [{'templateId': 'V0001_POKEMON_X', 'data': {'pokemonSettings': {   # crashes MID-parse:
+                'pokemonId': 'X', 'form': 'X_NORMAL', 'evolutionBranch': [{'evolution': 'Y', 'mustBeBuddy': True,  # X_NORMAL is in the
+                                                                           'form': ['a list is no name']}]}}}]), \
+                os.path.join(td, 'ef_half.json')                                                                    # table by then
+            for _ in range(2):
+                try:
+                    m._load()
+                    ok(False, 'a file _load cannot parse must raise')
+                except Exception:
+                    ok(m._table is None, 'a failed parse leaves NO table (it used to leave half of one that every later call returned)')
+            # 3b. THE CANARY: counts of what a whole game master holds (renamed templateIds, renamed base stats, an emptied evolution
+            #     table or move list passed load_gm's key count). Pure first, then through assess() on a fixture padded to real-ish counts
+            ok(canary_drops({'a': 100, 'b': 9, 'c': 50}, {'a': 90, 'b': 0, 'c': 44}, 0.9, 10) == [('c', 50, 44)],
+               'exactly 90% passes, under it trips, a count under the minimum is not judged')
+            ok(canary_drops({'a': 100}, {}, 0.9, 10) == [('a', 100, 0)], 'a count the candidate lacks is 0')
+            cc = content_counts(_fixture_gm())
+            ok(len(cc) == 14 and cc['pokemon templates'] == 23 and cc['evolution edges'] == 11 and cc['forms'] == 4
+               and cc['extended templates'] == 2 and cc['isTransferable true'] == 1, 'content_counts on the fixture: %s' % dict(cc))
+            ok(content_counts('junk') == content_counts([]) == content_counts([1, None, {'data': 5}, {'templateId': 7}]), 'any shape, never raises')
+            globals()['CANARY_MIN'] = saved[2]
+            try:
+                big = _fixture_gm() + _padding(60)
+                P0 = put('big.json', big)
+                cb = content_counts(big)
+                ok(all(v >= CANARY_MIN for k, v in cb.items() if k not in ('mythical species', 'ultra beast species')),
+                   'the padded fixture reaches the counts the canary judges: %s' % dict(cb))
+                strip = lambda g, key: [dict(t, data=dict(t['data'], pokemonSettings={k: v for k, v in t['data']['pokemonSettings'].items() if k != key}))
+                                        if 'pokemonSettings' in t['data'] else t for t in g]
+                muts = (('templateIds', lambda g: [dict(t, templateId=t['templateId'].replace('_POKEMON_', '_PKMN_')) for t in g], 'pokemon templates'),
+                        ('stats', lambda g: strip(g, 'stats'), 'base stats'),
+                        ('branches', lambda g: strip(g, 'evolutionBranch'), 'evolution edges'),
+                        ('flags', lambda g: strip(g, 'isTransferable'), 'isTransferable true'),
+                        ('moves', lambda g: strip(g, 'quickMoves'), 'quick move lists'),
+                        ('classes', lambda g: strip(g, 'pokemonClass'), 'legendary species'),
+                        ('forms', lambda g: [t for t in g if not t['templateId'].startswith('FORMS_PAD')], 'forms'),
+                        ('quests', lambda g: [t for t in g if 'evolutionQuestTemplate' not in t['data']], 'evolution quests'))
+                for nm, mut, label in muts:
+                    r = same(P0, put('big_%s.json' % nm, mut(big)))
+                    ok(r['verdict'] == 'UNREADABLE_NEW' and 'damaged' in r['reason'] and label in r['reason'] and not r['flips'],
+                       'canary %s: a candidate missing its %s is refused, never installed: %s %s' % (nm, label, r['verdict'], r['reason'][:160]))
+                r = same(P0, put('big_forms_ok.json', dict((m_[0], m_[1]) for m_ in muts)['forms'](big)), canary=False)
+                ok(r['verdict'] == 'CLEAR' and [d[0] for d in r['drops']] == ['forms'],
+                   '--accept-smaller (canary=False) lets a smaller file through to every other check: %s %s' % (r['verdict'], r['drops']))
+                r = same(P0, put('big_grown.json', big + _padding(5, start=100)))
+                ok(r['verdict'] == 'CLEAR' and not r['flips'], 'growth never trips the canary: %s %s' % (r['verdict'], r['reason'][:120]))
+                r = same(P0, put('big_minus3.json', big[:-10] + big[-1:]))          # 3 species (and their templates) retired
+                ok(r['verdict'] == 'CLEAR', 'a small real shrink (3 of 83 species retired) passes: %s %s' % (r['verdict'], r['reason'][:120]))
+            finally:
+                globals()['CANARY_MIN'] = 10 ** 9
             # 4. the stamp: APK from the folder name, the batch match, the timestamp, the meta file
             ok(parse_apk('gm_v2_apk4270_2026.08.28-17.35.50') == '0.427.0' and parse_apk('gm_v2_apk3951_x') == '0.395.1'
                and parse_apk('nonsense') is None, 'parse_apk')
@@ -1142,7 +1423,7 @@ def selftest(rgm=None):
             # 7. the real files, only where they exist (skipped cleanly on CI / a fresh clone)
             _live_check(rows, ok)
     finally:
-        globals()['MIN_POKEMON_SETTINGS'], globals()['MIN_BAG_ROWS'] = saved
+        globals()['MIN_POKEMON_SETTINGS'], globals()['MIN_BAG_ROWS'], globals()['CANARY_MIN'] = saved
     stat1 = {p: (os.stat(p).st_size, os.stat(p).st_mtime_ns) if os.path.exists(p) else None for p in live}
     ok(stat0 == stat1, 'the self-test touched a live file: %s' % [p for p in live if stat0[p] != stat1[p]])
     print('gm_guard selftest: OK (%d checks)' % n[0])
@@ -1247,6 +1528,37 @@ def _orchestrator_tests(rgm, td, put, rows, enum, ok):
         rc, out = run()
         ok(rc == (None, True) and not os.path.exists(rgm.REVIEW) and read_meta(mtp)['batch_ts'] == ts_b and sha256_file(gmp) == read_meta(mtp)['sha256'],
            'CLEAR installs without a stop: %s' % (rc,))
+        # IDS AS NUMBERS at download: the batch is named BEFORE it is judged, and the NAMED bytes are what is stamped and installed
+        reset(None)
+        numbered, n_num = _numbered(_fixture_gm('unbagged'), enum)
+        served['ts'], served['json'] = str(ts_b), json.dumps(numbered)
+        rc, out = run()
+        m = read_meta(mtp)
+        ok(rc == (None, True) and json.load(open(gmp, encoding='utf-8')) == _fixture_gm('unbagged') and m.get('ids_named') == n_num
+           and sha256_file(gmp) == m['sha256'] and 'enum numbers' in out and not os.path.exists(rgm.REVIEW) and not os.path.exists(gmp + '.download'),
+           'a batch printing ids as numbers is named, judged CLEAR and installed named: %s %s %s' % (rc, m.get('ids_named'), out[-200:]))
+        # THE CANARY in the orchestrator: a batch under 90% of the installed file on a count is refused (WARN, remembered for the
+        # audit, nothing installed); on Benny's word --accept-smaller lets it through to every other check, and it installs
+        globals()['CANARY_MIN'] = 10
+        try:
+            big = _fixture_gm() + _padding(60)
+            reset(None)
+            put('gm.json', big)
+            write_meta(mtp, new_meta(ts_a, sha256_file(gmp), '0.400.0', 'gm_v2_apk4000_x', NOW - 86400, False))
+            b_big = open(gmp, 'rb').read()
+            served['ts'], served['json'] = str(ts_b), json.dumps([t for t in big if 'evolutionQuestTemplate' not in t['data']])
+            rc, out = run()
+            ok(rc == (None, False) and open(gmp, 'rb').read() == b_big and 'looks damaged' in out and 'evolution quests 60 -> 0' in out
+               and read_meta(mtp).get('rejected', {}).get('batch_ts') == ts_b and not os.path.exists(gmp + '.download'),
+               'the canary refuses a damaged batch and remembers it: %s %s' % (rc, out[-200:]))
+            f = freshness_findings(read_meta(mtp), {'version': '0.400.0'}, NOW)
+            ok(len(f) == 1 and 'REJECTED' in f[0][1] and '--accept-smaller' in f[0][1], 'the audit WARN names the way in: %s' % f)
+            rc, out = run(['--accept-smaller'])
+            ok(rc == (None, True) and open(gmp, 'rb').read() != b_big and 'let through by hand' in out and 'rejected' not in read_meta(mtp)
+               and read_meta(mtp)['batch_ts'] == ts_b and not os.path.exists(rgm.REVIEW),
+               '--accept-smaller installs it through every other check: %s %s' % (rc, out[-200:]))
+        finally:
+            globals()['CANARY_MIN'] = 10 ** 9
         # SAME: a file installed before the stamp existed is adopted, not re-diffed; no tail owed
         reset(None, with_meta=False)
         served['json'] = open(gmp, encoding='utf-8').read()
@@ -1489,8 +1801,8 @@ def _orchestrator_tests(rgm, td, put, rows, enum, ok):
 def _live_check(rows, ok):
     """The 22 flips, reproduced from the REAL 0.407 / 0.427 game masters and the real bag -- only where those exist, and
     cross-checked against an independent count from the raw templates (the number moves with every walk, so it is printed,
-    never asserted). Also: the size repro on the real files (every XXL copy flagged when the held species' base sizes shrink) and
-    0.395.1's integer branch forms must read as an unreadable candidate."""
+    never asserted). Also: the size repro on the real files (every XXL copy flagged when the held species' base sizes shrink), the
+    costume axis on that pair (printed), and ids as numbers: 0.427 numbered and named back is CLEAR, 0.395.1's are all named."""
     clone = os.environ.get('GM_GUARD_PM_CLONE', '/home/user/pokeminers/game_masters')
     p407 = os.path.join(clone, 'previous_game_masters', 'gm_v2_apk4070_2026.04.17-10.48.50', 'game_master.json')
     p427 = os.path.join(clone, 'latest', 'latest.json')
@@ -1537,8 +1849,8 @@ def _live_check(rows, ok):
         _c.close()
     if walk == '2026-09-30T01:42:49':                 # the walk the 22 was measured on (2026-09-30); later bags differ
         ok(got == 22, 'live: on the 2026-09-30 01:42:49 walk exactly 22 in-bag rows flip on a held move, got %d' % got)
-    print('gm_guard selftest: live 0.407 -> 0.427: %d in-bag rows lose "no normal roll" on a held move (evolve axis %d rows, size axis %d rows, %s)'
-          % (got, r['axes'].get('evolve', 0), r['axes'].get('size', 0), r['verdict']))
+    print('gm_guard selftest: live 0.407 -> 0.427: %d in-bag rows lose "no normal roll" on a held move (evolve axis %d rows, size axis %d rows, '
+          'costume axis %d rows, %s)' % (got, r['axes'].get('evolve', 0), r['axes'].get('size', 0), r['axes'].get('costume', 0), r['verdict']))
     # THE SIZE REPRO ON THE REAL FILES (2026-09-30, review): the base height / weight of every species that has an XXL copy in the bag,
     # scaled x0.6 in a copy of 0.427 -- what moved an XXL Ponyta out of the keep (its projection as a Rapidash falls 1082 -> 735, so
     # best_points 983 is under min_points) while the first version of the guard said CLEAR. Every one of those XXL rows must be flagged.
@@ -1567,10 +1879,29 @@ def _live_check(rows, ok):
            'live: 0.427 with the held XXL species\' base sizes x0.6 must flag every XXL row on the size axis (%d of %d, %s)' % (
                len(set(xxl) & flagged), len(xxl), r2['verdict']))
         print('gm_guard selftest: live size check: base sizes x0.6 flag %d in-bag rows, all %d XXL copies among them' % (len(flagged), len(xxl)))
-    if os.path.exists(p395):
-        r = assess(p427, p395, bag, move_map, enum)
-        ok(r['verdict'] == 'UNREADABLE_NEW', 'live: the engine cannot load 0.395.1 (integer forms) -- must be UNREADABLE_NEW, got %s' % r['verdict'])
-        ok(assess(p427, p427, bag, move_map, enum)['verdict'] == 'SAME', 'live: identical is SAME')
+    # IDS AS NUMBERS ON THE REAL FILES (2026-09-30): 0.427 with every id turned into the enum number a batch like 0.395.1 prints, named
+    # back by normalize_file, is the same game master -- every reader loads it and no in-bag verdict moves; and every number the real
+    # 0.395.1 prints is named (it crashed evolvable_forms before)
+    with tempfile.TemporaryDirectory(prefix='gm_guard_ids_') as td:
+        twin, n_num = _numbered(json.load(open(p427, encoding='utf-8')), enum)
+        cand = os.path.join(td, 'numbered_0427.json')
+        with open(cand, 'w', encoding='utf-8') as f:
+            json.dump(twin, f)
+        del twin
+        named = normalize_file(cand, enum, p427)
+        same_content = json.load(open(cand, encoding='utf-8')) == json.load(open(p427, encoding='utf-8'))
+        r3 = assess(p427, cand, bag, move_map, enum)
+        ok(named == (n_num, 0) and same_content and r3['verdict'] == 'CLEAR' and not r3['flips'] and not r3['nulled'] and not r3['diff'],
+           'live: 0.427 with its %d ids as numbers, named back, must be the same content and CLEAR: %s %s %s' % (
+               n_num, named, same_content, r3['verdict']))
+        print('gm_guard selftest: live ids: 0.427 with %d ids as numbers named back to the same content, judged %s' % (n_num, r3['verdict']))
+        if os.path.exists(p395):
+            c395 = os.path.join(td, '0395.json')
+            shutil.copyfile(p395, c395)
+            n395 = normalize_file(c395, enum, p427)
+            ok(n395[0] > 1000 and n395[1] == 0, 'live: every number 0.395.1 prints must be named: %s' % (n395,))
+            print('gm_guard selftest: live ids: 0.395.1 prints %d ids as numbers, %d named, %d left' % (sum(n395), n395[0], n395[1]))
+    ok(assess(p427, p427, bag, move_map, enum)['verdict'] == 'SAME', 'live: identical is SAME')
 
 
 if __name__ == '__main__':
