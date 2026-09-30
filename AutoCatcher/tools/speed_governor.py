@@ -124,7 +124,7 @@ def main():
                      "target", "sent", "why"])
     end = time.time() + a.minutes * 60
     signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))   # a stop from outside still runs the restore below
-    last_fix, target, last_busy, hold_until, last_gone, alarm = None, None, 0.0, 0.0, None, None
+    last_fix, target, last_busy, hold_until, last_gone, alarm, said = None, None, 0.0, 0.0, None, None, ""
     print("speed governor: %s, cap %.0f km/h (fast %.0f / park %.0f / busy %.0f), restore %.0f on exit -> %s"
           % ("DRY RUN" if a.dry else "LIVE", MAX_KMH, FAST_KMH, PARK_KMH, BUSY_KMH, RESTORE_KMH, CSV), flush=True)
     try:
@@ -178,8 +178,9 @@ def main():
                 sent = set_speed(want, a.dry)
                 target = want
                 print("%s speed -> %.0f km/h (%s) [%s]" % (time.strftime("%H:%M:%S"), want, why, sent), flush=True)
-            elif want is None and why:
-                print("%s %s" % (time.strftime("%H:%M:%S"), why), flush=True)
+            elif want is None and why and why != said:
+                print("%s %s" % (time.strftime("%H:%M:%S"), why), flush=True)   # once per new reason, not every 5 s
+            said = why if want is None else ""
             wr.writerow([time.strftime("%Y-%m-%d %H:%M:%S")] + (
                 ["%.6f" % f[0], "%.6f" % f[1], "%.1f" % f[2], "%.0f" % f[3],
                  next((p for p, poly in PARKS.items() if inside(poly, f[0], f[1])), "street")] if f else [""] * 5)
