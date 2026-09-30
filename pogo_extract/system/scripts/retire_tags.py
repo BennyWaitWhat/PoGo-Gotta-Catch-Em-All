@@ -50,7 +50,7 @@ def grace_filter(empty_files, hours, now=None, path=EMPTY_SINCE):
     return due, waiting
 
 
-def main():
+def args(argv=None):
     ap = argparse.ArgumentParser()
     # 20, not 3 (user 2026-09-23: "delete the tags they're empty"). The 1-3-per-session limit bites on tags that
     # still hold members; this loop deletes EMPTY shells only, re-checks each right before deleting, runs a
@@ -61,8 +61,12 @@ def main():
     ap.add_argument('--grace-hours', type=float, default=24.0, help='an EMPTY managed shell is deleted only after this long empty (0 = at once)')
     ap.add_argument('--bookkeep-only', action='store_true',
                     help="update the first-empty stamps from this pass's tagsets and exit -- no attach (H04-10)")
-    a = ap.parse_args()
+    return ap.parse_args(argv)
 
+
+def plan(a):
+    """The no-phone half: the grace bookkeeping, then what could be deleted -> (retired, empty_files), or None when
+    there is nothing to do (the reason is printed)."""
     import granular_tags
     from tag_ops import is_pile_tag
     retired = [t for t in granular_tags.RETIRED_TAGS if not is_pile_tag(t)]
@@ -80,18 +84,31 @@ def main():
         # touched a retired / empty tag, so a tag that refilled for a few passes kept its old first-empty stamp and was
         # deleted the moment it emptied again -- the churn the 24 h grace exists to stop. This is the no-phone half.
         print('grace bookkeeping: %d empty managed shell(s) tracked, %d due' % (len(empty_files) + len(waiting), len(empty_files)))
-        return 0
+        return None
     if waiting:
         print('empty managed shells kept for now (empty less than %g h): %s' % (a.grace_hours, ', '.join(waiting)))
     if not retired and not empty_files:
-        print('no retired tags configured and no empty managed tagset due -- nothing to do'); return 0
+        print('no retired tags configured and no empty managed tagset due -- nothing to do'); return None
+    return retired, empty_files
 
+
+def main():
+    a = args()
+    p = plan(a)
+    if p is None:
+        return 0
     import pogo_il2cpp as pg
-    import safe_nuke_tags as snt          # JS + enumerate/census/collateral helpers; main() is __main__-guarded
-
     pg.wait_ready_to_attach(timeout_s=300)
     sess, pid = pg.get_session()
     print('attached pid %d' % pid)
+    return run_on_session(sess, pid, a, *p, own=True)
+
+
+def run_on_session(sess, pid, a, retired, empty_files, own=False):
+    """The phone half on a live session. own=False (2026-09-30, cull speed pick 2): sync_post_tags.py --retire runs it in
+    the post-push session it already holds -- no attach of its own, and that session stays attached for its owner."""
+    import pogo_il2cpp as pg
+    import safe_nuke_tags as snt          # JS + enumerate/census/collateral helpers; main() is __main__-guarded
     deleted, left = [], []
     try:
         svc = pg.pick_singleton(sess, 'Niantic.Holoholo.Tagging', 'TaggingRpcService')
@@ -145,7 +162,8 @@ def main():
             print('  %-20s deleted, every other tag intact' % t)
             deleted.append(t); left.remove(t); before.pop(t, None)
     finally:
-        sess.detach()
+        if own:
+            sess.detach()
     for t in deleted:
         try:
             snt.clear_db_mirror(snt.DB, t)

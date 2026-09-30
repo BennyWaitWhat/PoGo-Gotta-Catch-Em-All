@@ -499,28 +499,46 @@ def report_step(verify_failed=False):
         say('report: skipped (%s)' % _e)
 
 
-def post_tags_step():
-    """Remote Trade + Evolve for Size + the tag order in ONE gated Frida session (sync_post_tags.py, speed study 2026-09-24): one
-    attach, one write gate, one bag/svc pick instead of two; each tag still runs its own unchanged sync() -- fresh
-    walk, read, push, verify. Prints the same two summary lines remote_trade_step / evolve_size_step printed.
-    Never fails the cull -- these are labels, not the pile."""
+def post_tags_run(extra=()):
+    """sync_post_tags.py [extra] -> (CompletedProcess, {section: lines}), its job log saved. extra=('--reconcile',
+    '--retire') (2026-09-30, cull speed pick 2): the post-push reconcile report and retire ride the same session as
+    Remote Trade and the tag order -- one attach instead of three. Raises only on a failure to run the process."""
     try:
-        try:
-            _p = subprocess.run([PY, 'sync_post_tags.py'], capture_output=True, text=True, encoding='utf-8',
-                                errors='replace', timeout=900)
-        except subprocess.TimeoutExpired as _t:
-            _o = _t.stdout.decode('utf-8', 'replace') if isinstance(_t.stdout, bytes) else (_t.stdout or '')
-            _te = _t.stderr.decode('utf-8', 'replace') if isinstance(_t.stderr, bytes) else (_t.stderr or '')
-            _p = subprocess.CompletedProcess(_t.cmd, -9, _o + '\nREMOTE TRADE / EVOLVE FOR SIZE TIMED OUT after 900 s -- '
-                                             'a push above may already have landed\n', _te)
-        sec, cur = {'REMOTE TRADE': [], 'TAG ORDER': []}, None      # 'Evolve for Size' folded into Evolve Once/Twice (2026-09-29)
-        for _l in (_p.stdout or '').splitlines():
-            _m = _l.strip()
-            if _m.startswith('=== ') and _m.endswith(' ===') and _m[4:-4] in sec:
-                cur = _m[4:-4]
-                continue
-            if cur:
-                sec[cur].append(_l)
+        _p = subprocess.run([PY, 'sync_post_tags.py'] + list(extra), capture_output=True, text=True, encoding='utf-8',
+                            errors='replace', timeout=900)
+    except subprocess.TimeoutExpired as _t:
+        _o = _t.stdout.decode('utf-8', 'replace') if isinstance(_t.stdout, bytes) else (_t.stdout or '')
+        _te = _t.stderr.decode('utf-8', 'replace') if isinstance(_t.stderr, bytes) else (_t.stderr or '')
+        _p = subprocess.CompletedProcess(_t.cmd, -9, _o + '\nREMOTE TRADE / EVOLVE FOR SIZE TIMED OUT after 900 s -- '
+                                         'a push above may already have landed\n', _te)
+    sec, cur = {'RECONCILE': [], 'RETIRE': [], 'REMOTE TRADE': [], 'TAG ORDER': []}, None
+    for _l in (_p.stdout or '').splitlines():
+        _m = _l.strip()
+        if _m.startswith('=== ') and _m.endswith(' ===') and _m[4:-4] in sec:
+            cur = _m[4:-4]
+            continue
+        if cur:
+            sec[cur].append(_l)
+    # H06-2 FOR THE LABEL STEP TOO (2026-09-29): sync_remote_trade / order_tags print their fail-soft lines under the
+    # section markers ("game refusal list unreadable -- pushing unfiltered", "sweep skipped", "! EditTag failed")
+    # and only the summary lines were echoed. Saved like a job log, then echoed (post_tags_say).
+    # stdout AND stderr (R-B review): tag_ops logs through logging.basicConfig() -> stderr, so its "change(s) NOT
+    # written" / "FAILED after 3 retries" never reached the scan, which then said "no warnings in its log"
+    _plog = (_p.stdout or '') + (('\n--- stderr ---\n' + _p.stderr) if (_p.stderr or '').strip() else '')
+    try:
+        open(os.path.join('system', 'analysis', 'last_job_post_tags.log'), 'w', encoding='utf-8', errors='replace').write(
+            'rc=%s at %s\n%s' % (_p.returncode, time.strftime('%Y-%m-%d %H:%M:%S'), _plog))
+    except OSError as _we:
+        say('remote trade / tag order: log not saved (%s)' % _we)
+    return _p, sec
+
+
+def post_tags_say(_p, sec):
+    """Remote Trade + the tag order ran in ONE gated Frida session (sync_post_tags.py, speed study 2026-09-24): one
+    attach, one write gate, one bag/svc pick; each tag still runs its own unchanged sync() -- fresh walk, read, push,
+    verify. This prints what that step always printed: its two summary lines, the warnings scan of its saved log, and
+    an rc line when it crashed after a push. Never fails the cull -- these are labels, not the pile."""
+    try:
         _to = [l for l in (_p.stdout or '').splitlines() if 'TIMED OUT' in l]
         _rt = [l for l in (_p.stdout or '').splitlines() if l.startswith('Remote Trade: same')] + \
               [l for l in sec['REMOTE TRADE'] if l.startswith(('Remote Trade', 'apply_changes', 'already up to date', 'REMOTE TRADE'))][-2:] + _to
@@ -529,19 +547,10 @@ def post_tags_step():
         _or = [l for l in sec['TAG ORDER'] if l.startswith('TAG ORDER')]
         if _or:
             say('tag order: %s' % ' | '.join(l[len('TAG ORDER '):] for l in _or))
-        # H06-2 FOR THE LABEL STEP TOO (2026-09-29): sync_remote_trade / order_tags print their fail-soft lines under the
-        # section markers ("game refusal list unreadable -- pushing unfiltered", "sweep skipped", "! EditTag failed")
-        # and only the summary lines above were echoed. Saved like a job log, then echoed.
         _pl = os.path.join('system', 'analysis', 'last_job_post_tags.log')
-        # stdout AND stderr (R-B review): tag_ops logs through logging.basicConfig() -> stderr, so its "change(s) NOT
-        # written" / "FAILED after 3 retries" never reached the scan, which then said "no warnings in its log"
         _plog = (_p.stdout or '') + (('\n--- stderr ---\n' + _p.stderr) if (_p.stderr or '').strip() else '')
-        try:
-            open(_pl, 'w', encoding='utf-8', errors='replace').write(
-                'rc=%s at %s\n%s' % (_p.returncode, time.strftime('%Y-%m-%d %H:%M:%S'), _plog))
-        except OSError as _we:
-            say('remote trade / tag order: log not saved (%s)' % _we)
-        echo_job_warnings('remote trade / tag order', _plog, _pl)
+        echo_job_warnings('post-push session (reconcile / retire / remote trade / tag order)'
+                          if (sec.get('RECONCILE') or sec.get('RETIRE')) else 'remote trade / tag order', _plog, _pl)
         # A CRASH AFTER A PUSH MUST NOT READ LIKE A CLEAN PUSH (2026-09-23) -- same rc line the old steps printed.
         if _p.returncode and not any(' rc=' in l or 'TIMED OUT' in l or ' stopped' in l or ' failed' in l or ' skipped' in l
                                      or 'read-back' in l for l in _rt + _es + _or):
@@ -912,6 +921,11 @@ def _main():
            s['pile'] if s['pile'] is not None else '? (Transfer.txt missing)'))
 
     _audited = _pile_members()            # X3 (2026-09-24): the pile these audits judge -- the sync must push this one
+    try:                                  # 2026-09-30, cull speed pick 1: the bytes these audits judge. Unchanged at the
+        import granular_tags as _gtd      # sync -> it pushes them as they are (no second keep_policy + build_tagsets)
+        _audited_files = _gtd.pushed_files_digest()
+    except Exception:
+        _audited_files = None             # no digest -> the sync re-runs them, as before
     res = run_audits()
     for nm, ok, log in res:
         verdict = ([l for l in log.splitlines() if 'VERDICT' in l or 'UNEXPLAINED' in l] or ['(no verdict line)'])[-1]
@@ -928,12 +942,13 @@ def _main():
         say('audits pass; --no-sync given, stopping before any phone write'); return 0
 
     catcher_pause()                            # phone again: the catcher lets go (~1 s)
-    rc, log = run_job('/api/sync', {'dry': False, 'audited_pile_members': _audited})
+    rc, log = run_job('/api/sync', {'dry': False, 'audited_pile_members': _audited, 'audited_tagsets': _audited_files,
+                                    'reconcile': False})    # its reconcile rides the post-push session below (pick 2)
     # X4 (design review 2026-09-24): a write that still needs its server proof is recorded HERE, whatever the rc -- a
     # sync that failed after prune wrote some tags must not look proven on the next idle pass. Unreadable -> pending.
     _proof_pending(_sync_changed_tags(log))
     for l in log.splitlines():
-        if 'apply_changes' in l or 'All tags in sync' in l:
+        if 'apply_changes' in l or 'All tags in sync' in l or l.startswith('recompute: reusing'):
             say('  ' + l.strip()[:100])
     echo_job_warnings('sync', log, os.path.join('system', 'analysis', 'last_job_api_sync.log'))   # H06-2
     if rc:
@@ -941,43 +956,56 @@ def _main():
         say('SYNC FAILED rc=%s' % rc); return 3
     catcher_pause(wait=False)                  # re-arm (90 s) for retire / verify / Remote Trade / Evolve for Size / tag order
 
+    # ONE POST-PUSH SESSION (2026-09-30, cull speed pick 2; user: "1,2, go"). The reconcile report that ended the sync job,
+    # the retire step and Remote Trade + the tag order each attached on their own: 3 of the cull's 5 attaches, each a
+    # crash roll and ~5-8 s. sync_post_tags.py --reconcile --retire runs them in ONE session, in the old order: the
+    # reconcile first -- read-only, still a fresh session next to prune's (the independent check it exists for) -- and on
+    # drift it stops before any label write (rc 3) -> SYNC FAILED here, exactly as a drifting reconcile inside the sync
+    # job failed it. Then retire (fail-soft), Remote Trade, the tag order. The ladder starts first so it overlaps that
+    # phone time; it already overlapped Remote Trade's DB mirror, the only thing this session writes that it reads.
+    _lr = ladder_start()
+    try:
+        _post = post_tags_run(('--reconcile', '--retire'))
+    except Exception as _pe:
+        _post = (subprocess.CompletedProcess(['sync_post_tags.py'], 1, '', 'not run: %s' % _pe),
+                 {'RECONCILE': [], 'RETIRE': [], 'REMOTE TRADE': [], 'TAG ORDER': []})
+    _rec = '\n'.join(_post[1]['RECONCILE'])
+    for l in _rec.splitlines():
+        if 'All tags in sync' in l or 'Drift detected' in l:
+            say('  ' + l.strip()[:100])
+    if 'All tags in sync.' not in _rec:
+        # the sync job's own failure path: its last lines, then SYNC FAILED rc 3 -- no report, no label write
+        print('\n'.join([l for l in (_rec or ((_post[0].stdout or '') + '\n' + (_post[0].stderr or ''))).splitlines()
+                         if l.strip()][-8:]))
+        if _lr is not None:                    # the ladder started above: let it end (a kill could tear its history)
+            try:
+                _lr.communicate(timeout=300)
+            except Exception:
+                _lr.kill()
+        say('SYNC FAILED rc=%s -- the post-push reconcile %s (log: system/analysis/last_job_post_tags.log)'
+            % (_post[0].returncode, 'found drift' if 'Drift detected' in _rec else 'gave no verdict'))
+        return 3
+    catcher_pause(wait=False)                  # re-arm (90 s) for verify
+
     # RETIRED tag shells (2026-09-09): prune has just stripped their members; retire_tags deletes the empty shells one
     # at a time, up to its own --max, and stops at the first DeleteTag refusal (the game can cut a session off after
-    # 1-3 deletions). FAIL-SOFT: never changes this run's rc.
-    try:
-        # (2026-09-26) an emptied managed tag (a Stop tag nobody needs) still on the phone -> delete its shell. A census
-        # alarm right after the push ('Transfer 9 -> 0') was HIM releasing the pile in those seconds, not collateral --
-        # retire stops on it either way, which is the safe side.
-        if 'RETIRED' not in log and 'empty managed' not in log and not __import__('re').search(r': server=\d+ \([^)]*\) want=0 ', log):
-            raise RuntimeError('no retired tag touched this sync -- nothing to delete')
-        _rt = subprocess.run([PY, os.path.join('system', 'scripts', 'retire_tags.py')],   # its own default: empty shells, verified one by one (2026-09-23)
-                             capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=600)
-        _rl = [l for l in (_rt.stdout or '').splitlines() if l.strip()]
-        # THE REASON, NOT JUST THE TALLY (2026-09-23: "deleted 3 ... 7 left" was printed with no reason). retire_tags
-        # prints a DeleteTag refusal, a collateral-census stop and its problem lines, a regained-member skip, a shell
-        # that still holds members, or an uncleared DB mirror ABOVE its last line -- echo each of those, then the tally
-        # untruncated. On a nonzero exit (attach failed, traceback) the last stdout line is not a result: say rc + stderr.
-        _coll = False
-        for _l in (_rl[:-1] if _rt.returncode == 0 else _rl):
-            _coll = _coll or 'COLLATERAL' in _l
-            if _coll or any(k in _l for k in ('refused', 'regained', 'still holds', 'not cleared')):
-                say('retire:   %s' % _l.strip()[:160])
-        if _rt.returncode:
-            _err = [l for l in (_rt.stderr or '').splitlines() if l.strip()]
-            say('retire: rc=%d -- %s' % (_rt.returncode, (_err[-1] if _err else 'no stderr')[:200]))
-        else:
-            say('retire: %s' % (_rl[-1][:240] if _rl else 'rc=0, no output'))
-    except Exception as _e:
-        say('retire: skipped (%s)' % _e)
-        try:                                   # H04-10: the grace clock still follows this pass's tagsets (no phone)
-            _bk = subprocess.run([PY, os.path.join('system', 'scripts', 'retire_tags.py'), '--bookkeep-only'],
-                                 capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=120)
-            if _bk.returncode:
-                say('retire: grace bookkeeping rc=%d -- %s' % (_bk.returncode, ((_bk.stderr or '').strip().splitlines() or ['no stderr'])[-1][:160]))
-        except Exception as _be:
-            say('retire: grace bookkeeping not run (%s)' % _be)
+    # 1-3 deletions). FAIL-SOFT: never changes this run's rc. Since 2026-09-30 it runs inside the post-push session
+    # above (every pass: its plan() does the grace bookkeeping, then deletes only a retired / due-empty shell that is
+    # actually on the device). A census alarm right after the push ('Transfer 9 -> 0') was HIM releasing the pile in
+    # those seconds, not collateral -- retire stops on it either way, which is the safe side.
+    # THE REASON, NOT JUST THE TALLY (2026-09-23: "deleted 3 ... 7 left" was printed with no reason). retire_tags
+    # prints a DeleteTag refusal, a collateral-census stop and its problem lines, a regained-member skip, a shell
+    # that still holds members, or an uncleared DB mirror ABOVE its last line -- echo each of those, then the tally.
+    _rl = [l for l in _post[1]['RETIRE'] if l.strip()]
+    _rfail = [l for l in _rl if l.startswith('RETIRE failed')]
+    _coll = False
+    for _l in (_rl if _rfail else _rl[:-1]):
+        _coll = _coll or 'COLLATERAL' in _l
+        if _coll or any(k in _l for k in ('refused', 'regained', 'still holds', 'not cleared')):
+            say('retire:   %s' % _l.strip()[:160])
+    say('retire: %s' % ((_rfail[-1] if _rfail else _rl[-1]).strip()[:240] if _rl else 'no output'))
 
-    if 'All tags in sync.' in log:
+    if 'All tags in sync.' in _rec:
         try:
             sys.path.insert(0, os.getcwd())
             import verify_tags_live as _vtl
@@ -999,17 +1027,15 @@ def _main():
                 _playing = True                # cannot tell -> do not restart
         _pending = _proof_pending(_sync_changed_tags(log))
         if _playing or not _pending:
-            # the sync's reconcile already proved the client cache equal; a second cache read adds an attach
+            # the post-push reconcile already proved the client cache equal; a second cache read adds an attach
             # and nothing else. The restart-based SERVER proof only happens when the phone is idle AND a write is
             # still waiting for it (this pass's, or one deferred while he was playing) -- and since 2026-09-25 it never
             # happens at all (verify_tags_live is cache-only; see _unproven_note).
-            say('VERIFY OK (the client-cache reconcile inside the sync is clean; %s) -- %s'
+            say('VERIFY OK (the client-cache reconcile after the push is clean; %s) -- %s'
                 % ('user playing -> no second cache read' if _playing else 'no tag written -> no second cache read',
                    _unproven_note(log)))
             say('DONE -- %s tagged for Transfer' % state()['pile'])
-            _lr = ladder_start()
-            catcher_pause(wait=False)
-            post_tags_step()
+            post_tags_say(*_post)              # Remote Trade + the tag order ran in the post-push session above
             catcher_resume()                   # last phone step done -- the reports are offline
             ladder_finish(_lr)
             report_step()
@@ -1039,9 +1065,7 @@ def _main():
     # THE FOREVER-FRIENDS TRADE WINDOW, REFRESHED EVERY CULL (user 2026-09-19: "make this a part of your cull every
     # time to update it"). Same session shape as the tag sync; never creates a tag, and a failure here never fails the
     # cull -- the pile is the irreversible output, a trade label is not.
-    _lr = ladder_start()
-    catcher_pause(wait=False)
-    post_tags_step()
+    post_tags_say(*_post)                      # Remote Trade + the tag order ran in the post-push session above
     catcher_resume()                           # last phone step done -- the reports are offline
     ladder_finish(_lr)
     report_step(verify_failed=v.returncode != 0)

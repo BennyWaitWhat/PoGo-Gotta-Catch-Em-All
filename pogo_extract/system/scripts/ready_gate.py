@@ -81,6 +81,7 @@ POGO_ACTIVITY = "com.nianticproject.holoholo.libholoholo.unity.UnityMainActivity
 
 BATTERY_FLOOR = 15                  # %, only enforced when NOT externally powered
 PID_STABLE_SECS = 3                 # PID must hold this long (catches mid-drift)
+PID_SETTLED_SECS = 60               # a process up this long is past its launch: its age proves stability, no 3 s wait
 FOREGROUND_WAIT_SECS = 25           # poll budget after am start / monkey relaunch
 WAKE_SETTLE_SECS = 1.5             # let the screen come up after KEYCODE_WAKEUP
 ADB_TIMEOUT = 20                    # per adb invocation
@@ -212,6 +213,19 @@ def _has_il2cpp(pid, dev):
         return False
 
 
+def _proc_age(pid, dev):
+    """Seconds PID has been running (/proc/uptime minus its start time, field 22 of /proc/PID/stat, 100 ticks/s on
+    Android), or None when it cannot be read or looks wrong -- the caller then waits the full window."""
+    rc, out, _ = _adb(f"cat /proc/uptime /proc/{pid}/stat", dev=dev)
+    try:
+        up_line, stat_line = [l for l in out.splitlines() if l.strip()][:2]
+        start_ticks = int(stat_line.rsplit(")", 1)[1].split()[19])   # fields after the (comm) start at field 3
+        age = float(up_line.split()[0]) - start_ticks / 100.0
+    except (ValueError, IndexError):
+        return None
+    return age if rc == 0 and 0 <= age < 10 ** 7 else None
+
+
 def _check_il2cpp_and_stable(pid, dev):
     """(2) libil2cpp.so loaded AND the PID holds steady for ~PID_STABLE_SECS.
 
@@ -226,6 +240,12 @@ def _check_il2cpp_and_stable(pid, dev):
             "(cold start still loading the runtime)",
             hint="wait for the PoGo map to finish loading, then retry",
         )
+    # AGE INSTEAD OF A WAIT (2026-09-30, cull speed pick 2): the window below exists for a PID that is still changing
+    # right after a launch. A process already up PID_SETTLED_SECS is past that, and its age is one adb call instead of
+    # a 3 s sleep plus 3 pidof calls -- twice per cull (prune, post-tags). Unknown age -> the window, as before.
+    age = _proc_age(pid, dev)
+    if age is not None and age >= PID_SETTLED_SECS:
+        return True
     # PID-stability window.
     deadline = time.monotonic() + PID_STABLE_SECS
     while time.monotonic() < deadline:

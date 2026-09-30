@@ -779,6 +779,27 @@ def tagset_dir():
     return os.path.join(HERE, 'system', 'analysis', 'tagsets')
 
 
+def pushed_files_digest():
+    """sha256 over every file the sync pushes or gates on that keep_policy / build_tagsets write: the tagsets, the
+    keep reasons, the pile provenance and the evolve advice (2026-09-30, cull speed pick 1). full_audit takes it just
+    before the 11 audits; /api/sync skips its keep_policy + build_tagsets re-run only while the files are still those
+    exact bytes -- the audited artifact IS the pushed one. Any difference, or a missing digest -> the re-run, as before."""
+    import hashlib
+    td = tagset_dir()
+    an = os.path.dirname(td)
+    h = hashlib.sha256()
+    for p in (sorted(os.path.join(td, f) for f in os.listdir(td) if f.endswith('.txt'))
+              + [os.path.join(an, f) for f in ('policy_reasons.json', 'pile_provenance.json', 'evolve_advice.json')]):
+        h.update(os.path.relpath(p, an).encode('utf-8') + b'\0')
+        try:
+            with open(p, 'rb') as fh:
+                h.update(fh.read())
+        except OSError:
+            h.update(b'<missing>')
+        h.update(b'\0')
+    return h.hexdigest()
+
+
 def registry():
     """{tag: (filename, colour)} -- THE push plan. prune_tags.PLAN is exactly this.
 
