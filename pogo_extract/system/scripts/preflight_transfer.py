@@ -1299,9 +1299,15 @@ def main():
         _rk = sorted(lst, key=_ivkey)
         _sfl = keep_config.shiny_floor_iv(); _first = _rk[0]['uid_hex'] if _rk else None      # shiny floor, best of the form stays (2026-09-24)
         _plsh = [x for x in _rk if not _shiny_is_special(x)]; _first_pl = _plsh[0]['uid_hex'] if _plsh else None   # ...and the best PLAIN one
-        _pok = {x['uid_hex'] for x in [x for x in _plsh
-                                       if (x['iv_total'] or 0) >= _sfl or x['uid_hex'] in (_first, _first_pl)][:_shiny_plain_cap(key[0])]}
-        for r in [x for x in _rk if _shiny_is_special(x) or x['uid_hex'] in _pok][:_shiny_cap(key[0])]:
+        _lk = {}                              # every look first, comb up, cap stays (user 2026-09-30, LAW bucket 4)
+        for x in _rk:
+            _lk.setdefault(((x['fresh_costume'] or 0), evolvable_forms.gender_key(x['pokemon_id'], x['gender'])), x['uid_hex'])
+        _lt = set(_lk.values())
+        _pok = {x['uid_hex'] for x in ([x for x in _plsh if x['uid_hex'] in _lt]
+                                       + [x for x in _plsh if x['uid_hex'] not in _lt
+                                          and ((x['iv_total'] or 0) >= _sfl or x['uid_hex'] in (_first, _first_pl))])[:_shiny_plain_cap(key[0])]}
+        _el = [x for x in _rk if _shiny_is_special(x) or x['uid_hex'] in _pok]
+        for r in ([x for x in _el if x['uid_hex'] in _lt] + [x for x in _el if x['uid_hex'] not in _lt])[:_shiny_cap(key[0])]:
             shiny_kept.add(r['uid_hex'])
 
     # ---- cosmetic cap context: COSMETIC_CAP / DMAX_CAP / GMAX_CAP per variant over the bag (all from keep_config) ----

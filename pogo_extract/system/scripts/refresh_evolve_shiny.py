@@ -53,7 +53,7 @@ def compute_target(why=None, spent=None, detail=None, gated=None, items_spent=No
     rows = c.execute("SELECT uid_hex u, species_name s, pokemon_id pid, form, iv_total iv, "
                      "is_shiny sh, can_evolve_estimated ce, fresh_costume fc, costume cos, fresh_alignment al, "
                      "gl_stage gs, ul_stage us, fresh_natural_art_bg abg, fresh_has_location_card hlc, "
-                     "fresh_loc_card_enum lce, fresh_bread_mode bm, fresh_form ff "
+                     "fresh_loc_card_enum lce, fresh_bread_mode bm, fresh_form ff, gender g "
                      "FROM pokemon WHERE in_bag=1 AND COALESCE(is_component,0)=0").fetchall()   # (2026-09-26) fused components hold no ladder slot
     # FULL rows for the Best GL / Best UL own-stage test (2026-09-23): the winning stage is the USABLE one -- CP at its
     # true level, chain ranks, gender and form all matter -- so the narrow projection above cannot answer it.
@@ -125,10 +125,16 @@ def compute_target(why=None, spent=None, detail=None, gated=None, items_spent=No
         if f == 0 and len(_formcnt.get(r['pid'], ())) == 1:
             return next(iter(_formcnt[r['pid']]))
         return f
+    # PER LOOK (user 2026-09-30: "you dont keep my only anything when evolving shinies. for example the costumed
+    # whimsicott i evolved, not theres no costumed cottonee."): a 51% flower-crown shiny Cottonee was a "spare" because a
+    # 78% plain shiny Cottonee was the stage's best, so evolving it left no crowned shiny Cottonee. The trophy is kept per
+    # look: species + form + costume + the gender where the game draws the two differently (evolvable_forms.gender_key).
+    def _look(r):
+        return (r['pid'], _nf(r), r['fc'] or 0, evolvable_forms.gender_key(r['pid'], r['g']))   # fresh_costume: `costume` holds junk
     stage_best = {}
     for r in rows:
         if r['sh']:
-            k = (r['pid'], _nf(r))
+            k = _look(r)
             b = stage_best.get(k)
             if b is None or ((r['iv'] or 0), r['u']) > ((b[0] or 0), b[1]):
                 stage_best[k] = ((r['iv'] or 0), r['u'])
@@ -208,8 +214,8 @@ def compute_target(why=None, spent=None, detail=None, gated=None, items_spent=No
         _rs, _own = _why.get(r['u'], set()), pvid(r['s'], r['form'] or 0)
         if _best_at_own_stage(r['u'], _rs, _own):
             continue   # a Best GL/UL copy whose USABLE winning stage is its OWN stage never evolves (2026-09-23; audit_labels)
-        if stage_best.get((r['pid'], _nf(r)), (None, None))[1] == r['u']:
-            continue   # the stage's BEST (or only) shiny -- never consumed by evolution (2026-06-10)
+        if stage_best.get(_look(r), (None, None))[1] == r['u']:
+            continue   # the BEST (or only) shiny of its look at this stage -- never consumed by evolution (2026-06-10, per look 2026-09-30)
         sid = pvid(r['s'], r['form'] or 0)
         if not is_pre.get(sid):
             continue
