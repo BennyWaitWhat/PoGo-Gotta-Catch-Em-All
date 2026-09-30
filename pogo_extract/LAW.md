@@ -23,6 +23,32 @@ spend candy, and it may only ever be put on a copy the bucket is willing to give
 
 COLLECTION FLOOR (user 2026-09-24: "thats the floor now"): in every capped collection ladder -- plain, costume / Dynamax / Gigantamax, legendary top-N, legacy fill, location cards -- a copy under 25% (keep_config collection_floor_iv 12/45) never takes a slot unless it is that ladder's best copy, which always stays. PvP-rank keepers, trophies, protected species and favorites are untouched; shinies keep their own 40% floor.
 
+WHAT COUNTS AS A COSTUME (2026-09-30; user, shown five ways to decide it: "do whats best and not lazy" -> option 5, the
+game's flag can only ADD costumes). A form-encoded costume -- the look lives in the FORM code, not in the costume field
+(LaprasCostume2020, PikachuGofest2026CapBlue, CharmanderGoggles2026 ...) -- is a COSTUME everywhere the engine asks (the costume
+ladder of bucket 6, the background fold of bucket 5, the Event tag, the plain ladder and the base-form vote, which a costume
+never enters) when EITHER
+- its live form-enum NAME says so: an event year (19xx / 20xx) or a costume keyword in it (COSTUME, GOGGLE, SCARF, TSHIRT,
+  FLYING ... = `costume_forms._KW`), OR
+- the client game master flags the form `isCostume` (`formSettings.forms[]`).
+The game can only ADD costume status, never take it away: Niantic leaves isCostume unset on event skins it calls costumes
+itself (PsyduckSwim2025, the four Copy2019 clones), so "the game does not flag it" is no evidence that a form is plain, and a
+costume kept by mistake costs a slot while a costume released by mistake is gone. Measured 2026-09-30 on the 1,506-code enum
+and the game master then on disk (1,449 forms listed): 93 forms both rules call a costume, 4 only the game does (Armored Mewtwo,
+Gimmighoul Coin A1, Pikachu Kariyushi, Pikachu Doctor), 36 only the name does (5 the game lists unflagged; 31 it does not list
+yet -- it lags the enum -- such as the Charmander / Charmeleon / Charizard Goggles2026 line, 19 copies in the bag). Two keyword
+rules: FLYING marks the Pikachu balloon outfits only (Arceus and Silvally use "Flying" as the TYPE: ArceusFlying and
+SilvallyFlying are plain forms, never a costume); TSHIRT catches Pikachu T-shirt 04-07, which the enum has and the game master
+does not list yet. Effect on the bag: Armored Mewtwo (29 copies) and Gimmighoul Coin A1 (4) now count as costumes; the pile and
+every label are unchanged; three Gimmighoul (IV 44 / 40 / 39) lose their location-card reason and stay kept by the costume ladder.
+Costume status must never silently SHRINK: when the game master file is missing or unreadable, the last parsed flags
+(`system/analysis/costume_gm_flags.json`) stand in for it, and only with neither does the name rule work alone.
+`audit_gamemaster.py` BLOCKS the sync when a form the game flags is not a costume here, WARNS when the flags come from that
+stale cache (or did not load at all) and prints how many costumes only the name rule catches. The pile's engine stamp now also
+covers `costume_forms.py`, `form_enum.json` and `gamemaster_pokeminers.json`: a change to any of them makes an older pile read
+'stale pile' in `full_audit.py --audits-only` (and in a `--skip-crawl` cull) until keep_policy + build_tagsets run again -- the
+next real cull does that in its recrawl step, before its audits. Today's stamp goes stale once, on purpose.
+
 Everything that fits no bucket is fodder. The Transfer tag is the only irreversible output and is pre-flighted
 against every bucket before it reaches the phone.
 
@@ -45,6 +71,8 @@ The rest also comes from the game master, never a hand list (2026-09-17, "learn 
 - A COSTUME worn as a field locks evolution when its enum name ends in `Noevolve` (Jan2020Noevolve ...), unless the
   species' `allowNoevolveEvolution` names it (Bulbasaur and Charmander lines in the Jan/Spring 2020 hats). Any other
   costume evolves with the mon (a Fashion 2025 Minccino does).
+- COSTUME FORMS (2026-09-30): the game's own isCostume flag is unioned with the name rule, add-only -- see WHAT COUNTS AS A
+  COSTUME above (the game leaves the flag unset on some event skins, so it can only protect more, never less).
 - GENDER: a one-gender branch (Kirlia -> Gallade male, Snorunt -> Froslass female ...) is reachable only by that
   gender, and a gendered FORM branch lands in that gender's form -- a female Lechonk is ranked as oinkologne_female,
   which has its own stats. `audit_gamemaster.py` blocks the sync if GENDER_TERMINALS misses a one-gender branch.

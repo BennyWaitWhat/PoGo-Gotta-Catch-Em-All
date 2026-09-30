@@ -169,6 +169,44 @@ def main():
                      % '; '.join('%s x%d' % kv for kv in sorted(_bad.items())[:8]))
     _nmax = sum(1 for r in rows if r['fresh_bread_mode'])
 
+    # 6. COSTUME FLAGS (2026-09-30, user: "do whats best and not lazy" -> costume option 5; LAW.md "WHAT COUNTS AS A COSTUME").
+    # costume_forms calls a form-encoded costume what its enum NAME says OR what the game itself flags (formSettings.forms[].isCostume),
+    # add only. Re-derived here from the RAW game master -- never through costume_forms' cache or parser -- so a stale cache, a parser
+    # reading the wrong field or a dropped union cannot vouch for itself:
+    #   BLOCK  a form the game flags isCostume that costume_forms does not treat as a costume: the game-master layer failed, and every
+    #          copy of that form would be judged PLAIN again (a costume in the irreversible pile)
+    #   WARN   the flags were not loaded although the file exists (the name rule alone decides), or come from the STALE cache of an
+    #          older game master (the file was unreadable when costume_forms loaded): costume status rests on an old verdict, or none
+    #   INFO   how many costumes only the name rule knows (the add-only direction at work: the game master lags the enum and leaves
+    #          isCostume unset on some event skins) -- a line to read, never a verdict
+    import costume_forms as _cfm
+    _cflag = {}
+    for t in gm:
+        for _cf in (((t.get('data') or {}).get('formSettings') or {}).get('forms') or []):
+            if _cf.get('form'):
+                _cflag[norm(_cf['form'])] = bool(_cf.get('isCostume'))
+    _cgame = [(_k, _n) for _k, _n in _cfm.FORM_ENUM.items() if _cflag.get(norm(_n))]          # enum codes the game flags
+    _clost = sorted(_n for _k, _n in _cgame if _k not in _cfm.COSTUME_FORMS)
+    if _clost:
+        block.append('COSTUME FLAGS: the game master flags %d form(s) isCostume that costume_forms does not treat as costumes -- the '
+                     'game-master layer failed (stale cache? load error? a dropped union?) and their copies would be judged PLAIN: %s'
+                     % (len(_clost), ', '.join(_clost[:8])))
+    _csrc = getattr(_cfm, 'GM_SOURCE', None)
+    if _csrc == 'stale_cache':
+        warn.append('COSTUME FLAGS: costume_forms runs from the STALE CACHE of an older game master, not from '
+                    'gamemaster_pokeminers.json (%s)' % getattr(_cfm, 'GM_NOTE', None))
+    elif _csrc != 'game_master':
+        warn.append('COSTUME FLAGS: costume_forms loaded NO game-master flags although gamemaster_pokeminers.json exists (%s)'
+                    % (getattr(_cfm, 'GM_NOTE', None) or 'GM_SOURCE=%r -- the name rule alone decides costume status' % _csrc))
+    if not _cflag:
+        warn.append('COSTUME FLAGS: gamemaster_pokeminers.json lists no formSettings forms at all (a format change?) -- nothing to check the '
+                    'costume layer against')
+    _conly = [_n for _k, _n in _cfm.FORM_ENUM.items() if _cfm.classify(_n) == 'costume' and not _cflag.get(norm(_n))]
+    _cunl = sum(1 for _n in _conly if norm(_n) not in _cflag)
+    print('  INFO  costume flags: the game master flags %d forms isCostume (%d of them in the enum, %d costumes here); %d costumes only the '
+          'name rule catches (%d the game does not list yet, %d it lists unflagged); game-master layer source: %s'
+          % (sum(1 for _v in _cflag.values() if _v), len(_cgame), len(_cgame) - len(_clost), len(_conly), _cunl, len(_conly) - _cunl, _csrc))
+
     print('game master: %d legendary, %d mythic, %d ultra beast; %d one-gender evolutions; %d non-transferable in bag'
           % (len(cls.get('POKEMON_CLASS_LEGENDARY', ())), len(cls.get('POKEMON_CLASS_MYTHIC', ())),
              len(cls.get('POKEMON_CLASS_ULTRA_BEAST', ())),
