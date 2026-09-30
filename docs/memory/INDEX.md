@@ -81,6 +81,7 @@ Notes reference each other as [[note-name]] = the file `note-name.md` in this fo
 - [One speciesId, many plain forms](pogo-one-speciesid-many-plain-forms.md) -- a stage is (speciesId, FORM); Shellos/Floette traps.
 - [Gender is a look (2026-09-23)](pogo-gender-is-a-look-2026-09-23.md) -- plain ladder PER GENDER for 102 species; the target decides the key.
 - [Rank tags are per STAGE](pogo-rank-tags-per-stage-2026-09.md) -- `GL/UL Rank 1-5` = own stage; a later stage = `GL/UL 1-5 No Evolve`, or `Evolve for GL/UL` on THE copy to evolve (2026-09-30).
+- [Duplicate tag names](reference-duplicate-tag-names.md) -- the game takes two tags with one name; create_tag's retry made two 'Evolve for UL' (2026-09-30); by-id cleanup only.
 - [Tag ORDER on the phone](reference-pogo-tag-order.md) -- SortIndex@0x4c; order_tags.py ORDER; add new managed tags to ORDER.
 - [Tag inheritance + Evolve Shiny](reference-pogo-tag-inheritance.md) -- tags inherit through evolution; Evolve Shiny via build_tagsets.
 - [Comb-up bar ignored displacement](pogo-combup-bar-ignored-displacement-2026-09-13.md) -- labels must use the keep rule's occupancy model.
