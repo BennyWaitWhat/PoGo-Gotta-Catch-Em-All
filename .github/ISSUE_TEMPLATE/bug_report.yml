@@ -1,0 +1,43 @@
+name: Bug
+description: Something the tooling did wrong (a wrong keep/pile decision, a crash, a failed audit, a bridge problem)
+labels: [bug]
+body:
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - pogo_extract (cull, keep law, audits, tags)
+        - AutoCatcher (on-phone catcher, research tools)
+        - Gym / buddy runners
+        - Cloud bridge / setup
+        - Data store (tools/pogo_data.py)
+        - Docs
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: The exact lines the tool printed (copy them — don't paraphrase), and when.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What should have happened
+    validations:
+      required: true
+  - type: dropdown
+    id: pile
+    attributes:
+      label: Could this put a keeper in the Transfer pile?
+      options:
+        - "No"
+        - "Yes — do not release anything until this is fixed"
+        - "Not sure"
+    validations:
+      required: true
+  - type: markdown
+    attributes:
+      value: "Never paste tokens, keys or account passwords here."

@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Start here (every session)
+    url: https://github.com/BennyWaitWhat/PoGo-Gotta-Catch-Em-All/blob/main/docs/START_HERE.md
+    about: Roles, the start/end-of-work routine and the rules.
+  - name: Cloud bridge not connecting
+    url: https://github.com/BennyWaitWhat/PoGo-Gotta-Catch-Em-All/blob/main/docs/cloud_setup.md#when-the-bridge-says-not-connected-for-sessions
+    about: Match the log line to its fix.

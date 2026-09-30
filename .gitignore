@@ -13,6 +13,15 @@
 !/data_manifest.txt
 !/wf_master.json
 
+# community + GitHub files
+!/LICENSE
+!/CONTRIBUTING.md
+!/CODE_OF_CONDUCT.md
+!/SECURITY.md
+!/CHANGELOG.md
+!/.editorconfig
+!/.github/
+
 # the PoGo trees (each has its own .gitignore)
 !/pogo_extract/
 !/AutoCatcher/
@@ -21,6 +30,7 @@
 !/pokegenie_work/
 /pokegenie_work/*
 !/pokegenie_work/*.py
+!/pokegenie_work/README.md
 
 # .claude/: the cloud SessionStart hook + the cull skill. NOT launch.json, settings.local.json, locks, agents/, workspaces.
 # (git cannot re-include a file under an ignored dir, so each level is opened, emptied, then the wanted child re-added)

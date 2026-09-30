@@ -1,0 +1,5 @@
+# One human owns everything. Which Claude SESSION owns each area is in docs/START_HERE.md (section 1):
+#   Pokemon Inventory -> pogo_extract/, docs/, tools/, cloud/, .claude/, root files
+#   AutoCatcher       -> AutoCatcher/ (except the gym files)
+#   Gym Battle        -> AutoCatcher/tools/gym_*, buddy_tapper.py, live_graph_js.py, test_graph_pick.py
+*    @BennyWaitWhat
