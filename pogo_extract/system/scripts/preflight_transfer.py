@@ -369,6 +369,7 @@ from cpm_table import CPM50 as _CANON_CPM50, GL_CAP as _CANON_GL_CAP, UL_CAP as 
 # Prefer the project's single source of truth; fall back to a clearly-labelled local re-impl if absent.
 try:
     from pvp_iv_rule import maxcp as _pvp_maxcp, READY_RANK, GL_CAP, UL_CAP, VIABILITY_MARGIN
+    from pvp_iv_rule import plays as _plays      # rule 15b's "this copy can PLAY it" test (2026-09-30)
     _HAVE_VIABILITY = True
     _VIABILITY_NOTE = "pvp_iv_rule (maxcp/READY_RANK/GL_CAP/UL_CAP/VIABILITY_MARGIN)"
 except Exception as _e:                                   # pragma: no cover -- defensive
@@ -389,6 +390,7 @@ except Exception as _e:                                   # pragma: no cover -- 
         return (int(((b.get('atk', 0) + 15) * (b.get('def', 0) + 15) ** 0.5
                      * (b.get('hp', 0) + 15) ** 0.5 * _CPM50 ** 2) / 10) if b else _UNKNOWN_MAXCP)
     _HAVE_VIABILITY = False
+    _plays = None                      # no shared rule -> the rank alarm below over-protects (CP-blind, as before)
     _VIABILITY_NOTE = ("LOCAL FALLBACK (pvp_iv_rule import FAILED: %s) -- READY_RANK=%d, caps "
                        "%d/%d, margin %d (all from keep_config)"
                        % (_e, READY_RANK, GL_CAP, UL_CAP, VIABILITY_MARGIN))
@@ -857,10 +859,19 @@ def _keeper_reasons(r, BS, legacy_set, gm_ok, dex_counts, event_txt, legacy_txt,
     # stage that can't reach the cap (e.g. Ivysaur for UL) is NOT a keeper -> the _viable() gate.
     # FAIL-SAFE: if the gamemaster did NOT load (gm_ok False) we cannot judge viability, so OVER-PROTECT
     # -- flag ANY rank<=READY_RANK as a keeper rather than silently passing it through.
-    _gl_ok = (r['gl_rank'] is not None and r['gl_rank'] <= READY_RANK
-              and (not gm_ok or _viable(r['gl_stage'], GL_CAP, BS)))
-    _ul_ok = (r['ul_rank'] is not None and r['ul_rank'] <= READY_RANK
-              and (not gm_ok or _viable(r['ul_stage'], UL_CAP, BS)))
+    # ONLY A COPY THAT CAN PLAY (user 2026-09-30: "Why would I keep any GL and UL pokemon that cant participate?"):
+    # with the gamemaster loaded, the alarm fires only when pvp_iv_rule.plays() -- the engine's own rule 15b -- finds a
+    # top-READY_RANK stage in the chain that reaches the cap AND that this copy fits under (unknown => fits). Without
+    # it, the old CP-blind check still over-protects.
+    _play = gm_ok and _plays is not None
+    if _play:
+        _gl_ok = _plays(r, 'gl', GL_CAP, BS) is not None
+        _ul_ok = _plays(r, 'ul', UL_CAP, BS) is not None
+    else:
+        _gl_ok = (r['gl_rank'] is not None and r['gl_rank'] <= READY_RANK
+                  and (not gm_ok or _viable(r['gl_stage'], GL_CAP, BS)))
+        _ul_ok = (r['ul_rank'] is not None and r['ul_rank'] <= READY_RANK
+                  and (not gm_ok or _viable(r['ul_stage'], UL_CAP, BS)))
     if _gl_ok:
         why.append('gl_rank<=%d%s' % (READY_RANK, '' if gm_ok else ' (gm-fail/over-protect)'))
     if _ul_ok:
@@ -874,7 +885,7 @@ def _keeper_reasons(r, BS, legacy_set, gm_ok, dex_counts, event_txt, legacy_txt,
     # The chain ranks are already in the DB, so sweep EVERY stage. Only checked when neither
     # headline axis fired, so it adds no duplicate reasons. (lockdown 2026-09-02; 0 new alarms
     # against the current pile.)
-    if not (_gl_ok or _ul_ok):
+    if not (_gl_ok or _ul_ok) and not _play:     # plays() already swept every chain stage
         for _col, _lcap in (('gl_chain_ranks', GL_CAP), ('ul_chain_ranks', UL_CAP)):
             for _stage, _rk in _chain_stages(_g(r, _col)):
                 if _rk <= READY_RANK and (not gm_ok or _viable(_stage, _lcap, BS)):

@@ -807,16 +807,25 @@ def mcp(st):
     return max(10, math.floor((b['atk'] + 15) * math.sqrt(b['def'] + 15) * math.sqrt(b['hp'] + 15) * CPM[MAX_LEVEL_IDX] ** 2 / 10)) if b else 0
 t5 = [u for u in ps if u in rows and ((rows[u].get('gl_rank') or 999) <= RR or (rows[u].get('ul_rank') or 999) <= RR)]
 viol = 0
+# A pile mon with a top-RR rank is lawful when that rank is NOISE (the stage never reaches the cap) or when THIS COPY
+# can never play it (over the cap there now, or after evolving at its true level -- user 2026-09-30: "Why would I keep
+# any GL and UL pokemon that cant participate?"). The play test is pvp_iv_rule.plays(), the engine's own rule 15b
+# (every chain stage; unknown data => fits => a violation, never a pass).
+from pvp_iv_rule import plays as _l7_plays
 for u in sorted(t5, key=lambda z: (-(rows[z].get('iv_total') or 0), z)):
     r = rows[u]
     gl = mcp(r.get('gl_stage')) if (r.get('gl_rank') or 999) <= RR else None
     ul = mcp(r.get('ul_stage')) if (r.get('ul_rank') or 999) <= RR else None
-    good = (gl is None or gl <= GL_CAP + VM) and (ul is None or ul <= UL_CAP + VM)
+    noise = (gl is None or gl <= GL_CAP + VM) and (ul is None or ul <= UL_CAP + VM)
+    can = [lg for lg, cap in (('gl', GL_CAP), ('ul', UL_CAP)) if _l7_plays(r, lg, cap, BS, RR) is not None]
+    good = noise or not can
     if not good:
         viol += 1
     print('    %-13s GL#%-5s(stage max %s)  UL#%-5s(stage max %s)  %s' % (
         r['species_name'], r.get('gl_rank'), gl, r.get('ul_rank'), ul,
-        'cap-unreachable -> rank is noise, OK' if good else '*** VIABLE, CHECK ***'))
+        'cap-unreachable -> rank is noise, OK' if noise else
+        'over the cap at every top-%d stage -> this copy cannot play it, OK' % RR if good else
+        '*** CAN PLAY %s, CHECK ***' % '/'.join(x.upper() for x in can)))
 print('  %-18s %-5d %s' % ('rank<=%d violations' % RR, viol, chk('pvp rank', viol)))
 
 print('\nLAYER 8  data quality (incomplete display reads)')

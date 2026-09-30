@@ -205,6 +205,28 @@ def chain_stage_ranks(r, league):
     return out
 
 
+def plays(r, league, cap, BS, rr=None):
+    """(stage, rank) of the best-ranked stage where THIS COPY is a top-`rr` spread AND can actually play `league`, else
+    None. User 2026-09-30: "Why would I keep any GL and UL pokemon that cant participate? powering up is fine, but if
+    its impossible in its best form for pvp, then wtf". A stage counts iff
+      * its rank is <= rr (keep_config pvp.ready_rank by default),
+      * it reaches the cap (maxcp > cap + VIABILITY_MARGIN; else the rank is the degenerate under-cap band), and
+      * fits(): this copy's CP there -- its own stage now, a later stage after evolving at its true level -- is inside
+        the cap. Powering up later is fine; CP never comes back down, so over the cap there means never.
+    Every stage of the ranker's chain is swept, not only the headline one. fits() is fail-safe (unknown => fits), so
+    missing base stats or an unprovable level never strip protection."""
+    rr = READY_RANK if rr is None else rr
+    ch = chain_stage_ranks(r, league)
+    if not ch and _col(r, league + '_rank') is not None:
+        ch = [(_col(r, league + '_stage'), _col(r, league + '_rank'))]
+    best = None
+    for st, rk in ch:
+        if st and rk is not None and rk <= rr and maxcp(st, BS) > cap + VIABILITY_MARGIN and fits(r, st, cap, BS):
+            if best is None or rk < best[1]:
+                best = (st, rk)
+    return best
+
+
 def usable_best(r, league, cap, BS, later=None):
     """The copy's USABLE rank in `league` (user 2026-09-23: "Best GL/UL must be able to enter the league").
 
@@ -235,7 +257,7 @@ def usable_best(r, league, cap, BS, later=None):
     return None if best is None else (best[0][0], best[0][1], best[1])
 
 
-def qualifies(species_name, form, iv_atk, iv_def, iv_sta, stage, rank, floor, BS, cp=None, cap=None):
+def qualifies(species_name, form, iv_atk, iv_def, iv_sta, stage, rank, floor, BS, cp=None, cap=None, row=None):
     """True iff this specimen earns the league IV tag for ranked form `stage`.
 
     RANK-DRIVEN -- NO IV-magnitude threshold. (user 2026-06-05, after a GL#1 0/13/11 Mareep
@@ -259,8 +281,11 @@ def qualifies(species_name, form, iv_atk, iv_def, iv_sta, stage, rank, floor, BS
         return False                             # (a pre-evo whose best form is only GL#116, e.g. Wooloo->Dubwool, is "way off")
     if pvid(species_name, form or 0) == stage:                 # READY (evolved / as-itself)
         return cap is None or (cp or 0) <= cap   # ...but a READY mon ALREADY over the league CP cap can't enter it
-    # PRE-EVO top-5 build-target for a viable evolved form -> KEEP. Deliberately NOT gated on whether THIS copy can
-    # still get under the cap after evolving: that gate was tried 2026-09-19 and the lost-keeper fixtures rejected
-    # it, 9 real spreads to the irreversible pile. `fits()` answers that question for LABELS only.
-    return True                                  # The def/sta>=14
+    # PRE-EVO top-5 build-target for a viable evolved form -> KEEP, when THIS copy can still play it (user 2026-09-30:
+    # "Why would I keep any GL and UL pokemon that cant participate?"): with the row, fits() must hold at that stage
+    # (its CP after evolving at its true level inside the cap; unknown => fits). History: this gate was tried
+    # 2026-09-19 and sent 9 real spreads to the pile because a CP-blind keep was then their ONLY PvP protection; the
+    # usable-only Best GL/UL rule (15d, 2026-09-23) and the per-stage sweep in plays() came after. Without the row
+    # (callers outside keep_policy) it stays CP-blind.
+    return row is None or cap is None or fits(row, stage, cap, BS)   # The def/sta>=14
     #                                              BUILD_BULK floor that lost the 0/13/11 GL#1 Mareep is REMOVED (rank is the rule).

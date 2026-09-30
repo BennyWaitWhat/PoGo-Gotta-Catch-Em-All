@@ -1,6 +1,6 @@
 ---
 name: pogo-pvp-fit-label-not-keep
-description: "\"Can this copy ENTER the league\" gates labels AND (since 2026-09-23) the Best GL/UL pick; rule 15b rank<=5 stays CP-blind on purpose."
+description: "\"Can this copy ENTER the league\" gates labels, the Best GL/UL pick (2026-09-23) AND, since 2026-09-30, the rank<=5 keep itself (rules 15/15b): a GL/UL keep only counts on a copy that can play."
 metadata:
   node_type: memory
   type: project
@@ -12,11 +12,17 @@ metadata:
 (own stage -> its real cp; a later stage -> `cp_at` at today's level, since evolving does not change the level;
 unknown data => FITS). Added 2026-09-19; `granular_tags` and the audits call it.
 
-**Rule 15b (`pvp_rank`, rank <= 5) stays CP-blind ON PURPOSE**: it protects the elite SPREAD, not this copy's
-ability to field it. Gating it on `fits` was tried and `regress_pvp_keepers.py` rejected it instantly -- 9 known
-lost-keeper spreads (Eevee 0/15/14 GL#1, Krabby 0/15/13 UL#2, Qwilfish-H UL#3...) would have gone straight to the
-irreversible pile. Same shape as [[feedback-pvp-rank-not-iv-threshold]]. Never add a cap gate to a 15b keep path
-without running the fixtures.
+**2026-09-30 -- THE LAW CHANGED: a GL/UL keep only counts on a copy that can PLAY** (Benny: "Why would I keep any GL
+and UL pokemon that cant participate? powering up is fine, but if its impossible in its best form for pvp, then
+wtf"). `pvp_iv_rule.plays(r, league, cap, BS)` = a top-`ready_rank` chain stage that reaches the cap AND `fits()`;
+rules 15 (`gl_iv`/`ul_iv`, `qualifies(..., row=r)`) and 15b (`pvp_rank`), preflight's rank alarm, audit_cull layer 7
+and the cull report's safety check all ask it. On the 12:19 walk it changed 0 keeps: 4 over-cap top-5 copies
+(Magmar, Huntail, Raboot, Croconaw) were all kept for a league they CAN play.
+History, so nobody "re-fixes" it back: until then 15b was CP-blind "on purpose" -- gating it on `fits` was tried
+2026-09-19 and the fixtures sent 9 spreads to the pile, but those fixtures were BUILT unplayable (the pre-evo at its
+own cap's level: an L50 Eevee is an over-cap Umbreon). `regress_pvp_keepers.fixture_cp` now builds each at the level
+where its RANKED STAGE sits under the cap (19/19 kept), and an **over-cap twin** (Eevee 0/15/14 at L50) must get NO
+rank axis -- both directions are asserted. Never drop the fixtures or the twin.
 
 **Rule 15d Best GL/UL IS now fit-gated (user decision 2026-09-23, "Usable only" + "evolve cps need to [be] figured
 out completely").** Found when a verifier noticed the Best GL Centiskorch was a CP3301 hundo and the Best GL

@@ -64,7 +64,7 @@ Notes reference each other as [[note-name]] = the file `note-name.md` in this fo
 - [Second account walk 2026-09-26](pogo-second-account-walk-2026-09-26.md) -- florandez set + Alt Bag Pulse BvcioQeAeZcposXoFHFE8Q; released_pids.json. MAIN is active again since 2026-09-27 (see accounts note).
 - [Accounts + line pools 2026-09-26](pogo-accounts-and-line-pools-2026-09-26.md) -- oyebenny (trainer BennyValentinC, ACTIVE 09-27) / florandez sets; switch_account.py; guard TRAINERS alias; florandez 2 plain per line.
 - [Data completeness before destructive actions](pogo-data-completeness-before-destructive-actions.md) -- never cull on incomplete data; NULL = PROTECTED.
-- [PvP "fits the league"](pogo-pvp-fit-label-not-keep.md) -- rank<=5 keep is CP-blind; Best GL/UL = best copy that can still enter.
+- [PvP "fits the league"](pogo-pvp-fit-label-not-keep.md) -- since 2026-09-30 every GL/UL keep needs a copy that can PLAY (`pvp_iv_rule.plays`); Best GL/UL = best copy that can still enter; fixtures + over-cap twin.
 - [Keep PvP by RANK, never IV magnitude](feedback-pvp-rank-not-iv-threshold.md) -- rank<=5 + CP-viability alone; no spares; Best/shadow floor #55 on both accounts since 2026-09-29 02:3x.
 - [Bag count ONLY from a live walk this turn](feedback-bag-count-only-from-live-walk.md) -- the game counts Pokémon + incubating eggs; bag_count.json.
 - [Source of truth = DB rules](pogo-source-of-truth-db-rules.md) -- query the DB by rule; tags and cached protos drift.
