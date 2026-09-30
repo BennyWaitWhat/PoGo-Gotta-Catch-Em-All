@@ -24,11 +24,10 @@ from references import LEGENDARY_IDS, MYTHICAL_IDS, ULTRA_BEAST_IDS, PARADOX_IDS
 norm = lambda x: re.sub(r'[^A-Z0-9]', '', str(x).upper())
 
 
-def main():
-    gm = json.load(open('gamemaster_pokeminers.json', encoding='utf-8'))
-    enum = {int(k): v for k, v in json.load(open('form_enum.json', encoding='utf-8')).items()}
-    block, warn = [], []
-
+def scan_client_gm(gm):
+    """(cls, dex_of, tf_form, tf_pid, gender_branch) of a client game master template list. PURE (2026-09-30): the
+    rarity classes, isTransferable tables and gender-locked branches this audit judges, so gm_guard can judge a
+    CANDIDATE game master the same way before it is installed."""
     cls, dex_of, tf_form, tf_pid, gender_branch = defaultdict(set), {}, {}, {}, defaultdict(set)
     for t in gm:
         s = (t.get('data') or {}).get('pokemonSettings')
@@ -45,6 +44,25 @@ def main():
         for b in s.get('evolutionBranch') or []:
             if b.get('evolution'):
                 gender_branch[(d, b['evolution'])].add(b.get('genderRequirement') or 'ANY')
+    return cls, dex_of, tf_form, tf_pid, gender_branch
+
+
+def row_transferable(r, enum, tf_form, tf_pid):
+    """False when the game master marks this row's form (else its species) isTransferable=false. ONE definition for
+    check 3 below and gm_guard (2026-09-30)."""
+    f = r['fresh_form'] or r['form'] or 0
+    v = tf_form.get(norm(enum.get(f, ''))) if f else None
+    if v is None:
+        v = tf_pid.get(r['pokemon_id'], True)
+    return v
+
+
+def main():
+    gm = json.load(open('gamemaster_pokeminers.json', encoding='utf-8'))
+    enum = {int(k): v for k, v in json.load(open('form_enum.json', encoding='utf-8')).items()}
+    block, warn = [], []
+
+    cls, dex_of, tf_form, tf_pid, gender_branch = scan_client_gm(gm)
 
     # 1. rarity
     for cname, ours, label in (('POKEMON_CLASS_LEGENDARY', set(LEGENDARY_IDS) | set(PARADOX_IDS), 'LEGENDARY/PARADOX'),
@@ -72,10 +90,7 @@ def main():
     c.close()
     locked = 0
     for r in rows:
-        f = r['fresh_form'] or r['form'] or 0
-        v = tf_form.get(norm(enum.get(f, ''))) if f else None
-        if v is None:
-            v = tf_pid.get(r['pokemon_id'], True)
+        v = row_transferable(r, enum, tf_form, tf_pid)
         if v is False:
             locked += 1
             if r['uid_hex'] in pile:

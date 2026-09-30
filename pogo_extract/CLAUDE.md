@@ -14,6 +14,9 @@ The Windows PC that used to run this is retired for PoGo work (its copy is a bac
 ## The cull in the cloud (the `/cull` skill has the report format)
 1. `python tools/pogo_data.py pull` (repo root) — unless this session already pulled and nothing else pushed since.
 2. `cd pogo_extract && python full_audit.py` — never with a guessed flag (unknown flags now stop it, rc 2), never piped into `head`.
+   rc 5 "GAME MASTER REFRESH STOPPED THE PASS" = a new game master moved a keep verdict of a mon in the bag (rule 9: policy is his call):
+   show Benny the rows it printed (also in `system/analysis/gamemaster_review_pending.json`), WAIT, and run
+   `python system/scripts/refresh_gamemaster.py --ack` only when he says so, never yourself; then cull again.
 3. `python tools/pogo_data.py push --group inventory` (repo root) — ALWAYS after a phone pass, even when the gate failed.
 4. Publish Bag Pulse: `pogo_extract/system/analysis/collection_stats.html` to `https://claude.ai/artifact/59FFz2wZBv8sNC4CZJBmKn`
    (alt account: `BvcioQeAeZcposXoFHFE8Q`). No Artifact tool in this session? Say so in one line.
@@ -64,7 +67,8 @@ The first cull in a fresh VM also rebuilds `system/scripts/rank_tables.pkl` (not
 | `system/scripts/preflight_transfer.py` + `prune_tags.py` | The ONLY path to the `Transfer` tag (rule 2). `set_db_tags_from_files.py` mirrors the DB afterwards, last |
 | `cull_report.py` | Writes the `=== REPORT ===` block the cull prints (format: `../.claude/skills/cull/SKILL.md`) |
 | `walk_tripwires.py` | Frozen-graph / impossible-read rules; STOP = rc 8, nothing is judged or synced |
-| `system/scripts/refresh_gamemaster.py` | Monthly game-master + pvpoke refresh; exit 2 = a keep decision crossed rank 5, the pass stops (rc 5) |
+| `system/scripts/refresh_gamemaster.py` | Monthly pvpoke refresh + the client (PokeMiners) game master asked EVERY run and diffed against the bag before it is installed; exit 2 = a keep decision crossed rank 5 or an in-bag client-GM verdict flipped, the pass stops (rc 5); `--selftest` = offline proof |
+| `gm_guard.py` | The pure half of that check: the `.meta` stamp (batch, APK, sha256), the differ, the in-bag impact on BOTH accounts' bags (reuses detect_legacy / evolvable_forms / size_line / remote_trade_picks / audit_gamemaster: moves, evolution chain, size numbers + types, tradable, transferable, rarity), the audit_invariants I2.7 WARN. No phone |
 | `dashboard.py`, `gen_artifacts.py`, `gen_bag_pulse.py` | Local pages; `full_audit.py` starts and stops the dashboard itself |
 | `bag_art.py`, `pogo_display.py` (+ `pogo_icon_index.txt`, `official_names_en.json`) | Bag Pulse's pictures: the Transfer pile as sprites + location-card thumbnails and the game's own names (2026-09-30). DISPLAY ONLY, never fails the page (`BAG_ART=0` = the old page). `python bag_art.py --selftest`; any other flag prints usage. Notes: `../docs/memory/pogo-bag-pulse-sprites.md` |
 | `system/scripts/tag_ops.py`, `retire_tags.py`, `reconcile_tags.py`, `ready_gate.py`; `sync_post_tags.py` (root) | Hardened tag writes, empty-shell deletion, drift report, write-readiness gate, Remote Trade + tag order |
@@ -89,6 +93,7 @@ working: find the cause and fix it, never work around it or sync by hand.
 ```
 python -m py_compile <every file you changed>
 python walk_tripwires.py --selftest              # pure; runs anywhere
+python system/scripts/refresh_gamemaster.py --selftest   # the client game-master guard on synthetic fixtures; pure, no network
 python system/scripts/check_constant_drift.py    # code + the small root data files (form_enum.json, keep_config.json ...); no DB
 python full_audit.py --audits-only               # THE gate: the 11 audits. Needs pokemon.db + system/analysis/*. No phone, no network
 python granular_tags.py --audit                  # tag registry vs tagset files; needs system/analysis/tagsets/

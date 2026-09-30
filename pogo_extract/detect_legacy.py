@@ -196,18 +196,23 @@ def build_form_resolver(by_dex, form_enum):
 GM_CLIENT = ROOT / "gamemaster_pokeminers.json"
 
 
-def _game_master_rollable(move_map):
+def _game_master_rollable(move_map, gm=None):
     """{pokedex number: every move the CLIENT game master lets some form of that species roll NORMALLY today
     (quickMoves + cinematicMoves only -- never eliteQuickMove / eliteCinematicMove / nonTmCinematicMoves)}.
     THE GAME OUTRANKS PVPOKE (2026-09-23): pvpoke still listed Body Slam as elite for Audino and Seed Flare for
     Shaymin while the client's own template rolls them from a plain TM, so 6 tagged "Legacy Moves" were untrue
     (audit_tag_truth). A pvpoke elite flag is dropped when the game says the move is ordinary now. Empty if the
-    file is missing -> nothing is dropped."""
-    if not GM_CLIENT.exists():
-        return {}
+    file is missing -> nothing is dropped.
+    `gm` (2026-09-30, gm_guard): an ALREADY-PARSED template list to judge instead of the installed file, so a candidate
+    client game master can be compared with the installed one before it is installed. None = the installed file,
+    exactly as before (including 'missing -> {}'); the caller of a `gm` owns its validity."""
+    if gm is None:
+        if not GM_CLIENT.exists():
+            return {}
+        gm = json.loads(GM_CLIENT.read_text(encoding="utf-8"))
     names = {int(k): v for k, v in move_map.items()}
     pools = defaultdict(set)
-    for t in json.loads(GM_CLIENT.read_text(encoding="utf-8")):
+    for t in gm:
         s = (t.get("data") or {}).get("pokemonSettings")
         m = re.match(r"V(\d{4})_POKEMON_", t.get("templateId", ""))
         if not s or not m:
@@ -226,14 +231,17 @@ def _game_master_rollable(move_map):
     return pools
 
 
-def _game_master_pools(move_map):
+def _game_master_pools(move_map, gm=None):
     """{pokedex number: every move ANY form of that species can roll normally}, from the client game master.
-    Empty dict if the file is missing -- the pvpoke test above still stands alone then."""
-    if not GM_CLIENT.exists():
-        return {}
+    Empty dict if the file is missing -- the pvpoke test above still stands alone then.
+    `gm`: an already-parsed template list to judge instead of the installed file (see _game_master_rollable)."""
+    if gm is None:
+        if not GM_CLIENT.exists():
+            return {}
+        gm = json.loads(GM_CLIENT.read_text(encoding="utf-8"))
     names = {int(k): v for k, v in move_map.items()}
     pools = defaultdict(set)
-    for t in json.loads(GM_CLIENT.read_text(encoding="utf-8")):
+    for t in gm:
         s = (t.get("data") or {}).get("pokemonSettings")
         m = re.match(r"V(\d{4})_POKEMON_", t.get("templateId", ""))
         if not s or not m:

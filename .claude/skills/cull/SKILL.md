@@ -48,6 +48,18 @@ Common shapes:
 - `8-layer cull ... pvp rank` — a rank<=5 spread reached the pile. Stop; that is the Mareep failure mode.
 - `structural inv. ... BLOCK` — an invariant about the MODEL, not the membership. Read its `DO:` line.
 
+## If the game-master refresh stops the pass
+
+`GAME MASTER REFRESH STOPPED THE PASS (rc 5)` means a game master moved keep decisions, so nothing was recrawled or
+synced — the stop is the feature, not a crash. Two causes: pvpoke's ranks crossed the rank<=5 line, or PokeMiners
+published a NEW client game master (`gamemaster_pokeminers.json`, asked on every run) that flips a keep verdict of a
+mon in the bag: a held move that is a plain TM now (its Legacy protection), a form that can or cannot evolve, an XXL
+copy's size numbers or types, tradability, rarity. The lines above name the mons and what flipped (the same rows are in
+`pogo_extract/system/analysis/gamemaster_review_pending.json`). **Show Benny those rows and wait** — keep policy is his
+call. Run `python system/scripts/refresh_gamemaster.py --ack` only when he says so, never yourself, then cull again.
+The previous file stays as `gamemaster_pokeminers.json.bak-<date>`. A batch the engine cannot load, or a bag that cannot
+be read, is never installed: the `WARN pokeminers:` / `STOP` line says which file and how to restore it.
+
 ## If the attach fails
 
 The pipeline waits out PoGo's 45-second init storm on its own, so a relaunched game just costs a few silent

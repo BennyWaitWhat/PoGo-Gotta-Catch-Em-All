@@ -1277,6 +1277,34 @@ def check_staleness(con, kc, cfm):
     elif a:
         ok('Transfer.txt is at least as new as the computed pile')
 
+    # --- I2.7 the CLIENT game master (PokeMiners): stamped, checked, and not behind the game ------------------
+    # gamemaster_pokeminers.json feeds evolvability, the legacy-move pools, tradability and the rarity classes
+    # (evolvable_forms, detect_legacy, remote_trade_picks, audit_gamemaster). refresh_gamemaster.py stamps every batch it
+    # installs (gamemaster_pokeminers.json.meta: batch time, APK, sha256, last upstream check) and stops for review when
+    # an in-bag keep verdict flips; this is the OFFLINE backstop for the entry points that never run it (the dashboard's
+    # `full_audit.py --audits-only`, a stale checkout). WARN, never BLOCK -- gm_guard.freshness_findings says why: the pile
+    # gate is the real gate, an older game master leaves what it does not know on protected defaults (an unnamed move
+    # stays legacy, an unknown form stays a costume), and a BLOCK could not be cleared while PokeMiners is quiet (its
+    # newest batch was APK 0.427.0 when the phone ran 0.429.1).
+    try:
+        import gm_guard as _gg
+        _gm_meta = _gg.read_meta(os.path.join(ROOT, 'gamemaster_pokeminers.json.meta'))
+        try:
+            with open(os.path.join(ANA, 'game_version.json'), encoding='utf-8') as _gvf:
+                _gm_gv = json.load(_gvf)
+        except (OSError, ValueError):
+            _gm_gv = None
+        _gm_f = _gg.freshness_findings(_gm_meta, _gm_gv)
+        for _lvl, _msg, _do in _gm_f:
+            fail(WARN, _msg, _do)
+        if not _gm_f:
+            ok('the client game master is stamped: batch %s UTC (APK %s), last compared with PokeMiners %s UTC, game %s'
+               % (_gm_meta['batch_utc'], _gm_meta.get('apk') or '?', _gm_meta.get('checked_at', '?'),
+                  (_gm_gv or {}).get('version', '?')))
+    except Exception as e:
+        fail(WARN, 'could not judge the client game master stamp (%s: %s)' % (type(e).__name__, e),
+             'Check pogo_extract/gm_guard.py imports and gamemaster_pokeminers.json.meta.')
+
 
 # ============================================================================= I3 NULL DIRECTION
 # Every engine read of the form `r['col'] or 0` turns a NULL into the value that means
