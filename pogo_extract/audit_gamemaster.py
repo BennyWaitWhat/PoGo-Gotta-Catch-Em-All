@@ -174,7 +174,9 @@ def main():
     # add only. Re-derived here from the RAW game master -- never through costume_forms' cache or parser -- so a stale cache, a parser
     # reading the wrong field or a dropped union cannot vouch for itself:
     #   BLOCK  a form the game flags isCostume that costume_forms does not treat as a costume: the game-master layer failed, and every
-    #          copy of that form would be judged PLAIN again (a costume in the irreversible pile)
+    #          copy of that form would be judged PLAIN again (a costume in the irreversible pile) -- or a BASE form (<Species>Normal) the
+    #          game flags: add-only applies it as written, and a plain form read as a costume empties its species' plain ladder (the
+    #          shape of the 2026-09-02 +62-into-the-pile incident), so a human looks first
     #   WARN   the flags were not loaded although the file exists (the name rule alone decides), or come from the STALE cache of an
     #          older game master (the file was unreadable when costume_forms loaded): costume status rests on an old verdict, or none
     #   INFO   how many costumes only the name rule knows (the add-only direction at work: the game master lags the enum and leaves
@@ -191,6 +193,11 @@ def main():
         block.append('COSTUME FLAGS: the game master flags %d form(s) isCostume that costume_forms does not treat as costumes -- the '
                      'game-master layer failed (stale cache? load error? a dropped union?) and their copies would be judged PLAIN: %s'
                      % (len(_clost), ', '.join(_clost[:8])))
+    _cbase = sorted(_n for _k, _n in _cgame if _cfm.classify(_n) == 'base')
+    if _cbase:
+        block.append('COSTUME FLAGS: the game master flags the BASE form(s) %s isCostume -- a plain form read as a costume empties its '
+                     "species' plain ladder (a game-master error, or a new meaning): look before syncing; the flag is applied as written"
+                     % ', '.join(_cbase[:8]))
     _csrc = getattr(_cfm, 'GM_SOURCE', None)
     if _csrc == 'stale_cache':
         warn.append('COSTUME FLAGS: costume_forms runs from the STALE CACHE of an older game master, not from '
