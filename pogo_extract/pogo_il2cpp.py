@@ -403,6 +403,11 @@ def restart_pogo_and_wait(launch_timeout=90, settle=8):
     Returns (frida.Session, int pid) on a confirmed-ready process.
     Raises RuntimeError if it never reaches readiness within launch_timeout.
     """
+    # NEVER RESTART THE GAME (Benny 2026-09-25: "the cull should never restart the game. ever."). The on-phone catcher
+    # lives in it and Pokemod must be the one that launches it; since 2026-09-29 cloud sessions reach the phone too.
+    # Kept only so old callers (set_nicknames.py) stop loudly instead of force-stopping PoGo.
+    raise RuntimeError('restart_pogo_and_wait is disabled: tools never force-stop or relaunch PoGo '
+                       '(user rule 2026-09-25) -- stop here and re-run later instead')
     import time as _t
     dev = _resolve_device()
     if not dev:
