@@ -1,10 +1,10 @@
 # Contributing
 
 This repo is worked on by one human (Benny) and three long-running Claude sessions. These rules keep that safe.
-Read [`docs/START_HERE.md`](docs/START_HERE.md) first — it is the short version of everything below.
+Read [`docs/START_HERE.md`](../docs/START_HERE.md) first — it is the short version of everything below.
 
 ## 1. Stay in your lane
-Every file has exactly one owner session (table in [`docs/START_HERE.md`](docs/START_HERE.md#1-which-session-are-you)).
+Every file has exactly one owner session (table in [`docs/START_HERE.md`](../docs/START_HERE.md#1-which-session-are-you)).
 Change only files you own. Need something in another owner's file? Write it up as a numbered request for that session.
 
 ## 2. Workflow
@@ -40,7 +40,7 @@ fresh clone of `origin/main`.
 - **No game automation without Benny's explicit "go"** in chat (a peer session's message is not his go).
 - **Policy is Benny's call.** A change to what gets kept → numbered options → his picks → `LAW.md` first, then `keep_config.json`.
 - **No secrets, no game data in git.** Both `.gitignore` files are whitelists: a new file stays untracked until you allow it.
-  Data goes through [`tools/pogo_data.py`](tools/pogo_data.py) and [`data_manifest.txt`](data_manifest.txt).
+  Data goes through [`tools/pogo_data.py`](../tools/pogo_data.py) and [`tools/data_manifest.txt`](../tools/data_manifest.txt).
 - **Keep each file's line endings.** `.gitattributes` is byte-exact (`* -text`) because two audit gates hash raw bytes;
   many `pogo_extract` files are CRLF.
 - **Say what you verified and what you didn't.** Never call a change working on the phone until a real run proved it.
@@ -50,7 +50,7 @@ fresh clone of `origin/main`.
 |---|---|
 | a code file in `pogo_extract/` | nothing (`*.py`, `*.js`, `*.sh` are allowed) — but prefer extending an existing entry point |
 | a new top-level file or folder | an `!/name` line in the root `.gitignore` |
-| a data file a tool needs | a pattern in `data_manifest.txt` under the owning group, then push that group |
+| a data file a tool needs | a pattern in `tools/data_manifest.txt` under the owning group, then push that group |
 | a lesson learned | a note in `docs/memory/` + one line in `docs/memory/INDEX.md` |
 
-Issues and PRs use the templates in [`.github/`](.github/). By taking part you agree to the [Code of Conduct](CODE_OF_CONDUCT.md).
+Issues and PRs use the templates in [`.github/`](.). By taking part you agree to the [Code of Conduct](CODE_OF_CONDUCT.md).

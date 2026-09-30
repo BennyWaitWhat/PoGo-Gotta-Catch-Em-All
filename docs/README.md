@@ -8,6 +8,7 @@
 | [`data.md`](data.md) | Anything that reads or writes game data (`pokemon.db`, walk outputs, studies, gym state) |
 | [`phone_access.md`](phone_access.md) | Before any tool attaches to the game |
 | [`memory/INDEX.md`](memory/INDEX.md) | Benny's standing rules and the incident behind each one (113 notes) |
+| [`CHANGELOG.md`](CHANGELOG.md) | What changed, release by release |
 | [`assets/`](assets/) | Images used by the READMEs |
 
 `memory/` is the repo's long-term memory: add a lesson as one note (one fact per file, with **Why** and **How to apply**)

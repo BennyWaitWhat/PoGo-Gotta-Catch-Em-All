@@ -5,7 +5,7 @@ Why: cloud sessions start on a fresh VM, can push only their own git branch, and
 data (pokemon.db, snapshots, walk outputs, per-account sets, catcher studies, gym state) changes on every run, so git
 would bloat by gigabytes. Every session that does phone work reaches the phone anyway, so the phone keeps the one copy:
 
-    /data/local/tmp/pogo_data/<group>.tar.gz   one tarball per group (data_manifest.txt: inventory, catcher, gym, *-cold)
+    /data/local/tmp/pogo_data/<group>.tar.gz   one tarball per group (tools/data_manifest.txt: inventory, catcher, gym, *-cold)
     /data/local/tmp/pogo_data/<group>.json     {"version", "at", "by", "sha256", "bytes", "files"}
 
 Each group has its OWN version, so the Inventory, AutoCatcher and Gym sessions never block each other.
@@ -23,7 +23,7 @@ on pull. Device: $ADB_TARGET (the cloud hook sets 127.0.0.1:5555; the PC default
 import argparse, glob, hashlib, json, os, socket, sqlite3, subprocess, sys, tarfile, tempfile, time
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-MANIFEST = os.path.join(ROOT, 'data_manifest.txt')
+MANIFEST = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data_manifest.txt')
 HELD = os.path.join(ROOT, '.pogo_data_held.json')          # {group: version this checkout holds}
 PHONE_DIR = '/data/local/tmp/pogo_data'
 DEV = os.environ.get('ADB_TARGET', '100.98.158.56:5555')

@@ -42,7 +42,7 @@
 # Only files that change by a CODE CHANGE (reviewed, committed). Everything the pipeline itself rewrites -- pokemon.db,
 # keep_config.json (per account: switch_account.py swaps it), the walk outputs, the monthly game-master refresh
 # (pvpoke_gamemaster.json, gamemaster_pokeminers.json, pvpoke_rankings/), the live registries -- is DATA and lives on the
-# phone (tools/pogo_data.py, data_manifest.txt [inventory]). One copy each: git never holds a file the data store holds.
+# phone (tools/pogo_data.py, tools/data_manifest.txt [inventory]). One copy each: git never holds a file the data store holds.
 !/curation_config.json
 !/curation_labels.json
 !/gender_variants.json
@@ -54,6 +54,8 @@
 !/location_card_enum.json
 !/move_id_to_name.json
 !/proto_layout.json
+# the master-plan workflow output gen_master_plan.py renders (static)
+!/wf_master.json
 
 # --- 5. DENY: things the allow rules above would otherwise let in ------------
 # 5a. SECRETS / AUTH / SESSION (defense in depth; the default deny already blocks them)
