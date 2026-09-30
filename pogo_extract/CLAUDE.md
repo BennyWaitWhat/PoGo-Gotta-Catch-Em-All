@@ -21,7 +21,7 @@ The Windows PC that used to run this is retired for PoGo work (its copy is a bac
    installed one and declines that batch (no run downloads it again) -- both only on his word.
 3. `python tools/pogo_data.py push --group inventory` (repo root) — ALWAYS after a phone pass, even when the gate failed.
 4. Publish Bag Pulse: `pogo_extract/system/analysis/collection_stats.html` to `https://claude.ai/artifact/59FFz2wZBv8sNC4CZJBmKn`
-   (alt account: `BvcioQeAeZcposXoFHFE8Q`). No Artifact tool in this session? Say so in one line.
+   (alt account: `system/analysis/bag_pulse_alt.html`, which the cull writes, to `BvcioQeAeZcposXoFHFE8Q`). No Artifact tool in this session? Say so in one line.
 The first cull in a fresh VM also rebuilds `system/scripts/rank_tables.pkl` (not in the data store: 333 MB), so it runs slower.
 
 ## HARD RULES (each one is a real incident; stories in docs/memory)

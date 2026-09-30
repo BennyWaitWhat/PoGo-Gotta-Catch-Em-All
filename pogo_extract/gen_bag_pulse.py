@@ -591,6 +591,10 @@ else:                                                        # bag_art would not
 out = os.path.join('system', 'analysis', 'collection_stats.html')
 open(out, 'w', encoding='utf-8').write(doc)
 print('wrote', out, '%d KB' % (len(doc) // 1024))
+import account_guard
+if account_guard.active() not in (None, 'oyebenny'):   # the second account's own artifact ("Alt Bag Pulse"), 2026-09-30
+    open(os.path.join('system', 'analysis', 'bag_pulse_alt.html'), 'w', encoding='utf-8').write(
+        doc.replace('<title>Bag Pulse</title>', '<title>Alt Bag Pulse</title>', 1))
 if art is not None:
     print(art.line([r['uid_hex'] for r in pile_rows]))
 print('ladder %.1f%% (%+.1f since %s, %+.2f/day) | non-PvP keepers %.1f%% | hundos %d | shinies %d avg %.1f%% | never-hundo species %d | ETA 90%%: %s' % (
