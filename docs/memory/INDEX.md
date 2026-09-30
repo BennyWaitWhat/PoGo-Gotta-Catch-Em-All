@@ -83,6 +83,7 @@ Notes reference each other as [[note-name]] = the file `note-name.md` in this fo
 - [Rank tags are per STAGE](pogo-rank-tags-per-stage-2026-09.md) -- `GL/UL Rank 1-5` = own stage; a later stage = `GL/UL 1-5 No Evolve`, or `Evolve for GL/UL` on THE copy to evolve (2026-09-30).
 - [Duplicate tag names](reference-duplicate-tag-names.md) -- the game takes two tags with one name; create_tag's retry made two 'Evolve for UL' (2026-09-30); by-id cleanup only.
 - [Tag ORDER on the phone](reference-pogo-tag-order.md) -- SortIndex@0x4c; order_tags.py ORDER; add new managed tags to ORDER.
+- [Keep the only look](feedback-keep-the-only-look.md) -- never advise evolving the best shiny of a look (form + costume + gender); a crowned shiny Cottonee was lost 2026-09-30.
 - [Tag inheritance + Evolve Shiny](reference-pogo-tag-inheritance.md) -- tags inherit through evolution; Evolve Shiny via build_tagsets.
 - [Comb-up bar ignored displacement](pogo-combup-bar-ignored-displacement-2026-09-13.md) -- labels must use the keep rule's occupancy model.
 - [Pattern-pooled lines](pogo-pattern-pooled-lines-2026-09.md) -- one plain_line pool per PATTERN; no comb-up.

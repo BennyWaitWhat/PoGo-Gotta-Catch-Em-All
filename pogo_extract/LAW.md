@@ -82,5 +82,8 @@ for split lines), reruns the real cull, and blocks the sync if any evolved copy 
 Shiny ladder (user 2026-09-17 "yes" to "shiny ladder like plains"): a spare shiny gets `Evolve Shiny` whenever evolving
 it earns a shiny spot at the next stage -- an open spot under the shiny cap, or it beats the weakest of a full top-N --
 every spare that earns one, best first, candy permitting (Evolve Shiny spends candy before the plain labels). A shiny
-past the shiny cap is held (reason `shiny_ladder`) when it earns such a spot. A stage's best shiny never moves;
-collectible, trophy and shadow shinies are never advised to evolve.
+past the shiny cap is held (reason `shiny_ladder`) when it earns such a spot. A stage's best shiny never moves -- PER LOOK:
+species, form, costume, and gender where the game draws the two differently (user 2026-09-30: "you dont keep my only
+anything when evolving shinies. for example the costumed whimsicott i evolved, now theres no costumed cottonee." -- a
+51% flower-crown shiny Cottonee was told to evolve because a 78% plain shiny Cottonee was the stage's best; 5 such tags
+that day, all still kept as `shiny`); collectible, trophy and shadow shinies are never advised to evolve.

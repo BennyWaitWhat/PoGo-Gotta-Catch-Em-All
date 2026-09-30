@@ -180,6 +180,32 @@ def main():
             later = [x for x in stages if x != pvid(r['species_name'], r['form'] or 0)]
             if later and not any(evolvable_forms.gender_allows(r['pokemon_id'], r['gender'], DEX.get(x)) for x in later):
                 bad.append(nm + ': this gender reaches no later stage of the line')
+    # THE BEST SHINY OF A LOOK NEVER EVOLVES (2026-09-30, user: "you dont keep my only anything when evolving shinies. for
+    # example the costumed whimsicott i evolved, now theres no costumed cottonee."): a look = species + form (form 0 folded
+    # into a species' single form) + costume + the gender where the game draws the two differently; its best in-bag
+    # shiny (IV, then uid) is the look's trophy at that stage, whatever the producer.
+    _fc0 = collections.defaultdict(set)
+    for _r in rows.values():
+        if (_r['form'] or 0) != 0:
+            _fc0[_r['pokemon_id']].add(_r['form'])
+    def _look(_r):
+        _f = _r['form'] or 0
+        if _f == 0 and len(_fc0.get(_r['pokemon_id'], ())) == 1:
+            _f = next(iter(_fc0[_r['pokemon_id']]))
+        return (_r['pokemon_id'], _f, _r['fresh_costume'] or _r['costume'] or 0,
+                evolvable_forms.gender_key(_r['pokemon_id'], _r['gender']))
+    _look_best = {}
+    for _u, _r in rows.items():
+        if _r['fresh_shiny'] and not keep_config.is_fused_component(_r):
+            _k = _look(_r)
+            if _k not in _look_best or ((_r['iv_total'] or 0), _u) > _look_best[_k]:
+                _look_best[_k] = ((_r['iv_total'] or 0), _u)
+    for u in sorted(worn):
+        r = rows.get(u)
+        if r is not None and r['fresh_shiny'] and _look_best.get(_look(r), (None, None))[1] == u:
+            bad.append('%s %d%% [%s]: the best shiny of its look (form %s, costume %s, gender %s) advised to evolve'
+                       % (r['species_name'], (r['iv_total'] or 0) * 100 // 45, ', '.join(sorted(worn[u])), r['form'],
+                          r['fresh_costume'] or r['costume'] or 0, r['gender']))
     # NEVER "evolve" AND "No Evolve" ON ONE COPY (2026-09-30, user: "The tag is the bug")
     _noev = set().union(*(_members(granular_tags.NO_EVOLVE_FMT % _l) for _l in ('GL', 'UL')))
     for u in sorted(_noev & set(worn)):
