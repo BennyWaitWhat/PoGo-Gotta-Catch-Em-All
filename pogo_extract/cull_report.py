@@ -72,6 +72,20 @@ norm = lambda u: format(int(u, 16), 'x')
 sig = lambda r: (r['iv_atk'], r['iv_def'], r['iv_sta'], r['creation_date'])
 
 
+def _transfer_readback(txt):
+    """prune's verify line for Transfer -> (read back, want, deferred uids), or None = not confirmed. `[OK]` with server < want
+    means members the game has not tagged yet: a hatchling still flagged isEgg (the "deferred: N hatchling(s)" line after it)
+    or a locked buddy / gym / showcase mon (the "deferred (locked ...)" line before it) -- prune defers only a SHORT on the
+    pile, never an extra. Every missing member must be named there, else it is not confirmed."""
+    m = re.search(r'^(?:\s*deferred \(locked[^)]*\): ([0-9a-f, ]+)\n)?\s*Transfer\s+server=(\d+) want=(\d+)\s+\[OK\]'
+                  r'(?:\n\s*deferred: \d+ hatchling\(s\)[^:]*: ([0-9a-f, ]+))?', txt.replace('\r\n', '\n'), re.M)
+    if not m:
+        return None
+    srv, want = int(m.group(2)), int(m.group(3))
+    dfr = {u.strip().zfill(16) for g in (m.group(1), m.group(4)) if g for u in g.split(',') if u.strip()}
+    return (srv, want, dfr) if srv + len(dfr) == want else None
+
+
 def _rows(path):
     c = sqlite3.connect(path); c.row_factory = sqlite3.Row
     out = {r['uid_hex']: dict(r) for r in c.execute('SELECT * FROM pokemon WHERE in_bag=1')}
@@ -725,12 +739,16 @@ def main():
                     os.path.getmtime(os.path.join(ROOT, 'player_state.json'))).strftime('%m-%d %H:%M')
         except Exception as _ce:
             _cap_note = ' [storage cap: age unknown (%s)]' % _ce
-    _pushed, _pushed_sha = None, None                # the prune step's own read-back of the Transfer tag after the write
+    _pushed, _pushed_sha, _dfr = None, None, set()   # the prune step's own read-back of the Transfer tag after the write
     try:
         _sl_txt = open(os.path.join(A, 'last_job_api_sync.log'), encoding='utf-8', errors='replace').read()
         if ('.%s.before_sync' % cur_stamp) in _sl_txt and _sl_txt.startswith('rc=0') and 'ALL TARGETS EXACTLY SYNCED' in _sl_txt:
-            _m = re.search(r'^\s*Transfer\s+server=(\d+) want=(\d+)\s+\[OK\]', _sl_txt, re.M)
-            _pushed = int(_m.group(1)) if _m and _m.group(1) == _m.group(2) else None
+            # a DEFERRED member (a fresh hatch still flagged isEgg, a buddy): the game ignores the tag write, so it is not in
+            # the tag and cannot be released by it -- the rest is confirmed (2026-09-30: an 84% Litten hatch made 71 of 72 read
+            # "Do not release yet" although prune's verify said [OK])
+            _rb = _transfer_readback(_sl_txt)
+            if _rb:
+                _pushed, _dfr = _rb[0], {_by.get(norm(u), u) for u in _rb[2]}
             # WHICH bytes were pushed: prune logs the preflight stamp's pile_sha256 prefix of Transfer.txt
             _h = re.search(r'^\s*pile\s+\S*Transfer\.txt\s+([0-9a-f]{16})\.\.\.', _sl_txt, re.M)
             _pushed_sha = _h.group(1) if _h else None
@@ -770,8 +788,11 @@ def main():
         elif _pushed_sha != _file_sha:
             _stop = ('Transfer.txt is not the file the %s sync pushed (pushed %s..., the file now %s...) -- it was rewritten '
                      'after the push' % (_at, _pushed_sha, _file_sha or '?'))
-        elif _pushed != len(pile):
-            _stop = 'the game read back %d in the tag, but %d of the pile file are in this walk' % (_pushed, len(pile))
+        elif _dfr - pile_set:
+            _stop = 'the sync deferred %d mon(s) that are not in the pile file' % len(_dfr - pile_set)
+        elif _pushed + len(_dfr) != len(pile):
+            _stop = 'the game read back %d in the tag%s, but %d of the pile file are in this walk' % (
+                _pushed, (' (+%d deferred)' % len(_dfr)) if _dfr else '', len(pile))
     if unsynced:
         out.append('**%d in the pile file -- NOT pushed to the phone**: this walk (%s) never reached a sync, so the '
                    'Transfer tag still holds the last synced pile. Do not release from the tag until a cull pushes this one.'
@@ -794,7 +815,12 @@ def main():
     elif pile:
         # (the snapshot is taken when the sync STARTS, ~20-40 s before prune pushes: "after the 17:20 push" was a minute off)
         out.append('**Release the %d in the Transfer tag.** (the game read back %d in the tag in the sync that started at %s)'
-                   % (len(pile), _pushed, _stamp_t(cur_stamp).strftime('%H:%M')))
+                   % (_pushed, _pushed, _stamp_t(cur_stamp).strftime('%H:%M')))
+        if _dfr:
+            out.append('%s: in the pile file but not in the tag yet -- the game ignores tag writes on a fresh hatch still '
+                       'flagged as an egg, or a buddy / gym / showcase mon; a later cull tags %s.' % (
+                           ', '.join(sorted('%d%% %s' % (round((C[u]['iv_total'] or 0) / 45 * 100), species_label(C[u])) if u in C else u
+                                            for u in _dfr)), 'it' if len(_dfr) == 1 else 'them'))
     else:
         out.append('**Nothing to release** -- the pile is empty.')
     if _bc_ok:
@@ -802,7 +828,12 @@ def main():
         out.append('Bag %d%s%s -- the game\'s own count: %s Pokemon + %d egg%s in incubators%s' % (
             _used, ('/%d' % cap) if cap else '', (' (%d free)' % (cap - _used)) if cap else '',
             _bc.get('pokemon_only'), _eg, '' if _eg == 1 else 's', _cap_note))
-        if _bc.get('pokemon_only') is not None and _bc['pokemon_only'] != len(C):
+        _hatch = [r for r in C.values() if r.get('is_egg') == 1 and r.get('cp')]   # fresh hatches the game still counts as eggs
+        if _bc.get('pokemon_only') is not None and _hatch and _bc['pokemon_only'] == len(C) - len(_hatch):
+            out.append('(the game\'s count leaves out %d fresh hatch%s still flagged as an egg: %s -- the walk has %d, so the counts match)'
+                       % (len(_hatch), '' if len(_hatch) == 1 else 'es', ', '.join('%d%% %s' % (round((r['iv_total'] or 0) / 45 * 100),
+                                                                                   species_label(r)) for r in _hatch), len(C)))
+        elif _bc.get('pokemon_only') is not None and _bc['pokemon_only'] != len(C):
             out.append('***CHECK: the game counts %s Pokemon but this walk left %d in the bag -- the walk is incomplete, so '
                        'the counts and the pile below are not the whole bag***' % (_bc['pokemon_only'], len(C)))
     else:
@@ -1136,6 +1167,15 @@ def power_up_block(C, pile_set, why, name):
 
 
 def _selftest():
+    ok = '  Transfer         server=72 want=72  [OK]\n  Adventure Effect server=1 want=1  [OK]\n'
+    assert _transfer_readback(ok) == (72, 72, set()), _transfer_readback(ok)
+    hat = ('  Transfer         server=71 want=72  [OK]\r\n      deferred: 1 hatchling(s) still flagged isEgg (tag write ignored by '
+           'the game until it clears): f068abc902c84887\r\n')
+    assert _transfer_readback(hat) == (71, 72, {'f068abc902c84887'}), _transfer_readback(hat)
+    lck = '      deferred (locked: buddy / gym / showcase, or fresh): 1a2b\n  Transfer         server=70 want=72  [OK]\n' + hat.split('\n', 1)[1]
+    assert _transfer_readback(lck) == (70, 72, {'0000000000001a2b', 'f068abc902c84887'}), _transfer_readback(lck)
+    assert _transfer_readback('  Transfer         server=70 want=72  [OK]\n') is None, 'an unnamed gap is not confirmed'
+    assert _transfer_readback('  Transfer         server=72 want=72  [extra=1 short=1]\n') is None, 'not OK = not confirmed'
     rows = [('Bulbasaur', [91], '98%'), ('Cyndaquil', [71, 64], '96%, 91%, 89%'), ('Fletchling', [67, 67, 51], '84%')]
     got = fodder_lines(rows)
     assert got[0] == '' and got[1] == 'Just-caught fodder: 6 mons, each below what you keep.', got[:2]   # mons, not the 3 kinds; blank line first so the table never glues to a list item
