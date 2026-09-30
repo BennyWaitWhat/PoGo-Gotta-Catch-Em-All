@@ -79,7 +79,8 @@ The rest also comes from the game master, never a hand list (2026-09-17, "learn 
 - NOT A CANDY TAP: an evolution needing an item, lure, quest, buddy walk, time of day, full moon or a known move is
   gated (`evolvable_forms.gated_targets`). A gated shiny upgrade is suggested only when its sole obstacle is an item
   in the bag (it spends it; the real count -- 999 Gimmighoul coins -- is read); the rest are listed with what they
-  need in the game's words ("walk 15 km as your buddy", "win 15 raids against Dark- or Steel-type bosses").
+  need in the game's OWN words -- the evolution quest's i18n text with its own number ("Walk 15 km with your buddy", "Defeat 15
+  Dark- or Steel-type Raid Bosses"; `official_names_en.json` 'quests', rebuilt by `bag_art.py --refresh-names`; 2026-09-30).
 - LEGACY MOVES: a move is special when no form of the species can roll it today per the game master's movepools, as
   well as when pvpoke calls it elite. The union only ever adds protection (Raichu Volt Tackle, Dialga Roar of Time ...).
 - RANKS: a mon is ranked only at the stages it can reach (form, costume and gender gates above).

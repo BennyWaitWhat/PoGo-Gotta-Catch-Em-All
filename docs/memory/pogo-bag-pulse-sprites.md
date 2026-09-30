@@ -19,7 +19,8 @@ kept, tagged or released, and no stored identifier (pvid, tag name, `_pile_names
   real page), `BAG_ART_CACHE=<dir>`, `BAG_ART_OFFLINE=1`.
 - Reference files (tracked, so a fresh clone and CI have them; `pogo_extract/.gitignore` section 4 allows both):
   `pogo_icon_index.txt` (3,696 icon names of 'Images/Pokemon - 256x256/Addressable Assets/' + 256 card stems, at a named upstream
-  commit and list date) and `official_names_en.json` (1,008 species + 277 form strings from the game's i18n_english.json).
+  commit and list date) and `official_names_en.json` (1,008 species + 277 form strings from the game's i18n_english.json, plus a
+  `quests` section of 27 evolution-quest texts that `evolvable_forms` reads: [[pogo-evolution-quest-wording]]).
 - `gen_bag_pulse.py`: a new first card "In the Transfer tag now (N)" = one tile per look, one row per copy (IV %, CP, sex sign
   where `evolvable_forms.gender_key` says it is a look, chips: shiny / shadow / costume / Dynamax / Gigantamax / XXL / lucky), a
   location-card thumbnail + kind ("Special Background" vs "Location Background") + name where the mon has one; 24 px sprites in the

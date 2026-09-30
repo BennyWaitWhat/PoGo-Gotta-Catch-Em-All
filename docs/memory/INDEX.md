@@ -136,6 +136,7 @@ Notes reference each other as [[note-name]] = the file `note-name.md` in this fo
 - [PoGo game state 2026](pogo-game-state-2026.md) -- Scopely-owned, levels, friends, trades. NEVER hardcode storage capacity.
 - [PoGo mechanics reference](pogo-mechanics-reference.md) -- CP/CPM, IV floors, multipliers, size enum, Mega ladder, proto fields.
 - [The GAME outranks pvpoke](pogo-game-authoritative-over-pvpoke.md) -- reconcile_gamemaster.py copies client truth; the client vetoes stale flags.
+- [Evolution quest wording = the game's text](pogo-evolution-quest-wording.md) -- labels say what the Evolve screen says ('Defeat 15 Dark- or Steel-type Raid Bosses'); `official_names_en.json` 'quests', one `--refresh-names` command, the singular-hearts trap (goals 20/70/7), evolvable_forms cache v11 + qsig (2026-09-30).
 - [Form enum arbitrates CP ties](pogo-form-enum-arbitrates-cp-ties.md) -- the live form NAME decides tied ids.
 - [Game master monthly refresh](project-gamemaster-monthly-refresh.md) -- refresh_gamemaster.py exits 2 on a rank<=5 crossing; since 2026-09-29 it also refreshes pvpoke's meta rankings (the top-200 dust-advice gate) on the same 30-day clock; since 2026-09-30 it also asks PokeMiners on EVERY run and exits 2 when a new CLIENT game master flips an in-bag keep verdict (gm_guard).
 - [Client limits dump 2026-09-24](reference-pogo-client-limits.md) -- every client threshold in game_limits.json/.html; the egg speed cap is server-only.

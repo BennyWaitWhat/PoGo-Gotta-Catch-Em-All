@@ -14,6 +14,11 @@ versions follow [Semantic Versioning](https://semver.org/).
   rebuildable and not in the phone data store; every failure falls back to text and `BAG_ART=0` gives the old page.
 
 ### Changed
+- Evolution quests are worded in the game's own text ("Defeat 15 Dark- or Steel-type Raid Bosses", "Win 10 raids", "Earn 70 hearts
+  with your buddy") in the gated-evolution `need` strings, the "Which way to evolve" lines and the ladder report. The hand-built
+  wording was wrong for 14 of the 37 quests (Sirfetch'd lost "Excellent", Overqwil "complete" for "win", hearts on a goal of 20 said
+  "earn hearts with 20 times"). The texts ship in `pogo_extract/official_names_en.json` (`quests`), rebuilt with the same
+  `bag_art.py --refresh-names` command; `evolvable_forms.json` cache v11. Text only: pile, reasons and tags are unchanged.
 - Root tidied: CONTRIBUTING / SECURITY / CODE_OF_CONDUCT moved to `.github/`, the CHANGELOG to `docs/`,
   `data_manifest.txt` to `tools/`, `wf_master.json` to `pogo_extract/`; `.editorconfig` removed.
 
