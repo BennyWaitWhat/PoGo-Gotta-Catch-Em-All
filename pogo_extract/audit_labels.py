@@ -192,7 +192,7 @@ def main():
         _f = _r['form'] or 0
         if _f == 0 and len(_fc0.get(_r['pokemon_id'], ())) == 1:
             _f = next(iter(_fc0[_r['pokemon_id']]))
-        return (_r['pokemon_id'], _f, _r['fresh_costume'] or _r['costume'] or 0,
+        return (_r['pokemon_id'], _f, _r['fresh_costume'] or 0,          # fresh_costume: the legacy `costume` holds junk
                 evolvable_forms.gender_key(_r['pokemon_id'], _r['gender']))
     _look_best = {}
     for _u, _r in rows.items():
@@ -205,7 +205,7 @@ def main():
         if r is not None and r['fresh_shiny'] and _look_best.get(_look(r), (None, None))[1] == u:
             bad.append('%s %d%% [%s]: the best shiny of its look (form %s, costume %s, gender %s) advised to evolve'
                        % (r['species_name'], (r['iv_total'] or 0) * 100 // 45, ', '.join(sorted(worn[u])), r['form'],
-                          r['fresh_costume'] or r['costume'] or 0, r['gender']))
+                          r['fresh_costume'] or 0, r['gender']))
     # NEVER "evolve" AND "No Evolve" ON ONE COPY (2026-09-30, user: "The tag is the bug")
     _noev = set().union(*(_members(granular_tags.NO_EVOLVE_FMT % _l) for _l in ('GL', 'UL')))
     for u in sorted(_noev & set(worn)):

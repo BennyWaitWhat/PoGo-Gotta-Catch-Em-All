@@ -645,11 +645,15 @@ def build(rows, pile, reasons):
     for r in kept:
         if r['fresh_shiny'] and not keep_config.is_fused_component(r):   # (2026-09-26) fused components hold no ladder slot
             shg[(r['pokemon_id'], cf(r))].append(r)
+    # ONLY ONE PER LOOK (2026-09-30, user: "I thought I already had a tag for that? i guess not"): the only kept shiny of
+    # its look -- costume (fresh_costume), and gender where the game draws the two differently -- wears Shiny - Only One,
+    # not only the only shiny of its species + form (a crowned shiny Cottonee beside two plain ones never got it).
+    _look = lambda r: (r['pokemon_id'], cf(r), r.get('fresh_costume') or 0, evolvable_forms.gender_key(r['pokemon_id'], r.get('gender')))
+    _nlook = collections.Counter(_look(r) for lst in shg.values() for r in lst)
     for lst in shg.values():
         s = sorted(lst, key=_RANK)
-        if len(s) == 1:
-            T[SHINY_SOLE].add(s[0]['uid_hex'])
-        else:
+        T[SHINY_SOLE] |= {r['uid_hex'] for r in s if _nlook[_look(r)] == 1}
+        if len(s) > 1:
             for i, r in enumerate(s):
                 if i >= 3:
                     T[SHINY_OVERFLOW].add(r['uid_hex'])   # #1..#3: the native Shiny chip is the label (2026-09-09)

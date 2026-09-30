@@ -130,7 +130,7 @@ def compute_target(why=None, spent=None, detail=None, gated=None, items_spent=No
     # 78% plain shiny Cottonee was the stage's best, so evolving it left no crowned shiny Cottonee. The trophy is kept per
     # look: species + form + costume + the gender where the game draws the two differently (evolvable_forms.gender_key).
     def _look(r):
-        return (r['pid'], _nf(r), r['fc'] or r['cos'] or 0, evolvable_forms.gender_key(r['pid'], r['g']))
+        return (r['pid'], _nf(r), r['fc'] or 0, evolvable_forms.gender_key(r['pid'], r['g']))   # fresh_costume: `costume` holds junk
     stage_best = {}
     for r in rows:
         if r['sh']:

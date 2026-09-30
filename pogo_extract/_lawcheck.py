@@ -309,8 +309,15 @@ for _k, _l in _shyg.items():
     _rk = sorted(_l, key=lambda y: (-iv(y), -len(_scoll(y)), -_cp(y), y['uid_hex']))
     _sfl = keep_config.shiny_floor_iv(); _first = _rk[0]['uid_hex'] if _rk else None      # shiny floor, best of the form stays (2026-09-24)
     _plsh = [y for y in _rk if not _scoll(y)]; _first_pl = _plsh[0]['uid_hex'] if _plsh else None   # ...and the best PLAIN one
-    _pok = {y['uid_hex'] for y in [y for y in _plsh if iv(y) >= _sfl or y['uid_hex'] in (_first, _first_pl)][:_np]}
-    for x in [y for y in _rk if _scoll(y) or y['uid_hex'] in _pok][:_n]:
+    _lk = {}                                  # every look first, comb up, cap stays (user 2026-09-30, LAW bucket 4)
+    for y in _rk:
+        _lk.setdefault(((y['fresh_costume'] or 0), evolvable_forms.gender_key(y['pokemon_id'], y['gender'])), y['uid_hex'])
+    _lt = set(_lk.values())
+    _pok = {y['uid_hex'] for y in ([y for y in _plsh if y['uid_hex'] in _lt]
+                                   + [y for y in _plsh if y['uid_hex'] not in _lt
+                                      and (iv(y) >= _sfl or y['uid_hex'] in (_first, _first_pl))])[:_np]}
+    _el = [y for y in _rk if _scoll(y) or y['uid_hex'] in _pok]
+    for x in ([y for y in _el if y['uid_hex'] in _lt] + [y for y in _el if y['uid_hex'] not in _lt])[:_n]:
         _shiny_keep.add(x['uid_hex'])
 
 # ---- BEST GL / BEST UL (LAW bucket 2b = keep_policy rule 15d, user 2026-09-23) -----------------------------

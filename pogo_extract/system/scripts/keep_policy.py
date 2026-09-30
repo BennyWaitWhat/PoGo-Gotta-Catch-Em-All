@@ -1195,9 +1195,20 @@ def main():
         _first = _ranked[0]['uid_hex'] if _ranked else None
         _plains = [x for x in _ranked if not _scollect(x)]
         _first_pl = _plains[0]['uid_hex'] if _plains else None   # the best PLAIN shiny stays too: a plain and a Max shiny are different variants
-        _plain_ok = {x['uid_hex'] for x in [x for x in _plains
-                                             if (x['iv_total'] or 0) >= _sfl or x['uid_hex'] in (_first, _first_pl)][:_pl]}
-        for r in [x for x in _ranked if _scollect(x) or x['uid_hex'] in _plain_ok][:_tot]:
+        # EVERY LOOK FIRST (user 2026-09-30: "1. yes but comb up, and it comb up once there's at least 2. but keep cap
+        # 6."): the best shiny of each LOOK -- costume (fresh_costume; the legacy `costume` column holds junk), and gender
+        # where the game draws the two differently -- takes a slot before the rest (a plain one a plain slot, floor or
+        # not); with 2+ of a look only its best does (comb up); the cap stays. A group of one look is unchanged: its
+        # trophy is _first. Mirrored in audit_cull, _lawcheck, preflight_transfer.
+        _looks = {}
+        for x in _ranked:
+            _looks.setdefault(((x['fresh_costume'] or 0), evolvable_forms.gender_key(x['pokemon_id'], x['gender'])), x['uid_hex'])
+        _lt = set(_looks.values())
+        _plain_ok = {x['uid_hex'] for x in ([x for x in _plains if x['uid_hex'] in _lt]
+                                            + [x for x in _plains if x['uid_hex'] not in _lt
+                                               and ((x['iv_total'] or 0) >= _sfl or x['uid_hex'] in (_first, _first_pl))])[:_pl]}
+        _elig = [x for x in _ranked if _scollect(x) or x['uid_hex'] in _plain_ok]
+        for r in ([x for x in _elig if x['uid_hex'] in _lt] + [x for x in _elig if x['uid_hex'] not in _lt])[:_tot]:
             mark(r['uid_hex'], 'shiny')
 
     # 4. hundo (all)
