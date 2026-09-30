@@ -124,9 +124,10 @@ Anything unclear — a missing rank, a stale read — is **kept**, never tossed.
 | **Transfer** | Safe to release — checked against every rule above. Search it, select all, transfer. |
 | **Evolve Once · Evolve Twice** | Evolve this one — one step, or all the way. You can afford it now. |
 | **Evolve Gated** | Worth evolving, but it needs an item or condition first (the report says which) |
-| **Evo Best GL · Evo Best UL** | Evolve it to get your best Great / Ultra League copy |
+| **Evolve for GL · Evolve for UL** | THE copy to evolve for Great / Ultra League: it beats every copy you own there |
 | **Best GL · Best UL · Best ML** | Already your best copy for that league |
-| **GL / UL Rank 1-5** · **Evo GL / UL Rank 1-5** | A top-5 PvP spread — now, or after evolving |
+| **GL / UL Rank 1-5** | A top-5 PvP spread as it is now |
+| **GL / UL 1-5 No Evolve** | Top 5 only after evolving, but don't: you own one as good or better (or it's your best as it is) |
 | **Power Up to 1500 · 2500** | Power it up to the league cap |
 | **Unlock 2nd Move** | Worth a second charged move |
 | **Hundo · Nundo · 0-15-15** | 100% · 0% · the classic PvP spread |

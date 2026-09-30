@@ -72,7 +72,7 @@ TAG_FILES = {   # GL IV / UL IV / Evolve 1 / Evolve 2 retired 2026-09-09 (granul
     'Legacy Moves': 'Legacy_Moves.txt', 'Evolve Once': 'Evolve_Once.txt', 'Evolve Twice': 'Evolve_Twice.txt',
     'Evolve Gated': 'Evolve_Gated.txt', 'Transfer': 'Transfer.txt',   # the fold (2026-09-29): Next/Shiny/Size/Stop retired
     'Best GL': 'Best_GL.txt', 'Best UL': 'Best_UL.txt', 'Best ML': 'Best_ML.txt',   # keep rule 15d (2026-09-23)
-    'Evo Best GL': 'Evo_Best_GL.txt', 'Evo Best UL': 'Evo_Best_UL.txt',              # keep rule 15e (2026-09-24)
+    'Evolve for GL': 'Evolve_for_GL.txt', 'Evolve for UL': 'Evolve_for_UL.txt',      # keep rule 15e (2026-09-24; renamed 2026-09-30)
     'Power Up to 1500': 'Power_Up_to_1500.txt', 'Power Up to 2500': 'Power_Up_to_2500.txt',   # 2026-09-26
     'Unlock 2nd Move': 'Unlock_2nd_Move.txt',
 }

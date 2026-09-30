@@ -1,6 +1,6 @@
 ---
 name: pogo-rank-tags-per-stage-2026-09
-description: "GL/UL Rank tags are the mon's OWN-stage rank (what Pokemod prints for the mon on screen); Evo GL/UL Rank 1 / 2-5 = a later stage reaches it; gl_rank column is chain-best-viable and must never be labelled as the mon's rank"
+description: "GL/UL Rank tags are the mon's OWN-stage rank (what Pokemod prints for the mon on screen); a later stage reaching it = `GL/UL 1-5 No Evolve` (was Evo GL/UL Rank until 2026-09-30), or `Evolve for GL/UL` on THE copy to evolve; gl_rank column is chain-best-viable and must never be labelled as the mon's rank"
 metadata: 
   node_type: memory
   type: project
@@ -12,7 +12,7 @@ metadata:
 `gl_rank=1` because the column is the chain's best VIABLE stage (Cinderace #1); Raboot's own stage is #7 and
 the Pokemod overlay shows #7. Tags now split by stage (`Best GL` / `Best UL` retired 2026-09-09):
 - `GL Rank 1` / `GL Rank 2-5` (and UL) = the mon's OWN-stage stat-product rank at the L50 ceiling.
-- `Evo GL Rank 1` / `Evo GL Rank 2-5` (and UL) = the best rank a LATER stage of its line reaches.
+- `Evo GL Rank 1` / `Evo GL Rank 2-5` (and UL) = the best rank a LATER stage of its line reaches (RENAMED 2026-09-30, below).
 Source: `granular_tags.own_and_evo_rank(row, 'gl'|'ul')` parses `<league>_chain_ranks`
 ('raboot:7(99.82%);cinderace:1(100.00%)'; own stage first, later stages after); own sid = `pvid(species, form)`.
 
@@ -53,3 +53,17 @@ audit_tags_membership accepts PvP Spread; `PvP Over Cap` is retired (RETIRED_TAG
 the 10 audits in full_audit.AUDITS) re-derives every rank tag per mon from the IVs: over-cap, stored-vs-fresh rank,
 tag-vs-rank, stage viability, evo reachability. Tag-member counts are NOT capped at 512 -- the same tag held 833
 members earlier that day; a stalled count after two pushes in a row is client cache lag.
+
+THE SECOND FOLD (2026-09-30, user: "So you want me to evolve all the pokemon tagged "Evo UL rank 1-5?"? Even if I have
+dups?" -> "And you're just finding this now but your swarm of agents didnt find or think of this? cmon. fix it."). The
+later-stage chip READ AS AN INSTRUCTION: 14 copies wore `Evo UL Rank 1-5`, and 13 were copies of a stage he already
+owned as good or better (3 Pidgeotto beside two Pidgeot 15/15/15 #1, 3 Swirlix beside Slurpuff #1, Fletchling +
+Fletchinder beside four Talonflame #1 ...); the one worth evolving (Minccino 13/15/15 -> Cinccino #2) needs a Unova Stone
+he does not have. Now: THE copy to evolve = the comb-up pick (pvp_combup.pick: beats every copy you own at that stage)
+wears `Evolve for GL/UL` (renamed from `Evo Best GL/UL`) beside Evolve Once / Twice / Gated, and its `Best GL/UL` chip
+comes off; every other kept later-stage top 5 wears `GL/UL 1-5 No Evolve` (still kept, rule 15b). Measured: Evolve for UL
+3 / GL 1, UL 1-5 No Evolve 13 / GL 2, Best UL 431 -> 428, pile and every keep reason unchanged. Guards: audit_invariants
+I8.2 fails any managed name with an evolve word that is not an evolve tag (or a `No Evolve`); audit_labels BLOCKs a copy
+wearing an evolve tag AND No Evolve; audit_tags_membership re-derives No Evolve exactly (a planted Pawmo was caught by
+both). Why the audits missed it: they proved every member MATCHED ITS RULE, never that the tag NAME told him the right
+action -- check what a tag name makes him DO, not only who is in it.

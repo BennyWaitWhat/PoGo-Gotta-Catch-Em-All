@@ -41,8 +41,7 @@ transfer = fu('Transfer.txt')
 problems = []
 
 EXACT = [('Hundo', 'Hundo.txt', 'hundo'), ('Nundo', 'Nundo.txt', 'nundo'),
-         ('Traded by E+F', 'Traded_by_E+F.txt', 'origin'),   # Best Buddy retired 2026-06-07
-         ('Best GL', 'Best_GL.txt', 'pvp_best_gl'), ('Best UL', 'Best_UL.txt', 'pvp_best_ul')]   # rule 15d, 2026-09-23
+         ('Traded by E+F', 'Traded_by_E+F.txt', 'origin')]   # Best Buddy retired 2026-06-07
 LABEL = [('Legacy Moves', 'Legacy_Moves.txt', 'legacy'),      # 'Event' retired 2026-09-09 (native chips)
          ('XXL', 'XXL.txt', 'xxl')]
 # 'GL IV' / 'UL IV' RETIRED 2026-09-09 (granular_tags.RETIRED_TAGS). The keep reason (gl_iv / ul_iv) is unchanged;
@@ -50,8 +49,9 @@ LABEL = [('Legacy Moves', 'Legacy_Moves.txt', 'legacy'),      # 'Event' retired 
 # of them (miss), and none of them is in Transfer (leak). The union is a benign superset (Pokemod-style labels).
 # PvP_Spread counts too: an over-cap keeper gets no Rank chip (it cannot enter that league) but is still the elite
 # spread rule 15b keeps. audit_tags_membership.py learned this on 2026-09-19; this file had to as well.
-RANKED = [('gl_iv', 'GL rank tags', ['GL_Rank_1-5.txt', 'Evo_GL_Rank_1-5.txt', 'Best_GL.txt']),   # 2026-09-23
-          ('ul_iv', 'UL rank tags', ['UL_Rank_1-5.txt', 'Evo_UL_Rank_1-5.txt', 'Best_UL.txt'])]
+_EVF = ['Evolve_Once.txt', 'Evolve_Twice.txt', 'Evolve_Gated.txt', 'Evolve_for_GL.txt', 'Evolve_for_UL.txt']
+RANKED = [('gl_iv', 'GL rank tags', ['GL_Rank_1-5.txt', 'GL_1-5_No_Evolve.txt', 'Best_GL.txt'] + _EVF),   # 2026-09-30
+          ('ul_iv', 'UL rank tags', ['UL_Rank_1-5.txt', 'UL_1-5_No_Evolve.txt', 'Best_UL.txt'] + _EVF)]
 
 print("=== TAG AUDIT (keep_policy reason <-> build_tagsets file) ===")
 # Best ML = the pvp_best_ml reason MINUS hundos (user 2026-09-23: the chip skips a hundo, the keep does not)
@@ -59,6 +59,13 @@ _bm_r, _bm_f = ru('pvp_best_ml') - ru('hundo'), fu('Best_ML.txt')
 if _bm_r != _bm_f:
     problems.append(f"Best ML: reason-minus-hundo != file (missing={len(_bm_r - _bm_f)}, extra={len(_bm_f - _bm_r)})")
 print(f"  {'Best ML':<15} reason-minus-hundo={len(_bm_r)} file={len(_bm_f)}  {'OK' if _bm_r == _bm_f else 'DRIFT'}")
+# Best GL / Best UL = the pvp_best_gl / _ul reason MINUS the copy told to Evolve for that league (2026-09-30: the Evolve
+# tag says it); rule 15d, 2026-09-23
+for _lg in ('GL', 'UL'):
+    _br, _bf = ru('pvp_best_' + _lg.lower()) - fu('Evolve_for_%s.txt' % _lg), fu('Best_%s.txt' % _lg)
+    if _br != _bf:
+        problems.append(f"Best {_lg}: reason-minus-Evolve-for != file (missing={len(_br - _bf)}, extra={len(_bf - _br)})")
+    print(f"  {'Best ' + _lg:<15} reason-minus-evolve={len(_br)} file={len(_bf)}  {'OK' if _br == _bf else 'DRIFT'}")
 for tag, fn, reason in EXACT:
     R, F = ru(reason), fu(fn)
     if R != F:

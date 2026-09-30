@@ -28,9 +28,17 @@ REFUSES THE RELEASE PILE: DeleteTag on 'Transfer' / '6 Transfer' is not a route 
   argparse and before any attach -- including under --dry-run, because there is no safe
   rehearsal of deleting the pile. Delete it in-game if that is really the intent.
 
+DUPLICATE NAMES (2026-09-30): the census is keyed by NAME, so with two tags of one name it sees one of
+  them -- a by-name delete could remove the copy that holds members, and the DB mirror would then drop the
+  name from every mon. A by-name delete now REFUSES a duplicated name. --empty-duplicates removes only the
+  EMPTY copies of each name given, by tagId, one at a time, keeping the copy with members (the first, when
+  all are empty); it refuses when two copies hold members; the collateral check runs by tagId; the DB
+  mirror is left alone (the name still exists).
+
 Usage:
   python safe_nuke_tags.py TagA TagB ...
   python safe_nuke_tags.py --dry-run TagA TagB ...
+  python safe_nuke_tags.py [--dry-run] --empty-duplicates "Evolve for UL"
 """
 import sys
 sys.stdout.reconfigure(encoding='utf-8')
@@ -177,6 +185,82 @@ def check_collateral(before, after_tags, deleted_name):
     return (len(problems) == 0, problems)
 
 
+def duplicate_names(tags):
+    """{name: [tag, ...]} for every name 2+ tags carry."""
+    by = {}
+    for t in tags:
+        by.setdefault(t['name'], []).append(t)
+    return {n: v for n, v in by.items() if len(v) > 1}
+
+
+def empty_duplicate_plan(tags, name):
+    """(keep, [empty copies to delete], why_not) for one name. Only EMPTY copies are ever listed; the copy with members
+    is kept (the first by enumeration order when all are empty); two copies with members -> nothing, and why."""
+    same = [t for t in tags if t['name'] == name]
+    if len(same) < 2:
+        return None, [], 'only %d tag named %r -- nothing to de-duplicate' % (len(same), name)
+    full = [t for t in same if t['memberCount'] > 0]
+    if len(full) > 1:
+        return None, [], '%d copies of %r hold members (%s) -- merge them by hand, deleting any would drop members' % (
+            len(full), name, ', '.join('%s: %d' % (t['tagId'], t['memberCount']) for t in full))
+    keep = full[0] if full else same[0]
+    return keep, [t for t in same if t is not keep and t['memberCount'] == 0], None
+
+
+def check_collateral_by_id(before_tags, after_tags, deleted_id):
+    """check_collateral by tagId: a duplicated name cannot hide a changed copy behind its twin."""
+    b = {t['tagId']: t for t in before_tags}
+    a = {t['tagId']: t for t in after_tags}
+    problems = []
+    if deleted_id in a:
+        problems.append('  Target tagId %s still exists after deletion' % deleted_id)
+    for tid, t in b.items():
+        if tid == deleted_id:
+            continue
+        if tid not in a:
+            problems.append('  COLLATERAL: tag "%s" (tagId %s, %d members) DISAPPEARED' % (t['name'], tid, t['memberCount']))
+        elif a[tid]['memberCount'] != t['memberCount']:
+            problems.append('  COLLATERAL: tag "%s" (tagId %s) memberCount changed %d -> %d'
+                            % (t['name'], tid, t['memberCount'], a[tid]['memberCount']))
+    return (len(problems) == 0, problems)
+
+
+def run_empty_duplicates(script, svc, names, dry_run):
+    """Delete only the EMPTY extra copies of each name, by tagId, one at a time, verified by tagId. Returns 0 / 1."""
+    rc = 0
+    for name in names:
+        fresh = enumerate_tags(script, svc)
+        keep, drop, why = empty_duplicate_plan(fresh, name)
+        if why:
+            print('  %s' % why)
+            rc = rc or (1 if 'merge them by hand' in why else 0)
+            continue
+        print('  %r: keeping tagId %s (%d members); empty copies to delete: %s'
+              % (name, keep['tagId'], keep['memberCount'], ', '.join(t['tagId'] for t in drop)))
+        if dry_run:
+            continue
+        for t in drop:
+            now = enumerate_tags(script, svc)
+            cur = {x['tagId']: x for x in now}
+            if t['tagId'] not in cur:
+                print('    tagId %s already gone' % t['tagId']); continue
+            if cur[t['tagId']]['memberCount'] > 0 or cur[t['tagId']]['name'] != name:
+                print('    tagId %s changed (%r, %d members) -- not deleting'
+                      % (t['tagId'], cur[t['tagId']]['name'], cur[t['tagId']]['memberCount'])); rc = 1; continue
+            res = script.exports_sync.del_tag(svc, t['tagId'])
+            if not res.get('ok'):
+                print('    DeleteTag(%s) failed: %s -- stopping' % (t['tagId'], res.get('err', '?'))); return 1
+            time.sleep(SETTLE_DELAY)
+            ok, problems = check_collateral_by_id(now, enumerate_tags(script, svc), t['tagId'])
+            if not ok:
+                print('    *** COLLATERAL CHANGE DETECTED -- stopping ***')
+                for p in problems:
+                    print('    ', p)
+                return 1
+            print('    deleted the empty copy tagId %s; every other tag intact' % t['tagId'])
+    return rc
+
+
 def clear_db_mirror(db_path, tag_name):
     """Remove tag_name from auth_tag_names in pokemon.db."""
     if not os.path.isfile(db_path):
@@ -222,6 +306,8 @@ def main():
     parser.add_argument('tags', nargs='+', help='Tag names to delete')
     parser.add_argument('--dry-run', action='store_true',
                         help='Enumerate and print plan without deleting anything')
+    parser.add_argument('--empty-duplicates', action='store_true',
+                        help='for each name given: delete only its EMPTY extra copies, by tagId')
     args = parser.parse_args()
 
     targets = args.tags
@@ -240,6 +326,8 @@ def main():
     script = pg.get_script_with_helpers(sess, JS)
 
     try:
+        if args.empty_duplicates:
+            sys.exit(run_empty_duplicates(script, svc, targets, dry_run))
         # --- Step 1: Before census ---
         before_tags = enumerate_tags(script, svc)
         before = tag_census(before_tags)
@@ -250,6 +338,11 @@ def main():
             print(f"  {t['name']:30s}  id={t['tagId']:>22s}  members={t['memberCount']}{marker}")
         print('-' * 60)
 
+        _dups = duplicate_names(before_tags)
+        if any(n in _dups for n in targets):
+            print('\nREFUSING: %s -- 2+ tags carry that name; a by-name delete could hit the copy with members. '
+                  'Use --empty-duplicates.' % ', '.join('%r x%d' % (n, len(_dups[n])) for n in targets if n in _dups))
+            return
         found = [n for n in targets if n in before]
         missing = [n for n in targets if n not in before]
         if missing:

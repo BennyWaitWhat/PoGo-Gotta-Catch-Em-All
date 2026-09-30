@@ -38,3 +38,22 @@ The governor's corridor now covers 30th-60th St, 9th-3rd Ave (`CORRIDOR`), and a
 
 To go back to Benny's own route: pick it in the GPS JoyStick app (its saved name wasn't read).
 Related: [[reference-pokemod-and-gps-joystick]], [[reference-gps-joystick-control]], [[reference-pogo-client-limits]].
+
+**Speed vs losses (Benny 2026-09-30: "fastest speed with less than 5% flee rate ... some places you walk while testing
+don't have the same spawn density").** `fled` is the loss (a throw the Pokemon ran from); `escaped` is a ball break-out
+that gets another throw -- not a loss. flee % = fled / (caught + fled).
+- Test 2 (12:1x-12:48, ABBA, 10 x 5 min): 10.5 km/h 2.8%, 16 4.1%, 20 8.9%, 24 6.8%, 28 8.1%. Catches per km stay ~60
+  at every speed, so per minute they scale with speed (10.6/min at 10.5 vs 27.1/min at 28).
+- Test 3 (13:10-14:04, 16/18/20/22 in a Williams order, 3-min windows, `catch_speed_test.py` EVENTS= / LOOP= same-ground
+  table): cut short -- PoGo was killed at 13:23:57 (below) and the balls ran out at 14:04. 16 km/h again lowest (4.1%,
+  4 of 98); 18-22 lost 7-11%. After the Ultra Balls and Razz ran out (13:46) every speed fled more: ITEM SUPPLY
+  CONFOUNDS SPEED, so re-test only with a stable stock. 9 windows covered less than one lap (1 side walked by every
+  speed): the same-ground numbers are not usable yet.
+- Choice: 16 km/h. While the catcher HOLDs "out of balls (at the floors)" the walk goes 10.5 (egg and buddy km count);
+  a watcher puts 16 back when 20+ balls return. Spins are rate-limited (Benny: "im currently spin rated limited. you
+  should know this.") -- our spinner is off and switching it on is no answer; Pokemod's Go Plus is the only ball income.
+
+**PoGo killed at 3.5 GB (2026-09-30 13:23:57).** `dumpsys activity exit-info com.nianticlabs.pokemongo`: SIGNALED status 9,
+rss 3.5 GB, after ~2 h of catching (the catcher's run was 6,879 s). Pokemod's log dir is wiped on relaunch, so exit-info
+is the only record. The relaunch hung ~20 min on stub processes (~190 MB, no libil2cpp) while Pokemod updated
+13.3.3 -> 13.6.0 and the game 0.429.1 -> 0.431.0; it loaded at 2.25 GB. The catcher recovered on its own (13:45:16).

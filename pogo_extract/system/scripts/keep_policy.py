@@ -1549,7 +1549,7 @@ def main():
     # (and still fit the league) is kept -- one copy per target, never a copy evolving would destroy (own-stage best,
     # top-5 spread, legacy move, last copy / only shiny of its form, protected). ONE definition: pvp_combup.pick,
     # called with this engine's own graph; preflight_transfer, audit_cull, _lawcheck, audit_tags_membership and
-    # audit_tag_truth call it on the same files. Tags 'Evo Best GL' / 'Evo Best UL'.
+    # audit_tag_truth call it on the same files. Tags 'Evolve for GL' / 'Evolve for UL' (2026-09-30).
     import pvp_combup
     _CU = pvp_combup.pick(rows, lambda r: pvp_later_stages(r, _EVO_GRAPH), BS, keep_config.pvp('best_rank_floor'),
                           RARE_PIDS, legacy, keep_config.protected_pids())
@@ -1851,8 +1851,8 @@ def main():
         print('candy_short export skipped:', _e)
     # PvP COMB-UP LABELS (user 2026-09-24: "yes" -- split them like the regular comb-ups). Every 15e pick stays KEPT;
     # only its LABEL follows what he can do today, from the SAME candy / item budget the Evolve labels just drew on (two
-    # labels never count the same candy): 'now' -> Evo Best GL / UL; 'gated' (the game gates the stage: a task, a buddy
-    # walk, a time of day, or an item he holds) -> Evo Best Gated; 'hold' (short on candy, or the item is missing) -> no
+    # labels never count the same candy): 'now' -> Evolve for GL / UL; 'gated' (the game gates the stage: a task, a buddy
+    # walk, a time of day, or an item he holds) -> Evolve Gated + Evolve for GL / UL; 'hold' (short on candy, or the item is missing) -> no
     # evolve tag until he can. Best rank first. Read by build_tagsets and the audits; missing -> labels as before.
     _cul_path = os.path.join(ROOT, 'system', 'analysis', 'pvp_combup_labels.json')
     try:
