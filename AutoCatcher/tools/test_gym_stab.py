@@ -415,7 +415,8 @@ def gm_fixture(td):
           tpl("V0999_POKEMON_NEWMON", pokemonId="NEWMON", type="POKEMON_TYPE_FIRE"),
           tpl("V0999_POKEMON_NEWMON_SHINY_FORM", pokemonId="NEWMON", type="POKEMON_TYPE_FIRE", type2="POKEMON_TYPE_GHOST", form="NEWMON_SHINY_FORM"),
           {"templateId": "SOMETHING_ELSE", "data": {}}]
-    enum = {"0": "Unset", "45": "RattataNormal", "46": "RattataAlola", "133": "MewtwoA", "200": "MrMimeGalarian", "101": "ArceusWater"}
+    enum = {"0": "Unset", "45": "RattataNormal", "46": "RattataAlola", "133": "MewtwoA", "200": "MrMimeGalarian", "101": "ArceusWater",
+            "300": "PalkiaOrigin", "301": "Palkia2020", "302": "PalkiaShadow", "303": "MewtwoCostume"}   # 300: a form the game master lacks
     g, e = os.path.join(td, "gm.json"), os.path.join(td, "form_enum.json")
     with open(g, "w", encoding="utf-8") as f:
         json.dump(gm, f)
@@ -436,6 +437,8 @@ def config_checks():
         check(t["122:200"] == ["ICE", "PSYCHIC"] and t["493:101"] == ["WATER"], "Galarian Mr. Mime / Arceus Water: matched letters-and-digits against the enum's CamelCase")
         check(c["unmapped"] == 1 and "999:1" not in t and c["forms"] == 3, f"a form the enum lacks is counted, not guessed ({c['unmapped']} unmapped, {c['forms']} forms)")
         check(c["names"][122] == "Mr Mime" and c["names"][484] == "Palkia", "names for the log lines")
+        check(c["species_typed"] == ["PalkiaOrigin"] and "484:300" not in t,
+              f"a form the game master lacks is named as running on its species' typing; a year / shadow / costume form is not ({c['species_typed']})")
         check(gym_tapper.stab_config(g, e) is c, "the table is built once per file pair")
         check(json.dumps({"mult": c["mult"], "types": t}), "the hand-over payload is plain JSON")
         bad = gym_tapper.stab_config(os.path.join(td, "missing.json"), e)
@@ -525,6 +528,8 @@ def main():
     js = gym_tapper.JS
     if NODE is None:
         print("SKIP: node not found -- the script text and the STAB block were NOT checked (CI has node)")
+        if os.environ.get("CI"):                 # 2026-09-30 (review of #27): in CI a missing node is a failure, never a silent pass
+            FAILS.append("node not found in CI: the tapper script and the STAB block were not checked")
     else:
         script_text(js)
         stab_block(js)

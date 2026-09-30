@@ -16,7 +16,9 @@ The Windows PC that used to run this is retired for PoGo work (its copy is a bac
 2. `cd pogo_extract && python full_audit.py` — never with a guessed flag (unknown flags now stop it, rc 2), never piped into `head`.
    rc 5 "GAME MASTER REFRESH STOPPED THE PASS" = a new game master moved a keep verdict of a mon in the bag (rule 9: policy is his call):
    show Benny the rows it printed (also in `system/analysis/gamemaster_review_pending.json`), WAIT, and run
-   `python system/scripts/refresh_gamemaster.py --ack` only when he says so, never yourself; then cull again.
+   `python system/scripts/refresh_gamemaster.py --ack` only when he says so, never yourself; then cull again. A new CLIENT game
+   master that moved a verdict is HELD, not installed, while the review is pending: `--ack` installs it, `--reject` keeps the
+   installed one and declines that batch (no run downloads it again) -- both only on his word.
 3. `python tools/pogo_data.py push --group inventory` (repo root) — ALWAYS after a phone pass, even when the gate failed.
 4. Publish Bag Pulse: `pogo_extract/system/analysis/collection_stats.html` to `https://claude.ai/artifact/59FFz2wZBv8sNC4CZJBmKn`
    (alt account: `BvcioQeAeZcposXoFHFE8Q`). No Artifact tool in this session? Say so in one line.

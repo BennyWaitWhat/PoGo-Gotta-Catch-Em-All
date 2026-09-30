@@ -35,8 +35,9 @@ PokeMiners' 13-byte latest/timestamp.txt, not the 30-day pvpoke clock. A NEW bat
 the bags (the active account's and every resting account's parked one: the file is shared) BEFORE it is installed
 (gm_guard.assess reuses detect_legacy's pool functions, evolvable_forms, size_line (the size numbers and types an
 XXL keep is scored by), costume_forms (a form the batch flags or unflags isCostume), isTradable, isTransferable and the
-rarity classes): if any in-bag keep verdict flips it is installed with a dated backup, the SAME review record is written
-and the run exits 2 (--ack clears it); a candidate the engine cannot load, or one under 90% of the installed file on any
+rarity classes): if any in-bag keep verdict flips it is HELD, not installed (gamemaster_pokeminers.pending.json beside the
+installed file), the SAME review record is written and the run exits 2: --ack installs exactly the held bytes (dated backup +
+stamp), --reject keeps the installed file and declines that batch -- both only on Benny's word; a candidate the engine cannot load, or one under 90% of the installed file on any
 of gm_guard.content_counts' 14 structural counts, is never installed. Ids a batch prints as enum NUMBERS are named on
 download (gm_guard.normalize_file), before it is judged, stamped or installed.
 The batch is stamped in gamemaster_pokeminers.json.meta (batch time, APK, sha256) for audit_invariants I2.7.
@@ -97,6 +98,16 @@ def review_gate(argv):
         if not isinstance(pend, dict):          # a null / list record is still a pending file: fail closed (R-B review --
             pend = {'since': '? (malformed record: %r)' % (pend,)}   # 'null' passed the gate, '[]' crashed it with rc 1)
     _interrupted = pend is not None and pend.get('status') == 'in progress'
+    _held = pend is not None and pend.get('target') == 'pokeminers' and bool(pend.get('staged'))
+    if '--reject' in argv:                      # 2026-09-30: decline a HELD client game master (only on Benny's word)
+        if not _held:
+            print('--reject: %s' % ('no game-master review was pending' if pend is None else
+                  'this review is not a held client game master (a pvpoke rank crossing or an interrupted refresh) -- review '
+                  'it, then --ack'))
+            return 0 if pend is None else 2
+        return _pm_reject(pend)
+    if '--ack' in argv and _held:
+        return _pm_accept(pend)
     if '--ack' in argv:
         if pend is None:
             print('--ack: no game-master review was pending')
@@ -128,8 +139,9 @@ def review_gate(argv):
         print(pend.get('headline') or
               'The %s refresh moved keep decisions across the rank<=%d line; nothing may sync until a human has reviewed them.'
               % (pend.get('since'), READY_RANK))
-    print('   rows: %s -- clear it (an interrupted refresh: roll it back) with: python system/scripts/refresh_gamemaster.py --ack'
-          % os.path.relpath(REVIEW, ROOT))
+    print('   rows: %s -- %s' % (os.path.relpath(REVIEW, ROOT),
+          'install the HELD game master: python system/scripts/refresh_gamemaster.py --ack | keep the installed one: --reject'
+          if _held else 'clear it (an interrupted refresh: roll it back) with: python system/scripts/refresh_gamemaster.py --ack'))
     print('REVIEW PENDING since %s (%s): after review run refresh_gamemaster.py --ack'
           % (str(pend.get('since'))[:16], 'interrupted refresh' if _interrupted else '%d crossed, %d NULL' % (
               len(pend.get('crossed') or []), len(pend.get('nulled') or []))))
@@ -179,8 +191,9 @@ def _pm_engine_inputs():
     return mm, en
 
 
-def _pm_stop(gg, res, reason, bak=None, old_meta=None, new_meta=None):
-    """Write the SAME review record the pvpoke crossing writes (extra keys are ignored by review_gate / full_audit)."""
+def _pm_stop(gg, res, reason, bak=None, old_meta=None, new_meta=None, **held):
+    """Write the SAME review record the pvpoke crossing writes (extra keys are ignored by review_gate / full_audit). `held`
+    (a FLIPS since 2026-09-30): staged / batch_ts / meta_new / gm_path / meta_path -- what --ack installs and --reject declines."""
     crossed = sorted({f['uid'] for f in res.get('flips') or []})
     nulled = sorted(res.get('nulled') or [])
     lines = gg.review_lines(res, old_meta, new_meta, bak) if res.get('flips') or res.get('nulled') else [reason]
@@ -192,7 +205,77 @@ def _pm_stop(gg, res, reason, bak=None, old_meta=None, new_meta=None):
            'old': old_meta and {k: old_meta.get(k) for k in ('batch_utc', 'apk', 'sha256')},
            'new': new_meta and {k: new_meta.get(k) for k in ('batch_utc', 'apk', 'sha256')},
            'axes': res.get('axes') or {}, 'flips': (res.get('flips') or [])[:500]}
+    if held.get('staged'):
+        say = ('HELD, NOT INSTALLED: %s waits beside the installed file -- refresh_gamemaster.py --ack installs it (dated backup + '
+               'stamp), --reject keeps the installed file and declines this batch' % held['staged'])
+        lines, shown = lines[:1] + [say] + lines[1:], shown[:1] + [say] + shown[1:]
+        rec['lines'] = lines[:500]
+        rec.update(held)
     return _write_review(rec), shown
+
+
+def _pm_accept(pend):
+    """--ack on a HELD client game master (2026-09-30): install exactly the judged bytes (dated backup + stamp; the next run
+    owes the reconcile + rank pass). A held file that is gone (another machine held it) or changed installs NOTHING: the record
+    is cleared and the next run downloads and judges the batch again."""
+    if ROOT not in sys.path:
+        sys.path.insert(0, ROOT)
+    import gm_guard as gg
+    gm_path = pend.get('gm_path') if pend.get('gm_path') and os.path.exists(os.path.dirname(pend['gm_path'])) else PM
+    meta_path = pend.get('meta_path') if pend.get('meta_path') and os.path.exists(os.path.dirname(pend['meta_path'])) else PM_META
+    staged = os.path.join(os.path.dirname(gm_path), os.path.basename(pend['staged']))
+    want = (pend.get('meta_new') or {}).get('sha256')
+    try:
+        judged = bool(want) and os.path.exists(staged) and gg.sha256_file(staged) == want
+    except OSError:
+        judged = False
+    if not judged:
+        _clear_review()
+        print('--ack: the held game master %s is missing here or is not the judged bytes -- NOTHING installed; the next run '
+              'downloads and judges that batch again' % os.path.basename(staged))
+        return 0
+    bak = gg.next_backup_path(gm_path)
+    try:
+        shutil.copy2(gm_path, bak)
+        if os.path.exists(meta_path):
+            shutil.copy2(meta_path, meta_path + '.bak-' + os.path.basename(bak).split('.bak-', 1)[1])
+        os.replace(staged, gm_path)                          # atomic; the previous file is the backup above
+    except OSError as e:
+        print('--ack: NOT installed (%s) -- the installed game master stays and the review stays pending' % e)
+        return 2
+    if not gg.write_meta(meta_path, dict(pend.get('meta_new') or {}, tail_pending=True)):
+        print('--ack: installed, but %s could not be written -- the next run re-adopts it' % os.path.basename(meta_path))
+    _clear_review()
+    print('--ack: installed the held client game master (batch %s); previous file kept as %s. The next cull reconciles and '
+          're-ranks on it' % ((pend.get('new') or {}).get('batch_utc'), os.path.basename(bak)))
+    return 0
+
+
+def _pm_reject(pend):
+    """--reject on a HELD client game master (2026-09-30): drop the held file, keep the installed one, and stamp the batch as
+    DECLINED so no run downloads it again (a newer batch is judged as usual; --force re-judges this one)."""
+    if ROOT not in sys.path:
+        sys.path.insert(0, ROOT)
+    import gm_guard as gg
+    gm_path = pend.get('gm_path') if pend.get('gm_path') and os.path.exists(os.path.dirname(pend['gm_path'])) else PM
+    meta_path = pend.get('meta_path') if pend.get('meta_path') and os.path.exists(os.path.dirname(pend['meta_path'])) else PM_META
+    staged = os.path.join(os.path.dirname(gm_path), os.path.basename(pend['staged']))
+    try:
+        if os.path.exists(staged):
+            os.remove(staged)
+    except OSError as e:
+        print('--reject: could not delete %s (%s) -- delete it by hand' % (os.path.basename(staged), e))
+    meta, pinned = gg.read_meta(meta_path), False
+    if meta:
+        meta['declined'] = {'batch_ts': pend.get('batch_ts'), 'batch_utc': (pend.get('new') or {}).get('batch_utc'),
+                            'at': time.strftime('%Y-%m-%d %H:%M')}
+        pinned = gg.write_meta(meta_path, meta)
+    _clear_review()
+    print('--reject: kept the installed client game master; batch %s %s' % (
+        (pend.get('new') or {}).get('batch_utc'),
+        'is declined (a newer batch is judged as usual; refresh_gamemaster.py --force re-judges this one)' if pinned else
+        'could NOT be marked declined (no writable stamp) -- the next run downloads it and stops on it again'))
+    return 0
 
 
 def pokeminers_phase(argv, fetch=None, now=None, gm_path=None, meta_path=None, db_path=None):
@@ -208,7 +291,9 @@ def pokeminers_phase(argv, fetch=None, now=None, gm_path=None, meta_path=None, d
            UNREADABLE_NEW  never installed, the installed file stays, WARN
            STOP            the baseline / the bag / a verdict cannot be read: nothing installed, record, rc 2
            CLEAR           dated backup, atomic install (of exactly the bytes that were judged), stamp
-           FLIPS           record FIRST, then backup + atomic install + stamp, rc 2 (--ack clears it, as for a rank crossing)"""
+           FLIPS           HELD as <name>.pending.json + the record, NOTHING installed, rc 2: --ack installs the held bytes
+                           (dated backup + stamp + the owed reconcile/rank pass), --reject declines the batch (2026-09-30)
+           a DECLINED batch (meta 'declined', written by --reject) is never downloaded again; a newer one is judged as usual"""
     if ROOT not in sys.path:
         sys.path.insert(0, ROOT)
     import gm_guard as gg
@@ -230,6 +315,14 @@ def pokeminers_phase(argv, fetch=None, now=None, gm_path=None, meta_path=None, d
         print("WARN pokeminers: upstream's latest batch (%s UTC) is OLDER than the installed one (%s UTC) -- a stale edge or a "
               "rollback; nothing downloaded, the installed client game master stays" % (gg._utc(up_ts / 1000.0), meta.get('batch_utc', '?')))
         _PM_NOTE[0] = 'pokeminers %s: upstream is OLDER, kept' % _pm_ident(meta)
+        return None, tail
+    _dec = (meta or {}).get('declined') if state == 'ok' else None
+    if _dec and _dec.get('batch_ts') == up_ts and '--force' not in argv:
+        # DECLINED (--reject, 2026-09-30): the owner kept the installed file over this batch; asking again every run would stop
+        # every cull on the same rows. A NEWER batch is judged as usual; --force re-judges this one.
+        print('pokeminers: batch %s UTC was declined (--reject, %s) -- the installed client game master stays; a newer batch is '
+              'judged as usual' % (gg._utc(up_ts / 1000.0), _dec.get('at', '?')))
+        _PM_NOTE[0] = 'pokeminers %s kept (batch %s declined)' % (_pm_ident(meta), gg._utc(up_ts / 1000.0)[:10])
         return None, tail
     if state == 'ok' and meta['batch_ts'] == up_ts and '--force' not in argv:
         meta['checked_ts'], meta['checked_at'], meta['upstream_ts'] = int(now), gg._utc(now), up_ts
@@ -332,6 +425,35 @@ def pokeminers_phase(argv, fetch=None, now=None, gm_path=None, meta_path=None, d
     nm = gg.new_meta(up_ts, res['new']['sha256'], apk, folder, now, tail_pending=True)
     if named:
         nm['ids_named'] = named                              # the stamped sha256 is of the NAMED bytes, not upstream's
+    if v == 'FLIPS':
+        # HELD, NOT INSTALLED (2026-09-30, review of #27: "the owner cannot decline"): until then a FLIPS installed first and
+        # --ack only cleared the record, so a hand rollback was re-downloaded, re-installed and re-stopped by the next run. The
+        # judged bytes now wait beside the installed file (a .json name, so the data store carries them to the next session)
+        staged = (gm_path[:-5] if gm_path.endswith('.json') else gm_path) + '.pending.json'
+        try:
+            if gg.sha256_file(tmp) != res['new']['sha256']:  # a second refresh may have rewritten the download since it was judged
+                raise OSError('the downloaded candidate changed after it was judged (a second refresh running?)')
+            os.replace(tmp, staged)
+        except OSError as e:
+            _drop()
+            print('WARN pokeminers: NOT installed or held -- %s (the installed file stays)' % e)
+            return 1, tail
+        ok, lines = _pm_stop(gg, res, res['reason'], None, meta, nm, staged=os.path.basename(staged), batch_ts=up_ts,
+                             meta_new=dict(nm), gm_path=os.path.abspath(gm_path), meta_path=os.path.abspath(meta_path))
+        if not ok:
+            try:
+                os.remove(staged)
+            except OSError:
+                pass
+            print('WARN pokeminers: NOT installed -- the review record could not be written; the installed file stays')
+            return 1, tail
+        _PM_NOTE[0] = 'pokeminers %s HELD for review, not installed' % _pm_ident(nm)
+        for l in lines[:40]:
+            print('   ' + l)
+        print('   rows: %s -- install it: python system/scripts/refresh_gamemaster.py --ack | keep the installed one: --reject'
+              % os.path.relpath(REVIEW, ROOT))
+        print('pokeminers: %s -- NEW GAME MASTER HELD, NOT INSTALLED: NEEDS A HUMAN (exit 2)' % res['reason'])
+        return 2, tail
     bak = gg.next_backup_path(gm_path)
     try:
         shutil.copy2(gm_path, bak)
@@ -341,32 +463,18 @@ def pokeminers_phase(argv, fetch=None, now=None, gm_path=None, meta_path=None, d
         _drop()
         print('WARN pokeminers: NOT installed -- the backup could not be written (%s); the installed file stays' % e)
         return 1, tail
-    if v == 'FLIPS':
-        ok, lines = _pm_stop(gg, res, res['reason'], bak, meta, nm)
-        if not ok:
-            _drop()
-            print('WARN pokeminers: NOT installed -- the review record could not be written; the installed file stays')
-            return 1, tail
     try:
         if gg.sha256_file(tmp) != res['new']['sha256']:      # a second refresh may have rewritten the download since it was judged
             raise OSError('the downloaded candidate changed after it was judged (a second refresh running?)')
         os.replace(tmp, gm_path)                             # atomic; the previous file is the backup above
     except OSError as e:
         _drop()
-        if v == 'FLIPS':
-            _clear_review()
         print('WARN pokeminers: NOT installed -- %s (the installed file stays)' % e)
         return 1, tail
     if not gg.write_meta(meta_path, nm):
         print('WARN pokeminers: installed, but %s could not be written -- the next run re-adopts it' % os.path.basename(meta_path))
     print('pokeminers: installed batch %s; previous file kept as %s' % (_pm_ident(nm), os.path.basename(bak)))
-    _PM_NOTE[0] = 'pokeminers installed %s, %s' % (_pm_ident(nm), 'verdicts unchanged' if v == 'CLEAR' else 'REVIEW PENDING')
-    if v == 'FLIPS':
-        for l in lines[:40]:
-            print('   ' + l)
-        print('   rows: %s -- after review: python system/scripts/refresh_gamemaster.py --ack' % os.path.relpath(REVIEW, ROOT))
-        print('pokeminers: %s -- REFRESH APPLIED BUT NEEDS A HUMAN (exit 2)' % res['reason'])
-        return 2, True
+    _PM_NOTE[0] = 'pokeminers installed %s, verdicts unchanged' % _pm_ident(nm)
     print('pokeminers: no in-bag keep verdict moves (move pools, evolution chain, size / types, costume, tradable, transferable, rarity) '
           '-- installed without a stop')
     return None, True
@@ -418,7 +526,7 @@ def ranks(con):
         'SELECT uid_hex, gl_rank, ul_rank, ll_rank FROM pokemon WHERE in_bag=1')}
 
 
-FLAGS = ('--check-only', '--force', '--ack', '--selftest', '--accept-smaller')
+FLAGS = ('--check-only', '--force', '--ack', '--reject', '--selftest', '--accept-smaller')
 
 
 def main(argv):

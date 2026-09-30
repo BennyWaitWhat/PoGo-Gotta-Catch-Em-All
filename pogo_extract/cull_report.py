@@ -1068,7 +1068,11 @@ def _power_up_line(e, name):
                                    '%s XL' % f(need['xl']) if need['xl'] else '') if p)
     hold = ' + '.join(p for p in ('%s candy' % f(have['candy']) if need['candy'] and have.get('candy') is not None else '',
                                   '%s XL' % f(have['xl']) if need['xl'] and have.get('xl') is not None else '') if p)
-    return '%s: %s%s -- %s' % (head, price, (' (you hold %s)' % hold) if hold else '', _power_up_verdict(e))
+    # APPROXIMATE for a shadow / purified mon (2026-09-30, review of #27): the game master gives the x1.2 / x0.9 multipliers but not
+    # how the game rounds them per step (_up rounds every step UP: shadow L40->50 = 360 XL here, 355-352 by other roundings)
+    apx = {1: ' (approx.: shadow x1.2, the rounding is not checked in game)',
+           2: ' (approx.: purified x0.9, the rounding is not checked in game)'}.get(e.get('align'), '')
+    return '%s: %s%s%s -- %s' % (head, price, apx, (' (you hold %s)' % hold) if hold else '', _power_up_verdict(e))
 
 
 def power_up_lines(plan, name, tags):
@@ -1184,6 +1188,8 @@ def _selftest():
             '1 not read this walk, 1 without a price']
     assert got == want, '\n'.join(got)
     assert power_up_lines([], nm.get, tg) == [] and power_up_lines(None, nm.get, tg) == []
+    assert '(approx.: shadow x1.2' in _power_up_line(dict(plan[0], align=1), nm.get) and 'purified x0.9' in _power_up_line(dict(plan[0], align=2), nm.get) \
+        and 'approx' not in _power_up_line(dict(plan[0], align=0), nm.get), 'a shadow / purified price is marked approximate'
     # past 12 lines no mon is dropped (Benny 2026-09-26: no list ends in "+N more"): the rest are all NAMED in one short line, and the total counts all
     many = [pe('m', 'ul', 40.0, 50.0, nd(250000, 0, 296), hv(0, 400), z, 'now') for _ in range(14)] + [plan[2]]
     got = power_up_lines(many, nm.get, tg)
