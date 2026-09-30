@@ -1,5 +1,10 @@
 # START HERE — every PoGo session reads this first
 
+> **Cloud session quick start — do these in order:**
+> 1. Look at the `PHONE BRIDGE:` line at the bottom of this page. Not connected → [`cloud_setup.md`](cloud_setup.md) table, tell Benny the one fix.
+> 2. `python tools/pogo_data.py status` — if `inventory` was last pushed `by pc-seed`, **run the first cull now** ([`HANDOFF.md`](HANDOFF.md) §0: Benny asked for it).
+> 3. Before you tell Benny anything is done: `python tools/triple_check.py --gate` must say **ALL CLEAR**.
+
 Benny's Pokémon GO tooling for one rooted Pixel 9 Pro. Since 2026-09-29 **all PoGo work runs in Claude cloud sessions**: this repo holds
 the code and docs, the phone holds the game data, and each cloud session reaches the phone over Tailscale (the SessionStart hook sets up
 the bridge and prints a `PHONE BRIDGE:` line below this page). How Benny wants answers: lead with the action,
