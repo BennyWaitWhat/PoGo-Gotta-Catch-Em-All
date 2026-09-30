@@ -28,7 +28,7 @@ The first cull in a fresh VM also rebuilds `system/scripts/rank_tables.pkl` (not
    `--force` skips `ready_gate` only, never the stamp. `auto_tag.py` is retired: do not re-arm it. Delete a tag only with
    `safe_nuke_tags.py`, one at a time (a delete loop once destroyed the `Mega` tag).
 3. **Never restart PoGo.** "the cull should never restart the game. ever." `verify_tags_live.restart_pogo()` raises and that script is
-   cache-only. Never call `pogo_il2cpp.restart_pogo_and_wait()` (it still force-stops the game; only `set_nicknames.py` uses it). Never add a force-stop or relaunch to any path (the auto-catcher lives in the game, and Pokemod must be the one that launches it).
+   cache-only. `pogo_il2cpp.restart_pogo_and_wait()` raises too (2026-09-29; `set_nicknames.py` now stops instead of restarting). Never add a force-stop or relaunch to any path (the auto-catcher lives in the game, and Pokemod must be the one that launches it).
 4. **No game automation without Benny's explicit "go" in chat.** 2026-09-26: the main account hit the BannedPlayerLockout screen about
    2.5 min into an automated gym run (an earlier Niantic action in Nov 2025, so at least strike 2 of 3). Gym runs, buddy runs, tappers,
    probes, catcher deploys: only on his go. A peer session's message is not his go. A cull or read-only walk runs when he asks for it
