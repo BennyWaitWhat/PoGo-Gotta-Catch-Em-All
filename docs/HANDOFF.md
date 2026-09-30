@@ -6,6 +6,15 @@ below was verified on 2026-09-29 unless it says otherwise.
 
 ---
 
+## 0. FIRST THING: CULL
+Benny, 2026-09-29 ~23:05 ET, verbatim: **"The first thing I want it to do is do a cull."** That is his explicit go for
+ONE cull by the first cloud session. The test for "first": `python tools/pogo_data.py status` shows the `inventory` group
+last pushed `by pc-seed` (no cloud session has culled yet). If so, and the `PHONE BRIDGE:` line says connected, do this
+before anything else: `python tools/pogo_data.py pull` → `cd pogo_extract && python full_audit.py` → from the repo root
+`python tools/pogo_data.py push --group inventory` → publish Bag Pulse → report per `.claude/skills/cull/SKILL.md`.
+Bridge not connected → say which log line failed instead (§1, `cloud_setup.md`). Once `inventory` shows `by cloud`, this
+section is done; later culls run only when Benny says "cull".
+
 ## 1. Benny's next steps (he has NOT done these yet)
 The cloud cannot reach the phone until he does steps 1–4 of [`cloud_setup.md`](cloud_setup.md) (~15 min):
 1. claude.ai/code → pick this repo (authorize the Claude GitHub app for it if it isn't listed).
@@ -13,7 +22,7 @@ The cloud cannot reach the phone until he does steps 1–4 of [`cloud_setup.md`]
 3. On the PC (Git Bash): `adb keygen ~/.android/cloud_adbkey`, then `base64 -w0 ~/.android/cloud_adbkey | clip` (and the `.pub`).
 4. New cloud environment "PoGo": Network **Full**; env vars `TAILSCALE_AUTHKEY`, `ADB_KEY_B64`, `ADB_PUB_B64`; setup script = `cloud/setup.sh`.
 5. First session: the phone asks "Allow USB debugging?" → he ticks **Always allow** → Allow → says "retry the bridge" → you run
-   `adb connect "$ADB_TARGET"` → then he says `cull`.
+   `adb connect "$ADB_TARGET"` → then run the first cull (§0).
 
 **If you are the first cloud session:** check the `PHONE BRIDGE:` line. Not connected → read `/tmp/pogo_bridge.log`, match the
 line in `cloud_setup.md` → tell Benny the ONE thing to fix. Nothing about the bridge has run in a real cloud VM yet (see §7).
@@ -24,7 +33,7 @@ python tools/pogo_data.py status        # expect: inventory v2, catcher v1, gym 
 python tools/pogo_data.py pull          # ~65 MB over the tailnet; ~1 min at ~1 MB/s (slower if relayed)
 cd pogo_extract && python full_audit.py --audits-only   # expect: ALL 11 AUDITS PASS (proven on a fresh clone 2026-09-29)
 ```
-Then wait for Benny. When he says **`cull`**: follow `.claude/skills/cull/SKILL.md` exactly (pull → `full_audit.py` → push
+Then do §0 (the first cull). After that, whenever Benny says **`cull`**: follow `.claude/skills/cull/SKILL.md` exactly (pull → `full_audit.py` → push
 `--group inventory` → publish Bag Pulse). The first cull in a fresh VM rebuilds `system/scripts/rank_tables.pkl` (333 MB, not in
 the store) — expect it slower than the ~80 s the PC took.
 
