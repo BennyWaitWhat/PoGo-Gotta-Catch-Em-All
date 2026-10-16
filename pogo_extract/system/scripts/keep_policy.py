@@ -1030,6 +1030,39 @@ def main():
         return True
     def _commit(t, r):
         _committed[_tkey(t, r)].append(_virtual(r))       # raise the bar: the next candidate competes with this one
+    def _revoke_displaced(ts, r):
+        """A PROMISE THE RESCUE PUSHED OUT IS WITHDRAWN (2026-10-16). The comb-up loop promises best-first, so its commits
+        never displace each other; the dominance collapse rescues LATER and out of IV order, and its commit can push an
+        earlier, weaker promise out of a full ladder. Nothing withdrew it: a 67% plain Cacnea, collapsed under a 98% shadow
+        and rescued into the female-Cacturne ladder (2 per gender), took the second slot from a 33% promised before it --
+        three promises for two slots, audit_promises 'culled after evolving', gate failed. The pushed-out copy is judged as
+        the best-first loop would have judged it: within its own stage cap it stays as at-stage stock, beyond it with no
+        other reason it goes to the pile (a stage holds the best N you own, promised or not). Its candy / items are given
+        back. An unpaid HOLD (no promise, no label) is left as it is."""
+        for t in ts:
+            key = _tkey(t, r)
+            pool = list(stage_pool.get(key, ())) + _committed.get(key, [])
+            _in = {x['uid_hex'] for x in topn(pool, _eff_cap(key, pool))}
+            for c in [c for c in _committed.get(key, []) if c['uid_hex'] not in _in]:
+                u = c['uid_hex'][:-len('~evo')]
+                if u not in _promises:
+                    continue                              # an unpaid HOLD: no label to withdraw
+                _ts = _promises.pop(u)
+                for _ck in list(_committed):              # a split promise committed to every final: withdraw it everywhere
+                    _committed[_ck] = [x for x in _committed[_ck] if x['uid_hex'] != c['uid_hex']]
+                _c0 = dict(c, uid_hex=u)
+                _cst, _fam = _cost(_c0, _ts), evolvable_forms.family(_sid(_c0))
+                if _candy_left is not None and _cst is not None and _fam is not None:
+                    _candy_left[_fam] = _candy_left.get(_fam, 0) + _cst
+                if _items_left is not None:
+                    for _k, _n in _need_items(_c0, _ts).items():
+                        _ik = evolvable_forms._item_key(_k)
+                        _items_left[_ik] = _items_left.get(_ik, 0) + _n
+                keep[u] = {x for x in keep.get(u, set()) if not x.startswith('evolve_')}
+                if u in _stock_uids:
+                    mark(u, 'variant_floor')              # inside its own stage's cap: at-stage stock, as the loop does
+                if not keep[u]:
+                    del keep[u]                           # beyond its stage cap and nothing else keeps it -> the pile
     def _direct_children(p):
         ch = allreach_sp.get(p, set())
         return {c for c in ch if not any(c in allreach_sp.get(s, ()) for s in ch if s != c)}
@@ -1783,6 +1816,7 @@ def main():
                             mark(_b['uid_hex'], f"evolve_{_steps(_sid(_b), _pt[0])}")   # ... hold it to EVOLVE
                             for t in _pt:
                                 _commit(t, _b)
+                            _revoke_displaced(_pt, _b)             # out of IV order: withdraw a weaker promise it pushed out
                             break
                         if _b['uid_hex'] in _earned_unpaid:
                             # EARNED A LATER-STAGE SLOT, CANNOT PAY TODAY -> HOLD, exactly as the comb-up loop does
