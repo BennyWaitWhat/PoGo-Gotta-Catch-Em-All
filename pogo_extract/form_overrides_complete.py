@@ -215,6 +215,51 @@ FORM_OVERRIDES = {
     ('Oricorio', 2680): 'oricorio_pom_pom',
     ('Oricorio', 2681): 'oricorio_pau',
     ('Oricorio', 2683): 'oricorio_sensu',
+    # Minior (2026-10-24): the game's Form enum gives every color its own id -- Core 2708-2714, Meteor 2707 and
+    # 2739-2744. The client game master gives every Core color 218/131/155 (= 'minior_core') and the base MINIOR
+    # 116/194/155 (= 'minior_meteor'). Keyed under every name the bag can carry for it.
+    ('Minior', 2708): 'minior_core',          # MiniorBlue
+    ('Minior', 2709): 'minior_core',          # MiniorGreen
+    ('Minior', 2710): 'minior_core',          # MiniorIndigo
+    ('Minior', 2711): 'minior_core',          # MiniorOrange
+    ('Minior', 2712): 'minior_core',          # MiniorRed
+    ('Minior', 2713): 'minior_core',          # MiniorViolet
+    ('Minior', 2714): 'minior_core',          # MiniorYellow
+    ('Minior', 2707): 'minior_meteor',        # MiniorMeteorBlue
+    ('Minior', 2739): 'minior_meteor',        # MiniorMeteorGreen
+    ('Minior', 2740): 'minior_meteor',        # MiniorMeteorIndigo
+    ('Minior', 2741): 'minior_meteor',        # MiniorMeteorOrange
+    ('Minior', 2742): 'minior_meteor',        # MiniorMeteorRed
+    ('Minior', 2743): 'minior_meteor',        # MiniorMeteorViolet
+    ('Minior', 2744): 'minior_meteor',        # MiniorMeteorYellow
+    ('Minior (Core)', 2708): 'minior_core',          # MiniorBlue
+    ('Minior (Core)', 2709): 'minior_core',          # MiniorGreen
+    ('Minior (Core)', 2710): 'minior_core',          # MiniorIndigo
+    ('Minior (Core)', 2711): 'minior_core',          # MiniorOrange
+    ('Minior (Core)', 2712): 'minior_core',          # MiniorRed
+    ('Minior (Core)', 2713): 'minior_core',          # MiniorViolet
+    ('Minior (Core)', 2714): 'minior_core',          # MiniorYellow
+    ('Minior (Core)', 2707): 'minior_meteor',        # MiniorMeteorBlue
+    ('Minior (Core)', 2739): 'minior_meteor',        # MiniorMeteorGreen
+    ('Minior (Core)', 2740): 'minior_meteor',        # MiniorMeteorIndigo
+    ('Minior (Core)', 2741): 'minior_meteor',        # MiniorMeteorOrange
+    ('Minior (Core)', 2742): 'minior_meteor',        # MiniorMeteorRed
+    ('Minior (Core)', 2743): 'minior_meteor',        # MiniorMeteorViolet
+    ('Minior (Core)', 2744): 'minior_meteor',        # MiniorMeteorYellow
+    ('Minior (Meteor)', 2708): 'minior_core',          # MiniorBlue
+    ('Minior (Meteor)', 2709): 'minior_core',          # MiniorGreen
+    ('Minior (Meteor)', 2710): 'minior_core',          # MiniorIndigo
+    ('Minior (Meteor)', 2711): 'minior_core',          # MiniorOrange
+    ('Minior (Meteor)', 2712): 'minior_core',          # MiniorRed
+    ('Minior (Meteor)', 2713): 'minior_core',          # MiniorViolet
+    ('Minior (Meteor)', 2714): 'minior_core',          # MiniorYellow
+    ('Minior (Meteor)', 2707): 'minior_meteor',        # MiniorMeteorBlue
+    ('Minior (Meteor)', 2739): 'minior_meteor',        # MiniorMeteorGreen
+    ('Minior (Meteor)', 2740): 'minior_meteor',        # MiniorMeteorIndigo
+    ('Minior (Meteor)', 2741): 'minior_meteor',        # MiniorMeteorOrange
+    ('Minior (Meteor)', 2742): 'minior_meteor',        # MiniorMeteorRed
+    ('Minior (Meteor)', 2743): 'minior_meteor',        # MiniorMeteorViolet
+    ('Minior (Meteor)', 2744): 'minior_meteor',        # MiniorMeteorYellow
     # Toxtricity
     # enum: 2463=LowKey 2464=Amped (the old table had these SWAPPED). Both share
     # atk224/def140/hp181, so labeling only, no rank effect.
