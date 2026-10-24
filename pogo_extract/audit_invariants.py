@@ -1337,6 +1337,10 @@ NULL_EXEMPT = {
     'ul_rank': ('same as gl_rank.'),
     'gl_stage': ('same as gl_rank -- read only alongside it.'),
     'ul_stage': ('same as gl_rank -- read only alongside it.'),
+    'ml_rank': ('same as gl_rank (2026-10-23): read only behind an `is not None` guard (the shadow ML pick, Best ML), never '
+                'as `or 0`, and a row with every rank NULL is kept by rule 15c. The harness asserts below that no row has '
+                'its ML rank or stage NULL while it holds a GL or UL rank, which 15c would miss.'),
+    'ml_stage': ('same as ml_rank -- read only alongside it.'),
     'cull_decision_v9': ('reporting only -- the "newly trimmed vs cull_v9" print. Decides nothing.'),
 }
 
@@ -1463,6 +1467,16 @@ def check_null_direction(con, schema):
              'missing instead of both.')
     else:
         ok('no half-ranked rows -- rule 15c fully covers the rank NULL exemption')
+
+    half_ml = con.execute('SELECT COUNT(*) FROM pokemon WHERE in_bag=1 AND (ml_rank IS NULL OR ml_stage IS NULL) '
+                          'AND NOT (gl_rank IS NULL AND ul_rank IS NULL)').fetchone()[0]
+    if half_ml:
+        fail(BLOCK, '%d in-bag mon(s) have a NULL ml_rank/ml_stage but a GL or UL rank -- rule 15c only '
+                    'protects rows where every rank is NULL' % half_ml,
+             'Re-run compute_all_ranks.py / rank_cache.py. The shadow ML and Best ML picks skip a NULL ML rank, '
+             'so a ranked row missing only its ML rank could lose its ML keep with nothing else catching it.')
+    else:
+        ok('no ML-only NULL rows -- rule 15c covers the ml_rank / ml_stage NULL exemption')
 
     if '_is_regional_code' in code_only(ENGINE):
         ok('form_region NULL exemption holds: _is_regional_code() guard present in the engine')
