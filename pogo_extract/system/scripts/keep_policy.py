@@ -1252,6 +1252,7 @@ def main():
         # shiny). Specials are untouched. Mirrored in audit_cull, _lawcheck, preflight_transfer, refresh_evolve_shiny.
         _sfl = keep_config.shiny_floor_iv()
         _first = _ranked[0]['uid_hex'] if _ranked else None
+        _ffree = {x['uid_hex'] for x in _ranked[:keep_config.shiny_floor_keep()]}   # its N best stay, floor or not (2026-10-25)
         _plains = [x for x in _ranked if not _scollect(x)]
         _first_pl = _plains[0]['uid_hex'] if _plains else None   # the best PLAIN shiny stays too: a plain and a Max shiny are different variants
         # EVERY LOOK FIRST (user 2026-09-30: "1. yes but comb up, and it comb up once there's at least 2. but keep cap
@@ -1265,7 +1266,7 @@ def main():
         _lt = set(_looks.values())
         _plain_ok = {x['uid_hex'] for x in ([x for x in _plains if x['uid_hex'] in _lt]
                                             + [x for x in _plains if x['uid_hex'] not in _lt
-                                               and ((x['iv_total'] or 0) >= _sfl or x['uid_hex'] in (_first, _first_pl))])[:_pl]}
+                                               and ((x['iv_total'] or 0) >= _sfl or x['uid_hex'] in _ffree or x['uid_hex'] == _first_pl)])[:_pl]}
         _elig = [x for x in _ranked if _scollect(x) or x['uid_hex'] in _plain_ok]
         for r in ([x for x in _elig if x['uid_hex'] in _lt] + [x for x in _elig if x['uid_hex'] not in _lt])[:_tot]:
             mark(r['uid_hex'], 'shiny')

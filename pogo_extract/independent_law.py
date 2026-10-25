@@ -190,7 +190,7 @@ def combup_uncovered(rows, pile, labels, *, own_of, later_fn, fits_fn, reaches_f
     return out
 
 
-def shiny_ladder_violations(rows, pile, *, own_of, next_of, can_evolve, cap_of, plain_cap_of, floor_iv,
+def shiny_ladder_violations(rows, pile, *, own_of, next_of, can_evolve, cap_of, plain_cap_of, floor_iv, floor_keep=None,
                             is_collectible, protected_pids):
     """Piled shinies LAW's shiny ladder HOLDS. -> [(uid, why)]
 
@@ -243,8 +243,8 @@ def shiny_ladder_violations(rows, pile, *, own_of, next_of, can_evolve, cap_of, 
             if cap <= 0 or not (len(h) < cap or iv > h[cap - 1]):
                 return False
             hp = sorted(at_plain.get(t, []) + ahead, reverse=True)
-            if iv < floor_iv and hp:
-                return False                                   # under the shiny floor: only a stage's first plain shiny
+            if iv < floor_iv and hp and not (floor_keep and (len(h) < floor_keep or iv > h[floor_keep - 1])):
+                return False                                   # under the shiny floor: only a stage's first plain shiny or one of its N best
             pcap = plain_cap_of(t)
             return pcap > 0 and (len(hp) < pcap or iv > hp[pcap - 1])
         if all(earns(t) for t in branches):

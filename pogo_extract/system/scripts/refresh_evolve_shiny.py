@@ -282,7 +282,8 @@ def compute_target(why=None, spent=None, detail=None, gated=None, items_spent=No
                     return False
                 if not pl:
                     return True
-                if iv < keep_config.shiny_floor_iv() and sh_ivs_pl.get(k):   # shiny floor (2026-09-24): only a form's first PLAIN shiny may be that low
+                _K = keep_config.shiny_floor_keep()                     # ... or one of the stage's N best (2026-10-25: "at least keep 2")
+                if iv < keep_config.shiny_floor_iv() and sh_ivs_pl.get(k) and len(h) >= _K and iv <= h[_K - 1]:   # shiny floor (2026-09-24): only a form's first PLAIN shiny may be that low
                     return False
                 pcap = cap if keep_config.species_cap('shiny', pid, None) is not None else min(cap, keep_config.cap('shiny_plain'))
                 hp = sh_ivs_pl.get(k, [])

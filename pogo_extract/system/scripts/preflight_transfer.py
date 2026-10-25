@@ -1278,7 +1278,7 @@ def main():
         for _u, _why in _il.shiny_ladder_violations(
                 bag, _pile_set, own_of=_own_l, next_of=_next_l, can_evolve=lambda r: bool(_later_l(r)),
                 cap_of=lambda t: _shiny_cap(_dexl.get(t)), plain_cap_of=lambda t: _shiny_plain_cap(_dexl.get(t)),
-                floor_iv=keep_config.shiny_floor_iv(), is_collectible=lambda r: _shiny_is_special(r) and r['fresh_alignment'] != 1,
+                floor_iv=keep_config.shiny_floor_iv(), floor_keep=keep_config.shiny_floor_keep(), is_collectible=lambda r: _shiny_is_special(r) and r['fresh_alignment'] != 1,
                 protected_pids=keep_config.protected_pids()):
             _found.append((_u, 'shiny_ladder(law: %s)' % _why))
         for _u, _why in _found:
@@ -1299,6 +1299,7 @@ def main():
     for key, lst in shiny_groups.items():
         _rk = sorted(lst, key=_ivkey)
         _sfl = keep_config.shiny_floor_iv(); _first = _rk[0]['uid_hex'] if _rk else None      # shiny floor, best of the form stays (2026-09-24)
+        _ffree = {z['uid_hex'] for z in _rk[:keep_config.shiny_floor_keep()]}   # ... its N best stay (2026-10-25: "at least keep 2")
         _plsh = [x for x in _rk if not _shiny_is_special(x)]; _first_pl = _plsh[0]['uid_hex'] if _plsh else None   # ...and the best PLAIN one
         _lk = {}                              # every look first, comb up, cap stays (user 2026-09-30, LAW bucket 4)
         for x in _rk:
@@ -1306,7 +1307,7 @@ def main():
         _lt = set(_lk.values())
         _pok = {x['uid_hex'] for x in ([x for x in _plsh if x['uid_hex'] in _lt]
                                        + [x for x in _plsh if x['uid_hex'] not in _lt
-                                          and ((x['iv_total'] or 0) >= _sfl or x['uid_hex'] in (_first, _first_pl))])[:_shiny_plain_cap(key[0])]}
+                                          and ((x['iv_total'] or 0) >= _sfl or x['uid_hex'] in _ffree or x['uid_hex'] == _first_pl)])[:_shiny_plain_cap(key[0])]}
         _el = [x for x in _rk if _shiny_is_special(x) or x['uid_hex'] in _pok]
         for r in ([x for x in _el if x['uid_hex'] in _lt] + [x for x in _el if x['uid_hex'] not in _lt])[:_shiny_cap(key[0])]:
             shiny_kept.add(r['uid_hex'])

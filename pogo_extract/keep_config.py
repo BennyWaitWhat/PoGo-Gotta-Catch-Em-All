@@ -76,6 +76,8 @@ DEFAULTS = {
     "collection_floor_iv": 0,                            # EVERY capped collection ladder (plain / costume / Max / legendary / legacy / cards): a copy below this
     #                                                      IV total takes no slot unless it is the ladder's best (0 = off; 12 = under 25%, user 2026-09-24)
     "shiny_floor_iv": 0,                                 # rule 3 -- a PLAIN shiny below this IV total takes no plain-shiny slot unless it is its form's best
+    "shiny_floor_keep": 2,                               # ... the floor never takes a species+form below its best N shinies (user 2026-10-25:
+    #                                                      "i want to at least keep 2 of a shiny, geez, this is going forward"; 1 before)
     #                                                      shiny (0 = off; 18 = under 40%, user 2026-09-24: "only the absolute shitty ones")
     #                                                      (37/45 = the in-game 3-star line) is kept regardless of the cap. user 2026-09-13.
     "protected_keep_all_pids": [172],                    # Pichu -> keep EVERY copy
@@ -357,6 +359,13 @@ def rarity_ladder_keep(rows, legacy_uids, spec):
     return keep
 
 
+def shiny_floor_keep():
+    """The shiny floor never takes a species+form below this many shinies: its N best stay, floor or not (2 since
+    2026-10-25, user: "i want to at least keep 2 of a shiny"). The best PLAIN shiny stays as well."""
+    d = DEFAULTS["shiny_floor_keep"]
+    return max(1, _int(CFG.get("shiny_floor_keep", d), d))
+
+
 def shiny_floor_iv():
     """IV total BELOW which a PLAIN shiny (no bg / card / costume / Max / shadow) is not eligible for a plain-shiny
     slot -- unless it is the best shiny of its species+form, which always stays. 0 = off. user 2026-09-24."""
@@ -561,6 +570,9 @@ def validate(cfg):
     sf = cfg.get("shiny_floor_iv", DEFAULTS["shiny_floor_iv"])
     if isinstance(sf, bool) or not isinstance(sf, int) or not (0 <= sf <= 45):
         probs.append("'shiny_floor_iv' must be an integer 0..45 (0 = floor off)")
+    sk = cfg.get("shiny_floor_keep", DEFAULTS["shiny_floor_keep"])
+    if isinstance(sk, bool) or not isinstance(sk, int) or not (1 <= sk <= 20):
+        probs.append("'shiny_floor_keep' must be an integer 1..20")
     ldc = cfg.get("legacy_default_cap", None)
     if ldc is not None and not (isinstance(ldc, int) and not isinstance(ldc, bool) and 0 <= ldc <= 500):
         probs.append("'legacy_default_cap' must be null or an integer 0..500")
@@ -607,7 +619,7 @@ def validate(cfg):
                 if dup:
                     probs.append("pattern_line_pools: pid(s) %s listed in more than one line" % sorted(dup))
                 _seen_pids |= set(pids)
-    _allowed = {"line_pool_all", "caps", "pvp", "legacy_species_caps", "legacy_default_cap", "rarity_keep_all_pids", "rarity_ladders", "shadow_best_leagues", "rarity_floor_iv", "shiny_floor_iv", "collection_floor_iv",
+    _allowed = {"line_pool_all", "caps", "pvp", "legacy_species_caps", "legacy_default_cap", "rarity_keep_all_pids", "rarity_ladders", "shadow_best_leagues", "rarity_floor_iv", "shiny_floor_iv", "shiny_floor_keep", "collection_floor_iv",
                 "protected_keep_all_pids", "adventure_effect_pids", "origin_owners",
                 "showcase_weights", "pvp_spread_keep", "rules", "per_species_caps", "pattern_line_pools", "_note"}
     for k in cfg:
