@@ -7,6 +7,10 @@
 PREFIX=/data/data/com.termux/files/usr
 export HOME=/data/data/com.termux/files/home
 export PATH=$PREFIX/bin:/system/bin
+# The newest installed python3.N, picked the way run_catch.sh picks it. "rewards" hard-coded python3.13 and ran nothing
+# after `pkg upgrade` (2026-10-15) replaced it with 3.14: the app's Catch Rewards tap on 2026-10-25 01:04 died that way.
+PY=
+for p in "$PREFIX"/bin/python3.[0-9] "$PREFIX"/bin/python3.[0-9][0-9]; do [ -f "$p" ] && PY=$p; done
 RUN="$HOME/pogo/run_catch.sh"
 CATCHFLAG=/data/local/tmp/pogo_catch.on
 SPINFLAG=/data/local/tmp/pogo_spin.on
@@ -134,14 +138,16 @@ case "$1" in
   rewards)
     # One-shot: clear stacked Field-Research ("Today") reward encounters. The reward catcher needs the
     # gadget to ITSELF (single client), so park the auto-catcher, run it, then restore both toggles.
-    echo "queued $(date +%H:%M:%S)" > /data/local/tmp/pogo_rewards.txt 2>/dev/null
+    # The app shows this status file. A cleanup can delete it and Termux can't create it, so root remakes it.
+    RWSTAT=/data/local/tmp/pogo_rewards.txt
+    { echo "queued $(date +%H:%M:%S)" > "$RWSTAT"; } 2>/dev/null || mkflag "$RWSTAT" queued
     was_c=$(cat "$CATCHFLAG" 2>/dev/null | tr -d '[:space:]')
     was_s=$(cat "$SPINFLAG"  2>/dev/null | tr -d '[:space:]')
     stop_proc; sleep 2
-    LD_LIBRARY_PATH=$HOME/applibs:$PREFIX/lib "$PREFIX/bin/python3.13" \
+    LD_LIBRARY_PATH=$HOME/applibs:$PREFIX/lib "${PY:-$PREFIX/bin/python3}" \
       "$HOME/pogo/system/scripts/game_write/reward_phone.py" "$2" \
       >> "$HOME/pogo/system/analysis/pokemod/reward_stdout.log" 2>&1
-    echo "$was_c" > "$CATCHFLAG"; echo "$was_s" > "$SPINFLAG"
+    setflag "$CATCHFLAG" "$was_c" "rewards"; setflag "$SPINFLAG" "$was_s" "rewards"
     reconcile
     ;;
   toggle)     if flag_on "$CATCHFLAG"; then echo 0 > "$CATCHFLAG"; else echo 1 > "$CATCHFLAG"; fi; reconcile ;;
