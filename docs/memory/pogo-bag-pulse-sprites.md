@@ -78,3 +78,9 @@ kept, tagged or released, and no stored identifier (pvid, tag name, `_pile_names
 - `full_audit.finish_step` shows only the LAST stdout line of gen_bag_pulse, so the art summary line prints before the KPI line.
 - Verify locally in a worktree copy only (gen_bag_pulse overwrites `system/analysis/collection_stats.html`); Playwright + Chromium from
   `/opt/pw-browsers` with every non-file request blocked and Chart.js stubbed.
+- A species-less i18n key (`form_green` = 'Green Plumage') reaches EVERY species whose form word matches; `_text_ok` only stops a text
+  that names another species. 2026-10-24: the pile's green-core Minior read 'Minior (Green Plumage)' (Squawkabilly's); Minior's Core colours are
+  `form_core_<colour>`, now read by `_form_parts` (Meteor colours: 'Green Meteor'). After a names or form-enum refresh, label EVERY form
+  in form_enum.json and look at each species-less key worn by two lines (2026-10-24: only Squawkabilly wears a bare colour key).
+- `--text` strips scripts, and the pass table is drawn by the page script: its "Tagged for Transfer" names print as one extra line
+  (`cull_log_names`), each name once with its count. Before 2026-10-24 that column was invisible to the read before publishing.

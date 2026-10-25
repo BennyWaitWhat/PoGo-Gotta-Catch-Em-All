@@ -21,7 +21,8 @@ the processing parameters: change a size and the old directory is simply ignored
 Env: BAG_ART=0 turns art AND official names off (today's page, byte for byte); BAG_ART_CACHE=<dir>; BAG_ART_OFFLINE=1.
 
     python bag_art.py --selftest                                   offline, no DB, no phone, no network
-    python bag_art.py --text [FILE]                                a page's words, pictures stripped (default: the active account's Bag Pulse)
+    python bag_art.py --text [FILE]                                a page's words, pictures stripped, then the names its script draws
+                                                                   into the cull log (default: the active account's Bag Pulse)
     python bag_art.py --refresh-index --tree FILE | --clone DIR    rebuild pogo_icon_index.txt (a saved trees-API JSON or
                                                                    `git ls-tree` list, or a local clone; read-only git only)
     python bag_art.py --refresh-names --i18n FILE [--gm FILE] [--commit SHA]
@@ -978,6 +979,24 @@ def refresh_names(i18n, commit=None, out=None, gm=None, built=None):
     return 0
 
 
+def cull_log_names(page):
+    """The names the page script draws into the cull log's 'Tagged for Transfer' column (DATA.passes), newest pass first, each
+    once with its count: 'Spritzee, Minior (Green Core) x12, Ekans'. --text strips scripts, so a wrong label there (2026-10-24:
+    'Minior (Green Plumage)') never reached the read before publishing. '' when the page carries no pass data."""
+    i = page.find('const D = ')
+    try:
+        data = json.JSONDecoder().raw_decode(page, i + len('const D = '))[0] if i >= 0 else {}
+    except ValueError:
+        data = {}
+    ct = collections.Counter()
+    for p in (data.get('passes') or []) if isinstance(data, dict) else []:
+        for t in re.sub(r' \.\.\.$', '', str(p.get('pile_list') or '')).split(', '):
+            t = re.sub(r' \d+%(?: \(released\))?$', '', t.strip())
+            if t:
+                ct[t] += 1
+    return ', '.join(n if c == 1 else '%s x%d' % (n, c) for n, c in ct.items())
+
+
 def usage():
     print(__doc__)
     return 2
@@ -1001,10 +1020,13 @@ def main(argv):
         import account_guard
         p = a[1] if len(a) == 2 else os.path.join(HERE, 'system', 'analysis', 'collection_stats.html'
                                                   if account_guard.active() in (None, 'oyebenny') else 'bag_pulse_alt.html')
-        s = open(p, encoding='utf-8').read()
+        s = raw = open(p, encoding='utf-8').read()
         for pat in (r'<script[\s\S]*?</script>', r'<style[\s\S]*?</style>', r'<[^>]+>'):
             s = re.sub(pat, ' ', s)
         print(os.path.basename(p) + ': ' + ' '.join(html.unescape(s).split()))
+        names = cull_log_names(raw)
+        if names:
+            print('cull log names (drawn by the page script, newest pass first): ' + names)
         return 0
     if a and a[0] == '--refresh-index':
         a.pop(0)
@@ -1400,6 +1422,11 @@ def _selftest_body(ck, tmp, random, os):
                   form_enum={0: 'Unset', 1: 'SquawkabillyWhite', 2: 'KyuremWhite'})
     ck(gn.label(_row('n', 931, 'Squawkabilly', form=1, fresh_form=1)) == 'Squawkabilly (White)', 'a species-less form key must not lend another species\' name')
     ck(gn.label(_row('n', 646, 'Kyurem', form=2, fresh_form=2)) == 'White Kyurem', 'a species-qualified key naming its own species is used alone')
+    # 2026-10-24: a green-core Minior read 'Minior (Green Plumage)' -- the species-less form_green is Squawkabilly's
+    mi = {k: lab(774, 'Minior', k) for k in fid if k.startswith('Minior')}
+    ck(mi.get('MiniorGreen') == 'Minior (Green Core)' and mi.get('MiniorMeteorBlue') == 'Minior (Blue Meteor)' and mi.get('MiniorMeteor') == 'Minior (Meteor Form)'
+       and len(mi) >= 15 and all(re.fullmatch(r'Minior \((?:[A-Z][a-z]+ (?:Core|Meteor)|Meteor Form)\)', t) for t in mi.values()), 'every Minior form wears its own words: %s' % mi)
+    ck(lab(931, 'Squawkabilly', 'SquawkabillyGreen') == 'Squawkabilly (Green Plumage)', 'the plumage stays Squawkabilly\'s: %s' % lab(931, 'Squawkabilly', 'SquawkabillyGreen'))
     cf = [k for k in fid if k.startswith('Pikachu') and re.search(r'20\d\d', k)]
     if cf:
         ck(lab(25, 'Pikachu', cf[0]) == 'Pikachu' and nm.costume_bits(_row('n', 25, 'Pikachu', form=fid[cf[0]], fresh_form=fid[cf[0]])), 'a form-encoded costume stays out of the name and becomes a chip')
@@ -1424,6 +1451,9 @@ def _selftest_body(ck, tmp, random, os):
     page = assemble(tpl, {'n': evil, 'spr': {}}, art, eh)
     ck('</script><img' not in page and page.count('</script>') == 1 and '\\u003c/script' in page and not re.search(r'__(DATA|ART_CSS|PILE_CARD|ART_JS|PILE_CELL)__', page), 'DATA JSON must never close the script element; no hook may be left')
     ck('pileCell' in page and 'id="pile_card"' in page and '.tiles{' in page and 'querySelectorAll' in page, 'art hooks filled when on')
+    cl = '<script>\nconst D = {"passes": [{"pile_list": "Minior (Green Core) 11%, Taillow 89%"}, {"pile_list": "Minior (Green Core) 40%, Ekans 18% (released) ..."}]};\n</script>'
+    ck(cull_log_names(cl) == 'Minior (Green Core) x2, Taillow, Ekans' and cull_log_names(page) == '' and cull_log_names('x') == '',
+       '--text names the cull log the page script draws: %r' % cull_log_names(cl))
     off = assemble(tpl, {'a': 1}, None, '', on=False)
     ck(off == '<style>a{}\n</style>\n<div class="grid">\n    <div class="card">x</div>\n<script>\nconst D = {"a": 1};\nconst y = 1;\ncell = p.pile_list;\n</script>',
        'the kill switch leaves the template byte for byte as it was: %r' % off)

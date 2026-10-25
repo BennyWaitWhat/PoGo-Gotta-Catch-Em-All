@@ -53,6 +53,12 @@ _REGION_ADJ = dict(_REGIONS)
 # the game keys a form's i18n text under the family's showcase species: Scatterbug and Spewpa wear Vivillon's patterns
 # ('Marine Pattern'), Wormadam wears Burmy's cloaks ('Plant Cloak'). dex -> the dex whose form_<species>_<form> keys apply.
 FORM_FAMILY = {664: 666, 665: 666, 413: 412}
+# MINIOR (2026-10-24): Bag Pulse called a green-core Minior 'Minior (Green Plumage)'. The enum spells a Core colour MiniorGreen
+# while the game keys its text form_core_green ('Green Core'), so the lookup fell through to the species-less form_green --
+# Squawkabilly's plumage (form_blue, form_yellow alike). A Meteor colour (MiniorMeteorGreen) has no text of its own in the game
+# (form_meteor = 'Meteor Form' is the colourless MiniorMeteor): it is worded like the Core text, 'Green Meteor'.
+MINIOR = 774
+_MINIOR_RX = re.compile(r'^(Meteor)?([A-Z][a-z]+)$')
 
 Match = collections.namedtuple('Match', 'fn dropped')                # fn None = no icon at all; dropped = wanted, absent
 Match.approx = property(lambda self: bool(self.dropped))
@@ -385,6 +391,11 @@ class Names:
         if m:                                             # the game builds 'Alolan Raichu' the same way
             adj, rest = _REGION_ADJ[m.group(0).lower()], tail[:m.start()] + tail[m.end():]
         pre = adj + ' ' if adj else ''
+        m = _MINIOR_RX.match(rest) if dex == MINIOR else None
+        if m and m.group(2) != 'Meteor':                                 # MiniorMeteor keeps the game's 'Meteor Form'
+            colour = m.group(2)
+            text = colour + ' Meteor' if m.group(1) else self.forms.get('core' + norm(colour)) or colour + ' Core'
+            return pre + '%s (%s)' % (sp, text), ''
         n, own = norm(fname), norm(sp)
         pref = next((p for p in (norm(db), own) if p and n.startswith(p)), '')
         rem_n = n[len(pref):] if pref else n                             # species out, region token kept: 'paldeaaqua'
