@@ -69,8 +69,8 @@ def region_of(pid):
 TAG_FILES = {   # GL IV / UL IV / Evolve 1 / Evolve 2 retired 2026-09-09 (granular_tags.RETIRED_TAGS)
     'XXL': 'XXL.txt', 'Hundo': 'Hundo.txt',
     'Nundo': 'Nundo.txt', 'Traded by E+F': 'Traded_by_E+F.txt',   # Event retired 2026-09-09
-    'Legacy Moves': 'Legacy_Moves.txt', 'Evolve Once': 'Evolve_Once.txt', 'Evolve Twice': 'Evolve_Twice.txt',
-    'Evolve Gated': 'Evolve_Gated.txt', 'Transfer': 'Transfer.txt',   # the fold (2026-09-29): Next/Shiny/Size/Stop retired
+    'Legacy Moves': 'Legacy_Moves.txt', 'Evolve to Mid': 'Evolve_to_Mid.txt', 'Evolve to Final': 'Evolve_to_Final.txt',
+    'Evolve Needs Item': 'Evolve_Needs_Item.txt', 'Evolve Needs Task': 'Evolve_Needs_Task.txt', 'Transfer': 'Transfer.txt',   # the fold (2026-09-29): Next/Shiny/Size/Stop retired
     'Best GL': 'Best_GL.txt', 'Best UL': 'Best_UL.txt', 'Best ML': 'Best_ML.txt',   # keep rule 15d (2026-09-23)
     'Evolve for GL': 'Evolve_for_GL.txt', 'Evolve for UL': 'Evolve_for_UL.txt',      # keep rule 15e (2026-09-24; renamed 2026-09-30)
     'Power Up to 1500': 'Power_Up_to_1500.txt', 'Power Up to 2500': 'Power_Up_to_2500.txt',   # 2026-09-26

@@ -683,7 +683,7 @@ print('\nLAYER 3  pile vs every KEEP tagset')
 # is a real defect (build_tagsets swallows FileNotFoundError on its inputs and leaves the PREVIOUS
 # run's file, or none, on disk).
 EXPECTED = ('Hundo', 'Nundo', 'Traded_by_E+F', 'XXL',
-            'Legacy_Moves', 'Evolve_Once', 'Evolve_Twice',   # GL_IV/UL_IV/Evolve_1/2/Event retired 2026-09-09; Evolve_Next -> Evolve_Once (the fold, 2026-09-29)
+            'Legacy_Moves', 'Evolve_to_Mid', 'Evolve_to_Final',   # GL_IV/UL_IV/Evolve_1/2/Event retired 2026-09-09; Evolve_Once / _Twice -> to_Mid / to_Final (2026-10-25)
             'Best_GL', 'Best_UL', 'Best_ML')                 # rule 15d (2026-09-23)
 
 def _evolve_tag_legitimately_empty(tag):

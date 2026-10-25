@@ -15,7 +15,7 @@ sys.stdout.reconfigure(encoding='utf-8', errors='replace')
 ROOT = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, ROOT); sys.path.insert(0, os.path.join(ROOT, 'system', 'scripts'))
 
-EVOLVE_TAGS = ('Evolve Once', 'Evolve Twice', 'Evolve Gated', 'Evolve for GL', 'Evolve for UL')   # the folds, 2026-09-29/30
+EVOLVE_TAGS = ('Evolve to Mid', 'Evolve to Final', 'Evolve Needs Item', 'Evolve Needs Task', 'Evolve for GL', 'Evolve for UL')   # 2026-10-25
 # The Eevee name trick picks the eeveelution (once per account per name).
 EEVEE_NAMES = {'vaporeon': 'Rainer', 'jolteon': 'Sparky', 'flareon': 'Pyro', 'espeon': 'Sakura', 'umbreon': 'Tamao',
                'leafeon': 'Linnea', 'glaceon': 'Rea', 'sylveon': 'Kira'}

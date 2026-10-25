@@ -1,4 +1,4 @@
-"""LABEL LAW AUDIT -- every advisory evolve label (Evolve Once / Evolve Twice / Evolve Gated, Evolve for GL / UL beside them)
+"""LABEL LAW AUDIT -- every advisory evolve label (Evolve to Mid / to Final / Needs Item / Needs Task, Evolve for GL / UL beside them)
 must obey the bucket rules in LAW.md. A label asks the user to CONSUME a copy, so a copy kept as a trophy or collectible
 must never carry one. Read-only, DB + policy_reasons + the evolve advice table; no device contact. Exit 1 (BLOCK) on any
 violation. Written 2026-09-16 after four incidents in one day (protected Pichus, card Charmanders, legacy Primeapes, Pikachu key).
@@ -223,14 +223,14 @@ def main():
         if r is not None:
             bad.append('%s %d%% [%s]: told to evolve AND No Evolve' % (r['species_name'], (r['iv_total'] or 0) * 100 // 45,
                                                                       ', '.join(sorted(worn[u]))))
-    # THE EVOLVE TAGS (2026-09-29, the fold -- LAW "THE EVOLVE VOCABULARY"): 'Evolve Once' / 'Evolve Twice' by the number of
-    # evolutions to the advised target -- the count IS the stop, so an Evolve Once whose target evolves again is right (a
-    # Tympole promised Palpitoad: the old Tympole trap) -- 'Evolve Gated' instead when the game blocks it, 'Evolve for GL' /
-    # 'Evolve for UL' only BESIDE one of those. Each copy's advice is judged by the law above; here: the files are exactly the
-    # table's tags, never on a pile mon or a fused component, every target a stage THIS copy can become (the engine's ONE
-    # graph: form, costume, gender), and the count true -- counted on that graph, not read from the table: an Evolve Twice
-    # one evolution away, an Evolve Once two away, or a count tag with a game gate anywhere on the way is a mislabel.
-    COUNT = {granular_tags.EVOLVE_ONCE: 1, granular_tags.EVOLVE_TWICE: 2, granular_tags.EVOLVE_GATED: None}
+    # THE EVOLVE TAGS (LAW "THE EVOLVE VOCABULARY"): exactly one count tag per advised copy, 'Evolve for GL' / 'Evolve for UL'
+    # only BESIDE one; never on a pile mon or a fused component; every target a stage THIS copy can become (the engine's ONE
+    # graph: form, costume, gender); and the count tag true for that target, judged on that graph, not read from the table.
+    # WHERE IT ENDS (2026-10-25, user picked "A" + "D"): 'Evolve to Mid' / 'Evolve to Final' by whether the advised stage
+    # evolves again ON THIS GRAPH, 'Evolve Needs Item' / 'Evolve Needs Task' by the gates on the way -- each true after the
+    # evolution too (a tag rides along: an evolved Croconaw used to keep 'Evolve Once').
+    COUNT = {granular_tags.EVOLVE_MID: 'mid', granular_tags.EVOLVE_FINAL: 'final',
+             granular_tags.EVOLVE_ITEM: 'item', granular_tags.EVOLVE_TASK: 'task'}
     _reach = _graph[4] if _graph is not None else {}
 
     def _way(own, t):
@@ -247,9 +247,9 @@ def main():
         nm = '%s %d%% [%s]' % (r['species_name'], (r['iv_total'] or 0) * 100 // 45, ', '.join(sorted(tags)) or 'no tag')
         counts = sorted(t for t in tags if t in COUNT)
         if tags and not counts:
-            bad.append(nm + ': Evolve for GL/UL with no Evolve Once / Twice / Gated beside it -- a marker with no evolution')
+            bad.append(nm + ': Evolve for GL/UL with no Evolve to Mid / Final / Needs Item / Needs Task beside it -- a marker with no evolution')
         elif len(counts) > 1:
-            bad.append(nm + ': two counts at once -- exactly one of Evolve Once / Twice / Gated')
+            bad.append(nm + ': two count tags at once -- exactly one of Evolve to Mid / Final / Needs Item / Needs Task')
         if u in pile:
             bad.append(nm + ': advice to evolve on a mon tagged for Transfer')
         if keep_config.is_fused_component(r):
@@ -269,12 +269,23 @@ def main():
                 bad.append(nm + ': %s is not a stage this copy can become' % t)
                 continue
             way = _way(own, t)
-            if want is not None and len(way) != want:
-                bad.append(nm + ': %s is %s -- a mislabel (the count is where he stops)'
-                           % (t, '%d evolution(s) away' % len(way) if way else 'on no evolution path the game master shows'))
+            if not way:
+                if want in ('mid', 'final'):
+                    bad.append(nm + ': %s is on no evolution path the game master shows' % t)
+                continue
             gate = [g for s in way for g in (evolvable_forms.gate_reason(s) or [])]
-            if want is not None and gate:
-                bad.append(nm + ': the game gates the way to %s (%s) -- that is Evolve Gated' % (t, ', '.join(dict.fromkeys(gate))))
+            if want in ('mid', 'final') and gate:
+                bad.append(nm + ': the game gates the way to %s (%s) -- that is Evolve Needs Item / Task'
+                           % (t, ', '.join(dict.fromkeys(gate))))
+            elif want == 'final' and _reach.get(t):
+                bad.append(nm + ': %s evolves again -- Evolve to Final would get it evolved past its target' % t)
+            elif want == 'mid' and not _reach.get(t):
+                bad.append(nm + ': %s is the end of its line -- that is Evolve to Final' % t)
+            elif want == 'item' and gate and not all(g in granular_tags.ITEM_GATES for g in gate):
+                bad.append(nm + ': the way to %s needs more than an item (%s) -- that is Evolve Needs Task'
+                           % (t, ', '.join(dict.fromkeys(gate))))
+            elif want == 'task' and gate and all(g in granular_tags.ITEM_GATES for g in gate):
+                bad.append(nm + ': the way to %s needs only an item -- that is Evolve Needs Item' % t)
     # POWER UP / UNLOCK 2ND MOVE (2026-09-26): advice for dust / a TM on a kept #1 -- never an evolution, never a keep
     # reason. True for the copy on screen: its OWN stage is #1 there and can reach the cap (Power Up: still under it;
     # 2nd Move: none yet). Never on a pile or fused mon, never beside an evolve label (it would ride along onto a stage

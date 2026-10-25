@@ -75,8 +75,11 @@ from cpm_table import GL_CAP, UL_CAP
 VARIANT_LABELS = ('Variant #1', 'Variant #2', 'Variant #3')
 VARIANT_OVERFLOW = 'Variant #4+'
 SHINY_SOLE = 'Shiny - Only One'
-EVOLVE_GATED = 'Evolve Gated'               # 2026-09-24: an Evolve Next / Twice promise whose promised stage the game gates
-#                                             (item / task / buddy walk / time) -- the to-do list; Next / Twice = doable now.
+# THE GATED EVOLVE TAGS (2026-10-25, user picked "D": 'Evolve Gated' did not say what blocks it): an evolve advice whose way
+# the game gates -- an item or a lure on every gate -> 'Evolve Needs Item'; any other gate (a task, a buddy walk, a time of
+# day, a full moon, a move) -> 'Evolve Needs Task'. The Evolve screen names the exact need.
+EVOLVE_ITEM, EVOLVE_TASK = 'Evolve Needs Item', 'Evolve Needs Task'
+ITEM_GATES = frozenset({'evolutionItemRequirement', 'lureItemRequirement'})   # evolvable_forms._GATE_KEYS that are items
 # POWER UP / 2ND MOVE -- dust advice, never a keep reason. Rule since 2026-09-29 (user: "I only want Rank 1-5 PVP pokemon to have
 # their 2nd moves unlocked" / "only want to power pokemon who are ranked in the top 100 of pvpoke" -> 200):
 #   'Power Up to 1500' / 'Power Up to 2500': own-stage rank <= pvp.action_rank in that league, the stage reaches the league, CP
@@ -92,10 +95,12 @@ POWER_UP_GL, POWER_UP_UL, SECOND_MOVE = 'Power Up to 1500', 'Power Up to 2500', 
 # 'Stop at <that stage>' INSTEAD of its evolve tags: true before ("evolve to Palpitoad, stop there") and after ("you are
 # there, stop"). The names change with the data, so they live in a small REGISTRY (every one ever emitted); one nobody
 # needs is pushed empty and retire_tags deletes the shell, exactly like any other empty managed tag.
-EVOLVE_ONCE, EVOLVE_TWICE = 'Evolve Once', 'Evolve Twice'   # THE evolve vocabulary (user 2026-09-29: "I either evolve once
-#                                                              or evolve twice"), + EVOLVE_GATED when the game blocks it and
-#                                                              'Evolve for GL' / 'Evolve for UL' beside them on a PvP comb-up
-#                                                              ("I also like to see the separate PVP ones").
+# WHERE IT ENDS, NOT HOW MANY (2026-10-25, user picked "A"): a tag rides along through evolution, so an evolved Croconaw still
+# wore 'Evolve Once' and a half-done 'Evolve Twice' still said Twice -- repeat evolves by mistake. The tag now names the stage
+# the advice ends at, true before AND after every step: 'Evolve to Mid' (the target evolves again -- stop there), 'Evolve to
+# Final' (the target is the end of the line). 'Evolve Once' / 'Evolve Twice' (2026-09-29) are retired. + the gated pair above,
+# and 'Evolve for GL' / 'Evolve for UL' beside them on a PvP comb-up ("I also like to see the separate PVP ones").
+EVOLVE_MID, EVOLVE_FINAL = 'Evolve to Mid', 'Evolve to Final'
 # THE SECOND FOLD (2026-09-30, user: "So you want me to evolve all the pokemon tagged "Evo UL rank 1-5?"? Even if I have
 # dups?" -> "The tag is the bug ... fix it."). 'Evo GL / UL Rank 1-5' sat on EVERY kept copy a later stage ranks top 5
 # and read as "evolve this": 13 of its 14 UL members were copies of a stage he already owned as good or better (three
@@ -117,8 +122,8 @@ EVOLVE_SHINY_GATED = 'Evolve Shiny Gated'   # 2026-09-24: would be Evolve Shiny,
 #                                             buddy walk / time) -- a to-do, not a promise. Same producer run as Evolve Shiny.
 EVOLVE_SHINY = 'Evolve Shiny'   # 2026-09-12: computed by build_tagsets (refresh_evolve_shiny.compute_target) and pushed by
 #                                 prune like every other tag -- one writer, one attach fewer. Was an exempt, self-pushing tag.
-SHINY_OVERFLOW = 'Shiny #4+'        # the 4th+ shiny of a species: first out if the shiny cap tightens. 'Shiny #1' and
-#                                     'Shiny #2-3' RETIRED 2026-09-09 -- the native Shiny chip lists every shiny.
+# 'Shiny #4+' RETIRED 2026-10-25 (user picked "C"): no action and no reason ("first out if the shiny cap tightens"). 'Shiny #1'
+# and 'Shiny #2-3' RETIRED 2026-09-09 -- the native Shiny chip lists every shiny.
 # 'Shadow' RETIRED 2026-09-09 (user "drop shadow"): the native Shadow chip lists every shadow (240); the engine's
 # 224 shadow keepers are simply the shadows not in Transfer. (It had replaced four slot tags earlier the same day.)
 # 'Legendary' / 'Mythical' RETIRED 2026-09-09: the game's own Legendary (572) and Mythical (40) chips list them (the
@@ -143,7 +148,7 @@ LEAGUE_TAG_FMTS = ('%s Rank 1-5', NO_EVOLVE_FMT)   # own stage, later stage (Ran
 # Reasons that are already specific: renamed out of engine-speak into the user's words.
 SIMPLE = {
     'hundo': 'Hundo', 'nundo': 'Nundo', 'legacy': 'Legacy Moves',
-    'evolve_1': 'Evolve Once', 'evolve_2': 'Evolve Twice',   # 2026-09-29: 'Evolve Next' retired -- Once says stop
+    # evolve_1 / evolve_2: no SIMPLE label -- the advice table names them by where they end (EVOLVE_COUNT_TAGS, 2026-10-25)
     'adventure_effect': 'Adventure Effect',
     'origin': 'Traded by E+F',
     'protected': 'Never Cull',           # was 'Protected'
@@ -172,6 +177,11 @@ SIMPLE = {
 # rate-limited to 1-3 per session and mass deletes caused collateral -- see tag_ops note 7). Re-adding a name here to
 # the vocabulary is a deliberate act: the guard in all_tags() refuses a name that is both.
 RETIRED_TAGS = {
+    # 2026-10-25 tag clean-up (user picks "A-D"):
+    'Evolve Once':        'renamed by where it ends (2026-10-25): Evolve to Mid / Evolve to Final -- true after the evolution too',
+    'Evolve Twice':       'renamed Evolve to Final (2026-10-25): a half-done Twice still said Twice',
+    'Evolve Gated':       'split (2026-10-25): Evolve Needs Item / Evolve Needs Task -- the tag says what blocks it',
+    'Shiny #4+':          'no action and no reason (2026-10-25): the native Shiny chip lists every shiny',
     # 2026-09-30 THE SECOND FOLD (user: "The tag is the bug ... fix it"): an evolve word only where evolving is the advice.
     'Evo Best GL':        'renamed Evolve for GL (2026-09-30): the one copy per target to evolve',
     'Evo Best UL':        'renamed Evolve for UL (2026-09-30): the one copy per target to evolve',
@@ -262,7 +272,7 @@ def _retired_stops():
 
 def all_tags():
     """Every tag build() can emit. DERIVED from the same constants build() uses, so the two cannot drift."""
-    t = set(VARIANT_LABELS) | {VARIANT_OVERFLOW, SHINY_SOLE, SHINY_OVERFLOW, EVOLVE_GATED, POWER_UP_GL, POWER_UP_UL, SECOND_MOVE}
+    t = set(VARIANT_LABELS) | {VARIANT_OVERFLOW, SHINY_SOLE, POWER_UP_GL, POWER_UP_UL, SECOND_MOVE} | set(EVOLVE_COUNT_TAGS)
     t |= {nm for nm, _ in RARITY_ROSTERS}
     for _lg, _cap, lbl in LEAGUES:
         t |= {fmt % lbl for fmt in LEAGUE_TAG_FMTS}
@@ -356,7 +366,22 @@ def is_stop_tag(name):
 for _t in _retired_stops():
     RETIRED_TAGS.setdefault(_t, 'folded into Evolve Once / Twice (2026-09-29)')
 
-EVOLVE_TAGS = (EVOLVE_ONCE, EVOLVE_TWICE, EVOLVE_GATED, EVOLVE_FOR['gl'], EVOLVE_FOR['ul'])   # every evolve tag of the vocabulary
+EVOLVE_COUNT_TAGS = (EVOLVE_MID, EVOLVE_FINAL, EVOLVE_ITEM, EVOLVE_TASK)   # exactly one of these on every advised copy
+EVOLVE_TAGS = EVOLVE_COUNT_TAGS + (EVOLVE_FOR['gl'], EVOLVE_FOR['ul'])     # every evolve tag of the vocabulary
+
+
+def evolve_tag(gated, gate, final):
+    """THE count tag of one advice row: gated -> Needs Item when every gate is an item (ITEM_GATES), else Needs Task; not
+    gated -> Evolve to Final when every target ends its line, else Evolve to Mid. `gate` = the row's ', '-joined gate keys."""
+    if gated:
+        kinds = [g.strip() for g in str(gate or '').split(',') if g.strip()]
+        return EVOLVE_ITEM if kinds and all(k in ITEM_GATES for k in kinds) else EVOLVE_TASK
+    return EVOLVE_FINAL if final else EVOLVE_MID
+
+
+def is_final(sid):
+    """True when stage `sid` evolves no further in pvpoke's families (the same graph steps_between counts on)."""
+    return not _evo_adj().get(sid)
 _ADVICE_REASONS = {'evolve_1', 'evolve_2', 'pvp_combup_gl', 'pvp_combup_ul'}              # reasons the table labels, not SIMPLE
 _EVO_ADJ = None
 LAST_ADVICE = {}                                          # the table build() produced last -- build_tagsets writes it out
@@ -405,8 +430,9 @@ def evolve_advice(kept, reasons, pile):
     promises.json), the PvP comb-ups (pvp_combup_labels.json, status now / gated; hold = no tag), the shiny upgrades
     (refresh_evolve_shiny.compute_target) and the showcase picks (sync_evolve_size.picks). A shiny or size rule that
     cannot run is a HARD stop -- silently dropping its members would strip their tags under the empty-set contract.
-    Tags: steps 1 -> Evolve Once, 2 -> Evolve Twice; a game-gated target -> Evolve Gated instead; a comb-up also wears
-    Evolve for GL / UL. Never a pile mon, never a fused component."""
+    Tags (evolve_tag): a target that evolves again -> Evolve to Mid, the end of its line -> Evolve to Final; a game gate on the
+    way -> Evolve Needs Item / Evolve Needs Task instead; a comb-up also wears Evolve for GL / UL. Never a pile mon, never a
+    fused component."""
     A = os.path.join(HERE, 'system', 'analysis')
     load = lambda n: json.load(open(os.path.join(A, n), encoding='utf-8')) if os.path.exists(os.path.join(A, n)) else {}
     prom, cul = load('promises.json'), load('pvp_combup_labels.json')
@@ -432,13 +458,15 @@ def evolve_advice(kept, reasons, pile):
             return
         e = out.get(u)
         if e is None:
-            e = out[u] = {'targets': [], 'steps': None, 'gated': False, 'gate': None, 'leagues': [], 'source': source, 'tags': []}
+            e = out[u] = {'targets': [], 'steps': None, 'final': None, 'gated': False, 'gate': None, 'leagues': [],
+                          'source': source, 'tags': []}
             r = kept_by[u]
             src = pvid(r['species_name'], r.get('form') or 0)
             e['targets'] = list(targets)         # the producer's own list (a gender split like oinkologne/oinkologne_female stays a split)
             paths = {t: path_between(src, t) for t in targets}
             st = [len(p) for p in paths.values() if p]
             e['steps'] = min(st) if st else (2 if 'evolve_2' in (reasons.get(u) or ()) else 1)
+            e['final'] = all(is_final(t) for t in targets)   # the tag names where it ends (2026-10-25)
             # a gate on ANY stage of the way counts (Happiny -> Chansey -> Blissey is gated at the Chansey step)
             gate = [g for t in targets for s in (paths[t] or [t]) for g in (evolvable_forms.gate_reason(s) or [])]
             if gated is not None:
@@ -471,7 +499,7 @@ def evolve_advice(kept, reasons, pile):
             continue
         put(pad(u), [e['target']], 'size')
     for u, e in out.items():
-        e['tags'] = [EVOLVE_GATED if e['gated'] else (EVOLVE_TWICE if e['steps'] == 2 else EVOLVE_ONCE)]
+        e['tags'] = [evolve_tag(e['gated'], e['gate'], e['final'])]
         e['tags'] += [EVOLVE_FOR[lg] for lg in e['leagues']]
     return out
 
@@ -657,11 +685,7 @@ def build(rows, pile, reasons):
     _nlook = collections.Counter(_look(r) for lst in shg.values() for r in lst)
     for lst in shg.values():
         s = sorted(lst, key=_RANK)
-        T[SHINY_SOLE] |= {r['uid_hex'] for r in s if _nlook[_look(r)] == 1}
-        if len(s) > 1:
-            for i, r in enumerate(s):
-                if i >= 3:
-                    T[SHINY_OVERFLOW].add(r['uid_hex'])   # #1..#3: the native Shiny chip is the label (2026-09-09)
+        T[SHINY_SOLE] |= {r['uid_hex'] for r in s if _nlook[_look(r)] == 1}   # the rest: the native Shiny chip
 
     # --- shadow: RETIRED 2026-09-09 -- the native Shadow chip is the label; Transfer marks the fodder.
 
@@ -722,6 +746,9 @@ def build(rows, pile, reasons):
     # BEST ML ONLY WHERE IT IS NOT A HUNDO (user 2026-09-23). A hundo is always its species' ML best, so on a hundo
     # the chip said nothing the Hundo chip does not. Keep decisions are unchanged -- this is a label.
     T[SIMPLE['pvp_best_ml']] -= {u for u in T[SIMPLE['pvp_best_ml']] if 'hundo' in (reasons.get(u) or ())}
+    # ... NOR WHERE IT IS VARIANT #1 (2026-10-25, user picked "B"): your top-IV copy of a stage is its best ML copy, so 420 of
+    # the 476 chips repeated the Variant #1 chip beside them. Best ML stays where it is a different copy.
+    T[SIMPLE['pvp_best_ml']] -= T.get(VARIANT_LABELS[0], set())
     # --- EVOLVE ADVICE, ONE TABLE (2026-09-29, see evolve_advice above) ---
     global LAST_ADVICE
     LAST_ADVICE = evolve_advice(kept, reasons, pile)

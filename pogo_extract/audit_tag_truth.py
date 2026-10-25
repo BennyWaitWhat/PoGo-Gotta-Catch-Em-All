@@ -182,14 +182,14 @@ except Exception:
     _CUL = None
 _cus = lambda u: (_CUL.get(u) or {}).get('status') if _CUL is not None else 'now'
 # THE FOLD (2026-09-29): 'Evo Best Gated' is retired -- a pick labelled 'now' OR 'gated' (never 'hold') wears Evolve for
-# <league> ('Evo Best <league>' until 2026-09-30) BESIDE one of Evolve Once / Twice / Gated, whose own claim (the count,
+# <league> ('Evo Best <league>' until 2026-09-30) BESIDE one of Evolve to Mid / to Final / Needs Item / Needs Task, whose own claim (where it ends,
 # the gate) is checked further down.
 import evolvable_forms as _ef
-_EVC = set().union(*(tag(t) or set() for t in (_gt.EVOLVE_ONCE, _gt.EVOLVE_TWICE, _gt.EVOLVE_GATED)))
+_EVC = set().union(*(tag(t) or set() for t in _gt.EVOLVE_COUNT_TAGS))
 _cu_pick = lambda r, lg: r['uid_hex'] in _CU[lg] and _cus(r['uid_hex']) in ('now', 'gated')
-check('Evolve for GL', 'THE copy to evolve for Great League (one per target), labelled now / gated: evolving it gives a better GL copy of its target stage than any you own (fits the league there), beside Evolve Once / Twice / Gated',
+check('Evolve for GL', 'THE copy to evolve for Great League (one per target), labelled now / gated: evolving it gives a better GL copy of its target stage than any you own (fits the league there), beside Evolve to Mid / to Final / Needs Item / Needs Task',
       lambda r: _cu_pick(r, 'gl') and r['uid_hex'] in _EVC, every=lambda r: _cu_pick(r, 'gl'))
-check('Evolve for UL', 'THE copy to evolve for Ultra League (one per target), labelled now / gated: evolving it gives a better UL copy of its target stage than any you own (fits the league there), beside Evolve Once / Twice / Gated',
+check('Evolve for UL', 'THE copy to evolve for Ultra League (one per target), labelled now / gated: evolving it gives a better UL copy of its target stage than any you own (fits the league there), beside Evolve to Mid / to Final / Needs Item / Needs Task',
       lambda r: _cu_pick(r, 'ul') and r['uid_hex'] in _EVC, every=lambda r: _cu_pick(r, 'ul'))
 check('XXL', 'XXL badge, showcase POINTS >= %d at its own stage or a stage it can evolve into, and one of the %d highest of its species+battle form (cosmetics fold)%s' % (_SC_MIN, keep_config.cap('xxl'), (' or of the %d highest that can enter a showcase of one of its types (XXL TRIM)' % keep_config.cap('xxl_per_type')) if keep_config.cap('xxl_per_type') else ''),
       lambda r: (r['pokemon_size_category'] or 0) == 5 and r['uid_hex'] in _SC_TOP, every=lambda r: r['uid_hex'] in _SC_TOP)
@@ -212,9 +212,6 @@ _shl = collections.Counter(_shlook(r) for _l in _shg.values() for r in _l)     #
 check('Shiny - Only One', 'shiny, and the only shiny of its LOOK you are keeping (species + form + costume + gender where drawn differently)',
       lambda r: bool(r['fresh_shiny']) and not keep_config.is_fused_component(r)            # a fused component is never on the shiny ladder (2026-09-26)
       and _shl[_shlook(r)] == 1)
-check('Shiny #4+', 'shiny, with at least 3 kept shinies of its species+form',
-      lambda r: bool(r['fresh_shiny']) and not keep_config.is_fused_component(r)
-      and len(_shg.get((r['pokemon_id'], _cf(r)), [])) >= 4)
 for lg, cap in (('GL', GL_CAP), ('UL', UL_CAP)):
     check('%s Rank 1-5' % lg, 'rank 1-5 AS IT IS NOW, and its CP lets it enter the league',
           lambda r, lg=lg, cap=cap: usable_rank(r, lg.lower(), cap, True) is not None)
@@ -233,8 +230,16 @@ except Exception as _ae:
     print('  (evolve_advice.json unreadable -- %s: no evolve tag can be verified)' % _ae)
 
 
+def _ends(t):
+    """(2026-10-25) the CLIENT game master names no evolution out of stage t -- independent of the families granular_tags
+    reads (is_final), so an 'Evolve to Final' on a stage the game evolves further is caught (it would be evolved past)."""
+    _ef._load()
+    return not (_ef._costs.get(_ef._gm_id(str(t))) or {})
+
+
 def evo_way(r):
-    """(2026-09-29) {(evolutions to it, gated)} over this copy's advised targets -- or None: no advice, a pile / fused copy,
+    """(2026-09-29) {(evolutions to it, gate keys on the way, ends its line)} over this copy's advised targets -- or None: no
+    advice, a pile / fused copy,
     a form or costume that cannot evolve (row_can_evolve; an unknown form falls to the families), a target the families
     show no one- or two-step path to (steps_between), or one the game master shuts to its form / gender (can_reach).
     Gated = gate_reason on the target or, two steps away, on the stage it passes through (Happiny -> Chansey -> Blissey)."""
@@ -249,16 +254,20 @@ def evo_way(r):
         if n not in (1, 2) or _ef.can_reach(r['fresh_form'] or r['form'], t, own(r), r['gender']) is False:
             return None
         way = [t] + [m for m in _gt._evo_adj().get(own(r), ()) if n == 2 and _gt.steps_between(m, t) == 1]
-        out.add((n, any(_ef.gate_reason(x) for x in way)))
+        out.add((n, tuple(sorted({k for x in way for k in (_ef.gate_reason(x) or [])})), _ends(t)))
     return out or None
 
 
-check('Evolve Once', 'kept to evolve ONCE: it can evolve, its advised stage is exactly one evolution away and the game does not gate it',
-      lambda r: evo_way(r) == {(1, False)})
-check('Evolve Twice', 'kept to evolve TWICE: it can evolve, its advised stage is exactly two evolutions away and the game gates neither',
-      lambda r: evo_way(r) == {(2, False)})
-check('Evolve Gated', 'kept to evolve, and the game gates the way to its advised stage right now (item / task / buddy walk / time)',
-      lambda r: any(g for _n, g in evo_way(r) or ()))
+# WHERE IT ENDS (2026-10-25, user picked "A" + "D"): the tag names the stage the advice ends at, and a gate says what it needs.
+_item = lambda ks: bool(ks) and all(k in _gt.ITEM_GATES for k in ks)
+check('Evolve to Mid', 'kept to evolve to a stage that evolves again (stop there): it can evolve and the game gates nothing on the way',
+      lambda r: bool(evo_way(r)) and all(not ks and not end for _n, ks, end in evo_way(r)))
+check('Evolve to Final', 'kept to evolve to the end of its line: it can evolve, the game evolves its advised stage no further and gates nothing on the way',
+      lambda r: bool(evo_way(r)) and all(not ks and end for _n, ks, end in evo_way(r)))
+check('Evolve Needs Item', 'kept to evolve, and every gate on the way to its advised stage is an item or a lure',
+      lambda r: bool(evo_way(r)) and any(ks for _n, ks, _e in evo_way(r)) and all(_item(ks) for _n, ks, _e in evo_way(r) if ks))
+check('Evolve Needs Task', 'kept to evolve, and the game gates the way to its advised stage with a task, a buddy walk, a time or a move',
+      lambda r: any(ks and not _item(ks) for _n, ks, _e in evo_way(r) or ()))
 # RETIRED TAGS (2026-09-29: Evolve Next, every Stop tag, Evolve Shiny / Shiny Gated, Evolve for Size, Evo Best Gated ...):
 # build_tagsets deletes a retired name's file, so every member a leftover file still holds is untrue.
 _RET = sorted(t for t in _gt.RETIRED_TAGS if tag(t) is not None)

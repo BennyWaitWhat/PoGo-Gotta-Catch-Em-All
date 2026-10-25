@@ -42,8 +42,8 @@ LABEL = {'variant_floor': 'ladder slot', 'shiny': 'shiny slot', 'xxl': 'XXL show
          'location_card': 'location-card slot', 'pvp_best_gl': 'Best GL', 'pvp_best_ul': 'Best UL',
          'pvp_best_ml': 'Best ML', 'shadow_best': 'best-shadow slot', 'legacy': 'legacy-move slot',
          'pvp_rank': 'GL/UL rank 1-5', 'rarity': 'legendary slot', 'nundo': 'nundo slot', 'cosmetic': 'costume slot',
-         'pvp_combup_gl': 'GL comb-up', 'pvp_combup_ul': 'UL comb-up', 'evolve_1': 'Evolve Once', 'evolve_2': 'Evolve Twice',
-         'shiny_ladder': 'Evolve (shiny)'}   # the fold (2026-09-29)
+         'pvp_combup_gl': 'GL comb-up', 'pvp_combup_ul': 'UL comb-up', 'evolve_1': 'evolve tag', 'evolve_2': 'evolve tag',
+         'shiny_ladder': 'Evolve (shiny)'}   # the fold (2026-09-29); evolve tags name where they end since 2026-10-25
 # THE GROUP A KEEP REASON IS SHARED WITHIN -- keep_policy's OWN key for each rule (H05-2, 2026-09-29: the report grouped
 # XXL / rarity by species and location cards / best-shadow by stage, so "lost its X to Y" named copies the rule never
 # compared): legacy per SPECIES (_legcap), XXL / Best GL-UL-ML / best shadow per PvP IDENTITY (size_line.xxl_keepers,
@@ -121,7 +121,7 @@ def _open_snapshot(path):
 
 # last pass's keep reasons, read back from the TAGS the walk saw, for when last_report.json has none (first run)
 TAG_REASON = {'Best GL': 'pvp_best_gl', 'Best UL': 'pvp_best_ul', 'Best ML': 'pvp_best_ml', 'XXL': 'xxl',
-              'Legacy Moves': 'legacy', 'Shiny - Only One': 'shiny', 'Shiny #4+': 'shiny', 'Nundo': 'nundo',
+              'Legacy Moves': 'legacy', 'Shiny - Only One': 'shiny', 'Nundo': 'nundo',
               'GL Rank 1-5': 'pvp_rank', 'UL Rank 1-5': 'pvp_rank', 'GL 1-5 No Evolve': 'pvp_rank', 'UL 1-5 No Evolve': 'pvp_rank'}
 
 

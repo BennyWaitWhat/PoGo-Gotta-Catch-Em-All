@@ -4189,9 +4189,10 @@ def check_tag_vocabulary(con):
             for t in e['tags']:
                 want[t].add(u)
             lg = e['leagues']
-            rule = [gt.EVOLVE_GATED if e.get('gated') else gt.EVOLVE_TWICE if e.get('steps') == 2 else gt.EVOLVE_ONCE] + \
+            rule = [gt.evolve_tag(e.get('gated'), e.get('gate'), e.get('final'))] + \
                    [gt.SIMPLE.get('pvp_combup_%s' % x, '?%s' % x) for x in lg]
             why = ([] if e.get('steps') in (1, 2) else ['steps %r' % (e.get('steps'),)]) + \
+                  ([] if isinstance(e.get('final'), bool) else ['final %r' % (e.get('final'),)]) + \
                   ([] if e.get('targets') else ['no target']) + \
                   ([] if set(lg) <= {'gl', 'ul'} else ['leagues %r' % lg]) + \
                   ([] if sorted(e['tags']) == sorted(rule) else ['tags %s but its fields say %s' % (e['tags'], rule)])
@@ -4209,13 +4210,14 @@ def check_tag_vocabulary(con):
                                len(want.get(t, set()) - _mem(t))))
         if rowbad or where or diff:
             fail(BLOCK, 'evolve_advice.json and the evolve tags disagree: %s' % ' | '.join((diff + where + rowbad)[:6]),
-                 'THE RULE (2026-09-29): one table, one row per copy -- gated -> Evolve Gated, else steps 2 -> Evolve '
-                 'Twice, else Evolve Once, plus Evolve for GL / UL per comb-up league; never a pile mon, never a fused '
-                 'component; the five tag files are exactly the table. build_tagsets writes both in one pass, so a gap '
+                 'THE RULE (2026-10-25): one table, one row per copy -- gated -> Evolve Needs Item (every gate an item) or '
+                 'Evolve Needs Task, else Evolve to Final (every target ends its line) or Evolve to Mid, plus Evolve for GL / '
+                 'UL per comb-up league; never a pile mon, never a fused component; the evolve tag files are exactly the '
+                 'table. build_tagsets writes both in one pass, so a gap '
                  'is a stale or hand-edited file (or a crash between the two writes): re-run build_tagsets.py; if it '
                  'persists, granular_tags.evolve_advice and the tag files disagree.')
         else:
-            ok('evolve_advice.json: %d row(s) (%s), every one kept, unfused and tagged by its own fields; the five '
+            ok('evolve_advice.json: %d row(s) (%s), every one kept, unfused and tagged by its own fields; the '
                'evolve tag files are exactly the table (%s)'
                % (len(adv), ', '.join('%s %d' % kv for kv in sorted(src_n.items())),
                   ', '.join('%s %d' % (t, len(_mem(t))) for t in ev)))
@@ -4251,7 +4253,7 @@ def check_tag_vocabulary(con):
         ok('no copy is told to power up for both leagues, none for Ultra while it is a Best GL keeper, no keep reason is '
            'labelled with dust advice, and no evolve-tagged copy carries Power Up / Unlock 2nd Move')
 
-    # ---- I8.6  independent read: the CLIENT game master counts the same evolutions as every Once / Twice ----------
+    # ---- I8.6  independent read: the CLIENT game master confirms where every Evolve to Mid / Final ends (2026-10-25) --------
     if adv:
         try:
             import evolvable_forms as _ef
@@ -4260,40 +4262,42 @@ def check_tag_vocabulary(con):
             if not isinstance(_ef._costs, dict):
                 raise ValueError('evolvable_forms._costs did not load')
         except Exception as e:
-            fail(WARN, 'cannot read the client game master to count the evolutions (%s)' % e,
+            fail(WARN, 'cannot read the client game master to check where the evolutions end (%s)' % e,
                  'Restore gamemaster_pokeminers.json / evolvable_forms.')
             return
         rows = {u: (sp, fo) for u, sp, fo in con.execute('SELECT uid_hex, species_name, form FROM pokemon WHERE in_bag=1')}
-        over, under, blind, n = [], [], [], 0
+        past, short, blind, n = [], [], [], 0
         for u, e in sorted(adv.items()):
-            if not isinstance(e, dict) or e.get('gated') or e.get('steps') not in (1, 2) or u not in rows \
+            if not isinstance(e, dict) or e.get('gated') or not isinstance(e.get('final'), bool) or u not in rows \
                     or not isinstance(e.get('targets'), list) or not e['targets']:
-                continue                                       # Evolve Gated names no count; bad rows reported above
+                continue                                       # a gated tag names no end; bad rows reported above
             n += 1
             own = _pvid(rows[u][0], rows[u][1] or 0)
-            got = [d for d in (_gm_steps(_ef, _ef._gm_id(own), _ef._gm_id(str(t))) for t in e['targets']) if d]
-            lbl = '%s %s -> %s: tag says %d, the game %s' % (u, rows[u][0], '/'.join(map(str, e['targets'])),
-                                                             e['steps'], min(got) if got else 'shows no way')
-            if not got:
+            way = [_gm_steps(_ef, _ef._gm_id(own), _ef._gm_id(str(t))) for t in e['targets']]
+            ends = all(not (_ef._costs.get(_ef._gm_id(str(t))) or {}) for t in e['targets'])
+            lbl = '%s %s -> %s: tagged %s, the game %s' % (u, rows[u][0], '/'.join(map(str, e['targets'])),
+                                                           'Final' if e['final'] else 'Mid',
+                                                           'shows no way' if not all(way) else
+                                                           'ends there' if ends else 'evolves it further')
+            if not all(way):
                 blind.append(lbl)
-            elif min(got) < e['steps']:
-                over.append(lbl)
-            elif min(got) > e['steps']:
-                under.append(lbl)
-        if over:
-            fail(BLOCK, '%d Evolve Twice copy/copies the client game master calls ONE evolution from the target: %s'
-                        % (len(over), ' | '.join(over[:6])),
-                 'The Tympole trap: "Twice" gets it evolved past its target -- irreversible. The count comes from '
-                 "pvpoke's families (granular_tags.steps_between); the game outranks pvpoke. Fix the family "
-                 '(reconcile_gamemaster.py) or steps_between and re-run build_tagsets.py.')
-        if under or blind:
-            fail(WARN, '%d Evolve Once / Twice count(s) the client game master does not confirm: %s'
-                       % (len(under) + len(blind), ' | '.join((under + blind)[:6])),
-                 'A label must be true for the mon on screen. WARN: a count too LOW only stops the evolution early '
-                 '(nothing irreversible), and "shows no way" means the game master cannot say. Check the line in '
-                 'evolvable_forms; the game outranks pvpoke.')
-        if not (over or under or blind):
-            ok('the client game master counts the same evolutions as all %d Evolve Once / Twice row(s)' % n)
+            elif e['final'] and not ends:
+                past.append(lbl)
+            elif not e['final'] and ends:
+                short.append(lbl)
+        if past:
+            fail(BLOCK, '%d Evolve to Final copy/copies whose target the client game master evolves further: %s'
+                        % (len(past), ' | '.join(past[:6])),
+                 'The Tympole trap: "to Final" gets it evolved past its target -- irreversible. The end comes from '
+                 "pvpoke's families (granular_tags.is_final); the game outranks pvpoke. Fix the family "
+                 '(reconcile_gamemaster.py) or is_final and re-run build_tagsets.py.')
+        if short or blind:
+            fail(WARN, '%d Evolve to Mid / Final row(s) the client game master does not confirm: %s'
+                       % (len(short) + len(blind), ' | '.join((short + blind)[:6])),
+                 'A label must be true for the mon on screen. WARN: "to Mid" on a stage that ends the line only stops him '
+                 'where he would stop anyway (nothing irreversible), and "shows no way" means the game master cannot say.')
+        if not (past or short or blind):
+            ok('the client game master confirms where all %d Evolve to Mid / Final row(s) end' % n)
 
 
 def main():

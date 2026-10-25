@@ -117,10 +117,10 @@ print('  registered tags without a file: %d %s  %s' % (len(_nofile), 'OK' if not
 
 print('\nDEFINITIONAL TAGS -- membership must match the rule exactly')
 
-EVO5 = ('Evolve Once', 'Evolve Twice', 'Evolve Gated', 'Evolve for GL', 'Evolve for UL')   # THE evolve tags (the folds, 2026-09-29/30)
+EVO5 = ('Evolve to Mid', 'Evolve to Final', 'Evolve Needs Item', 'Evolve Needs Task', 'Evolve for GL', 'Evolve for UL')   # THE evolve tags (2026-10-25)
 
 def _evolve_labelled():
-    """(2026-09-29) copies being told to evolve = the union of the five evolve tag files: advice never sits beside one."""
+    """(2026-09-29) copies being told to evolve = the union of the evolve tag files: advice never sits beside one."""
     return set().union(*(load(t.replace(' ', '_')) for t in EVO5))
 
 
@@ -301,8 +301,8 @@ try:
             _c = [x for x in _l if x.get(_rk) is not None and (x.get(_rk) <= _BRF or x['pokemon_id'] in _RARE_M)]
             if _c:
                 q.add(min(_c, key=lambda x: (0 if _via(x.get(_st), _cap) else 1, x[_rk], x['uid_hex']))['uid_hex'])
-        if _lg == 'ML':                     # the Best ML chip skips hundos (2026-09-23); the keep does not
-            q = {u for u in q if (rows[u].get('iv_total') or 0) != 45}
+        if _lg == 'ML':                     # the Best ML chip skips hundos (2026-09-23) and Variant #1 (2026-10-25); the keep does not
+            q = {u for u in q if (rows[u].get('iv_total') or 0) != 45} - load('Variant_#1')
         else:                               # (2026-09-30) the Best GL/UL chip comes off the copy told to Evolve for it
             q -= load('Evolve_for_%s' % _lg)
         t = load('Best_%s' % _lg)
@@ -358,7 +358,8 @@ print('\nEVOLVE TAGS (2026-09-29) -- one advice per kept copy, re-derived both d
 # (2) the PvP comb-ups (the pick above; pvp_combup_labels.json now / gated, hold = no tag), (3) the shiny upgrades
 # (refresh_evolve_shiny.compute_target), (4) the showcase picks (sync_evolve_size.picks, each copy's best score); a
 # comb-up also adds its leagues. Tag: a gate on ANY stage of the way (evolvable_forms.gate_reason -- Happiny -> Chansey
-# -> Blissey is gated at Chansey) -> Evolve Gated, else the evolutions on the way -> Evolve Once / Evolve Twice; + Evolve
+# -> Blissey is gated at Chansey) -> Evolve Needs Item (every gate an item / lure) or Evolve Needs Task, else Evolve to Final
+# (every target ends its line on the engine's graph) or Evolve to Mid (2026-10-25: where it ends, true after it too); + Evolve
 # for GL / UL per comb-up league. The WAY is keep_policy's ONE graph (granular_tags.path_between only where that graph
 # has none). Never a pile mon, never a fused component.
 _adv, _notg = None, set()
@@ -388,9 +389,12 @@ try:
             own = _pve(_vis[u]['species_name'], _vis[u].get('form') or 0)
             ws = {x: _way(own, x) or _gt.path_between(own, x) for x in tg}
             st = [len(w) for w in ws.values() if w]
+            _gk = [g for x in tg for s in (ws[x] or [x]) for g in (_efe.gate_reason(s) or [])]
             _adv[u] = {'targets': tg, 'source': src, 'leagues': set(),
                        'steps': min(st) if st else (2 if 'evolve_2' in (_pol.get(u) or ()) else 1),
-                       'gated': bool(gated) or any(_efe.gate_reason(s) for x in tg for s in (ws[x] or [x]))}
+                       'gated': bool(gated) or bool(_gk),
+                       'item': bool(_gk) and all(g in ('evolutionItemRequirement', 'lureItemRequirement') for g in _gk),
+                       'final': all(not _rch.get(x) for x in tg)}
         _adv[u]['leagues'] |= set(lgs)
     for u, v in _pol.items():                           # 1. the engine's promises
         if set(v or ()) & {'evolve_1', 'evolve_2'}:
@@ -418,15 +422,17 @@ try:
             continue
         _put(u, e['target'], 'size')
     for e in _adv.values():
-        e['tags'] = ({'Evolve Gated' if e['gated'] else ('Evolve Twice' if e['steps'] == 2 else 'Evolve Once')}
+        e['tags'] = ({('Evolve Needs Item' if e['item'] else 'Evolve Needs Task') if e['gated']
+                      else ('Evolve to Final' if e['final'] else 'Evolve to Mid')}
                      | {'Evolve for ' + lg.upper() for lg in e['leagues']})
 except Exception as _e:
     _adv = None
     FAILS.append('Evolve rule unavailable')
     print('  *** could not re-derive the evolve tags (%s) -- %s are UNVERIFIED' % (_e, ' / '.join(EVO5)))
 if _adv is not None:
-    for _tn, _why in zip(EVO5, ('(one evolution to its target, doable now)', '(two evolutions to its target, doable now)',
-                                '(the game gates a stage on the way: item / task / buddy walk / time)',
+    for _tn, _why in zip(EVO5, ('(its target evolves again -- stop there; doable now)', '(its target ends the line; doable now)',
+                                '(the game gates the way with an item or a lure only)',
+                                '(the game gates the way with a task / buddy walk / time / move)',
                                 '(beside the count: the copy to evolve for a better GL copy of a stage -- pvp_combup.pick)',
                                 '(beside the count: the copy to evolve for a better UL copy of a stage -- pvp_combup.pick)')):
         _want = {u for u, e in _adv.items() if _tn in e['tags']}
