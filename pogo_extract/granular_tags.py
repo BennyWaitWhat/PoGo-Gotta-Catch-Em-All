@@ -635,9 +635,14 @@ def build(rows, pile, reasons):
     # --- variant floor: WHERE it sits, not just that it qualified (was one 1,939-member lump) ---
     # a PATTERN-POOLED line (Scatterbug/Spewpa/Vivillon) is one pool per pattern across the whole line, so its
     # ordinals must run over that pool -- the engine's cap did (keep_policy._stage_key via pattern_pools).
+    # PER LOOK (2026-10-25): a costume / background / decoration / Max copy holds a slot on ITS OWN ladder (the engine's rule
+    # 1a key), so it is ranked there. Pooled with the plain copies, 183 copies wore 'Variant #4+' while sitting #1-#3 on their
+    # own look's ladder -- 77 of them its best (a 93% Dynamax Inteleon) -- and Remote Trade spares only Variant #1.
+    _deco = lambda r: r.get('costume_decoration_id') if (r.get('costume_decoration_id') and str(r.get('costume_decoration_id')) != '0') else 0
     ordinal([r for r in kept if has(r['uid_hex'], 'variant_floor')],
-            lambda r: pattern_pools.pool_key(r['pokemon_id'], r['species_name'], r.get('form') or 0, r.get('gender'))
-            or (r['pokemon_id'], cf(r), evolvable_forms.gender_key(r['pokemon_id'], r.get('gender'))),   # per gender when the look differs (2026-09-23)
+            lambda r: (pattern_pools.pool_key(r['pokemon_id'], r['species_name'], r.get('form') or 0, r.get('gender'))
+                       or (r['pokemon_id'], cf(r), evolvable_forms.gender_key(r['pokemon_id'], r.get('gender'))))   # per gender when the look differs (2026-09-23)
+                      + (r.get('fresh_costume') or 0, _deco(r), r.get('fresh_natural_art_bg') or 0, r.get('fresh_bread_mode') or 0),
             list(VARIANT_LABELS), VARIANT_OVERFLOW)
 
     # --- shiny: a sole shiny of a species is a different thing from the 4th dupe ---
