@@ -76,7 +76,7 @@ def main():
     # not -- the sandbox keeps its pre-evolution ranks -- and is listed below.
     todo, src_of, cu_unsim = {}, {}, []
     unsim, broken, reasons_at = [], [], collections.Counter()
-    for _t in (granular_tags.EVOLVE_ONCE, granular_tags.EVOLVE_TWICE, granular_tags.EVOLVE_GATED):
+    for _t in granular_tags.EVOLVE_COUNT_TAGS:
         _p = os.path.join('system', 'analysis', 'tagsets', granular_tags.filename(_t))
         for u in (open(_p).read().split() if os.path.exists(_p) else []):
             if u not in rows or u in src_of:

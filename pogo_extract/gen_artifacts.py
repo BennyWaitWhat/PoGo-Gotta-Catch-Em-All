@@ -342,7 +342,7 @@ _r1 = ''.join('<tr><td><b>%s</b> %d%%</td><td class="mut">&rarr; %s</td></tr>'
               % (E(_nm.get(u, ('?', 0))[0]), _nm.get(u, ('?', 0))[1] * 100 // 45, E(', '.join(t)))
               for u, t in sorted(_promises.items(), key=lambda kv: -_nm.get(kv[0], ('', 0))[1]))
 _b.append(_rowsblk('Evolve now', 'The engine reserved a slot at the later stage and you can pay for it today. '
-                   'These carry the <b>Evolve Once</b> / <b>Evolve Twice</b> chip in game.', _r1, len(_promises)))
+                   'These carry the <b>Evolve to Mid</b> / <b>Evolve to Final</b> chip in game.', _r1, len(_promises)))
 
 _free = [e for e in _show if not e['is_my_best_there']]
 _r2 = ''.join('<tr><td><b>%s</b> %.2fm</td><td class="mut">&rarr; %s</td><td>z %.1f</td><td>%s</td></tr>'

@@ -26,10 +26,10 @@ ORDER = [
     'Transfer',                        # FIRST (user 2026-09-30: "can you please put the transfers tag on top?")
     # WHAT TO DO, ON TOP (user 2026-09-26: "And always put them on top."): Stop at <stage> (spliced in below), then the
     # dust advice. Names say the action (granular_tags POWER_UP_GL / SECOND_MOVE).
-    'Evolve Once', 'Evolve Twice', 'Evolve Gated', 'Evolve for GL', 'Evolve for UL',   # the folds (2026-09-29, -30)
+    'Evolve to Mid', 'Evolve to Final', 'Evolve Needs Item', 'Evolve Needs Task', 'Evolve for GL', 'Evolve for UL',   # 2026-10-25
     'Power Up to 1500', 'Power Up to 2500', 'Unlock 2nd Move',
     'GL Rank 1-5', 'UL Rank 1-5', 'GL 1-5 No Evolve', 'UL 1-5 No Evolve', 'Best GL', 'Best UL', 'Best ML', '0-15-15',
-    'Hundo', 'Nundo', 'XXL', 'Shiny - Only One', 'Shiny #4+', 'Legacy Moves', 'Adventure Effect', 'Ultra Beast',
+    'Hundo', 'Nundo', 'XXL', 'Shiny - Only One', 'Legacy Moves', 'Adventure Effect', 'Ultra Beast',
     'Never Cull', 'Traded by E+F', 'Variant #1', 'Variant #2', 'Variant #3', 'Variant #4+',
     'Safety Hold',                     # only on the phone while something is held for bad data; last, out of the way
 ]

@@ -555,7 +555,7 @@ for _t in list(granular_tags.EVOLVE_TAGS) + [granular_tags.POWER_UP_GL, granular
         advice_piled.append(u)
         print('  *** %s is in the pile AND wears %r -- advice to spend on a mon being released'
               % (by[u]['species_name'] if u in by else u, _t))
-    if _t in (granular_tags.EVOLVE_ONCE, granular_tags.EVOLVE_TWICE, granular_tags.EVOLVE_GATED):
+    if _t in granular_tags.EVOLVE_COUNT_TAGS:
         _counted |= _m
 try:
     _adv = {format(int(k, 16), '016x'): v for k, v in json.load(open(granular_tags.EVOLVE_ADVICE, encoding='utf-8')).items()}
