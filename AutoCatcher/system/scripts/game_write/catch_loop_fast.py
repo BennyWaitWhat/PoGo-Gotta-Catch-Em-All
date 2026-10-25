@@ -51,7 +51,9 @@ CFG = {
     "openMs": 300,          # min ms between encounter opens (200/min). 667 was the old cap, set when faster opens
                             # seemed to crash PoGo -- that was the stolen-ART-fault bug, fixed by exceptions:'propagate'
     "maxOpen": 12,          # encounters awaiting a server answer at once
-    "thresh": 0.28,         # cheapest ball whose BASE catch prob >= this (throws are Excellent+curve, ~3.4x)
+    "thresh": 0.28,         # first ball in ballOrder whose BASE catch prob >= this (throws are Excellent+curve, ~3.4x)
+    "ballOrder": [2, 1, 3], # Great, then Poke, then Ultra (Benny 2026-10-25). Was cheapest first: 1, 2, 3. A hard catch
+                            # (Great under thresh) still gets the Ultra; Poke Balls go out when Great Balls hit their floor.
     "floors": {"1": 5, "2": 5, "3": 5},   # keep a few Poke/Great/Ultra
     "pinap": False, "pinapFloor": 5,      # OFF (user 2026-09-30: "pause autocatcher use for it now"): Pokemod's Pinap
                                           # Master feeds Pinaps too and kept our stock at 0-6. Was: every throw with no Razz
@@ -213,7 +215,7 @@ function encOf(o) { var r = call(method(o, 'get_EncounterId', 0), o, []); return
 /* ---------------- state ---------------- */
 var K = {}, M = {}, OFF = {}, PBT_VT = false;
 var CFG = {catch: false, spin: false, tap: false, perfect: false, apples: false, appleSpecies: {}, openMs: 667, maxOpen: 6, thresh: 0.28,
-           floors: {1: 5, 2: 5, 3: 5}, pinap: true, pinapFloor: 20, razz: true, razzFloor: 5, razzThresh: 0.45,
+           ballOrder: [2, 1, 3], floors: {1: 5, 2: 5, 3: 5}, pinap: true, pinapFloor: 20, razz: true, razzFloor: 5, razzThresh: 0.45,
            legendary: {}, priority: {}};
 var S = {ready: false, stale: 'first attach', nextLookup: 0, tries: 0, msvc: NULL, ib: NULL, avatar: NULL, ps: NULL};
 /* STALE MAP (2026-09-24 22:27-22:46: 20 min of vis=0 while attached, 3 Pokemon the second it re-attached). The game
@@ -349,14 +351,14 @@ function pollCounts() {
 function have(item, floor) { var c = ITEMC[item]; return c !== undefined && c > floor; }
 function ballOk(b) { var c = ITEMC[b]; if (c === undefined) return b === 1; return c > (CFG.floors[b] || 0); }
 function pickBall(pr, prio) {
-  var b;
+  var b, i, o = CFG.ballOrder;
   if (prio) { for (b = 3; b >= 1; b--) if (ballOk(b)) return b; return 0; }
   if (pr) {
-    for (b = 1; b <= 3; b++) if (ballOk(b) && pr[b] !== undefined && pr[b] >= CFG.thresh) return b;
-    var best = 0, bp = -1; for (b = 1; b <= 3; b++) if (ballOk(b) && pr[b] !== undefined && pr[b] > bp) { bp = pr[b]; best = b; }
+    for (i = 0; i < o.length; i++) { b = o[i]; if (ballOk(b) && pr[b] !== undefined && pr[b] >= CFG.thresh) return b; }
+    var best = 0, bp = -1; for (i = 0; i < o.length; i++) { b = o[i]; if (ballOk(b) && pr[b] !== undefined && pr[b] > bp) { bp = pr[b]; best = b; } }
     if (best) return best;
   }
-  for (b = 1; b <= 3; b++) if (ballOk(b)) return b;
+  for (i = 0; i < o.length; i++) if (ballOk(o[i])) return o[i];
   return 0;
 }
 function berryFor(e) {
@@ -960,7 +962,7 @@ function pump(self) {
 
 function applyCfg(c) {
   if (!c) return;
-  ['catch', 'spin', 'tap', 'perfect', 'apples', 'openMs', 'maxOpen', 'thresh', 'pinap', 'pinapFloor', 'razz', 'razzFloor', 'razzThresh'].forEach(function (k) { if (c[k] !== undefined) CFG[k] = c[k]; });
+  ['catch', 'spin', 'tap', 'perfect', 'apples', 'openMs', 'maxOpen', 'thresh', 'ballOrder', 'pinap', 'pinapFloor', 'razz', 'razzFloor', 'razzThresh'].forEach(function (k) { if (c[k] !== undefined) CFG[k] = c[k]; });
   if (c.floors) CFG.floors = {1: c.floors['1'], 2: c.floors['2'], 3: c.floors['3']};
   if (c.legendary) { CFG.legendary = {}; c.legendary.forEach(function (d) { CFG.legendary[d] = 1; }); }
   if (c.priority) { CFG.priority = {}; c.priority.forEach(function (d) { CFG.priority[d] = 1; }); }
