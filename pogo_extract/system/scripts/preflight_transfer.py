@@ -690,7 +690,8 @@ def _loc_card_kept_uids(bag, cf_norm):
     for (_pid, _f, _e), lst in g.items():
         n = keep_config.species_cap('location_card', _pid, keep_config.cap('location_card'))
         rank = [r for r in lst if (_g(r, 'iv_total') or 0) not in (0, 45)]
-        for r in keep_config.floor_top(sorted(rank, key=lambda x: (-(_g(x, 'iv_total') or 0), -(_g(x, 'cp') or 0), x['uid_hex'])))[:n]:   # collection floor
+        for r in keep_config.floor_top(sorted(rank, key=lambda x: (-(_g(x, 'iv_total') or 0), -(_g(x, 'cp') or 0), x['uid_hex'])),
+                                       look=keep_config.card_look)[:n]:   # collection floor; each look's best stays (2026-10-25)
             keep.add(r['uid_hex'])
         for r in lst:
             if (_g(r, 'iv_total') or 0) in (0, 45):

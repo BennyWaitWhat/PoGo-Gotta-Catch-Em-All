@@ -92,7 +92,7 @@ GL_FLOOR, UL_FLOOR = keep_config.pvp('gl_floor'), keep_config.pvp('ul_floor')
 #  GENDER_TERMINALS; PVP_RANK/CPM50/maxcp/parse_chain -> PvP maxcp+rank live in pvp_iv_rule.py.)
 
 
-def topn(rows, n, bg_first=False):
+def topn(rows, n, bg_first=False, look=None):
     # uid as final tiebreak: stat-identical dupes otherwise fall to SQLite rowid order, which a recrawl
     # can reshuffle -- the irreversible Transfer membership must be reproducible run-to-run (audit F25).
     # COLLECTION FLOOR (user 2026-09-24 "thats the floor now"): every capped collection ladder that ranks by IV --
@@ -100,8 +100,9 @@ def topn(rows, n, bg_first=False):
     # surplus list -- drops a copy under keep_config.collection_floor_iv (25%) unless it is the ladder's best.
     # keep_config.floor_top is the ONE implementation, shared with audit_cull / _lawcheck / preflight_transfer.
     # bg_first (2026-09-24): a COSTUME ladder puts its background copies first (costume_forms.backgrounds_first).
+    # look (2026-10-25): a CARD ladder keeps each look's best under the floor too (keep_config.card_look).
     _s = sorted(rows, key=lambda r: (-(r['iv_total'] or 0), -(r['cp'] or 0), r['uid_hex']))
-    return keep_config.floor_top(costume_forms.backgrounds_first(_s) if bg_first else _s)[:n]
+    return keep_config.floor_top(costume_forms.backgrounds_first(_s) if bg_first else _s, look=look)[:n]
 
 
 # Field separator for db_content_sha256(). chr(0x1f) = ASCII UNIT SEPARATOR: repr() escapes every
@@ -931,6 +932,21 @@ def main():
             if _fn:
                 _key_of_formname.setdefault((_fn, _k[2]), _k)
     _committed = defaultdict(list)                        # stage key -> virtual evolved copies already promised there
+    # RULE 13's CARD LADDER IS GENDER-BLIND (2026-10-25): it ranks per (pid, cf, card), while a stage key carries the gender
+    # term. Judged against the female Meganium key alone, a female 22/45 card Chikorita read its card as new there; rule 13
+    # ranked it under the male 27/45 card Meganium and, once the floor rose to 23, culled it after evolving
+    # (audit_promises). _card_scope is a stage key without its gender; a 'sid' key held at another gender maps to that key.
+    _card_by_scope = defaultdict(list)                    # (pid, cf, card) -> every bag row on that card ladder
+    for _k, _lst in _all_by_key.items():
+        for _r in _lst:
+            if _r['fresh_has_location_card'] == 1 and (_r['fresh_loc_card_enum'] or 0):
+                _card_by_scope[_k[:2] + (_r['fresh_loc_card_enum'],)].append(_r)
+    def _card_scope(k):
+        if k[0] == 'sid' and len(k) == 3:
+            _o = next(iter(_key_of_sid.get(k[1], {}).values()), None)
+            if _o is not None:
+                return _o[:2]
+        return k[:2] + k[3:]
     def _tkey(t, r):
         # the TARGET decides the gender component (2026-09-23): a Natu (one look) becoming a Xatu (two looks) lands on the
         # Xatu ladder of ITS gender; a female Combee becoming a Vespiquen (one look) lands on the single Vespiquen ladder.
@@ -969,16 +985,15 @@ def main():
         # background travels with it, and a stage that lacks that card gains a collectible (2026-09-16).
         _card = v['fresh_loc_card_enum'] if v['fresh_has_location_card'] == 1 else 0
         if _card:
-            if key[0] == 'sid':
-                return True                                   # nothing of that stage in the bag: the card slot is free
-            _grp = [a for a in _all_by_key.get(key, []) + _committed.get(key, [])
-                    if a['fresh_has_location_card'] == 1 and a['fresh_loc_card_enum'] == _card and not _slot_exempt(a)
+            _sc = _card_scope(key)                            # every gender: rule 13's own ladder (2026-10-25)
+            _lad = [a for a in _card_by_scope.get(_sc + (_card,), [])
+                    + [c for _k, _l in _committed.items() if _card_scope(_k) == _sc for c in _l]
+                    if a['fresh_has_location_card'] == 1 and a['fresh_loc_card_enum'] == _card
                     and not costume_forms.card_folds_into_costume(a)]   # a costume copy holds no card slot (2026-09-24)
-            _n = keep_config.species_cap('location_card', key[0], keep_config.cap('location_card'))
-            if v['uid_hex'] in {x['uid_hex'] for x in topn(_grp + [v], _n)}:
-                _best_c = max([(a['iv_total'] or 0) for a in _all_by_key.get(key, []) + _committed.get(key, [])
-                               if a['fresh_has_location_card'] == 1 and a['fresh_loc_card_enum'] == _card
-                               and not costume_forms.card_folds_into_costume(a)] + [-1])
+            _grp = [a for a in _lad if not _slot_exempt(a)]
+            _n = keep_config.species_cap('location_card', _sc[0], keep_config.cap('location_card'))
+            if v['uid_hex'] in {x['uid_hex'] for x in topn(_grp + [v], _n, look=keep_config.card_look)}:
+                _best_c = max([(a['iv_total'] or 0) for a in _lad] + [-1])   # an empty ladder: the card slot is free
                 if len(_grp) >= _n or (v['iv_total'] or 0) > _best_c:
                     return True                           # a new card at that stage, a new best, or it replaces a weaker one
         pool = list(stage_pool.get(key, ())) + _committed.get(key, []) + [v]
@@ -1459,7 +1474,7 @@ def main():
             _cap = keep_config.species_cap('location_card', _lc_pid, _lc_cap)
             # trophies are kept unconditionally elsewhere and must never consume a capped slot
             _pool = [r for r in _lst if not _slot_exempt(r)]
-            for r in topn(_pool, _cap):
+            for r in topn(_pool, _cap, look=keep_config.card_look):   # each look's best stays under the floor (2026-10-25)
                 mark(r['uid_hex'], 'location_card')
             for r in _lst:
                 if _slot_exempt(r):
