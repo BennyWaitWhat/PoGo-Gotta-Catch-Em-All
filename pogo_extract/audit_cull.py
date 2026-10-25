@@ -370,6 +370,9 @@ for lst in _shp.values():
         _w, _wr = _pvp_usable_winner_rk(lst, _lg, _cap)
         if _w and _wr <= _SRF:
             _shadow_keep.add(_w)
+    if not any(x['uid_hex'] in _shadow_keep for x in lst):   # rule 7 (2026-10-25): the identity's last shadow always stays
+        _shadow_keep.add(min(lst, key=lambda x: (x['ml_rank'] if x.get('ml_rank') is not None else 10 ** 6,
+                                                 -(x.get('iv_total') or 0), x['uid_hex']))['uid_hex'])
 def _scoll(r):                                                # engine's identity set, minus retired special_bg_id
     z = set()
     if (r.get('fresh_natural_art_bg') or 0): z.add(('abg', r['fresh_natural_art_bg']))
@@ -759,7 +762,7 @@ special = lambda r: bool(r.get('fresh_shiny') or (r.get('fresh_costume') or 0)
                          or is_costume_form(r.get('fresh_form') or 0) or r.get('fresh_has_location_card') == 1
                          or (r.get('fresh_alignment') or 0) == 1)
 sp = [u for u in ps if u in rows and special(rows[u])]
-# SHADOW RANK FLOOR (2026-09-24): a species whose best shadow ranks below pvp.shadow_rank_floor keeps NO shadow -- by law.
+# SHADOW RANK FLOOR (2026-09-24): a shadow past pvp.shadow_rank_floor is no Best -- but since 2026-10-25 every identity keeps its best shadow.
 # So a piled shadow whose identity has no shadow in _shadow_keep (the re-derived law above) is lawful, not an orphan;
 # the net still catches every cosmetic orphan and any shadow piled while a sibling of its identity IS kept.
 _sh_ident_kept = {_sh_pvid(x['species_name'], x.get('form') or 0) for lst in _shp.values() for x in lst if x['uid_hex'] in _shadow_keep}

@@ -302,6 +302,9 @@ for _l in _shp.values():
         _w, _wr = _usable_winner_rk(_l, _lg, _cap)
         if _w and _wr <= _SRF:
             _shadow_keep.add(_w)
+    if not any(y['uid_hex'] in _shadow_keep for y in _l):    # rule 7 (2026-10-25): the identity's last shadow always stays
+        _mlr = lambda y: (y['ml_rank'] if 'ml_rank' in y.keys() else None)
+        _shadow_keep.add(min(_l, key=lambda y: (_mlr(y) if _mlr(y) is not None else 10 ** 6, -iv(y), y['uid_hex']))['uid_hex'])
 for _k, _l in _shyg.items():
     _n = keep_config.species_cap('shiny', _k[0], keep_config.cap('shiny'))
     # 2026-09-23: at most cap('shiny_plain') PLAIN shinies; a per-species exception covers plains too
