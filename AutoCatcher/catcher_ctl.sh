@@ -28,9 +28,20 @@ FLAGLOG="$HOME/pogo/system/analysis/pokemod/flags.log"
 setflag() { # setflag <file> <0|1> <label>
   old=$(cat "$1" 2>/dev/null | tr -d '[:space:]')
   [ -z "$2" ] && return 0                     # never write an empty value
-  echo "$2" > "$1"
-  [ "$old" != "$2" ] && echo "$(date '+%H:%M:%S') $3: $(basename "$1") $old -> $2 (verb=$VERB pid=$$)" >> "$FLAGLOG"
+  { echo "$2" > "$1"; } 2>/dev/null || mkflag "$1" "$2"
+  now=$(cat "$1" 2>/dev/null | tr -d '[:space:]')
+  if [ "$now" != "$2" ]; then
+    echo "$(date '+%H:%M:%S') $3: $(basename "$1") NOT SAVED, still '$now' (verb=$VERB pid=$$)" >> "$FLAGLOG"
+  elif [ "$old" != "$2" ]; then
+    echo "$(date '+%H:%M:%S') $3: $(basename "$1") $old -> $2 (verb=$VERB pid=$$)" >> "$FLAGLOG"
+  fi
   return 0
+}
+# Termux can write the flag files but not CREATE them (/data/local/tmp belongs to shell). An on-phone cleanup deleted
+# them on 2026-10-15, and every toggle then failed silently: flags.log said "-> 1" but no file existed. Root makes them
+# again the way setup did: root-owned, 666, shell_data_file. (Termux has Magisk root.)
+mkflag() {
+  su -c "echo $2 > $1 && chmod 666 $1 && chcon u:object_r:shell_data_file:s0 $1" >/dev/null 2>&1
 }
 
 start_proc() {

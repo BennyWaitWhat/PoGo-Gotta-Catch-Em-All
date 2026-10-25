@@ -33,9 +33,7 @@
     "diagram-design@diagram-design": true
   },
   "env": {
-    "ANTHROPIC_DEFAULT_HAIKU_MODEL": "claude-sonnet-5-5",
-    "CLAUDE_CODE_SUBAGENT_MODEL": "claude-sonnet-5-5",
-    "CLAUDE_CODE_SUBAGENT_MODEL_FORCE": "1"
+    "ANTHROPIC_DEFAULT_HAIKU_MODEL": "claude-sonnet-5-5"
   },
   "showThinkingSummaries": true,
   "skillListingBudgetFraction": 0.05,

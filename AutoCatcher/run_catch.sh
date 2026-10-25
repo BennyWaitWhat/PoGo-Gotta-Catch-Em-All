@@ -10,6 +10,10 @@ export LD_LIBRARY_PATH=$HOME/applibs:$PREFIX/lib
 export PATH=$PREFIX/bin:/system/bin
 LOG=$HOME/pogo/system/analysis/pokemod/catch_loop.log
 CATCHER=$HOME/pogo/system/scripts/game_write/catch_phone.py
+# The newest installed python3.N, a real file. It was hard-coded python3.13: `pkg upgrade` (2026-10-15) installed 3.14,
+# and the catcher never started again. Two-digit minors come after one-digit ones here, so the last match is the newest.
+PY=
+for p in "$PREFIX"/bin/python3.[0-9] "$PREFIX"/bin/python3.[0-9][0-9]; do [ -f "$p" ] && PY=$p; done
 on() { for t in catch spin perfect tap; do [ "$(tr -d '[:space:]' < /data/local/tmp/pogo_$t.on 2>/dev/null)" = 1 ] && return 0; done; return 1; }
 game_up() { (exec 3<>/dev/tcp/127.0.0.1/27047) 2>/dev/null; }   # PoGo's gadget listens only while the game runs
 say() { echo "$(date +%H:%M:%S) SUPERVISOR $*" >> "$LOG"; }
@@ -18,7 +22,7 @@ end() { kill -TERM "$1" 2>/dev/null; for _ in 1 2 3 4 5 6 7 8 9 10 11 12; do kil
 
 while on; do
   if game_up; then
-    "$PREFIX/bin/python3.13" "$CATCHER" & pid=$!
+    "${PY:-$PREFIX/bin/python3}" "$CATCHER" & pid=$!
     while kill -0 "$pid" 2>/dev/null; do
       sleep 30
       on || { end "$pid"; exit 0; }
