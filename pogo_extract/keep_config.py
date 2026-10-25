@@ -76,8 +76,8 @@ DEFAULTS = {
     "collection_floor_iv": 0,                            # EVERY capped collection ladder (plain / costume / Max / legendary / legacy / cards): a copy below this
     #                                                      IV total takes no slot unless it is the ladder's best (0 = off; 12 = under 25%, user 2026-09-24)
     "shiny_floor_iv": 0,                                 # rule 3 -- a PLAIN shiny below this IV total takes no plain-shiny slot unless it is its form's best
-    "shiny_floor_keep": 2,                               # ... the floor never takes a species+form below its best N shinies (user 2026-10-25:
-    #                                                      "i want to at least keep 2 of a shiny, geez, this is going forward"; 1 before)
+    "shiny_floor_keep": 3,                               # ... the floor never takes a species+form below its best N shinies (user 2026-10-25:
+    #                                                      "at least keep 2 of a shiny", then "wait, i actually want to have at least 3"; 1 before)
     #                                                      shiny (0 = off; 18 = under 40%, user 2026-09-24: "only the absolute shitty ones")
     #                                                      (37/45 = the in-game 3-star line) is kept regardless of the cap. user 2026-09-13.
     "protected_keep_all_pids": [172],                    # Pichu -> keep EVERY copy
@@ -360,8 +360,8 @@ def rarity_ladder_keep(rows, legacy_uids, spec):
 
 
 def shiny_floor_keep():
-    """The shiny floor never takes a species+form below this many shinies: its N best stay, floor or not (2 since
-    2026-10-25, user: "i want to at least keep 2 of a shiny"). The best PLAIN shiny stays as well."""
+    """The shiny floor never takes a species+form below this many shinies: its N best stay, floor or not (3 since
+    2026-10-25, user: "wait, i actually want to have at least 3"; 2 minutes before). The best PLAIN shiny stays as well."""
     d = DEFAULTS["shiny_floor_keep"]
     return max(1, _int(CFG.get("shiny_floor_keep", d), d))
 
