@@ -222,15 +222,27 @@ def main():
         m = re.match(r'(?:EXTENDED_)?V(\d{4})_POKEMON_', t.get('templateId', ''))
         if m:
             _bwalk(t.get('data') or {}, int(m.group(1)))
-    _bad = defaultdict(int)
+    _listed = set().union(*_bm_of.values()) if _bm_of else set()
+    _bad, _newer = defaultdict(int), defaultdict(int)
     for r in rows:
         b = r['fresh_bread_mode'] or 0
         if b and evolvable_forms.BREAD_MODES.get(b) not in _bm_of.get(r['pokemon_id'], ()):
-            _bad['%s mode %d (%s; game lists %s)' % (r['species_name'], b, evolvable_forms.BREAD_MODES.get(b, 'UNKNOWN'),
-                                                     sorted(_bm_of.get(r['pokemon_id'], ())) or 'none')] += 1
+            _k = '%s mode %d (%s; game lists %s)' % (r['species_name'], b, evolvable_forms.BREAD_MODES.get(b, 'UNKNOWN'),
+                                                     sorted(_bm_of.get(r['pokemon_id'], ())) or 'none')
+            # 2026-10-24: a species with NO Max entry at all in this batch, holding a mode whose name IS the one the game lists
+            # for other species, is a Max release newer than the batch (3 Dynamax Azelf vs the 0.427.0 batch; 212 other mode-1
+            # mons prove the map), not a wrong BREAD_MODES. A species that lists other modes, or an unlisted name, stays BLOCK.
+            if not _bm_of.get(r['pokemon_id']) and evolvable_forms.BREAD_MODES.get(b) in _listed:
+                _newer[_k] += 1
+            else:
+                _bad[_k] += 1
     if _bad:
         block.append('MAX MODE the game master does not list for the species -- evolvable_forms.BREAD_MODES is wrong: %s'
                      % '; '.join('%s x%d' % kv for kv in sorted(_bad.items())[:8]))
+    if _newer:
+        warn.append('MAX MODE NEWER THAN THE GAME MASTER -- no Max entry for the species in this batch, but the mode name is the '
+                    'one the game lists for other species (a Max release after the batch): %s'
+                    % '; '.join('%s x%d' % kv for kv in sorted(_newer.items())[:8]))
     _nmax = sum(1 for r in rows if r['fresh_bread_mode'])
 
     # 6. COSTUME FLAGS (2026-09-30, user: "do whats best and not lazy" -> costume option 5; LAW.md "WHAT COUNTS AS A COSTUME").
