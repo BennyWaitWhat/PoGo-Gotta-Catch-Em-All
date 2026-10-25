@@ -1176,6 +1176,13 @@ def main():
             _w = _pvp_usable_winner(lst, lg)
             if _w is not None and _pvp_usable(_w, lg)[1] <= _SRF:
                 mark(_w['uid_hex'], 'shadow_best')               # the best Great / Ultra League shadow that can ENTER it, inside the floor
+        # NEVER LOSE AN IDENTITY'S LAST SHADOW (2026-10-25, user: "never cull your only shadow of a species" -- "i thought this
+        # was already the deal"): the floor decides which shadows count as a Best, never whether the identity keeps one. When
+        # no shadow of it made the floor, its best one stays: top ML rank (= top IV), then IV total, then uid.
+        if not any('shadow_best' in keep.get(r['uid_hex'], ()) for r in lst):
+            _top = min(lst, key=lambda r: (_shr(r, 'ml_rank') if _shr(r, 'ml_rank') is not None else 10 ** 6,
+                                           -(_shr(r, 'iv_total') or 0), r['uid_hex']))
+            mark(_top['uid_hex'], 'shadow_best')
 
     # 3. shiny: top-20 by IV per (species, form) -- GYM-SPAM CAP (user 2026-06-05: "I place a single
     # shiny across all gyms; gym limit is 20, so trim all down to 20, keep highest IVs"). This OVERRIDES
