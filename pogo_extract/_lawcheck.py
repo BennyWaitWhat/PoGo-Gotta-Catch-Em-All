@@ -311,6 +311,7 @@ for _k, _l in _shyg.items():
     _np = _n if keep_config.species_cap('shiny', _k[0], None) is not None else min(_n, keep_config.cap('shiny_plain'))
     _rk = sorted(_l, key=lambda y: (-iv(y), -len(_scoll(y)), -_cp(y), y['uid_hex']))
     _sfl = keep_config.shiny_floor_iv(); _first = _rk[0]['uid_hex'] if _rk else None      # shiny floor, best of the form stays (2026-09-24)
+    _ffree = {z['uid_hex'] for z in _rk[:keep_config.shiny_floor_keep()]}   # ... its N best stay (2026-10-25: "at least keep 2")
     _plsh = [y for y in _rk if not _scoll(y)]; _first_pl = _plsh[0]['uid_hex'] if _plsh else None   # ...and the best PLAIN one
     _lk = {}                                  # every look first, comb up, cap stays (user 2026-09-30, LAW bucket 4)
     for y in _rk:
@@ -318,7 +319,7 @@ for _k, _l in _shyg.items():
     _lt = set(_lk.values())
     _pok = {y['uid_hex'] for y in ([y for y in _plsh if y['uid_hex'] in _lt]
                                    + [y for y in _plsh if y['uid_hex'] not in _lt
-                                      and (iv(y) >= _sfl or y['uid_hex'] in (_first, _first_pl))])[:_np]}
+                                      and (iv(y) >= _sfl or y['uid_hex'] in _ffree or y['uid_hex'] == _first_pl)])[:_np]}
     _el = [y for y in _rk if _scoll(y) or y['uid_hex'] in _pok]
     for x in ([y for y in _el if y['uid_hex'] in _lt] + [y for y in _el if y['uid_hex'] not in _lt])[:_n]:
         _shiny_keep.add(x['uid_hex'])

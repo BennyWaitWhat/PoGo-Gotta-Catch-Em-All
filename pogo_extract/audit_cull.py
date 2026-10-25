@@ -389,6 +389,7 @@ for _k, lst in _shyg.items():
     _np = _n if keep_config.species_cap('shiny', _k[0], None) is not None else min(_n, keep_config.cap('shiny_plain'))
     _rk = sorted(lst, key=lambda x: (-(x.get('iv_total') or 0), -len(_scoll(x)), -(x.get('cp') or 0), x['uid_hex']))
     _sfl = keep_config.shiny_floor_iv(); _first = _rk[0]['uid_hex'] if _rk else None      # shiny floor, best of the form stays (2026-09-24)
+    _ffree = {z['uid_hex'] for z in _rk[:keep_config.shiny_floor_keep()]}   # ... its N best stay (2026-10-25: "at least keep 2")
     _plsh = [x for x in _rk if not _scoll(x)]; _first_pl = _plsh[0]['uid_hex'] if _plsh else None   # ...and the best PLAIN one
     _lk = {}                                  # every look first, comb up, cap stays (user 2026-09-30, LAW bucket 4)
     for x in _rk:
@@ -396,7 +397,7 @@ for _k, lst in _shyg.items():
     _lt = set(_lk.values())
     _pok = {x['uid_hex'] for x in ([x for x in _plsh if x['uid_hex'] in _lt]
                                    + [x for x in _plsh if x['uid_hex'] not in _lt
-                                      and ((x.get('iv_total') or 0) >= _sfl or x['uid_hex'] in (_first, _first_pl))])[:_np]}
+                                      and ((x.get('iv_total') or 0) >= _sfl or x['uid_hex'] in _ffree or x['uid_hex'] == _first_pl)])[:_np]}
     _el = [x for x in _rk if _scoll(x) or x['uid_hex'] in _pok]
     for r in ([x for x in _el if x['uid_hex'] in _lt] + [x for x in _el if x['uid_hex'] not in _lt])[:_n]:
         _shiny_keep.add(r['uid_hex'])
@@ -670,7 +671,7 @@ def _il_shpcap(t):
     return _c if keep_config.species_cap('shiny', _il_dex.get(t), None) is not None else min(_c, keep_config.cap('shiny_plain'))
 _il_sh = _il.shiny_ladder_violations(
     _crows, ps, own_of=lambda r: _sh_pvid(r['species_name'], r.get('form') or 0), next_of=_il_next,
-    can_evolve=lambda r: bool(_pu_later(r)), cap_of=_il_shcap, plain_cap_of=_il_shpcap, floor_iv=keep_config.shiny_floor_iv(),
+    can_evolve=lambda r: bool(_pu_later(r)), cap_of=_il_shcap, plain_cap_of=_il_shpcap, floor_iv=keep_config.shiny_floor_iv(), floor_keep=keep_config.shiny_floor_keep(),
     is_collectible=lambda r: bool(_scoll(r) - {('shadow', 1)}), protected_pids=keep_config.protected_pids())
 print('  %-18s %-5d %s   (LAW shiny ladder re-derived: a spare shiny that earns a spot one stage up is held)'
       % ('shiny ladder (law)', len(_il_sh), chk('shiny ladder (law)', len(_il_sh))))
