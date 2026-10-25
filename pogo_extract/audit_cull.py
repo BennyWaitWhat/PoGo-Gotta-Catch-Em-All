@@ -420,7 +420,8 @@ for r in _crows:                                     # (2026-09-26) fused compon
 for _k, _l in _lg.items():
     _n = keep_config.species_cap('location_card', _k[0], keep_config.cap('location_card'))
     _rank = [r for r in _l if (r.get('iv_total') or 0) not in (0, 45)]
-    for r in keep_config.floor_top(sorted(_rank, key=lambda x: (-(x.get('iv_total') or 0), -(x.get('cp') or 0), x['uid_hex'])))[:_n]:   # collection floor
+    for r in keep_config.floor_top(sorted(_rank, key=lambda x: (-(x.get('iv_total') or 0), -(x.get('cp') or 0), x['uid_hex'])),
+                                   look=keep_config.card_look)[:_n]:   # collection floor; each look's best stays (2026-10-25)
         _loc_keep.add(r['uid_hex'])
     for r in _l:
         if (r.get('iv_total') or 0) in (0, 45):

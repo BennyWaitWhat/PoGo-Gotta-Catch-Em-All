@@ -56,9 +56,10 @@ import keep_config
 import evolvable_forms
 from pvp_iv_rule import pvid
 try:
-    from costume_forms import is_costume_form
+    from costume_forms import is_costume_form, card_folds_into_costume as _card_folds
 except Exception:
     is_costume_form = lambda f: False
+    _card_folds = lambda r: False
 try:
     from references import LEGENDARY_IDS, MYTHICAL_IDS, ULTRA_BEAST_IDS, PARADOX_IDS
     RARE_PIDS = LEGENDARY_IDS | MYTHICAL_IDS | ULTRA_BEAST_IDS | PARADOX_IDS
@@ -330,11 +331,19 @@ def sweep(drop_trophies, drop_piled, commits=None):
             return (t, '', 0)
         _tf = evolvable_forms.target_form(r['fresh_form'] or r['form'], t, sid_of(r), r['gender'])
         return (t, evolvable_forms.canon_form(t, _tf), _gk(t, r))   # same canonicalisation the fill side uses, or they miss
+    # RULE 13's CARD LADDERS (2026-10-25), for the engine's card branch in improves(): (stage, card) -> [(iv, cp, look, trophy)].
+    # GENDER-BLIND, as rule 13 ranks; a costume + card copy holds no card slot (costume_forms.card_folds_into_costume).
+    card_lad = collections.defaultdict(list)
     for r in rows:
         if drop_piled and r['uid_hex'] in ps:
             continue
         if keep_config.is_fused_component(r):     # (2026-09-26) fused components hold no ladder slot
             continue
+        if (r['fresh_has_location_card'] == 1 and (r['fresh_loc_card_enum'] or 0) and not pattern_pools.is_pooled(r['pokemon_id'])
+                and not _card_folds(r)):
+            _cosf = is_costume_form(r['fresh_form']) or is_costume_form(r['form'])
+            for _k in {evolvable_forms.stage_of(sid_of(r), r['form'] or 0)} | (set() if _cosf else {(sid_of(r), '')}):
+                card_lad[_k + (r['fresh_loc_card_enum'],)].append((iv(r), _cp(r), keep_config.card_look(r), _trophy(r)))
         # a form-ENCODED costume is its own stage key in the engine: it neither displaces nor dominates the plain form
         _split = (r['pokemon_id'] in GENDER_TERMINALS or pattern_pools.is_pooled(r['pokemon_id'])
                   or is_costume_form(r['fresh_form']) or is_costume_form(r['form']))
@@ -360,25 +369,42 @@ def sweep(drop_trophies, drop_piled, commits=None):
         # stock was "committed" to Arboliva (98 / 93 / shiny 93) while the engine rightly promised Dolliv -- gate failed.
         tk = _tk(t, r)
         c = cap_of(t, tk[2])
-        # COLLECTION FLOOR (2026-09-24): a copy under keep_config.collection_floor_iv never takes a slot beside an existing
-        # copy of that stage (keep_policy.topn drops it unless it is the ladder's best) -- so it upgrades nothing there.
-        if i < keep_config.collection_floor_iv() and (spec_cp.get(tk) or held_cp.get(tk)):
-            return False
+        cpc = _cp(r) if r is not None else 0
+        # THE ENGINE'S CARD BRANCH FIRST (keep_policy._earns_slot, 2026-10-25): a card copy is judged inside that card's own
+        # ladder at the target (rule 13: every gender, the floor keeping each look's best), and a new card there, a new
+        # best or a weaker copy it replaces earns the move before any plain slot is asked. Without it the 50% floor's
+        # lawful card moves (a 33% card Totodile to Croconaw, whose only card copy is 27% ...) read as committed nowhere.
+        _card = (r['fresh_loc_card_enum'] or 0) if r is not None and r['fresh_has_location_card'] == 1 else 0
+        if _card:
+            _lad = card_lad.get(tk[:2] + (_card,), [])
+            _grp = [x for x in _lad if not x[3]]
+            _nc = keep_config.species_cap('location_card', _DEX_SID.get(t), keep_config.cap('location_card'))
+            _srt = sorted([(a, b, lk, 0) for a, b, lk, _tr in _grp] + [(i, cpc, keep_config.card_look(r), 1)],
+                          key=lambda x: (-x[0], -x[1], x[3]))                  # an exact tie keeps the copy you hold
+            _top = keep_config.floor_top([{'iv_total': a, 'look': lk, 'arr': w} for a, b, lk, w in _srt],
+                                         look=lambda d: d['look'])[:_nc]
+            if any(d['arr'] for d in _top) and (len(_grp) >= _nc or i > max([x[0] for x in _lad] + [-1])):
+                return True
         if r is not None:                    # the dominance pass, exactly: a KEPT strict-superset copy with higher IV collapses it
             mv = _attrs(r)
             if any(ma != mv and (ma | mv) == ma and a_iv > i for ma, a_iv in doms.get(tk, ())):
                 return False
-        cpc = _cp(r) if r is not None else 0
         pool = sorted([(v, cp_, 0) for v, cp_ in held_cp.get(tk, ())] + [(i, cpc, 1)],   # 1 = the arrival; an exact
                       key=lambda x: (-x[0], -x[1], x[2]))                                  # tie keeps the copy you hold
         merged = sorted([(v, cp_, 0) for v, cp_ in spec_cp.get(tk, ())] + [(v, cp_, 1) for v, cp_, _a in pool],
                         key=lambda x: (-x[0], -x[1], x[2]))[:c]                            # special first on a full tie
         n = sum(1 for x in merged if x[2] == 1)
-        if not any(x[2] == 1 for x in pool[:n]):
-            return False                     # no plain slot for it: beyond the cap or displaced by a special
-        if len(pool) - 1 < n:                # open slot: worth it only as the stage's first copy or a new best --
-            return rescue or i > best[tk]    # UNLESS the alternative is release (keep_policy._earns_slot, 2026-09-20)
-        return max(x[0] for x in pool[n:]) < i   # full: it must push out a plain copy weaker on IV, never on CP alone
+        # THE COLLECTION FLOOR, as keep_policy.topn applies it to the plain pool (2026-10-25): under it a copy holds no slot
+        # unless it is the stage's best -- the arrival too. The old blanket "under the floor it never moves beside any copy"
+        # refused a sub-floor arrival that would be a stage's new best, which the engine rightly promises.
+        _in = {d['j'] for d in keep_config.floor_top([{'iv_total': x[0], 'j': j} for j, x in enumerate(pool)])[:n]}
+        if not any(pool[j][2] == 1 for j in _in):
+            return False                     # no plain slot for it: beyond the cap, under the floor or displaced by a special
+        if len(pool) - 1 < n and not (rescue or i > best[tk]):
+            return False                     # open slot: worth it only as the stage's first copy or a new best -- UNLESS
+            #                                  the alternative is release (keep_policy._earns_slot, 2026-09-20)
+        _out = [x[0] for j, x in enumerate(pool) if j not in _in]
+        return not _out or max(_out) < i     # it must push out only copies weaker on IV, never on CP alone
     left = dict(_CANDY) if _CANDY is not None else None
     def cost(r, ts):
         cs = [evolvable_forms.path_cost(sid_of(r), t, _allreach) for t in ts]
@@ -423,6 +449,9 @@ def sweep(drop_trophies, drop_piled, commits=None):
                     best[_k] = max(best[_k], iv(r))
                     if _attrs(r) and not _trophy(r):
                         doms[_k].append((_attrs(r), iv(r)))        # a promoted card copy dominates there (2026-09-13)
+                if r['fresh_has_location_card'] == 1 and (r['fresh_loc_card_enum'] or 0) and not _card_folds(r):
+                    for _ck in {(t, ''), _tk(t, r)[:2]}:            # ... and takes its card's slot (2026-10-25)
+                        card_lad[_ck + (r['fresh_loc_card_enum'],)].append((iv(r), _cp(r), keep_config.card_look(r), False))
             continue
         lines, up = [], []
         _fins = [t for t in tg if not _is_pre_sp.get(t)]

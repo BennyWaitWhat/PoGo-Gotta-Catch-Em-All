@@ -263,14 +263,38 @@ def row_dict(r):
     return dict(zip(k, r)) if ok else dict(r)
 
 
-def floor_top(rows_sorted):
+def floor_top(rows_sorted, look=None):
     """THE collection floor, applied to a ladder already sorted best-first (IV desc, CP desc, uid): the first copy always
     stays, every later copy must reach collection_floor_iv. Rows may be dicts or sqlite3.Rows. Used by keep_policy.topn
-    AND every mirror (audit_cull, _lawcheck, preflight_transfer) so the floor cannot drift between them."""
+    AND every mirror (audit_cull, _lawcheck, preflight_transfer) so the floor cannot drift between them.
+    look (2026-10-25): a ladder that holds several LOOKS -- one card's plain, shiny, shadow and Max copies (card_look) --
+    keeps the best copy of EACH look the way it keeps its best: the floor never removes the last copy of a picture. At the
+    50% floor a 53% shiny card Popplio was its card ladder's best, and both 47% normal copies of that card went to the pile."""
     fl = collection_floor_iv()
     if fl <= 0:
         return list(rows_sorted)
-    return [r for i, r in enumerate(rows_sorted) if i == 0 or (r["iv_total"] or 0) >= fl]
+    if look is None:
+        return [r for i, r in enumerate(rows_sorted) if i == 0 or (r["iv_total"] or 0) >= fl]
+    seen, out = set(), []
+    for i, r in enumerate(rows_sorted):
+        lk = look(r)
+        if i == 0 or (r["iv_total"] or 0) >= fl or lk not in seen:
+            out.append(r)
+        seen.add(lk)
+    return out
+
+
+def card_look(r):
+    """What a location-card copy shows besides its card: shiny, shadow, Max mode, background, costume, decoration (the
+    variant axes of audit_cull's layer 5 that can differ inside one card ladder). The look key for floor_top(look=)."""
+    def g(k):
+        try:
+            return r[k]
+        except (KeyError, IndexError):
+            return None
+    d = g("costume_decoration_id")
+    return (bool(g("fresh_shiny")), g("fresh_alignment") == 1, g("fresh_bread_mode") or 0,
+            g("fresh_natural_art_bg") or 0, g("fresh_costume") or 0, d if (d and str(d) != "0") else 0)
 
 
 def shadow_leagues():
