@@ -4274,7 +4274,7 @@ def check_tag_vocabulary(con):
             n += 1
             own = _pvid(rows[u][0], rows[u][1] or 0)
             way = [_gm_steps(_ef, _ef._gm_id(own), _ef._gm_id(str(t))) for t in e['targets']]
-            ends = all(not (_ef._costs.get(_ef._gm_id(str(t))) or {}) for t in e['targets'])
+            ends = all(not _ef.stage_evolves(str(t)) for t in e['targets'])   # per FORM (plain Linoone ends, 2026-10-25)
             lbl = '%s %s -> %s: tagged %s, the game %s' % (u, rows[u][0], '/'.join(map(str, e['targets'])),
                                                            'Final' if e['final'] else 'Mid',
                                                            'shows no way' if not all(way) else
