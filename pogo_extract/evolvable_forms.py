@@ -328,6 +328,19 @@ def target_forms(form_id, target_sid, src_sid=None, gender=None, _depth=4):
     return out
 
 
+def stage_evolves(sid):
+    """Does the GAME evolve stage `sid` any further? Read for THAT form, not the species: plain 'linoone' is LINOONE_NORMAL
+    (no branch) while LINOONE_GALARIAN becomes Obstagoon, and the species-level _costs merges every form's branches, so it
+    called a plain Linoone mid-line and blocked a true 'Evolve to Final' (2026-10-25). The species decides only when the
+    game master has no entry for the form (a pvpoke suffix it spells differently)."""
+    _load()
+    k = _norm(sid)
+    for f in (k, k + 'NORMAL'):
+        if f in _table:
+            return _table[f]
+    return bool(_costs.get(_gm_id(sid)))
+
+
 def can_reach_sid(src_sid, target_sid):
     """Species-level: does the GAME give `src_sid` a branch to `target_sid`? None when it cannot say.
 

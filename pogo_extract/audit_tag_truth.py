@@ -233,8 +233,7 @@ except Exception as _ae:
 def _ends(t):
     """(2026-10-25) the CLIENT game master names no evolution out of stage t -- independent of the families granular_tags
     reads (is_final), so an 'Evolve to Final' on a stage the game evolves further is caught (it would be evolved past)."""
-    _ef._load()
-    return not (_ef._costs.get(_ef._gm_id(str(t))) or {})
+    return not _ef.stage_evolves(str(t))
 
 
 def evo_way(r):
