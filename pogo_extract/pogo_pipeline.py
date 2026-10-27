@@ -261,7 +261,7 @@ function pipelineReadDex(dexAddrStr) {
             } catch(e) {}
             // CategoryStatus: MapField<String, PokedexCategoryStatus> {.., LinkedList<KeyValuePair<..>> list}; each node's item is
             // the KeyValuePair struct inline (key string @+0, value @+8); the status proto's category enum + Acquired flag by name
-            var hundoAcq = false, shinyHundoAcq = false, purifiedAcq = false;
+            var hundoAcq = false, shinyHundoAcq = false, purifiedAcq = false, shinyAcq = false;
             try {
                 var mapField = L.cs < 0 ? NULL : protoPtr.add(L.cs).readPointer();
                 if (!mapField.isNull()) {
@@ -285,6 +285,7 @@ function pipelineReadDex(dexAddrStr) {
                                     if (catEnum === 14 && acq) hundoAcq = true;
                                     if (catEnum === 102 && acq) shinyHundoAcq = true;
                                     if (catEnum === 16 && acq) purifiedAcq = true;
+                                    if (catEnum === 11 && acq) shinyAcq = true;      // the shiny dex (2026-10-26: "all the shinies I do not have yet")
                                 }
                             }
                             var next = node.add(nOff).readPointer();
@@ -294,7 +295,7 @@ function pipelineReadDex(dexAddrStr) {
                     }
                 }
             } catch(e) {}
-            results.push({pid: pidv, times: timesCaptured, forms: capturedForms, hundo: hundoAcq, shinyHundo: shinyHundoAcq, purified: purifiedAcq});
+            results.push({pid: pidv, times: timesCaptured, forms: capturedForms, hundo: hundoAcq, shinyHundo: shinyHundoAcq, purified: purifiedAcq, shiny: shinyAcq});
         }
     });
     L.rf = [rfA, rfN]; L.map = [llOff, hOff, nOff, iOff, catOff, acqOff];
