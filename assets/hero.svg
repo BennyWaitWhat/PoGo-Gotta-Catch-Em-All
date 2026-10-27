@@ -1,0 +1,133 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="640" viewBox="0 0 1600 640" role="img" aria-labelledby="hero-title hero-desc">
+  <title id="hero-title">PoGo Gotta Catch Em All — Autonomous IL2CPP Curation Pipeline</title>
+  <desc id="hero-desc">Autonomous, self-auditing Pokémon GO collection curation pipeline for rooted Android: IL2CPP memory walk, PvP stat-product ranking, and 11-audit hard gate.</desc>
+  <defs>
+    <linearGradient id="hero-bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0a0d12"/>
+      <stop offset="50%" stop-color="#0d1117"/>
+      <stop offset="100%" stop-color="#161b22"/>
+    </linearGradient>
+    <linearGradient id="accent-green" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#2ea043"/>
+      <stop offset="100%" stop-color="#3fb950"/>
+    </linearGradient>
+    <linearGradient id="accent-cyan" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#1f6feb"/>
+      <stop offset="100%" stop-color="#58a6ff"/>
+    </linearGradient>
+    <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+      <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#21262d" stroke-width="0.8" stroke-opacity="0.6"/>
+    </pattern>
+  </defs>
+
+  <!-- Background Base -->
+  <rect width="1600" height="640" fill="url(#hero-bg)"/>
+  <rect width="1600" height="640" fill="url(#grid)"/>
+  <rect x="24" y="24" width="1552" height="592" rx="14" fill="none" stroke="#30363d" stroke-width="1.5"/>
+
+  <!-- Top Telemetry Bar -->
+  <g font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="12" font-weight="600">
+    <!-- Chip 1 -->
+    <rect x="56" y="52" width="230" height="28" rx="14" fill="#161b22" stroke="#30363d"/>
+    <circle cx="72" cy="66" r="4" fill="#3fb950"/>
+    <text x="86" y="70" fill="#7ee787" letter-spacing="0.5">PIXEL 9 PRO // ANDROID 17</text>
+
+    <!-- Chip 2 -->
+    <rect x="302" y="52" width="220" height="28" rx="14" fill="#161b22" stroke="#30363d"/>
+    <circle cx="318" cy="66" r="4" fill="#58a6ff"/>
+    <text x="332" y="70" fill="#79c0ff" letter-spacing="0.5">FRIDA 17 IL2CPP INJECTION</text>
+
+    <!-- Chip 3 -->
+    <rect x="538" y="52" width="210" height="28" rx="14" fill="#161b22" stroke="#30363d"/>
+    <circle cx="554" cy="66" r="4" fill="#bc8cff"/>
+    <text x="568" y="70" fill="#d2a8ff" letter-spacing="0.5">SQLITE WAL PROVENANCE</text>
+
+    <!-- Chip 4 -->
+    <rect x="764" y="52" width="180" height="28" rx="14" fill="#161b22" stroke="#30363d"/>
+    <circle cx="780" cy="66" r="4" fill="#f0883e"/>
+    <text x="794" y="70" fill="#ffa657" letter-spacing="0.5">11-AUDIT HARD GATE</text>
+
+    <!-- Right-aligned system stamp -->
+    <text x="1514" y="70" fill="#8b949e" font-family="'SFMono-Regular', Consolas, monospace" font-size="12" text-anchor="end">SHA256://PROVENANCE-BOUND</text>
+  </g>
+
+  <!-- Hero Typography -->
+  <g font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif">
+    <text x="56" y="150" font-size="15" font-weight="700" fill="#58a6ff" letter-spacing="3" font-family="'SFMono-Regular', Consolas, monospace">AUTONOMOUS MOBILE INGESTION &amp; STATISTICAL ARBITRATION</text>
+    <text x="56" y="215" font-size="54" font-weight="800" fill="#f0f6fc" letter-spacing="-1">PoGo-Gotta-Catch-Em-All</text>
+    <text x="56" y="260" font-size="20" font-weight="400" fill="#8b949e">
+      Zero blind releases. Rooted IL2CPP memory walk, PvP stat-product ranking engine, and cryptographic audit gate.
+    </text>
+  </g>
+
+  <!-- 4 Architectural Pillars Cards -->
+  <g font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif">
+    <!-- Card 1 -->
+    <g transform="translate(56, 310)">
+      <rect width="346" height="260" rx="10" fill="#161b22" stroke="#30363d" stroke-width="1.2"/>
+      <rect x="0" y="0" width="346" height="4" rx="2" fill="#3fb950"/>
+      <text x="24" y="38" font-family="'SFMono-Regular', Consolas, monospace" font-size="13" font-weight="700" fill="#3fb950">01 / RUNTIME MEMORY WALK</text>
+      <text x="24" y="72" font-size="20" font-weight="700" fill="#e6edf3">IL2CPP Heap Ingestion</text>
+      <text x="24" y="106" font-size="13.5" fill="#8b949e" line-height="1.5">
+        <tspan x="24" dy="0">Frida 17 agent loaded via Zygisk.</tspan>
+        <tspan x="24" dy="22">Traverses live Mono heap pointers</tspan>
+        <tspan x="24" dy="22">without app restart. Multi-source</tspan>
+        <tspan x="24" dy="22">walk freshness tripwires prevent</tspan>
+        <tspan x="24" dy="22">stale service graph capture.</tspan>
+      </text>
+      <rect x="24" y="220" width="130" height="22" rx="4" fill="#21262d"/>
+      <text x="32" y="235" font-family="'SFMono-Regular', Consolas, monospace" font-size="11" fill="#7ee787">pogo_pipeline.py</text>
+    </g>
+
+    <!-- Card 2 -->
+    <g transform="translate(432, 310)">
+      <rect width="346" height="260" rx="10" fill="#161b22" stroke="#30363d" stroke-width="1.2"/>
+      <rect x="0" y="0" width="346" height="4" rx="2" fill="#58a6ff"/>
+      <text x="24" y="38" font-family="'SFMono-Regular', Consolas, monospace" font-size="13" font-weight="700" fill="#58a6ff">02 / PVP RANKING ENGINE</text>
+      <text x="24" y="72" font-size="20" font-weight="700" fill="#e6edf3">Stat-Product Optimization</text>
+      <text x="24" y="106" font-size="13.5" fill="#8b949e">
+        <tspan x="24" dy="0">Canonical CPM multipliers (L1-L51)</tspan>
+        <tspan x="24" dy="22">calculate true stat-product across</tspan>
+        <tspan x="24" dy="22">Great, Ultra, and Master Leagues.</tspan>
+        <tspan x="24" dy="22">Accounts for shadow boosts,</tspan>
+        <tspan x="24" dy="22">purified discounts, and legacy moves.</tspan>
+      </text>
+      <rect x="24" y="220" width="120" height="22" rx="4" fill="#21262d"/>
+      <text x="32" y="235" font-family="'SFMono-Regular', Consolas, monospace" font-size="11" fill="#79c0ff">keep_policy.py</text>
+    </g>
+
+    <!-- Card 3 -->
+    <g transform="translate(808, 310)">
+      <rect width="346" height="260" rx="10" fill="#161b22" stroke="#30363d" stroke-width="1.2"/>
+      <rect x="0" y="0" width="346" height="4" rx="2" fill="#bc8cff"/>
+      <text x="24" y="38" font-family="'SFMono-Regular', Consolas, monospace" font-size="13" font-weight="700" fill="#bc8cff">03 / VERIFICATION GATE</text>
+      <text x="24" y="72" font-size="20" font-weight="700" fill="#e6edf3">11-Audit Hard Gate</text>
+      <text x="24" y="106" font-size="13.5" fill="#8b949e">
+        <tspan x="24" dy="0">Preflight transfer receipts bind pile</tspan>
+        <tspan x="24" dy="22">hashes to policy fingerprints.</tspan>
+        <tspan x="24" dy="22">11 parallel audit jobs verify no</tspan>
+        <tspan x="24" dy="22">keepers, shinies, hundos, or XXL</tspan>
+        <tspan x="24" dy="22">showcase mon are ever flagged.</tspan>
+      </text>
+      <rect x="24" y="220" width="110" height="22" rx="4" fill="#21262d"/>
+      <text x="32" y="235" font-family="'SFMono-Regular', Consolas, monospace" font-size="11" fill="#d2a8ff">full_audit.py</text>
+    </g>
+
+    <!-- Card 4 -->
+    <g transform="translate(1184, 310)">
+      <rect width="360" height="260" rx="10" fill="#161b22" stroke="#30363d" stroke-width="1.2"/>
+      <rect x="0" y="0" width="360" height="4" rx="2" fill="#f0883e"/>
+      <text x="24" y="38" font-family="'SFMono-Regular', Consolas, monospace" font-size="13" font-weight="700" fill="#f0883e">04 / ATOMIC IN-GAME SYNC</text>
+      <text x="24" y="72" font-size="20" font-weight="700" fill="#e6edf3">Tagging Over Destruction</text>
+      <text x="24" y="106" font-size="13.5" fill="#8b949e">
+        <tspan x="24" dy="0">Applies in-game 'Transfer' tags</tspan>
+        <tspan x="24" dy="22">via protobuf RPC with server ack.</tspan>
+        <tspan x="24" dy="22">Reconciles against client cache.</tspan>
+        <tspan x="24" dy="22">Never initiates automated releases;</tspan>
+        <tspan x="24" dy="22">human player performs final action.</tspan>
+      </text>
+      <rect x="24" y="220" width="125" height="22" rx="4" fill="#21262d"/>
+      <text x="32" y="235" font-family="'SFMono-Regular', Consolas, monospace" font-size="11" fill="#ffa657">cull_report.py</text>
+    </g>
+  </g>
+</svg>

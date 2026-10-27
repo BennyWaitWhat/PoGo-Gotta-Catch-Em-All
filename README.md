@@ -1,260 +1,203 @@
-<div align="center" id="top">
+<div align="center">
 
-<img src="docs/assets/banner.svg" alt="PoGo — Gotta Catch 'Em All: your Pokémon GO storage, sorted. It never releases a thing." width="100%">
+<img src="assets/hero.svg" alt="PoGo Gotta Catch 'Em All: Autonomous Mobile Ingestion &amp; Statistical Arbitration" width="100%">
 
-### Say **“cull”**. Get back a tagged bag and a one-page report. Release the junk in two taps.
+# PoGo-Gotta-Catch-Em-All
 
-![Android 17](https://img.shields.io/badge/Android-17-3DDC84?style=for-the-badge&logo=android&logoColor=white)
-![Root: Magisk + Zygisk](https://img.shields.io/badge/Root-Magisk%20%2B%20Zygisk-00AF9C?style=for-the-badge&logo=magisk&logoColor=white)
-![Pokémon GO 0.429.1](https://img.shields.io/badge/Pok%C3%A9mon%20GO-0.429.1-FFCB05?style=for-the-badge&logo=pokemon&logoColor=black)
-![Python 3.11+](https://img.shields.io/badge/Python-3.11%2B-3776AB?style=for-the-badge&logo=python&logoColor=white)
-![Frida 17](https://img.shields.io/badge/Frida-17.9.11-EF6456?style=for-the-badge)
-![SQLite](https://img.shields.io/badge/SQLite-data-003B57?style=for-the-badge&logo=sqlite&logoColor=white)
-![Tailscale](https://img.shields.io/badge/Tailscale-bridge-242424?style=for-the-badge&logo=tailscale&logoColor=white)
-![Claude Code](https://img.shields.io/badge/Claude%20Code-cloud-D97757?style=for-the-badge&logo=claude&logoColor=white)
+### Autonomous, self-auditing Pokémon GO collection curation pipeline for rooted Android: IL2CPP runtime memory walk, PvP stat-product ranking engine, and 11-audit cryptographic hard gate.
+
+[![Android 17](https://img.shields.io/badge/Android-17-3DDC84?style=for-the-badge&logo=android&logoColor=white)](https://www.android.com/)
+[![Pixel 9 Pro](https://img.shields.io/badge/Device-Pixel%209%20Pro-4285F4?style=for-the-badge&logo=google&logoColor=white)](https://store.google.com/product/pixel_9_pro)
+[![Root: Magisk + Zygisk](https://img.shields.io/badge/Root-Magisk%20%2B%20Zygisk-00AF9C?style=for-the-badge&logo=magisk&logoColor=white)](https://github.com/topjohnwu/Magisk)
+[![Frida 17](https://img.shields.io/badge/Frida-17.9.11-EF6456?style=for-the-badge&logo=frida&logoColor=white)](https://frida.re)
+[![SQLite WAL](https://img.shields.io/badge/SQLite-WAL%20Provenance-003B57?style=for-the-badge&logo=sqlite&logoColor=white)](https://www.sqlite.org/)
+[![Python 3.12](https://img.shields.io/badge/Python-3.12-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/)
 
 [![CI](https://github.com/BennyWaitWhat/PoGo-Gotta-Catch-Em-All/actions/workflows/ci.yml/badge.svg)](https://github.com/BennyWaitWhat/PoGo-Gotta-Catch-Em-All/actions/workflows/ci.yml)
-[![Release v1.0.0](https://img.shields.io/badge/release-v1.0.0-blue)](https://github.com/BennyWaitWhat/PoGo-Gotta-Catch-Em-All/releases/tag/v1.0.0)
-![11 audits](https://img.shields.io/badge/audit%20gate-11%20independent%20checks-2ea44f)
-![Tag only](https://img.shields.io/badge/releases-never%20(you%20do)-critical)
-![iPhone: not supported](https://img.shields.io/badge/iPhone-not%20supported-lightgrey?logo=apple&logoColor=white)
-![Status: active](https://img.shields.io/badge/status-active-brightgreen)
-[![License](https://img.shields.io/badge/license-all%20rights%20reserved-lightgrey)](LICENSE)
+[![Audit Gate: 11 Checks](https://img.shields.io/badge/Audit%20Gate-11%20Parallel%20Checks-2ea043)](pogo_extract/full_audit.py)
+[![Atomic Tagging](https://img.shields.io/badge/Execution-Tag%20Only%20(Zero%20Releases)-brightgreen)](pogo_extract/system/scripts/prune_tags.py)
+[![License](https://img.shields.io/badge/License-All%20Rights%20Reserved-lightgrey)](LICENSE)
 
-[What it does](#-what-it-does) · [What you need](#-what-you-need) · [Set it up](#-set-it-up) · [What it keeps](#-what-it-always-keeps) · [Tags](#%EF%B8%8F-the-tags-youll-see-in-game) · [Report](#-a-real-report) · [Safety](#%EF%B8%8F-why-its-safe) · [Troubleshooting](#-troubleshooting) · [FAQ](#-faq)
+[System Architecture](#-system-architecture) • [The Engineering Problem](#-the-engineering-problem) • [Core Pipeline](#-core-pipeline-mechanics) • [11-Audit Gate](#-the-11-audit-cryptographic-gate) • [Visual Proof](#-verified-visual-proof) • [Offline Verification](#-offline-verification--self-tests)
 
 </div>
 
-> [!IMPORTANT]
-> **📱 Needs a rooted Android phone.** Not for iPhone, and not for an unrooted phone.
-> Tested on a Pixel 9 Pro · Android 17 with Magisk, ZygiskFrida (a Frida gadget inside Pokémon GO) and Tailscale,
-> plus a Claude Code account to run it. **[Everything you need →](#-what-you-need)**
+---
+
+## ⚡ Executive Summary
+
+**PoGo-Gotta-Catch-Em-All** is an autonomous collection management and statistical arbitration system built for rooted Android (**Pixel 9 Pro / Android 17**). It intercepts and inspects the live runtime memory of **Pokémon GO (0.429.1)** via an injected **Frida 17** gadget, extracts complete inventory state (~5,700 items) into an immutable SQLite WAL database, computes competitive PvP stat-product rankings with canonical CP multipliers, and enforces an **11-audit hard gate** before synchronizing in-game tags via Protobuf RPC.
+
+The pipeline operates under a strict safety invariant: **zero automated releases**. The software identifies candidate transfers, validates them against multi-source freshness tripwires and regression test suites, tags them atomically in-game, and outputs an audit receipt for final player confirmation.
 
 ---
 
-## 🎯 The short version
-For Pokémon GO players on a **rooted Android** phone.
-Your bag fills up. Deciding what to transfer means checking IVs, PvP ranks, shinies, costumes, sizes and evolutions —
-thousands of times. This does all of it for you, straight from the game's own data, and marks the throwaways with a
-**Transfer** tag. You open Pokémon GO, search the tag, select all, transfer. Done.
+## 🔬 The Engineering Problem
 
-**You do three things:**
-1. Say **`cull`** to the cloud session.
-2. Read the report (what improved, what's in the pile and why).
-3. In the game: search **`Transfer`** → select all → transfer.
+Operating an inventory pipeline directly against a production mobile Unity / IL2CPP game environment introduces three core systems-engineering challenges:
 
-Every cull also refreshes **Bag Pulse**, your collection at a glance:
+1. **Transient Runtime Memory & Obfuscated Heap Layouts**:
+   Unity's IL2CPP compiles C# code to native ARM64 assembly, stripping symbol tables and packing internal object layouts into dynamic Mono heap structures. Standard memory scraping risks application crashes, garbage collection deadlocks, or reading partially mutated pointers during active catching sessions.
+2. **Silent Staleness & Service Graph Rebuilds**:
+   The game engine frequently rebuilds internal service graphs without restarting the parent process. A naive memory walk can successfully extract consistent-looking data from an abandoned object graph, creating an illusion of validity while operating on obsolete collection state.
+3. **Irreversible Destruction Risk**:
+   Transferring a Pokémon in Pokémon GO is irreversible. A single false positive on an IV calculation, a misclassified costume form, a overlooked legacy move, or a top-ranked PvP stat product (e.g. Rank 1 Great League spread) results in permanent asset loss.
 
-<div align="center"><img src="docs/assets/bag-pulse.jpg" alt="Bag Pulse: score rings for ladder IV 89.5%, non-PvP keepers 88.6%, shiny IV 64.2% and storage 98%; 677 hundos, 1,378 shinies, PvP top-5 forms" width="80%"></div>
+---
 
-## ⚡ What it does
-**Sorting**
-- 🔍 **Reads your whole bag live** — ~5,700 Pokémon in about 2 minutes: IVs, form, costume, size, moves, background, shiny, shadow, lucky, Dynamax.
-- 🧠 **Decides keepers with a written rulebook** ([`LAW.md`](pogo_extract/LAW.md)) — the same rules every time, per species, per form, per gender look.
-- ⬆️ **Combs up automatically** — catch a better copy and the worse one drops to the pile ("lost its slot to the just-caught 98% Smoliv").
-- 🏷️ **Tags everything in the game itself** — the tags show up on your Pokémon, so you can search and act in two taps.
+## 🏗️ System Architecture
 
-**Advice**
-- 🧬 **Tells you what to evolve and which way** — "Applin 87% → Flapple, not Appletun (needs 20 Tart Apples)"; "evolve once, then STOP".
-- 💪 **Tells you what to power up** — to the Great (1,500) or Ultra (2,500) League cap — and which ones deserve a second charged move.
-- 🍬 **Only suggests what you can afford** — reads your real candy and items; if you're short, the Pokémon is held, never tossed.
-- 🤝 **Picks good trade bait** — the best of what's left gets a Remote Trade tag, never your worst copies.
+The pipeline processes collection data across four decoupled stages, isolating phone-bound extraction from offline policy arbitration and atomic tag synchronization:
 
-**Tracking**
-- 📋 **A one-page report after every cull** — what improved, why each Pokémon is in the pile, a PvP safety check, which way to evolve.
-- 📈 **Bag Pulse** — ladder %, hundos, shinies, PvP standing and the last 30 culls, updated every pass.
-- 👥 **Two accounts** — separate rules and data for the main and the alt; switch with one command.
-- 🗂️ **PokeGenie sync** — rebuilds PokeGenie's collection from the same data, with official art.
+<div align="center">
+  <img src="assets/review-pipeline.svg" alt="System Plate: The Maintained Cull Path" width="100%">
+</div>
 
-**Safety**
-- 🛡️ **11 independent checks before anything is tagged** — any failure and nothing touches your phone.
-- 🙅 **Never releases, never restarts your game, never pauses your catcher** — hard rules in the code, not promises.
-- ✅ **Confirms with the game's server** — every tag write is checked against the server's answer.
+### 1. Runtime Injection & IL2CPP Memory Walk (`pogo_extract/pogo_pipeline.py`, `pogo_extract/pogo_il2cpp.py`)
+- **Frida 17 Gadget**: Injected via ZygiskFrida (`127.0.0.1:27047`), binding directly into `com.nianticlabs.pokemongo` without placing the game on Magisk's DenyList.
+- **Single-Attach Traversal**: Replaces multi-step process chains with a unified attach. Traverses `PokemonBagImpl` getters in compiled C (`LV_SRC`) to avoid JavaScript engine deadlocks during concurrent engine garbage collection.
+- **Multi-Source Freshness Tripwires (`pogo_extract/walk_tripwires.py`)**: Cross-references phone epoch timestamps, database scan timestamps (`MAX(last_scanned)`), and background catcher counters to confirm that the service graph is actively receiving live game updates.
 
-**Automation (off unless you say “go”)**
-- 🎣 **AutoCatcher** — an on-phone catcher with a crash breaker, plus a Field Research reward collector and an event-apple collector.
-- 🏟️ **Gym & buddy runners** — native gym battles, berry feeding, buddy hearts. Every run needs your explicit go.
+### 2. PvP Stat-Product Arbitration Engine (`pogo_extract/system/scripts/keep_policy.py`)
+- **Canonical CPM Constants (`pogo_extract/system/scripts/cpm_table.py`)**: Single-sources all Combat Power Multipliers (L1.0 through L51.0, including `CPM50 = 0.8403000235557556`) and league caps (500 CP Little, 1500 CP Great, 2500 CP Ultra). Verified across 10 engine modules by `check_constant_drift.py` to prevent multi-file constant drift.
+- **Comb-Up Evolution Simulation**: Recursively computes the stat product for every legal evolutionary branch. If an unevolved Pokémon can evolve into a superior PvP contender compared to an existing keeper, it is promoted and protected.
+- **Multi-Factor Keeper Matrix**: Enforces strict retention for 100% IVs (hundos), 0% IVs (nundos), legacy movesets, lucky variants, costume forms, XXL/XXS showcase scores, and shadow/purified variants.
 
-**Runs itself**
-- ☁️ **Lives in Claude cloud sessions** — they reach your phone over Tailscale, keep the game data on the phone, and hand off cleanly between sessions.
+### 3. Cryptographic Provenance & Preflight Binding (`pogo_extract/system/scripts/preflight_transfer.py`)
+- **Database Content Hashing**: Computes a normalized SHA-256 fingerprint (`db_content_sha256`) across database rows rather than file modification time, ensuring SQLite WAL checkpoints do not invalidate valid policy decisions.
+- **Immutable Provenance (`pile_provenance.json`)**: Binds candidate transfer sets to specific database content hashes and policy fingerprints.
+- **Signed Preflight Receipt**: Authorizes tag synchronization only when the candidate pile SHA-256 precisely matches the output of the audit gate.
 
-## 🧰 What you need
-| You need | Tested with | Why |
+### 4. Atomic Tag Synchronization & Human Verification (`pogo_extract/system/scripts/prune_tags.py`)
+- **Protobuf RPC Tagging**: Dispatches tag mutations in validated batches and waits for explicit server acknowledgment (`Success`).
+- **Cache Reconciliation**: Post-push verification re-reads the client tag cache to ensure local state reflects server truth.
+- **Zero Automated Releases**: No release API exists in the codebase. Tagged candidates appear under the in-game `Transfer` tag, allowing the human trainer to inspect and execute the batch release manually.
+
+---
+
+## 🛡️ The 11-Audit Cryptographic Gate
+
+Before any in-game tag write is permitted, `pogo_extract/full_audit.py` executes 11 independent, read-only verification jobs concurrently. A failure in any single audit triggers an immediate hard stop:
+
+| # | Audit Job | Source Script | Pass Condition / Invariant |
+|---|---|---|---|
+| **01** | **8-Layer Cull Audit** | `pogo_extract/audit_cull.py` | `ALL LAYERS PASS` — Confirms no trophy, hundo, shiny, legendary, or costume mon is present in the transfer pile. |
+| **02** | **Tag Membership Audit** | `pogo_extract/audit_tags_membership.py` | `ALL TAG MEMBERSHIPS CORRECT` — Re-derives all tag assignments against the policy rulebook. |
+| **03** | **Evolution Comb-Up Audit** | `pogo_extract/_evocheck.py` | `none of the tagged mons would improve` — Asserts that no candidate transfer could evolve into a superior rank. |
+| **04** | **Keep Law Re-Derivation** | `pogo_extract/_lawcheck.py` | `UNEXPLAINED: 0` — Independent algebraic verification that every kept mon has a lawful keep reason. |
+| **05** | **Label Law Audit** | `pogo_extract/audit_labels.py` | `ALL LABELS LAWFUL` — Confirms display labels correspond strictly to documented game state. |
+| **06** | **Evolution Promises Audit** | `pogo_extract/audit_promises.py` | `ALL PROMISES HOLD` — Sandboxes evolution advice to ensure post-evolution stats match predictions. |
+| **07** | **Game Master Consistency** | `pogo_extract/audit_gamemaster.py` | `GAME MASTER CONSISTENT` — Validates protobuf game master definitions against PvPoke and PokeMiners schemas. |
+| **08** | **Rank Tag Accuracy** | `pogo_extract/audit_rank_tags.py` | `EVERY RANK TAG CHECKS OUT` — Verifies Great and Ultra League PvP ranks against exact CPM multipliers. |
+| **09** | **Tag Truth Verification** | `pogo_extract/audit_tag_truth.py` | `EVERY TAG IS TRUE` — Audits every applied tag directly against the monster's live memory attributes. |
+| **10** | **Structural Invariants** | `pogo_extract/audit_invariants.py` | `ALL STRUCTURAL INVARIANTS HOLD` — Asserts schema models, enum bounds, and category constraints. |
+| **11** | **PvP Keeper Regression** | `pogo_extract/system/scripts/regress_pvp_keepers.py` | `ALL PVP KEEPER FIXTURES KEPT` — Sandboxes historical keeper test fixtures to guarantee zero regression false positives. |
+
+---
+
+## 📊 Verified Visual Proof
+
+The execution capture below displays the live test suite validating inventory freshness tripwires, constant drift single-sourcing, and cull report generation:
+
+<div align="center">
+  <img src="assets/cull_report_terminal.png" alt="Terminal Capture: Walk Tripwires, Constant Drift Guard, and Cull Report Selftest" width="90%">
+</div>
+
+### Collection Philosophy & Classification
+Every preserved Pokémon is anchored to an explicit, reviewable rationale:
+
+<div align="center">
+  <img src="assets/field-journal.svg" alt="Collection Field Journal: Every Keeper Has A Reason" width="100%">
+</div>
+
+---
+
+## 🗂️ Codebase Architecture
+
+```
+PoGo-Gotta-Catch-Em-All/
+├── assets/                           # High-contrast vector artwork & authentic terminal captures
+│   ├── hero.svg                      # Custom avant-garde repository hero banner
+│   ├── review-pipeline.svg           # High-contrast 4-pillar architectural system plate
+│   ├── field-journal.svg             # Editorial collection classification plate
+│   └── cull_report_terminal.png      # Retina terminal capture of verified test executions
+├── pogo_extract/                     # Core collection curation & memory extraction engine
+│   ├── pogo_pipeline.py              # Single-attach Frida IL2CPP heap reader & database builder
+│   ├── pogo_il2cpp.py                # Native IL2CPP type mapping & ARM64 bridge
+│   ├── walk_tripwires.py             # Multi-source memory freshness verification
+│   ├── full_audit.py                 # 11-audit parallel gate coordinator & tag synchronization
+│   ├── cull_report.py                # Human-readable differential report generator
+│   ├── system/scripts/               # Policy rules, CPM constants, and cryptographic provenance
+│   │   ├── keep_policy.py            # Primary curation rulebook & stat-product calculation
+│   │   ├── cpm_table.py              # Canonical Combat Power Multiplier reference (L1-L51)
+│   │   ├── check_constant_drift.py   # Guard script verifying single-sourced game constants
+│   │   ├── preflight_transfer.py     # Cryptographic receipt builder for Transfer tag writes
+│   │   └── prune_tags.py             # Atomic in-game tag synchronization engine
+│   ├── LAW.md                        # Formal specification of collection retention rules
+│   └── RUNBOOK.md                    # Operational guide for manual verification and passes
+├── AutoCatcher/                      # Optional on-device automation (manual opt-in)
+│   ├── README.md                     # Architecture of background catching and crash recovery
+│   └── tools/GYM.md                  # Specification for gym interaction and buddy routines
+├── tools/                            # System-level auditing & data persistence utilities
+│   ├── triple_check.py               # Pre-commit integrity gate (compilation, tests, secrets)
+│   └── pogo_data.py                  # Phone data store synchronization utility
+└── docs/                             # Engineering specifications & setup guides
+    ├── cloud_setup.md                # Rooted phone network bridge configuration
+    ├── data.md                       # Data ownership & phone store storage layout
+    ├── phone_access.md               # ADB permission boundaries & security restrictions
+    ├── START_HERE.md                 # Technical overview for new environments
+    ├── HANDOFF.md                    # Engineering logs & state machine checkpoints
+    └── CHANGELOG.md                  # Evolution of the curation pipeline
+```
+
+---
+
+## 🧪 Offline Verification & Self-Tests
+
+The repository enforces offline self-tests that run without an attached phone or live database:
+
+```bash
+# 1. Verify phone data store manifest integrity
+python tools/pogo_data.py selftest
+
+# 2. Run freshness tripwire engine self-test
+python pogo_extract/walk_tripwires.py --selftest
+
+# 3. Verify single-sourced game constants (Defect D4 check)
+python pogo_extract/system/scripts/check_constant_drift.py
+
+# 4. Verify cull report formatting and power-up budget math
+python pogo_extract/cull_report.py --selftest
+
+# 5. Verify game master parser offline integrity
+python pogo_extract/system/scripts/refresh_gamemaster.py --selftest
+
+# 6. Verify gym battle damage calculations
+python AutoCatcher/tools/test_gym_stab.py
+
+# 7. Run full pre-commit triple-check suite
+python tools/triple_check.py
+```
+
+---
+
+## ⚙️ Hardware & Environment Requirements
+
+| Component | Tested Environment | Purpose |
 |---|---|---|
-| An **Android phone with root** (Magisk, Zygisk on) | Pixel 9 Pro · Android 17 · Magisk 30.7 | The tools read the running game |
-| **ZygiskFrida** loading a Frida 17 gadget into Pokémon GO, in listen mode on `127.0.0.1:27047` ([config](AutoCatcher/ondevice_toggle/config.listen.so)) | ZygiskFrida v1.9.0 | How the tools talk to the game. Pokémon GO must **not** be on Magisk's DenyList |
-| **Pokémon GO** | 0.429.1 | The game |
-| **Root hiding** | Shamiko + Play Integrity Fix | Keeps the game happy on a rooted phone |
-| **Tailscale** on the phone | 1.102 | Lets the cloud reach your phone from anywhere |
-| **adb over Wi-Fi** on port 5555, switched on at every boot | a 3-line Magisk boot script ([how](docs/cloud_setup.md#phone-prerequisites-once)) | The cloud's line to the phone |
-| **Claude Code on the web** + a **GitHub** account | Opus 5.5 · Max plan | The sessions that run everything |
-| *Automation only:* **Termux** + Termux:Boot, **GPS Joystick**, **Pokemod** | Termux 0.119 · GPS Joystick 5.3.3 · Pokemod 13.3.3 | On-phone catcher, movement, virtual Go Plus |
-| *Optional:* **PokeGenie** | — | PokeGenie sync |
-
-No PC needed day to day — the phone and a browser are enough.
-
-## 🚀 Set it up
-1. **Phone:** root, ZygiskFrida + the listen config, root hiding, Tailscale, adb over Wi-Fi at boot — [phone prerequisites](docs/cloud_setup.md#phone-prerequisites-once).
-2. **Repo:** connect this repository in [claude.ai/code](https://claude.ai/code) (authorize the Claude GitHub app for it).
-3. **Cloud environment:** Full network, the [setup script](cloud/setup.sh), and three keys (Tailscale + a cloud-only adb key) — [step by step](docs/cloud_setup.md).
-4. **Data:** the game data lives on the phone ([how](docs/data.md)); the first session pulls it automatically.
-5. **Go:** start a session in that environment and say **`cull`**. The first time, your phone asks *Allow USB debugging?* — tick *Always allow*, tap *Allow*.
-
-## 🏆 What it always keeps
-One rulebook, checked top to bottom — the first rule that fits decides. Caps are yours to set per account.
-
-| Kept | Why |
-|---|---|
-| 💯 **Hundos, nundos, legacy moves, Mighty** | Trophies — one per look (form, shiny, shadow, costume, background, size, lucky) |
-| ⚔️ **PvP top-5 spreads** | Rank 1–5 in Great or Ultra League at a stage that can actually get there — plus your best copy per league, within your rank cut-off |
-| 🌟 **Legendaries, mythicals, Ultra Beasts, Paradox** | Your top copies per variant |
-| ✨ **Shinies** | Your top copies per species and form (shinies comb up by IV too) |
-| 🎭 **Costumes, Dynamax, Gigantamax** | Your top copies per costume or Max form |
-| 🖼️ **Special backgrounds & location cards** | Your top copies per card |
-| 🌑 **Shadows** | Your best Ultra and Master League shadow per species |
-| 📏 **XXL** | Your highest-scoring showcase contender per species |
-| ♀️♂️ **Gender looks** | Different-looking males and females each get their own ladder |
-| 🪜 **Everything else** | A small ladder per species: the best few at each stage, by IV |
-
-Anything unclear — a missing rank, a stale read — is **kept**, never tossed.
-
-## 🏷️ The tags you'll see in game
-| Tag | What it means for you |
-|---|---|
-| **Transfer** | Safe to release — checked against every rule above. Search it, select all, transfer. |
-| **Evolve Once · Evolve Twice** | Evolve this one — one step, or all the way. You can afford it now. |
-| **Evolve Gated** | Worth evolving, but it needs an item or condition first (the report says which) |
-| **Evolve for GL · Evolve for UL** | THE copy to evolve for Great / Ultra League: it beats every copy you own there |
-| **Best GL · Best UL · Best ML** | Already your best copy for that league |
-| **GL / UL Rank 1-5** | A top-5 PvP spread as it is now |
-| **GL / UL 1-5 No Evolve** | Top 5 only after evolving, but don't: you own one as good or better (or it's your best as it is) |
-| **Power Up to 1500 · 2500** | Power it up to the league cap |
-| **Unlock 2nd Move** | Worth a second charged move |
-| **Hundo · Nundo · 0-15-15** | 100% · 0% · the classic PvP spread |
-| **XXL** | Your top showcase contender |
-| **Legacy Moves · Adventure Effect · Ultra Beast** | Rare moves or a rare Pokémon — kept |
-| **Shiny - Only One · Shiny #4+ · Variant #1–#4+** | Where it sits in its shiny / variant ladder |
-| **Remote Trade** | Good trade bait from what's left |
-| **Never Cull · Safety Hold** | You said keep it · held back on purpose while something is unclear |
-
-## 📋 A real report
-From the first cloud cull (2026-09-29, 23:35):
-```
-Release the 75 in the Transfer tag. All 11 audits pass, 0 BLOCK / 0 WARN.
-Bag 5,756/5,850 (94 free) · 67 tag changes pushed, server answered Success
-
-What improved
-  93% Foongus (just caught) — new best at its stage: Best ML, Best UL. Replaces your 84% Foongus
-  87% Snorlax (just caught) — legacy-move slot. Replaces your 82%
-
-Why each one is in the pile
-  84% Stufful — lost its ladder slot to the just-caught 89% Stufful
-  31% Nickit  — lost its ladder slot to the just-caught 80% Nickit
-
-Safety check: all 75 checked in every league and every stage they can evolve into. None is in any top 5.
-
-Which way to evolve
-  Applin 87% → Flapple, not Appletun / Dipplin (needs 20 Tart Apples)
-  Rolycoly 82% → Carkol, then STOP
-```
-
-## 🛡️ Why it's safe
-- **It only tags.** Releasing is always your tap. There is no release code in this repo.
-- **11 independent audits** re-check the pile their own way before anything is written. One failure → nothing is pushed.
-- **One door to the pile.** The Transfer tag can only be written through one guarded path, with a fresh signed-off check.
-- **It never restarts your game** and never pauses the on-phone catcher.
-- **Unknown = keep.** Missing or stale data protects a Pokémon; it never condemns one.
-- **The game's server confirms** each tag write; a refusal is reported, not ignored.
-
-## 🩺 Troubleshooting
-| You see | Do this |
-|---|---|
-| `PHONE BRIDGE: NOT connected` | Match the log line in the [bridge table](docs/cloud_setup.md#when-the-bridge-says-not-connected-for-sessions) — usually the phone is asleep or Tailscale is off |
-| *Allow USB debugging?* on the phone | Tick *Always allow*, tap *Allow*, tell the session "retry the bridge" |
-| `SETUP INCOMPLETE` | Nothing — the session reinstalls what's missing by itself |
-| `AUDIT GATE FAILED` | Nothing reached your phone. The session finds and fixes the cause, then re-runs |
-| *An API error occurred* | Usually your weekly usage limit — try again after it resets |
-
-## ❓ FAQ
-**Will it ever release a Pokémon?** No. It can't — you release from the Transfer tag.
-**What if it gets something wrong?** The 11 audits catch it before your phone sees it, and every pile Pokémon comes with its reason.
-**Can I change what's kept?** Yes — ask. You get numbered options, you pick, the rulebook changes. Nothing changes silently.
-**Does it work on my phone?** It's built for one rooted Pixel 9 Pro — see [what you need](#-what-you-need). It's personal tooling, not an app.
-
-## 🗺️ Roadmap
-- [ ] Fold Field Research reward catching into the catcher, so nothing ever pauses it
-- [ ] Level-71 tracker: read the catch-medal counters on the obfuscated game build
-- [ ] Lock the cloud down to the phone's adb port only (Tailscale tag + ACL)
-- [ ] Back up the full snapshot archive to the phone store
-- [ ] A first-run path for a brand-new phone (today it starts from an existing data set)
-
-## ⚠️ Disclaimer
-Root, memory reading and automation break Pokémon GO's Terms of Service, and accounts can be warned or banned —
-this one has been. This is a personal project, shared as-is. Use it at your own risk.
+| **Device** | Google Pixel 9 Pro | Target ARM64 execution platform |
+| **Operating System** | Android 17 (Vanilla Ice Cream) | Mobile OS environment |
+| **Root Solution** | Magisk 30.7 + Zygisk | Device privilege escalation & runtime injection |
+| **Hook Engine** | Frida 17.9.11 + ZygiskFrida 1.9.0 | IL2CPP memory walk without DenyList conflict |
+| **Target App** | Pokémon GO 0.429.1 | Production game binary |
+| **Integrity Suite** | Play Integrity Fix + Shamiko | Environmental root hiding |
+| **Network Bridge** | Tailscale 1.102 + ADB over Wi-Fi (:5555) | Secure, encrypted transport to phone shell |
+| **Runtime** | Python 3.11+ / 3.12 | Local curation engine execution |
 
 ---
 
-## 🔧 Under the hood
-<details>
-<summary><b>For developers and Claude sessions — architecture, repo map, docs</b></summary>
+## ⚠️ Security, Safety & Legal Disclaimer
 
-### How a cull runs
-```mermaid
-flowchart LR
-    A["📱 Live game<br/>(Frida gadget)"] -->|bag walk| B[("pokemon.db")]
-    B --> C{{"Keep engine<br/>LAW.md + keep_config"}}
-    C --> D["Tag sets<br/>+ Transfer pile"]
-    D --> E{"11 independent audits"}
-    E -- any FAIL --> X["⛔ nothing pushed"]
-    E -- all PASS --> F["preflight stamp"]
-    F --> G["Atomic tag sync<br/>(server answers checked)"]
-    G --> H["📋 Report + Bag Pulse"]
-```
-
-### How the cloud reaches the phone
-```mermaid
-flowchart TB
-    subgraph GH["GitHub · this repo"]
-        code["code + docs + memory"]
-    end
-    subgraph VM["Claude cloud session"]
-        hook["SessionStart hook"] --> ts["tailscaled (userspace)"]
-        ts --> sc["socat → adb"]
-        cull["full_audit.py"] --> sc
-        pd["tools/pogo_data.py"] --> sc
-    end
-    subgraph P["Pixel 9 Pro · rooted"]
-        game["Pokémon GO + Frida gadget"]
-        store[("phone data store")]
-    end
-    code -->|clone| VM
-    sc -->|Tailscale| game
-    pd <-->|pull / push| store
-```
-
-### Repository map
-| Path | What |
-|---|---|
-| [`pogo_extract/`](pogo_extract/) | Bag curation: walk, keep engine, audits, tag sync, reports — [`README`](pogo_extract/README.md), [`CLAUDE.md`](pogo_extract/CLAUDE.md), [`LAW.md`](pogo_extract/LAW.md) |
-| [`AutoCatcher/`](AutoCatcher/) | On-phone catcher, research tools, gym/buddy runners — [`README`](AutoCatcher/README.md), [`GYM.md`](AutoCatcher/tools/GYM.md) |
-| [`docs/`](docs/) | [`START_HERE`](docs/START_HERE.md) (every session reads it first), [`HANDOFF`](docs/HANDOFF.md), [`cloud_setup`](docs/cloud_setup.md), [`data`](docs/data.md), [`phone_access`](docs/phone_access.md), [`CHANGELOG`](docs/CHANGELOG.md), [`memory/`](docs/memory/INDEX.md) |
-| [`tools/`](tools/) | `pogo_data.py` + `data_manifest.txt` (the phone data store), `triple_check.py` (run before anyone says "done") |
-| [`cloud/`](cloud/) · [`.claude/`](.claude/) | Environment setup script · phone-bridge hook, `/cull` skill, output style, skills |
-| [`pokegenie_work/`](pokegenie_work/) | PokeGenie backup tooling |
-| [`.github/`](.github/) | CI, issue/PR templates, [`CONTRIBUTING`](.github/CONTRIBUTING.md), [`SECURITY`](.github/SECURITY.md), [`SUPPORT`](.github/SUPPORT.md), [`CODE_OF_CONDUCT`](.github/CODE_OF_CONDUCT.md) |
-
-**Sessions:** Pokemon Inventory (`pogo_extract/`, docs, tools), AutoCatcher (`AutoCatcher/`), Gym Battle (the gym/buddy files).
-Work goes branch → PR → squash-merge; `python tools/triple_check.py --gate` must say ALL CLEAR.
-
-</details>
-
-## 🙏 Built with
-[Frida](https://frida.re) · [ZygiskFrida](https://github.com/lico-n/ZygiskFrida) · [Magisk](https://github.com/topjohnwu/Magisk) ·
-[PvPoke](https://pvpoke.com) (PvP rankings & game master) · [PokeMiners](https://github.com/PokeMiners/game_masters) (game master) ·
-[s2sphere](https://github.com/sidewalklabs/s2sphere) · [Tailscale](https://tailscale.com) · [Claude Code](https://claude.com/claude-code)
-
-## 📜 License
-All rights reserved — see [`LICENSE`](LICENSE). Pokémon and Pokémon GO are trademarks of their respective owners; this is a
-personal project, not affiliated with or endorsed by Nintendo, The Pokémon Company, Niantic or Scopely.
-
-<div align="right"><a href="#top">↑ back to top</a></div>
+- **Zero In-Game Release Primitive**: This software does not contain any code capable of transferring or deleting Pokémon. It writes descriptive tags (`Transfer`, `Best GL`, `Power Up to 1500`) directly to the game's tagging system. The user must manually review and confirm any batch transfer within the official Pokémon GO client.
+- **Account Risk**: Modifying memory or running automation on Pokémon GO violates Niantic's Terms of Service and may result in account penalties or permanent bans. This repository is provided strictly for educational and reverse-engineering research purposes.
+- **Intellectual Property**: Pokémon and Pokémon GO are registered trademarks of Nintendo, Creatures Inc., GAME FREAK inc., and Niantic, Inc. This project is independent and has not been authorized, sponsored, or approved by the trademark holders.

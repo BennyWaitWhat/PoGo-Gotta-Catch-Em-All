@@ -1,0 +1,49 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="720" viewBox="0 0 1600 720" role="img" aria-labelledby="title desc">
+  <title id="title">The maintained cull path: read, policy, audit, tag</title>
+  <desc id="desc">A source-based architecture diagram, not a runtime screenshot. A Frida inventory read feeds SQLite. The keep policy produces reasons and tag sets. Eleven audit jobs must pass before tag sync. The Transfer writer also requires a matching preflight receipt. Tag sync records server replies and reconciles the client cache. The player reviews the report and transfers manually in the game.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M1 1L8 5L1 9" fill="none" stroke="#e5f34b" stroke-width="1.5"/></marker>
+  </defs>
+  <rect width="1600" height="720" fill="#0d1117"/>
+  <rect x="16" y="16" width="1568" height="688" rx="12" fill="none" stroke="#30363d" stroke-width="1.5"/>
+  <g font-family="-apple-system, BlinkMacSystemFont, Consolas, 'Courier New', monospace" font-size="26" fill="#e5f34b">
+    <text x="64" y="68" letter-spacing="2">SYSTEM PLATE / THE MAINTAINED CULL PATH</text>
+    <text x="1536" y="68" text-anchor="end">READ → POLICY → AUDIT → TAG</text>
+  </g>
+  <path d="M64 100H1536" stroke="#30363d" stroke-width="2"/>
+  <g font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" fill="#f4f2df">
+    <text x="64" y="184" font-size="25" fill="#8b949e">01 / ON THE PHONE</text>
+    <text x="64" y="248" font-size="51" font-weight="700">Read</text>
+    <text x="64" y="304" font-size="29">Frida / IL2CPP</text>
+    <text x="64" y="346" font-size="29">Live bag → SQLite</text>
+    <text x="64" y="397" font-size="25" fill="#8b949e">Freshness tripwires</text>
+    <text x="443" y="184" font-size="25" fill="#8b949e">02 / LOCAL POLICY</text>
+    <text x="443" y="248" font-size="51" font-weight="700">Decide</text>
+    <text x="443" y="304" font-size="29">LAW + account config</text>
+    <text x="443" y="346" font-size="29">Reasons + tag sets</text>
+    <text x="443" y="397" font-size="25" fill="#8b949e">Keep / hold / candidate</text>
+    <text x="822" y="184" font-size="25" fill="#8b949e">03 / BEFORE SYNC</text>
+    <text x="822" y="248" font-size="51" font-weight="700">Audit</text>
+    <text x="822" y="304" font-size="29">11 jobs, run in parallel</text>
+    <text x="822" y="346" font-size="29">Exit code + verdict</text>
+    <text x="822" y="397" font-size="25" fill="#8b949e">Any failure stops sync</text>
+    <text x="1201" y="184" font-size="25" fill="#8b949e">04 / BACK TO THE GAME</text>
+    <text x="1201" y="248" font-size="51" font-weight="700">Tag</text>
+    <text x="1201" y="304" font-size="29">Matching preflight</text>
+    <text x="1201" y="346" font-size="29">receipt for Transfer</text>
+    <text x="1201" y="397" font-size="25" fill="#8b949e">Server reply + cache check</text>
+  </g>
+  <path d="M283 234H394M661 234H773M1040 234H1152" fill="none" stroke="#e5f34b" stroke-width="3" marker-end="url(#arrow)"/>
+  <path d="M64 452H1536" stroke="#30363d" stroke-width="2"/>
+  <rect x="64" y="500" width="1472" height="156" rx="8" fill="#e5f34b"/>
+  <g fill="#0d1117" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif">
+    <text x="96" y="547" font-family="-apple-system, BlinkMacSystemFont, Consolas, 'Courier New', monospace" font-size="25" font-weight="700" letter-spacing="1">HUMAN REVIEW</text>
+    <text x="96" y="610" font-size="40" font-weight="700">Report + Bag Pulse</text>
+    <path d="M521 597H615" fill="none" stroke="#0d1117" stroke-width="3"/>
+    <path d="M605 587L619 597L605 607" fill="none" stroke="#0d1117" stroke-width="3"/>
+    <text x="659" y="610" font-size="40" font-weight="700">Review the tags</text>
+    <text x="1498" y="547" text-anchor="end" font-family="-apple-system, BlinkMacSystemFont, Consolas, 'Courier New', monospace" font-size="25" font-weight="700">OUTSIDE THE CULL</text>
+    <text x="1498" y="610" text-anchor="end" font-size="40" font-weight="700">Manual transfer</text>
+    <path d="M1005 597H1099M1089 587L1103 597L1089 607" fill="none" stroke="#0d1117" stroke-width="3"/>
+  </g>
+</svg>

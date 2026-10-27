@@ -7,7 +7,9 @@
 !/.gitignore
 !/.gitattributes
 !/README.md
+!/assets/
 !/docs/
+docs/memory/
 !/cloud/
 !/tools/
 
@@ -25,21 +27,14 @@
 !/pokegenie_work/*.py
 !/pokegenie_work/README.md
 
-# .claude/: the cloud SessionStart hook + the cull skill. NOT launch.json, settings.local.json, locks, agents/, workspaces.
-# (git cannot re-include a file under an ignored dir, so each level is opened, emptied, then the wanted child re-added)
-!/.claude/
-/.claude/*
-!/.claude/settings.json
-!/.claude/hooks/
-!/.claude/skills/
-/.claude/skills/*
-!/.claude/skills/cull/
-!/.claude/skills/ponytail/
-!/.claude/skills/grill-me-general/
-!/.claude/skills/i-have-adhd/
-!/.claude/skills/archify/
-!/.claude/skills/markitdown/
-!/.claude/output-styles/
+# AI config / session / memory files (never tracked)
+.claude/
+.grill/
+.cursor/
+.gemini/
+.agents/
+docs/memory/
+pogo_extract/CLAUDE.md
 
 # never, at any depth
 __pycache__/

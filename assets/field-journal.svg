@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="640" viewBox="0 0 1600 640" role="img" aria-labelledby="title desc">
+  <title id="title">Every keeper has a reason</title>
+  <desc id="desc">An editorial field journal for PoGo. Collection identity, battle potential and keep reasons inform a reviewable inventory. The cull writes tags; the player decides what to transfer.</desc>
+  <rect width="1600" height="640" fill="#e5f34b"/>
+  <rect x="1100" width="500" height="640" fill="#0d1117"/>
+  <g fill="#0d1117">
+    <text x="64" y="76" font-family="-apple-system, BlinkMacSystemFont, Consolas, 'Courier New', monospace" font-size="26" font-weight="700" letter-spacing="2">COLLECTION FIELD JOURNAL</text>
+    <path d="M64 106H1036" stroke="#0d1117" stroke-width="2"/>
+    <text x="60" y="260" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="110" font-weight="800" letter-spacing="-3">Every keeper</text>
+    <text x="60" y="386" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="110" font-weight="800" font-style="italic" letter-spacing="-3">has a reason.</text>
+    <text x="68" y="466" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="31" font-weight="500">Pokémon GO inventory, policy and review.</text>
+    <path d="M64 534H1036" stroke="#0d1117" stroke-width="2"/>
+    <text x="68" y="586" font-family="-apple-system, BlinkMacSystemFont, Consolas, 'Courier New', monospace" font-size="26" font-weight="700" letter-spacing="1">THE CULL TAGS. THE PLAYER TRANSFERS.</text>
+  </g>
+  <g font-family="-apple-system, BlinkMacSystemFont, Consolas, 'Courier New', monospace">
+    <text x="1152" y="76" fill="#e5f34b" font-size="25" letter-spacing="1">CLASSIFICATION INDEX</text>
+    <path d="M1152 106H1548" stroke="#30363d" stroke-width="2"/>
+    <g fill="#f4f2df">
+      <text x="1152" y="172" font-size="24">01 / IDENTITY</text>
+      <text x="1152" y="224" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="34">Form. Costume. Shiny.</text>
+      <text x="1152" y="310" font-size="24">02 / POTENTIAL</text>
+      <text x="1152" y="362" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="34">PvP. IVs. Evolution.</text>
+      <text x="1152" y="448" font-size="24">03 / DECISION</text>
+      <text x="1152" y="500" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="34">Keep. Hold. Tag.</text>
+    </g>
+    <path d="M1152 256H1548M1152 394H1548M1152 534H1548" stroke="#30363d" stroke-width="1"/>
+    <text x="1152" y="586" fill="#e5f34b" font-size="25">PYTHON / FRIDA / SQLITE</text>
+  </g>
+</svg>
