@@ -15,7 +15,7 @@
 
 [![CI](https://github.com/BennyWaitWhat/PoGo-Gotta-Catch-Em-All/actions/workflows/ci.yml/badge.svg)](https://github.com/BennyWaitWhat/PoGo-Gotta-Catch-Em-All/actions/workflows/ci.yml)
 [![Audit Gate: 11 Checks](https://img.shields.io/badge/Audit%20Gate-11%20Parallel%20Checks-2ea043)](pogo_extract/full_audit.py)
-[![Atomic Tagging](https://img.shields.io/badge/Execution-Tag%20Only%20(Zero%20Releases)-brightgreen)](pogo_extract/system/scripts/prune_tags.py)
+[![Atomic Tagging](https://img.shields.io/badge/Execution-Tag%20Only%20%28Zero%20Releases%29-brightgreen)](pogo_extract/system/scripts/prune_tags.py)
 [![License](https://img.shields.io/badge/License-All%20Rights%20Reserved-lightgrey)](LICENSE)
 
 [System Architecture](#-system-architecture) • [The Engineering Problem](#-the-engineering-problem) • [Core Pipeline](#-core-pipeline-mechanics) • [11-Audit Gate](#-the-11-audit-cryptographic-gate) • [Visual Proof](#-verified-visual-proof) • [Offline Verification](#-offline-verification--self-tests)
