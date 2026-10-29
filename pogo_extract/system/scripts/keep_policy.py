@@ -1575,6 +1575,16 @@ def main():
     # and the own-stage evolve block can read which league a copy won. min(), never a [:1] slice (audit_invariants
     # I1.4). Re-derived independently (selection) in audit_cull, _lawcheck, _spotdata, audit_tags_membership and
     # preflight_transfer; they share only pvp_iv_rule's CP/level helper (fits / true_level).
+    # AS ITSELF (2026-10-29, user: "Evolution counts only when it pays" -> "both"): GL / UL rank a copy at its OWN stage
+    # only. A later stage counts through 15e, which keeps and labels the one copy whose evolved self is a new Best there:
+    # the 58% Rattata was Best GL as a #10 Raticate beside the #4 Raticate you own, kept for nothing and never tagged. A
+    # pre-evolution whose own stage cannot reach the cap is no Best as itself.
+    def _pvp_own(r, lg):
+        ub = usable_best(r, lg, GL_CAP if lg == 'gl' else UL_CAP, BS, later=set())
+        return None if ub is not None and ub[0] == 1 and pvp_later_stages(r, _EVO_GRAPH) else ub
+    def _pvp_own_winner(lst, lg):
+        cand = [(u, r) for r in lst for u in (_pvp_own(r, lg),) if u is not None]
+        return min(cand, key=lambda x: (x[0][0], x[0][1], x[1]['uid_hex']))[1] if cand else None
     def _pvp_best_winners():
         won = defaultdict(set)
         groups = defaultdict(list)
@@ -1592,8 +1602,8 @@ def main():
         _BRF = keep_config.pvp('best_rank_floor')
         for lst in groups.values():
             for lg in ('gl', 'ul'):
-                b = _pvp_usable_winner(lst, lg)
-                if b is not None and (_pvp_usable(b, lg)[1] <= _BRF or b['pokemon_id'] in RARE_PIDS):   # legendaries: no rank floor (user 2026-09-24)
+                b = _pvp_own_winner(lst, lg)
+                if b is not None and (_pvp_own(b, lg)[1] <= _BRF or b['pokemon_id'] in RARE_PIDS):   # legendaries: no rank floor (user 2026-09-24)
                     won[b['uid_hex']].add(lg.upper())
             cand = [r for r in lst if _v(r, 'ml_rank') is not None and (r['ml_rank'] <= _BRF or r['pokemon_id'] in RARE_PIDS)]
             if cand:
@@ -1612,16 +1622,16 @@ def main():
     # 15e. PvP COMB-UP (user 2026-09-24: "im basically asking for the scan to be expanded to everyone so all ul and gl get
     # combed up" + "I don't want to waste time catching pokemon just to lose opportunities"). 15d keeps ONE copy per
     # identity -- on a branching / multi-stage line the copy that would make your best Jolteon, Glaceon or Honchkrow
-    # rode on luck. For every GL / UL target stage, the copy whose evolved self would TAKE that species' Best (15d's own
-    # usable-rank model, 2026-10-29: "we evolve with intention. no one sits." -- beating the copies you own AS the stage
-    # once sent an 89% Nidoran M to a Nidorino the pile took) and still fit the league is kept -- one copy per target,
-    # never a copy evolving would destroy (own-stage best,
-    # top-5 spread, legacy move, last copy / only shiny of its form, protected). ONE definition: pvp_combup.pick,
+    # rode on luck. For every GL / UL target stage, the copy whose evolved self would be your new Best there (it beats
+    # your best copy AS that stage, 15d's as-itself rank; 2026-10-29: "we evolve with intention. no one sits.") and still
+    # fit the league is kept -- one copy per target, never a copy evolving would destroy (a Best as itself, top-5
+    # spread, legacy move, a stage with no spare copy -- "i only have 2 mime jrs" -- only shiny of its form, protected).
+    # ONE definition: pvp_combup.pick,
     # called with this engine's own graph; preflight_transfer, audit_cull, _lawcheck, audit_tags_membership and
     # audit_tag_truth call it on the same files. Tags 'Evolve for GL' / 'Evolve for UL' (2026-09-30).
     import pvp_combup
     _CU = pvp_combup.pick(rows, lambda r: pvp_later_stages(r, _EVO_GRAPH), BS, keep_config.pvp('best_rank_floor'),
-                          RARE_PIDS, legacy, keep_config.protected_pids())
+                          RARE_PIDS, legacy, keep_config.protected_pids(), pvp_combup.middle_sids(_EVO_GRAPH))
     for _u in _CU['gl']:
         mark(_u, 'pvp_combup_gl')                  # literal reasons: audit_invariants reads the mark() sites
     for _u in _CU['ul']:
@@ -1707,17 +1717,12 @@ def main():
         # reroll away, the last copy of a form is gone, an own-stage PvP asset stops being that asset. Only SURPLUS
         # copies climb. (keep is complete here: the loop runs after every axis.)
         _kr = keep.get(r['uid_hex'], set())
-        # ... and a Best GL / Best UL copy whose winning rank is at its OWN stage (user 2026-09-23: "only if its best
-        # rank is at a later stage"). Mirrored in audit_labels, refresh_evolve_shiny and sync_evolve_size.
-        # The winning stage is the USABLE one (_pvp_usable, 2026-09-23): a Best copy that wins as itself is an
-        # own-stage asset; one that wins as a later stage it can reach AND enter may evolve to it. A Best copy with no
-        # usable stage cannot happen (it could not have won) -- read as own-stage, the side that never consumes it.
-        _ubg = _pvp_usable(r, 'gl') if 'pvp_best_gl' in _kr else None
-        _ubu = _pvp_usable(r, 'ul') if 'pvp_best_ul' in _kr else None
+        # ... and a Best GL / Best UL copy (user 2026-09-23: "only if its best rank is at a later stage"): since
+        # 2026-10-29 every Best wins AS ITSELF (15d), so every one is an own-stage asset -- a later stage is reached
+        # through 15e's Evolve for GL / UL only. Mirrored in audit_labels, refresh_evolve_shiny and sync_evolve_size.
         _own_pvp = ((r['gl_stage'] == _sid(r) and r['gl_rank'] is not None and r['gl_rank'] <= READY_RANK and _viable(r['gl_stage'], GL_CAP))
                     or (r['ul_stage'] == _sid(r) and r['ul_rank'] is not None and r['ul_rank'] <= READY_RANK and _viable(r['ul_stage'], UL_CAP))
-                    or ('pvp_best_gl' in _kr and (_ubg is None or _ubg[2] == _sid(r)))
-                    or ('pvp_best_ul' in _kr and (_ubu is None or _ubu[2] == _sid(r))))
+                    or 'pvp_best_gl' in _kr or 'pvp_best_ul' in _kr)
         if (_kr & {'location_card', 'xxl', 'legacy', 'dex_only_copy', 'mighty', 'protected'}) or _own_pvp:
             if _is_stock:
                 mark(r['uid_hex'], 'variant_floor')             # stays at-stage stock, as before
@@ -1871,13 +1876,10 @@ def main():
                     continue
                 if not _can_evo(r) or (r['iv_total'] or 0) in (0, 45) or r['pokemon_id'] in keep_config.protected_pids():
                     continue
-                _ubg = _pvp_usable(r, 'gl') if 'pvp_best_gl' in _kr else None
-                _ubu = _pvp_usable(r, 'ul') if 'pvp_best_ul' in _kr else None
                 if ((_kr & {'location_card', 'xxl', 'legacy', 'mighty', 'protected', 'dex_only_copy'})
                         or (r['gl_stage'] == _sid(r) and (r['gl_rank'] or 99) <= READY_RANK and _viable(r['gl_stage'], GL_CAP))
                         or (r['ul_stage'] == _sid(r) and (r['ul_rank'] or 99) <= READY_RANK and _viable(r['ul_stage'], UL_CAP))
-                        or ('pvp_best_gl' in _kr and (_ubg is None or _ubg[2] == _sid(r)))
-                        or ('pvp_best_ul' in _kr and (_ubu is None or _ubu[2] == _sid(r)))):
+                        or 'pvp_best_gl' in _kr or 'pvp_best_ul' in _kr):     # every Best wins as itself (2026-10-29)
                     continue
                 _fins = sorted(t for t in allreach_sp.get(_sid(r), ()) if not is_pre_sp.get(t)
                                and pattern_pools.line_root(t) == _pk[0][1][len('line:'):])

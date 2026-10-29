@@ -729,8 +729,10 @@ def _pvp_best_uids(bag, cf_norm, BS, gm_ok):
         best = None
         reach = [(stage, rank) for stage, rank in (_chain_stages(_g(r, lg + '_chain_ranks'))
                                                   or ([(_g(r, lg + '_stage'), _g(r, lg + '_rank'))] if _g(r, lg + '_rank') is not None else []))
-                 if stage and (stage == own or later is None or stage in later)]
-        if gm_ok and not any(_fits(r, stage, cap, BS) for stage, _k in reach):   # cannot ENTER at any reachable stage
+                 if stage and stage == own]                # AS ITSELF since 2026-10-29 (LAW 2b): a later stage counts only through the comb-up (2c)
+        if later and gm_ok and not _viable(own, cap, BS):
+            return None                                   # a pre-evolution that cannot reach the cap as itself is no Best
+        if gm_ok and not any(_fits(r, stage, cap, BS) for stage, _k in reach):   # cannot ENTER at its own stage
             return None                                   # (no gamemaster -> CP unjudgeable -> every copy counts)
         for stage, rank in reach:                         # evolution counts everywhere (2026-09-24): CP-blind per stage
             k = (0 if (gm_ok and _viable(stage, cap, BS)) else 1, rank)
@@ -1266,6 +1268,7 @@ def main():
         except (OSError, ValueError):
             _labels_l = {}
         _found = []
+        _mid_l = {t for _ts in _grl[4].values() for t in _ts if _grl[0].get(t)}   # middle stages: their ladder keeps fewer
         for _u, _why in (_il.nundo_violations(bag, _pile_set, keep_config.cap('nundo'), _cf_norm, is_costume_form)
                          if keep_config.rule_enabled('nundo') else []):
             _found.append((_u, 'nundo_look(law: %s)' % _why))
@@ -1274,7 +1277,8 @@ def main():
                 fits_fn=lambda r, st, cap: _fitl(r, st, cap, _BSl), reaches_fn=lambda st, cap: _viable(st, cap, _BSl),
                 caps={'gl': GL_CAP, 'ul': UL_CAP}, floor=keep_config.pvp('best_rank_floor'), rare_pids=_L1 | _L2 | _L3 | _L4,
                 legacy_uids=legacy_set, protected_pids=keep_config.protected_pids(), cf=_cf_norm,
-                shadow_floor=keep_config.pvp('shadow_rank_floor'), shadow_leagues=keep_config.shadow_leagues()):
+                shadow_floor=keep_config.pvp('shadow_rank_floor'), shadow_leagues=keep_config.shadow_leagues(),
+                ladder_cap=lambda s: keep_config.cap('plain_line_preevo' if s in _mid_l else 'plain_line')):
             _found.append((_u, 'pvp_combup(law: %s)' % _why))
         for _u, _why in _il.shiny_ladder_violations(
                 bag, _pile_set, own_of=_own_l, next_of=_next_l, can_evolve=lambda r: bool(_later_l(r)),

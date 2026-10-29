@@ -259,7 +259,7 @@ try:
     _u_later = lambda r: _pls(r, _U_GRAPH)
 except Exception as _e:
     _u_later = lambda r: None
-def _usable(r, lg, cap):
+def _usable(r, lg, cap, own_only=False):
     """(reaches-the-cap-first key, rank) of the best stage this copy can REACH and ENTER (fits: its CP there at its
     TRUE level inside the cap), or None -- such a copy can never be that league's best."""
     own = pvid(r['species_name'], r['form'] or 0)
@@ -274,6 +274,10 @@ def _usable(r, lg, cap):
     if not st and r[lg + '_rank'] is not None:
         st = [(r[lg + '_stage'], r[lg + '_rank'])]
     reach = [(s, k) for s, k in st if s and (s == own or later is None or s in later)]   # evolution counts everywhere (2026-09-24)
+    if own_only:                                          # Best GL / UL: AS ITSELF since 2026-10-29 (LAW 2b): a later stage counts only through the comb-up (2c)
+        reach = [(s, k) for s, k in reach if s == own]
+        if later and not _sh_via(own, cap):
+            return None                                   # a pre-evolution that cannot reach the cap as itself is no Best
     if not any(_u_fits(r, s, cap, _SH_BS) for s, _k in reach):
         return None
     best = None
@@ -283,8 +287,8 @@ def _usable(r, lg, cap):
 def _usable_winner(lst, lg, cap):
     c = [(k, y) for y in lst for k in (_usable(y, lg, cap),) if k is not None]
     return min(c, key=lambda z: (z[0][0], z[0][1], z[1]['uid_hex']))[1]['uid_hex'] if c else None
-def _usable_winner_rk(lst, lg, cap):                          # (uid, usable rank) for the shadow floor (2026-09-24)
-    c = [(k, y) for y in lst for k in (_usable(y, lg, cap),) if k is not None]
+def _usable_winner_rk(lst, lg, cap, own_only=False):         # (uid, usable rank) for the shadow floor (2026-09-24)
+    c = [(k, y) for y in lst for k in (_usable(y, lg, cap, own_only),) if k is not None]
     b = min(c, key=lambda z: (z[0][0], z[0][1], z[1]['uid_hex'])) if c else None
     return (b[1]['uid_hex'], b[0][1]) if b else (None, None)
 _SRF = keep_config.pvp('shadow_rank_floor')
@@ -348,7 +352,7 @@ _LAW_RARE = _LI | _MI | _UI | _PI                            # legendaries: no r
 _pid_of = {r['uid_hex']: r['pokemon_id'] for r in rows}
 for _l in _pbg.values():
     for _lg, _cap in (('gl', _PB_GL), ('ul', _PB_UL)):
-        _w, _wr = _usable_winner_rk(_l, _lg, _cap)
+        _w, _wr = _usable_winner_rk(_l, _lg, _cap, own_only=True)
         if _w and (_wr <= _BRF or _pid_of.get(_w) in _LAW_RARE):
             _pvp_best_keep.add(_w)
     _c = [x for x in _l if (x['ml_rank'] if 'ml_rank' in x.keys() else None) is not None and (x['ml_rank'] <= _BRF or x['pokemon_id'] in _LAW_RARE)]

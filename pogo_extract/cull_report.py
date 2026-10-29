@@ -462,6 +462,27 @@ def main():
                         and (reason == 'shadow_best' or r['pokemon_id'] not in ROSTER)):
                     parts.append('lost its %s: %s #%d is past the #%d cut-off' % (LABEL[reason], _lg[1], r[_lg[0] + '_rank'], _fl))
                     continue
+                # EVOLUTION COUNTS ONLY WHEN IT PAYS (user 2026-10-29: "both"): rule 15d ranks a Best as ITSELF, so a copy
+                # that was a Best only for what it could become lost it -- unless evolving pays, when rule 15e tags it
+                # Evolve for GL / UL instead. Say what it was kept for and why that evolve does not pay.
+                _l = {'pvp_best_gl': 'gl', 'pvp_best_ul': 'ul'}.get(reason)
+                _cap = pv.GL_CAP if _l == 'gl' else pv.UL_CAP
+                _ub = pv.usable_best(r, _l, _cap, BS) if _l and not new and r['fresh_alignment'] != 1 else None
+                _own = pv.pvid(r['species_name'], r['form'] or 0)
+                if _ub and _ub[2] != _own:
+                    _mine = next((k for s, k in pv.chain_stage_ranks(r, _l) if s == _own), None)
+                    _bk = min((k for x in C.values() if x['uid_hex'] not in pile_set and x['fresh_alignment'] != 1
+                               and pv.pvid(x['species_name'], x['form'] or 0) == _ub[2] and pv.fits(x, _ub[2], _cap, BS)
+                               for s, k in pv.chain_stage_ranks(x, _l) if s == _ub[2]), default=None)
+                    parts.append('lost its %s: a Best counts as itself now (%s); it was kept for what it could become, '
+                                 '%s #%d as %s, and %s' % (
+                                     LABEL[reason], ('#%d as %s' % (_mine, stg(_own))) if _mine else stg(_own), _lg[1],
+                                     _ub[1], stg(_ub[2]),
+                                     ('evolving it would put it over %s CP there' % format(_cap, ','))
+                                     if not pv.fits(r, _ub[2], _cap, BS) else
+                                     ('your best %s is already #%d' % (stg(_ub[2]), _bk)) if _bk is not None and _bk <= _ub[1]
+                                     else 'it was not picked to evolve into one'))
+                    continue
                 if reason in IV_LADDER:
                     # only a copy that can SIT in r's ladder (same species+form, same look, not a hundo) AND sorts at or
                     # above r there can push it out

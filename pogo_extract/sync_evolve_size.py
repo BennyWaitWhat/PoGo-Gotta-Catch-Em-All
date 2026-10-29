@@ -72,11 +72,8 @@ def _own_stage_best():
         for r in c.execute('SELECT * FROM pokemon WHERE in_bag=1'):
             rs = set(pol.get(r['uid_hex']) or ())
             own = pvid(r['species_name'], r['form'] or 0)
-            for lg, cap in (('gl', GL_CAP), ('ul', UL_CAP)):
-                if 'pvp_best_' + lg in rs:
-                    ub = usable_best(r, lg, cap, BS, later=pvp_later_stages(r, graph))
-                    if ub is None or ub[2] == own:
-                        out.add(norm(r['uid_hex']))
+            if 'pvp_best_gl' in rs or 'pvp_best_ul' in rs:   # every Best wins as itself since 2026-10-29 (15d)
+                out.add(norm(r['uid_hex']))
     finally:
         c.close()
     return out
