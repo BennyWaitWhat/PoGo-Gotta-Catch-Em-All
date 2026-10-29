@@ -309,12 +309,13 @@ class DuplicateTagName(RuntimeError):
 VERIFY_WINDOW_S = 30.0
 
 
-def _dup_guard(bt, svc, name):
+def _dup_guard(bt, svc, name, counted=None):
     """Raise DuplicateTagName when 2+ tags carry `name` (13:51 on 2026-09-30: two 'Evolve for UL', one empty -- the
     members went to one, prune's verify read the other, and the post-push reconcile blocked retire / Remote Trade /
-    order). An older bulk_tag.js without countTagsByName: logged, never guessed."""
+    order). An older bulk_tag.js without countTagsByName: logged, never guessed. counted: that count already read
+    (tag_index), in countTagsByName's shape."""
     try:
-        r = bt.exports_sync.count_tags_by_name(svc, name) or {}
+        r = counted if counted is not None else (bt.exports_sync.count_tags_by_name(svc, name) or {})
     except Exception as exc:
         log.warning("create_tag: cannot count the tags named %r (%s) -- duplicate guard skipped", name, exc)
         return
@@ -325,7 +326,23 @@ def _dup_guard(bt, svc, name):
             % (r["count"], name, ", ".join(r.get("addrs") or []), name))
 
 
-def create_tag(bt, svc, name, color, attempts=5):
+def tag_index(bt, svc):
+    """{name: [tagProtoAddr, ...]} of every cached tag, in binding order, from ONE RPC (bulk_tag.js tagsByName) -- or None
+    (an older bulk_tag.js, an error), and create_tag then looks each name up on its own as before (2026-10-29)."""
+    try:
+        r = bt.exports_sync.tags_by_name(svc) or {}
+    except Exception as exc:
+        log.warning("tag_index: the one-call tag list is unavailable (%s) -- each tag is looked up on its own", exc)
+        return None
+    if not r.get("ok"):
+        return None
+    out = {}
+    for name, addr in r.get("tags") or []:
+        out.setdefault(name, []).append(addr)
+    return out
+
+
+def create_tag(bt, svc, name, color, attempts=5, index=None):
     """Create a tag or return its proto address if it already exists.
 
     1. find_tag_id_by_name -- if found, return immediately.
@@ -352,7 +369,12 @@ def create_tag(bt, svc, name, color, attempts=5):
     """
     color = check_color(color, name)
 
-    # Check if it already exists.
+    # Check if it already exists -- in the caller's tag_index() when it took one: the same first address and count
+    # findTagIdByName / countTagsByName would read, without 2 RPCs per tag. Not in it -> the lookup below, as before.
+    if index and index.get(name):
+        log.info("create_tag: '%s' already exists @ %s", name, index[name][0])
+        _dup_guard(bt, svc, name, {"ok": True, "count": len(index[name]), "addrs": list(index[name])})
+        return index[name][0]
     r = bt.exports_sync.find_tag_id_by_name(svc, name)
     if r.get("ok"):
         log.info("create_tag: '%s' already exists @ %s", name, r["tagProtoAddr"])

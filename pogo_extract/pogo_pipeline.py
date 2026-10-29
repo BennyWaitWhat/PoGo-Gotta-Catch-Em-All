@@ -2033,6 +2033,10 @@ def _freshness_stop(found, script, sess):
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
+class _PreflightLater(Exception):
+    """--preflight-later: full_audit runs the pre-flight itself (no subprocess here)."""
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--dry-run', action='store_true',
@@ -2043,6 +2047,9 @@ def main():
     # which reads like a typo and invites someone to re-add the flag. The full removal rationale
     # is in the "REMOVED 2026-09-07" block just above this function.
     ap.add_argument('--tag-transfers', action='store_true', help=argparse.SUPPRESS)
+    ap.add_argument('--preflight-later', action='store_true',
+                    help='full_audit runs the closing TRANSFER PRE-FLIGHT itself, beside its 11 audits and before any '
+                         'sync (2026-10-29: ~3 s off the walk); the walk then ends without it')
     args = ap.parse_args()
     if args.tag_transfers:
         ap.error(
@@ -2205,8 +2212,12 @@ def main():
         # 2026-05-29) but ~44x faster: caches the per-species 4096-combo IV tables
         # (rebuilt only when pvpoke_gamemaster.json changes) while still re-ranking
         # EVERY in-bag mon every run (no per-mon skip). Fallback: compute_all_ranks.py.
+        # side by side (2026-10-29, "same results, just faster"): detect_legacy reads moves / form / species / alignment
+        # only -- none of the rank columns rank_cache writes -- and rank_cache never reads legacy_accurate.json
+        _p2 = _sub.Popen([sys.executable, 'detect_legacy.py'], cwd=here_dir, stdout=_sub.PIPE, stderr=_sub.PIPE, text=True)
         r1 = _sub.run([sys.executable, os.path.join('system', 'scripts', 'rank_cache.py')], cwd=here_dir, capture_output=True, text=True)
-        r2 = _sub.run([sys.executable, 'detect_legacy.py'], cwd=here_dir, capture_output=True, text=True)
+        _o2, _e2 = _p2.communicate()         # communicate, never wait(): a full pipe would deadlock wait()
+        r2 = _sub.CompletedProcess(_p2.args, _p2.returncode, _o2, _e2)
         _tick(f"   ranks rc={r1.returncode}  legacy rc={r2.returncode}")
         if r1.returncode or r2.returncode:
             # FATAL, not a warning. This used to _tick and fall straight through into cull_v9 +
@@ -2310,6 +2321,8 @@ def main():
     # tagsets). rc 4 = pile rebuilt but the keeper gate REJECTED it.
     _pf_failed = False
     try:
+        if args.preflight_later:
+            raise _PreflightLater()
         pf = _sub.run([sys.executable, os.path.join('system', 'scripts', 'preflight_transfer.py')],
                       cwd=here_dir, capture_output=True, text=True, timeout=180)
         print(pf.stdout.rstrip())
@@ -2318,6 +2331,8 @@ def main():
         _pf_failed = (pf.returncode != 0)
         print('TRANSFER PRE-FLIGHT: ' + ('PASS' if pf.returncode == 0
                                          else 'FAIL (rc=%d) -- DO NOT SYNC/RELEASE' % pf.returncode))
+    except _PreflightLater:
+        print('TRANSFER PRE-FLIGHT: LATER -- full_audit runs it beside the 11 audits, before any sync (--preflight-later)')
     except Exception as _pfe:
         # NOT promoted to a non-zero exit (deliberately, 2026-09-07): preflight_transfer.py opens
         # its OWN Frida session, so a transient collision/timeout here would turn every dashboard

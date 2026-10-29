@@ -48,7 +48,7 @@ def main():
     shared = rank_cache.RankTableCache(pdb, rank_cache._content_hash(gm_bytes))        # the pipeline's own pickle
     _keys = [k for k, v in shared.tables.items() if v is not None]
     random.seed(len(_keys))
-    stale_tables = [k for k in random.sample(_keys, min(200, len(_keys))) if cache.get(*k)[1] != shared.tables[k][1]]
+    _sample = random.sample(_keys, min(200, len(_keys)))
 
     con = sqlite3.connect('file:pokemon.db?mode=ro', uri=True); con.row_factory = sqlite3.Row
     rows = {r['uid_hex']: __import__('keep_config').row_dict(r) for r in con.execute('SELECT * FROM pokemon WHERE in_bag=1')}
@@ -58,6 +58,12 @@ def main():
     for tag in TAGS:
         p = os.path.join(TD, tag.replace(' ', '_') + '.txt')
         members[tag] = [u for u in (open(p).read().split() if os.path.exists(p) else []) if u in rows]
+    # every fresh table this audit reads, built side by side (2026-10-29, "same results, just faster"): the same
+    # all_combos_sorted the lazy get() runs, in worker processes
+    rank_cache.prefill(cache, _sample + [(pvid(rows[u]['species_name'], rows[u]['form'] or 0), CAP[lg],
+                                          rows[u]['fresh_alignment'] == 1)
+                                         for tag, (lg, _lo, _hi, _kind) in TAGS.items() for u in members[tag]])
+    stale_tables = [k for k in _sample if cache.get(*k)[1] != shared.tables[k][1]]
 
     bad = collections.defaultdict(list)
     checked = 0

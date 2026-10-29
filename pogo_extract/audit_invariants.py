@@ -85,10 +85,14 @@ disappears or the live config makes it bite (e.g. a per-species cosmetic cap bei
 that cries wolf gets bypassed, and this one sits directly in front of the sync.
 """
 import ast
+import atexit
+import functools
+import hashlib
 import io
 import json
 import math
 import os
+import pickle
 import re
 import sqlite3
 import sys
@@ -146,6 +150,56 @@ def src(path):
     return _SRC[path]
 
 
+# ---- ACROSS-RUN MEMO (2026-10-29, user: "I need it to be 60 secs. With same results, just faster."). code_only,
+# code_no_strings, _ast_strings and tag_write_sites are pure functions of ONE file's text and of this audit's own code;
+# their AST walks were ~5 of this audit's 7 s every cull. Kept per (helper, path, sha256 of the text) beside
+# rank_tables.pkl (local: not in git, not in the data store), dropped whole when this file or the Python version changes.
+_MEMO_FILE = os.path.join(ROOT, 'system', 'scripts', 'audit_invariants_memo.pkl')
+with open(os.path.abspath(__file__), 'rb') as _f:      # read now: __file__ is gone by the time atexit saves
+    _MEMO = {'disk': None, 'run': {}, 'new': False, 'tag': hashlib.sha256(_f.read() + sys.version.encode()).hexdigest()}
+
+
+def _memo_save():
+    if not _MEMO['new']:
+        return
+    try:
+        with open(_MEMO_FILE + '.tmp', 'wb') as f:
+            pickle.dump({'tag': _MEMO['tag'], 'memo': _MEMO['run']}, f, protocol=pickle.HIGHEST_PROTOCOL)
+        os.replace(_MEMO_FILE + '.tmp', _MEMO_FILE)
+    except Exception:
+        pass                    # a memo that cannot be written only costs the next run its speed
+
+
+def _memoized(fn):
+    @functools.wraps(fn)
+    def inner(path):
+        if _MEMO['disk'] is None:
+            _MEMO['disk'] = {}
+            try:
+                with open(_MEMO_FILE, 'rb') as f:
+                    blob = pickle.load(f)
+                if blob.get('tag') == _MEMO['tag']:
+                    _MEMO['disk'] = blob['memo']
+            except Exception:
+                pass
+            atexit.register(_memo_save)
+        k = (fn.__name__, path, hashlib.sha256(src(path).encode('utf-8')).hexdigest())
+        if k not in _MEMO['run']:
+            if k in _MEMO['disk']:
+                _MEMO['run'][k] = _MEMO['disk'][k]
+            else:
+                _MEMO['run'][k] = fn(path)
+                _MEMO['new'] = True
+        v = _MEMO['run'][k]
+        # each call used to build its own set / lists: hand out copies, never the memo's own object
+        if isinstance(v, set):
+            return set(v)
+        if isinstance(v, tuple):
+            return tuple(list(x) for x in v)
+        return v
+    return inner
+
+
 _TREE = {}
 
 
@@ -161,6 +215,7 @@ def tree(path):
 _CODE = {}
 
 
+@_memoized
 def code_only(path):
     """File text with comments and docstrings blanked out, LINE NUMBERS PRESERVED.
 
@@ -1864,7 +1919,8 @@ TAG_WRITE_FUNCS = TAG_ADD_FUNCS | TAG_REMOVE_FUNCS | {'create_tag'}
 #            cannot ADD a mon to the release pile, which is the question this invariant asks)
 #   CREATE   addTagOnInstance:1466  addTagTest:2068  addTagVerified:1906 -- a tag DEFINITION with no
 #            members; the python primitive create_tag is treated the same way, as neither direction
-#   READ     the remaining 31 (countTagsByName, 2026-09-30: the duplicate-name guard)
+#   READ     the remaining 32 (countTagsByName, 2026-09-30: the duplicate-name guard; tagsByName, 2026-10-29: the
+#            same walk, every name at once)
 # Names are canonicalised (lowercased, underscores dropped) because frida exposes JS camelCase to
 # python as snake_case, so the same export appears as bulkTagMany and bulk_tag_many.
 def _canon(n):
@@ -1875,7 +1931,7 @@ _BT_ADD = {_canon(x) for x in ('bulkTagMany', 'bulkApplyChanges', 'bulkTagSingle
                                'tagOne')}
 _BT_REMOVE = {_canon(x) for x in ('bulkUntagOne', 'setPokemonTagsNull')}
 _BT_SAFE = {_canon(x) for x in (
-    'addTagOnInstance', 'addTagTest', 'addTagVerified', 'countTags', 'countTagsByName', 'discoverMethods',
+    'addTagOnInstance', 'addTagTest', 'addTagVerified', 'countTags', 'countTagsByName', 'tagsByName', 'discoverMethods',
     'dumpCapturedList', 'dumpRepeatedField', 'enumerateTagProtos', 'extractAllTagIds',
     'extractRuntimeFlags', 'findAllInstances', 'findPokemonProto', 'findRealInstance',
     'findTagIdByName', 'getAllTagsTest', 'getCaptured', 'getListClassForSetTags',
@@ -1932,6 +1988,7 @@ ENTRY_POINTS = {'dashboard.py', 'full_audit.py', 'pogo_pipeline.py', 'verify_tag
                 'read_player_state.py'}
 
 
+@_memoized
 def _ast_strings(path):
     """Every string CONSTANT in real code (docstrings excluded)."""
     t = tree(path)
@@ -1947,6 +2004,7 @@ def _ast_strings(path):
             if isinstance(n, ast.Constant) and isinstance(n.value, str) and id(n) not in doc_ids}
 
 
+@_memoized
 def tag_write_sites(path):
     """(add_sites, remove_sites) -- where this file actually CALLS a tag-write primitive.
 
@@ -2046,6 +2104,7 @@ _IMP_RE = re.compile(r'(?m)^\s*(?:import|from)\s+([A-Za-z0-9_.]+)')
 _NOSTR = {}
 
 
+@_memoized
 def code_no_strings(path):
     """code_only() with every STRING LITERAL blanked too. Line numbers preserved.
 

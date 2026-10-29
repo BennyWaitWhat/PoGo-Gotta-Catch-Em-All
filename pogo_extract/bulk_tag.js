@@ -421,6 +421,46 @@ rpc.exports = {
         return {ok:true, count:n, addrs:addrs};
     },
 
+    /* Every cached tag as [name, tagProtoAddr], in binding order (2026-10-29, cull speed: prune looked ~30 tags up one by
+       one, findTagIdByName + countTagsByName = 2 RPCs apiece, ~4 s). The walk and filters of countTagsByName: a name's
+       first address is findTagIdByName's answer, its number of addresses countTagsByName's count. Read-only. */
+    tagsByName: function(instanceStr) {
+        if (!init()) return {ok:false, err:state.err};
+        var inst = ptr(instanceStr);
+        var iter = Memory.alloc(Process.pointerSize); iter.writePointer(ptr(0));
+        var m, getCount=null, getBinding=null;
+        while ((m = fns.cGM(taggingServiceClass, iter)) && !m.isNull()) {
+            var nm = fns.mGN(m).readCString();
+            if (nm === "get_NumberOfTags") getCount = m;
+            if (nm === "GetCachedTagToPokemonBindingForIndex") getBinding = m;
+        }
+        if (!getCount || !getBinding) return {ok:false, err:"missing methods"};
+        var exc = Memory.alloc(Process.pointerSize); exc.writePointer(ptr(0));
+        var ret = fns.rI(getCount, inst, ptr(0), exc);
+        if (!exc.readPointer().isNull()) return {ok:false, err:"count exc"};
+        var count = ret.add(0x10).readS32();
+        var tags = [];
+        for (var i = 0; i < count; i++) {
+            var idxBuf = Memory.alloc(4); idxBuf.writeS32(i);
+            var args = Memory.alloc(Process.pointerSize); args.writePointer(idxBuf);
+            var exc2 = Memory.alloc(Process.pointerSize); exc2.writePointer(ptr(0));
+            var bindingPtr = fns.rI(getBinding, inst, args, exc2);
+            if (!exc2.readPointer().isNull() || bindingPtr.isNull()) continue;
+            try {
+                var tagProto = bindingPtr.add(0x10).readPointer();
+                if (tagProto.isNull()) continue;
+                var nameStrPtr = tagProto.add(0x40).readPointer();
+                if (nameStrPtr.isNull()) continue;
+                var len = nameStrPtr.add(0x10).readS32();
+                if (len <= 0 || len > 100) continue;
+                var chars = [];
+                for (var ci = 0; ci < len; ci++) chars.push(String.fromCharCode(nameStrPtr.add(0x14 + ci*2).readU16()));
+                tags.push([chars.join(''), tagProto.toString()]);
+            } catch(e) {}
+        }
+        return {ok:true, tags:tags};
+    },
+
     /* Look up pokemon proto pointer by uid from internal index. */
     findPokemonProto: function(uidLow, uidHigh) {
         if (!init()) return {ok:false, err:state.err};

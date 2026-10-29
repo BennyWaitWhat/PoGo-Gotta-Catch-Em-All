@@ -134,12 +134,27 @@ class ReadyStatus:
 # ---------------------------------------------------------------------------
 # adb plumbing
 # ---------------------------------------------------------------------------
+_PREFETCH = {}      # (args, root, dev) -> (rc, out, err): a gate's first read of each probe (_prefetch), used ONCE
+
+
 def _adb(*args, root=False, dev=None):
     """Run an adb shell command. Returns (rc, stdout, stderr) with text stripped.
 
     Uses the exact `adb -s <ADB_TARGET> ...` form. `root=True` wraps the command
     in `su -c '<joined args>'`. Never raises on non-zero rc (callers inspect rc).
+    A probe _prefetch() already read is answered from there, once; a remediation (input / am / monkey) drops every
+    prefetched answer, so whatever the gate reads after it is read live, as before.
     """
+    dev = dev or ADB_TARGET
+    if args and args[0] in ("input", "am", "monkey"):
+        _PREFETCH.clear()
+    hit = _PREFETCH.pop((args, root, dev), None)
+    if hit is not None:
+        return hit
+    return _adb_live(*args, root=root, dev=dev)
+
+
+def _adb_live(*args, root=False, dev=None):
     dev = dev or ADB_TARGET
     base = ["adb", "-s", dev, "shell"]
     if root:
@@ -499,7 +514,32 @@ def _check_tag_service(sess):
 # ---------------------------------------------------------------------------
 # Public entry point
 # ---------------------------------------------------------------------------
+def _prefetch(dev, pid):
+    """Each probe's FIRST read, all at once (2026-10-29, user: "I need it to be 60 secs. With same results, just
+    faster."): the checks below made ~8 read-only adb calls one after another, ~2.5 s of every gate, twice per cull.
+    Every check still runs, in its own order, and judges the same answer -- read here, side by side, a moment earlier."""
+    from concurrent.futures import ThreadPoolExecutor
+    probes = [(("pidof", POGO_PKG), False), ((f"grep -c libil2cpp /proc/{pid}/maps 2>/dev/null",), True),
+              ((f"cat /proc/uptime /proc/{pid}/stat",), False), (("dumpsys power",), False),
+              (("dumpsys battery",), False), (("dumpsys", "deviceidle", "get", "deep"), False),
+              ((f"cat /proc/{pid}/cgroup",), True), (("dumpsys window",), False)]
+    _PREFETCH.clear()
+    with ThreadPoolExecutor(len(probes)) as ex:
+        for (args, root), res in zip(probes, ex.map(lambda p: _adb_live(*p[0], root=p[1], dev=dev), probes)):
+            _PREFETCH[(args, root, dev)] = res
+
+
 def ensure_ready_for_writes(sess, pid):
+    """_ensure_ready_for_writes (below) with its read-only probes prefetched side by side; nothing it read early
+    outlives the call."""
+    try:
+        _prefetch(ADB_TARGET, pid)
+        return _ensure_ready_for_writes(sess, pid)
+    finally:
+        _PREFETCH.clear()
+
+
+def _ensure_ready_for_writes(sess, pid):
     """Gate every tag-WRITE path against the documented silent-no-op failure modes.
 
     Runs all seven checks in dependency order. All probes are read-only

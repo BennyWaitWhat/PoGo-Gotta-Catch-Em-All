@@ -105,12 +105,14 @@ def ensure_dashboard():
             pass
     raise RuntimeError('dashboard would not start within 60 s')
 
-def run_job(path, body=None, label=''):
-    """POST a dashboard job and poll to completion. Returns (rc, log)."""
+def run_job(path, body=None, label='', on_poll=None):
+    """POST a dashboard job and poll to completion. Returns (rc, log). on_poll(job) sees every poll of a running job."""
     api(path, 'POST', body if body is not None else {})
     while True:
         time.sleep(0.25)             # was 1 s: a finished job was noticed ~0.5 s late on average (speed study 2026-09-24)
         j = api('/api/job', timeout=10)
+        if on_poll and j.get('running'):
+            on_poll(j)
         if not j.get('running'):
             _log = j.get('log') or ''
             try:      # 2026-09-24: the job log lived only in the dashboard process -- a failed recrawl's last lines were
@@ -486,19 +488,70 @@ def catcher_resume():
         say('catcher resume failed (%s) -- its deadline releases it anyway' % _e)
 
 
-def report_step(verify_failed=False):
+REPORT_STATE = os.path.join('system', 'analysis', 'last_report.json')
+
+
+def report_start():
+    """THE REPORT IN THE BACKGROUND (2026-10-29, user: "I need it to be 60 secs. With same results, just faster."), started
+    with the post-push session, whose ~19 s of phone time it overlaps. It reads nothing that session writes: the sync
+    log, this walk's files and the DB's non-tag columns (the Remote Trade mirror, the session's only DB write, is a tag
+    column the report never reads). report_step(bg=...) prints it; a pass that ends without a report puts
+    last_report.json back (report_cancel), as if it never ran. -> (Popen, last_report.json bytes or None) or None."""
+    try:
+        _bak = open(REPORT_STATE, 'rb').read() if os.path.exists(REPORT_STATE) else None
+        _env = dict(os.environ)
+        _env.pop('CULL_VERIFY', None)
+        return subprocess.Popen([PY, 'cull_report.py'], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+                                encoding='utf-8', errors='replace', env=_env), _bak
+    except Exception as _e:
+        say('report: not started in the background (%s) -- it runs after the post-push session' % _e)
+        return None
+
+
+def report_cancel(bg):
+    """No report this pass (or a re-run with CULL_VERIFY=FAILED): let the background one end -- a kill could tear
+    last_report.json -- then put that file back exactly as it was."""
+    if not bg:
+        return
+    try:
+        bg[0].communicate(timeout=300)
+    except Exception:
+        bg[0].kill()
+    try:
+        if bg[1] is None:
+            if os.path.exists(REPORT_STATE):
+                os.remove(REPORT_STATE)
+        else:
+            open(REPORT_STATE, 'wb').write(bg[1])
+    except OSError as _e:
+        say('report: last_report.json NOT put back (%s) -- the next report may count from this walk' % _e)
+
+
+def report_step(verify_failed=False, bg=None):
     """THE REPORT (user 2026-09-24: "Why does it take you so long to make the report? it shouldnt..."): what improved,
     why each pile mon is there, the safety check and which way to evolve -- written by cull_report.py from this pass's
     own files, printed verbatim after '=== REPORT ==='. Never fails the cull.
     verify_failed (R-B review): the report's lead line reads only the sync log, whose prune verify had passed -- after
-    VERIFY *** FAILED *** it still said "Release the N ... (the game read back N ...)". CULL_VERIFY=FAILED stops that."""
+    VERIFY *** FAILED *** it still said "Release the N ... (the game read back N ...)". CULL_VERIFY=FAILED stops that.
+    bg: report_start()'s background run, printed instead of a new one (a failed verify re-runs it with the flag)."""
+    if bg and verify_failed:
+        report_cancel(bg)
+        bg = None
     try:
         _env = dict(os.environ)
         _env.pop('CULL_VERIFY', None)
         if verify_failed:
             _env['CULL_VERIFY'] = 'FAILED'
-        _p = subprocess.run([PY, 'cull_report.py'], capture_output=True, text=True, encoding='utf-8',
-                            errors='replace', timeout=300, env=_env)
+        if bg:
+            try:
+                _o, _e = bg[0].communicate(timeout=300)
+            except subprocess.TimeoutExpired:
+                bg[0].kill()
+                raise
+            _p = subprocess.CompletedProcess(bg[0].args, bg[0].returncode, _o, _e)
+        else:
+            _p = subprocess.run([PY, 'cull_report.py'], capture_output=True, text=True, encoding='utf-8',
+                                errors='replace', timeout=300, env=_env)
         print('=== REPORT ===')
         print('\n'.join(l for l in (_p.stdout or '').splitlines() if not l.startswith('[adventure_effect]')), flush=True)
         if _p.returncode:
@@ -508,13 +561,57 @@ def report_step(verify_failed=False):
         say('report: skipped (%s)' % _e)
 
 
-def post_tags_run(extra=()):
+POST_PUSH_ARGS = ('--reconcile', '--retire')
+
+
+def post_push_start():
+    """THE POST-PUSH SESSION, STARTED WITH THE SYNC (2026-10-29, user: "I need it to be 60 secs. With same results, just
+    faster." -> "go 1 2"): sync_post_tags.py --go-file waits for this file's word -- 'attach' once prune's write was
+    answered (post_push_say), 'go' after a clean sync, 'stop' otherwise -- so its start, imports and attach overlap prune's
+    verify and the DB mirror instead of following them (no write in the sync: it attaches at 'go', as before). Its run after 'go' is the old one. -> (Popen, signal path) or None (then it runs after
+    the sync, as before)."""
+    import tempfile
+    _f = os.path.join(tempfile.gettempdir(), 'pogo_post_push_%d.txt' % os.getpid())
+    try:
+        open(_f, 'w').write('wait')
+        return subprocess.Popen([PY, 'sync_post_tags.py'] + list(POST_PUSH_ARGS) + ['--go-file', _f],
+                                stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding='utf-8',
+                                errors='replace'), _f
+    except Exception as _e:
+        say('post-push: not started with the sync (%s) -- it runs after it' % _e)
+        return None
+
+
+def post_push_say(pp, word):
+    """Tell the pre-started post-push session 'attach' / 'go' / 'stop' (never back from 'stop')."""
+    if not pp:
+        return
+    try:
+        with open(pp[1], encoding='utf-8') as f:
+            if f.read().strip() == 'stop':
+                return
+        open(pp[1], 'w').write(word)
+    except OSError as _e:
+        say('post-push: could not signal %r (%s)' % (word, _e))
+
+
+def post_tags_run(extra=(), pp=None):
     """sync_post_tags.py [extra] -> (CompletedProcess, {section: lines}), its job log saved. extra=('--reconcile',
     '--retire') (2026-09-30, cull speed pick 2): the post-push reconcile report and retire ride the same session as
-    Remote Trade and the tag order -- one attach instead of three. Raises only on a failure to run the process."""
+    Remote Trade and the tag order -- one attach instead of three. pp: post_push_start()'s process, already told 'go' --
+    its output is collected instead of a new run (2026-10-29). Raises only on a failure to run the process."""
     try:
-        _p = subprocess.run([PY, 'sync_post_tags.py'] + list(extra), capture_output=True, text=True, encoding='utf-8',
-                            errors='replace', timeout=900)
+        if pp:
+            try:
+                _o, _e = pp[0].communicate(timeout=900)
+            except subprocess.TimeoutExpired:
+                pp[0].kill()
+                _o, _e = pp[0].communicate()
+                raise subprocess.TimeoutExpired(pp[0].args, 900, _o, _e)
+            _p = subprocess.CompletedProcess(pp[0].args, pp[0].returncode, _o, _e)
+        else:
+            _p = subprocess.run([PY, 'sync_post_tags.py'] + list(extra), capture_output=True, text=True,
+                                encoding='utf-8', errors='replace', timeout=900)
     except subprocess.TimeoutExpired as _t:
         _o = _t.stdout.decode('utf-8', 'replace') if isinstance(_t.stdout, bytes) else (_t.stdout or '')
         _te = _t.stderr.decode('utf-8', 'replace') if isinstance(_t.stderr, bytes) else (_t.stderr or '')
@@ -701,6 +798,44 @@ def _pile_members():
     uids = open(p).read().split() if os.path.exists(p) else []
     return hashlib.sha256('\n'.join(sorted(format(int(u, 16), 'x') for u in uids)).encode()).hexdigest()
 
+PREFLIGHT_LOG = os.path.join('system', 'analysis', 'last_preflight.log')
+
+
+def preflight_start():
+    """THE WALK'S CLOSING PRE-FLIGHT, BESIDE THE AUDITS (2026-10-29, user: "I need it to be 60 secs. With same results,
+    just faster."): pogo_pipeline --preflight-later skips it, and it starts here the moment the walk ends -- the same
+    pile, DB and config it would have judged there, the same stamp the sync's pre-flight reuses -- while the walk
+    tripwires and the 11 audits run (~3 s off every pass). No phone contact. preflight_finish() judges it before any sync."""
+    try:
+        return subprocess.Popen([PY, os.path.join('system', 'scripts', 'preflight_transfer.py')], stdout=subprocess.PIPE,
+                                stderr=subprocess.STDOUT, text=True, encoding='utf-8', errors='replace')
+    except Exception as _e:
+        say('TRANSFER PRE-FLIGHT: could not start (%s)' % _e)
+        return None
+
+
+def preflight_finish(p):
+    """True when the pre-flight passed. Its whole output goes to last_preflight.log (it used to sit in the walk's log);
+    a FAIL or a crash is the walk's old rc 4: the pile rebuilt this pass is not safe to sync."""
+    if p is None:
+        say('TRANSFER PRE-FLIGHT: COULD NOT RUN -- the pile rebuilt this pass is UNPROVEN; nothing is synced')
+        return False
+    _out = p.communicate()[0] or ''
+    try:
+        open(PREFLIGHT_LOG, 'w', encoding='utf-8', errors='replace').write('rc=%s at %s\n%s' % (
+            p.returncode, time.strftime('%Y-%m-%d %H:%M:%S'), _out))
+    except OSError:
+        pass
+    echo_job_warnings('pre-flight', _out, PREFLIGHT_LOG)
+    if p.returncode != 0:
+        print('\n'.join([l for l in _out.splitlines() if l.strip()][-10:]))
+        say('TRANSFER PRE-FLIGHT FAILED rc=%s -- the pile rebuilt this pass is NOT safe to sync (log: %s)'
+            % (p.returncode, PREFLIGHT_LOG))
+        return False
+    say('TRANSFER PRE-FLIGHT: PASS (beside the audits; log: %s)' % PREFLIGHT_LOG)
+    return True
+
+
 def run_audits():
     """All of them concurrently -- read-only sqlite, no shared state, no phone contact."""
     procs = [(nm, need, subprocess.Popen([PY, sc], stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
@@ -855,10 +990,11 @@ def _main():
     _gw = job_warnings('\n'.join(_gm_line))
     if _gw:                                              # e.g. "rankings-1500.json: DOWNLOAD FAILED" above a final "REFRESH OK"
         echo_job_warnings('gamemaster', '\n'.join(_gm_line), '(this run only)')
+    _pf = False                                # no walk this pass -> the sync's own pre-flight judges the pile
     if '--skip-crawl' not in argv:
         catcher_pause()                        # one Frida client at a time: the catcher lets go first
         try:
-            rc, log = run_job('/api/recrawl')
+            rc, log = run_job('/api/recrawl', {'preflight_later': True})
         finally:
             catcher_resume()                   # the walk is done -- the audits below are offline (AutoCatcher ask, 2026-09-24)
         _rlog = os.path.join('system', 'analysis', 'last_job_api_recrawl.log')
@@ -870,6 +1006,7 @@ def _main():
                     'nothing was synced and the pile on disk is the last live pass\'s'); return 8
             say('RECRAWL FAILED rc=%s -- aborting' % rc); return 2
         say('recrawl ok')
+        _pf = preflight_start()                # the walk's closing pre-flight, beside what follows (2026-10-29)
         echo_job_warnings('recrawl', log, _rlog)              # H06-2: every fail-soft step's WARN, in the cull output
         try:                                   # 2026-09-23: prove every mon was re-read THIS scan
             import sqlite3 as _sq
@@ -940,6 +1077,7 @@ def _main():
     except Exception:
         _audited_files = None             # no digest -> the sync re-runs them, as before
     res = run_audits()
+    _pf_ok = preflight_finish(_pf) if _pf is not False else True   # False: no walk this pass, the sync's pre-flight runs it all
     for nm, ok, log in res:
         verdict = ([l for l in log.splitlines() if 'VERDICT' in l or 'UNEXPLAINED' in l] or ['(no verdict line)'])[-1]
         say('%-15s %s  %s' % (nm, 'PASS' if ok else '*** FAIL ***', verdict.strip()[:88]))
@@ -951,12 +1089,22 @@ def _main():
                 if any(k in l for k in ('FAIL', 'UNEXPLAINED', 'OVERLAP', '***', 'DRIFT')):
                     print('   ', l.strip()[:130])
         say('AUDIT GATE FAILED -- SYNC NOT RUN (pile is irreversible; fix first)'); return 1
+    if not _pf_ok:
+        say('RECRAWL FAILED rc=4 -- aborting'); return 2      # the walk's rc 4 (its pre-flight rejected the pile), as before
     if '--no-sync' in argv:
         say('audits pass; --no-sync given, stopping before any phone write'); return 0
 
     catcher_pause()                            # phone again: the catcher lets go (~1 s)
-    rc, log = run_job('/api/sync', {'dry': False, 'audited_pile_members': _audited, 'audited_tagsets': _audited_files,
-                                    'reconcile': False})    # its reconcile rides the post-push session below (pick 2)
+    _pp = post_push_start()                    # starts with the sync; attaches once prune's session is up (2026-10-29)
+    try:
+        rc, log = run_job('/api/sync', {'dry': False, 'audited_pile_members': _audited, 'audited_tagsets': _audited_files,
+                                        'reconcile': False},    # its reconcile rides the post-push session below (pick 2)
+                          # attach once the write is answered: its attach overlaps prune's verify, never the write
+                          on_poll=lambda j: post_push_say(_pp, 'attach') if 'INFO apply_changes:' in (j.get('log') or '') else None)
+    except BaseException:
+        post_push_say(_pp, 'stop')
+        raise
+    post_push_say(_pp, 'stop' if rc else 'go')
     # X4 (design review 2026-09-24): a write that still needs its server proof is recorded HERE, whatever the rc -- a
     # sync that failed after prune wrote some tags must not look proven on the next idle pass. Unreadable -> pending.
     _proof_pending(_sync_changed_tags(log))
@@ -966,6 +1114,11 @@ def _main():
     echo_job_warnings('sync', log, os.path.join('system', 'analysis', 'last_job_api_sync.log'))   # H06-2
     if rc:
         print('\n'.join([l for l in log.splitlines() if l.strip()][-8:]))
+        if _pp:
+            try:
+                _pp[0].communicate(timeout=120)    # told 'stop': it detaches (if it attached) and ends
+            except Exception:
+                _pp[0].kill()
         say('SYNC FAILED rc=%s' % rc); return 3
     catcher_pause(wait=False)                  # re-arm (90 s) for retire / verify / Remote Trade / Evolve for Size / tag order
 
@@ -977,8 +1130,9 @@ def _main():
     # job failed it. Then retire (fail-soft), Remote Trade, the tag order. The ladder starts first so it overlaps that
     # phone time; it already overlapped Remote Trade's DB mirror, the only thing this session writes that it reads.
     _lr = ladder_start()
+    _rb = report_start()
     try:
-        _post = post_tags_run(('--reconcile', '--retire'))
+        _post = post_tags_run(POST_PUSH_ARGS, pp=_pp)
     except Exception as _pe:
         _post = (subprocess.CompletedProcess(['sync_post_tags.py'], 1, '', 'not run: %s' % _pe),
                  {'RECONCILE': [], 'RETIRE': [], 'REMOTE TRADE': [], 'TAG ORDER': []})
@@ -995,6 +1149,7 @@ def _main():
                 _lr.communicate(timeout=300)
             except Exception:
                 _lr.kill()
+        report_cancel(_rb)                     # no report on a failed sync: as if it never ran
         say('SYNC FAILED rc=%s -- the post-push reconcile %s (log: system/analysis/last_job_post_tags.log)'
             % (_post[0].returncode, 'found drift' if 'Drift detected' in _rec else 'gave no verdict'))
         return 3
@@ -1051,7 +1206,7 @@ def _main():
             post_tags_say(*_post)              # Remote Trade + the tag order ran in the post-push session above
             catcher_resume()                   # last phone step done -- the reports are offline
             ladder_finish(_lr)
-            report_step()
+            report_step(bg=_rb)
             return 0
     catcher_pause(wait=False)                  # verify is a cache reconcile only -- it never restarts PoGo (2026-09-25)
     v = subprocess.run([PY, 'verify_tags_live.py'], capture_output=True, text=True,
@@ -1081,7 +1236,7 @@ def _main():
     post_tags_say(*_post)                      # Remote Trade + the tag order ran in the post-push session above
     catcher_resume()                           # last phone step done -- the reports are offline
     ladder_finish(_lr)
-    report_step(verify_failed=v.returncode != 0)
+    report_step(verify_failed=v.returncode != 0, bg=_rb)
     return 0 if v.returncode == 0 else 4
 
 if __name__ == '__main__':

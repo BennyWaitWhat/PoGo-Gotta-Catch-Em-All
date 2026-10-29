@@ -49,7 +49,7 @@ compute_ranks(conn, gm=None) is exposed for programmatic use and processes ALL i
 rows every call. The __main__ block mirrors compute_all_ranks.py so this file is
 drop-in: `python rank_cache.py` produces the same DB mutations and console output.
 """
-import json, sqlite3, math, time, os, sys, pickle, hashlib, bisect
+import json, sqlite3, math, time, os, sys, pickle, hashlib, bisect, operator
 
 # rank_cache.py lives in <project>/system/scripts/. compute_all_ranks.py reads its data
 # files (pvpoke_gamemaster.json, pokemon.db, form_overrides_complete.py) relative to the
@@ -187,8 +187,7 @@ class RankTableCache:
     base_stats). The only addition is persistence: the in-memory dict is loaded from /
     saved to rank_tables.pkl, guarded by a content hash so stale tables are never used.
 
-    For the bisect-based rank lookup we also memoize the negated-ascending view of each
-    sorted_sp (computed once per table), so compute_rank_for_iv stays O(log n) per mon.
+    compute_rank_for_iv bisects sorted_sp with a negating key, so a lookup stays O(log n) per mon.
     """
 
     def __init__(self, pokemon_db, content_hash, pkl_path=RANK_TABLES_PKL):
@@ -197,7 +196,6 @@ class RankTableCache:
         self.pkl_path = pkl_path
         # tables: key -> None | (sps, sorted_sp, base_stats)
         self.tables = {}
-        self._neg_cache = {}  # key -> negated-ascending copy of sorted_sp (for bisect)
         self._dirty = False
         self._load()
 
@@ -242,19 +240,6 @@ class RankTableCache:
         self._dirty = True
         return self.tables[key]
 
-    def negated(self, key, sorted_sp):
-        """Return (and memoize) the negated-ascending copy of sorted_sp for bisect_left.
-
-        sorted_sp is descending; negating yields an ascending array on which
-        bisect_left(neg, -target) gives the leftmost index of `target` in sorted_sp --
-        identical to sorted_sp.index(target), including for duplicate values and 0.
-        """
-        neg = self._neg_cache.get(key)
-        if neg is None:
-            neg = [-x for x in sorted_sp]
-            self._neg_cache[key] = neg
-        return neg
-
 
 def compute_rank_for_iv(cache, species_id, ia, idf, ista, cap, shadow):
     """Identical result to the original compute_rank_for_iv, using cached tables + bisect.
@@ -271,11 +256,31 @@ def compute_rank_for_iv(cache, species_id, ia, idf, ista, cap, shadow):
     if target_sp == 0:
         return None
     # Original: rank = sorted_sp.index(target_sp) + 1  (leftmost match, O(n))
-    # Behavior-preserving O(log n): bisect_left on negated-ascending array.
-    neg = cache.negated((species_id, cap, shadow), sorted_sp)
-    rank = bisect.bisect_left(neg, -target_sp) + 1
+    # Behavior-preserving O(log n): sorted_sp is descending, so under key=neg it is ascending and bisect_left finds the
+    # leftmost -target_sp -- the same index the memoized negated copy gave, without building one per table (2026-10-29:
+    # that copy was 1 s of every walk's rank step)
+    rank = bisect.bisect_left(sorted_sp, -target_sp, key=operator.neg) + 1
     pct = target_sp / sorted_sp[0] * 100 if sorted_sp[0] else 0
     return {'rank': rank, 'pct': pct, 'sp': target_sp}
+
+
+def _table(args):
+    return all_combos_sorted(*args)
+
+
+def prefill(cache, keys, workers=8):
+    """Build every missing table of `keys` in worker processes: the same all_combos_sorted, so each one is exactly what
+    get() would build on first use (2026-10-29: audit_rank_tags' ~360 fresh tables took ~7 s on one core)."""
+    todo = [k for k in dict.fromkeys(keys) if k not in cache.tables and cache.pokemon_db.get(k[0])]
+    if len(todo) < 2 * workers:
+        return
+    from concurrent.futures import ProcessPoolExecutor
+    args = [(b['atk'], b['def'], b['hp'], cap, shadow)
+            for sid, cap, shadow in todo for b in (cache.pokemon_db[sid]['baseStats'],)]
+    with ProcessPoolExecutor(max_workers=workers) as ex:
+        for k, (sps, sorted_sp) in zip(todo, ex.map(_table, args, chunksize=4)):
+            cache.tables[k] = (sps, sorted_sp, cache.pokemon_db[k[0]]['baseStats'])
+    cache._dirty = True
 
 
 
