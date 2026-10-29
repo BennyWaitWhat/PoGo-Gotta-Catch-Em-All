@@ -1,12 +1,17 @@
-"""Buddy actions inside Pokemon GO (Frida), imported by tools/buddy_run.py. The user, 2026-09-26: finish Snom's Frosmoth quest
-(10 buddy hearts), then rotate the hundo Eevee evolutions as buddy every 3 hearts.
+"""Buddy reads and actions inside Pokemon GO (Frida), imported by tools/buddy_run.py (the hundo Eevee buddy rotation).
 
-The game's OWN calls only -- BuddyRpcService.RequestBuddyStats() / Feed(Item, 1) / Pet() / RequestBuddyHistory() and
-BuddyPokemonService.SetBuddyPokemon(UInt64) -- one at a time, from Scheduler.LateUpdate (the game thread), replies read from the
-game's own promise with plain memory reads. Same rules as gym_tapper: exact-name class lookups only, every call through
-il2cpp_runtime_invoke with an exception slot, PROBE-form hook, and a QUIET flag the hook checks first (quiesce() before unload: an
-unload while a hook was inside a game call deadlocked the game on 2026-09-26 03:39). Service instances are found once at install.
-It runs next to gym_tapper (its own hook on the same LateUpdate); it never touches gym state.
+CAREFUL MODE (the user, 2026-10-29, after the 2026-09-26 lockout: "revisit the eevee rotation again please. Be careful."):
+- READS cost the server nothing: plain memory reads of what the game already holds. peek() = the current buddy, its hearts and
+  today's hearts (ClientPlayerProto, reached from the live graph's PlayerService once, then followed by pointer); the hearts of
+  every past buddy come from the BuddyHistoryData objects in memory (one liveness lookup at install).
+  The 2026-09-26 version polled RequestBuddyStats every 30 s (~50 server calls in 25 min); that call is gone.
+- ACTIONS are the game's own calls -- SetBuddyPokemon(UInt64), Pet(), Feed(Item, 1), RequestBuddyHistory() -- one at a time,
+  on the game thread from Scheduler.LateUpdate. The hook exists only while an action is queued or in flight: act() adds it,
+  idle() removes it once nothing is pending (both on the RPC thread, never from inside the hook). Between actions the game
+  runs with no hook of ours.
+Same rules as gym_tapper: exact-name class lookups only, every call through il2cpp_runtime_invoke with an exception slot, a
+PROBE-form hook, QUIET checked first (quiesce() before unload: an unload while a hook was inside a game call deadlocked the game
+on 2026-09-26 03:39). Not next to gym_run.py: that runner carries its own buddy module.
 """
 import os
 import sys
@@ -68,6 +73,7 @@ function promiseRead(q) {                     /* null = still pending */
 }
 
 var K = {}, M = {}, ITEM = {}, IBAG = null, BUD = {rpc: null, pok: null, q: [], fly: null, lastAt: 0, ho: null};
+var LU = null, HOOK = null, CPP = {path: null};
 var BERRIES = ['RazzBerry', 'NanabBerry', 'PinapBerry', 'BlukBerry', 'WeparBerry', 'GoldenRazzBerry', 'GoldenNanabBerry', 'GoldenPinapBerry', 'Poffin'];
 var BI1 = Memory.alloc(8), BI2 = Memory.alloc(8), BU64 = Memory.alloc(8);
 function budHearts(ts) {                      /* BuddyStatsShownHearts -> {km, cats: {category: [heart types]}} */
@@ -84,6 +90,20 @@ function budHearts(ts) {                      /* BuddyStatsShownHearts -> {km, c
   }
   return out;
 }
+function num(o, name) {                      /* a numeric field by name, read at its own width (64-bit -> Number) */
+  var fs = fieldsOf(klassOf(o));
+  for (var i = 0; i < fs.length; i++) if (fs[i].name === name) { var v = prim(o.add(fs[i].off), fs[i].te === 0x11 ? 0x08 : fs[i].te);
+    return typeof v === 'string' ? Number(v) : v; }
+  return undefined;
+}
+function budObserved(od, out) {               /* BuddyObservedData -> hearts, mood, today's hearts, fullness */
+  var oo = offs(klassOf(od));
+  out.pts = od.add(oo.CurrentPointsEarned).readS32(); out.emotion = od.add(oo.CurrentEmotionPoints).readS32();
+  out.today = budHearts(od.add(oo.TodayStatsShownHearts).readPointer());
+  var fs = od.add(oo.BuddyFeedStats).readPointer();
+  if (!fs.isNull()) { var fo = offs(klassOf(fs)); out.fullUntil = Number(fs.add(fo.FullnessExpirationMs).readS64()); out.full = fs.add(fo.PreMapFullnessPercentage).readFloat();
+    out.mapUntil = Number(fs.add(fo.MapExpirationMs).readS64()); }
+}
 function budRead(v, out) {                    /* any buddy reply -> plain data */
   var o = offs(klassOf(v));
   if (o.Result !== undefined) out.res = v.add(o.Result).readS32();
@@ -91,13 +111,7 @@ function budRead(v, out) {                    /* any buddy reply -> plain data *
   if (o.KmRemaining !== undefined) out.kmLeft = v.add(o.KmRemaining).readDouble();
   if (o.UpdatedBuddy !== undefined) { var ub = v.add(o.UpdatedBuddy).readPointer();
     if (!ub.isNull()) out.buddyId = ub.add(offs(klassOf(ub)).BuddyPokemonId).readU64().toString(); }
-  if (o.ObservedData !== undefined) { var od = v.add(o.ObservedData).readPointer();
-    if (!od.isNull()) { var oo = offs(klassOf(od));
-      out.pts = od.add(oo.CurrentPointsEarned).readS32(); out.emotion = od.add(oo.CurrentEmotionPoints).readS32();
-      out.today = budHearts(od.add(oo.TodayStatsShownHearts).readPointer());
-      var fs = od.add(oo.BuddyFeedStats).readPointer();
-      if (!fs.isNull()) { var fo = offs(klassOf(fs)); out.fullUntil = Number(fs.add(fo.FullnessExpirationMs).readS64()); out.full = fs.add(fo.PreMapFullnessPercentage).readFloat();
-        out.mapUntil = Number(fs.add(fo.MapExpirationMs).readS64()); } } }
+  if (o.ObservedData !== undefined) { var od = v.add(o.ObservedData).readPointer(); if (!od.isNull()) budObserved(od, out); }
   for (var nm in o) {                         /* GetBuddyHistoryOutProto: its RepeatedField<BuddyHistoryData> */
     if (out.hist) break;
     if (nm === 'Parser' || nm === 'Result') continue;
@@ -111,6 +125,47 @@ function budRead(v, out) {                    /* any buddy reply -> plain data *
                      Number(h.add(ho.LastSetTimestampMs).readS64()), Number(h.add(ho.LastUnsetTimestampMs).readS64())]); }
   }
 }
+/* ---- passive reads: what the game already holds, no server call ---- */
+function cppRead(o) {                         /* ClientPlayerProto -> trainer, current buddy, today's swaps, hearts */
+  var co = offs(K.cpp), out = {name: str(o.add(co.Name).readPointer())};
+  var bp = o.add(co.BuddyPokemonProto).readPointer();
+  if (!bp.isNull()) { var bo = offs(klassOf(bp)); out.buddyId = bp.add(bo.BuddyPokemonId).readU64().toString(); out.setMs = num(bp, 'LastSetTimestampMs');
+    var ds = bo.DailyBuddySwaps !== undefined ? bp.add(bo.DailyBuddySwaps).readPointer() : NULL;
+    if (!ds.isNull()) { out.swapsWindow = num(ds, 'Window'); out.swapsCount = num(ds, 'Count'); } }
+  var od = o.add(co.BuddyObservedData).readPointer(); if (!od.isNull()) budObserved(od, out);
+  return out;
+}
+function findCpp(root, depth) {               /* the field path (offsets) from the live PlayerService to its ClientPlayerProto */
+  var q = [[root, []]], seen = {}, n = 0;
+  while (q.length && n++ < 800) {
+    var it = q.shift(), o = it[0], path = it[1], k;
+    try { k = klassOf(o); } catch (e) { continue; }
+    if (k.equals(K.cpp)) return path;
+    if (path.length >= depth || seen[o.toString()]) continue; seen[o.toString()] = 1;
+    fieldsOf(k).forEach(function (x) {
+      if (!(x.te === 0x12 || x.te === 0x1c || (x.te === 0x15 && !IL.isValueType(IL.classFromType(x.t))))) return;   /* references only */
+      try { var p = o.add(x.off).readPointer(); if (!p.isNull()) q.push([p, path.concat([x.off])]); } catch (e) {} });
+  }
+  return null;
+}
+function follow(path) {                       /* re-walked on every peek: the game replaces the proto object, never the path */
+  var o = ptr(GRAPH.player);
+  for (var i = 0; i < path.length; i++) { o = o.add(path[i]).readPointer(); if (o.isNull()) return null; }
+  return isA(o, K.cpp) ? o : null;
+}
+function histRead() {                         /* every BuddyHistoryData in memory -> {pokemonId: [hearts, dex, lastSetMs]}; the highest
+                                                 hearts per id wins (stale copies of older fetches stay allocated; hearts only grow) */
+  var out = {}; if (!K.hist) return out;
+  var ho = offs(K.hist);
+  instances(K.hist, 2000).forEach(function (h) { try {
+    var id = h.add(ho.PokemonId).readU64().toString(), p = h.add(ho.CurrentPointsEarned).readS32();
+    if (!out[id] || p > out[id][0]) out[id] = [p, h.add(ho.PokedexId).readS32(), num(h, 'LastSetTimestampMs')];
+  } catch (e) {} });
+  return out;
+}
+function hookOn() { if (!HOOK && LU) HOOK = Interceptor.attach(LU, function () { if (QUIET) return; frameTick(); }); }   /* PROBE form */
+function hookOff() { if (HOOK && !BUSY) { HOOK.detach(); HOOK = null; } return HOOK === null; }
+
 var QUIET = false, BUSY = false, FT_AT = 0;
 function frameTick() {                        /* the game thread; one buddy call at a time */
   if (BUSY || QUIET) return;
@@ -131,14 +186,7 @@ function frameTick() {                        /* the game thread; one buddy call
         var cnt = {}; BERRIES.forEach(function (nm) { if (ITEM[nm] === undefined || !isA(IBAG, K.bag) || !M.itemCount) return;
           BI1.writeS32(ITEM[nm]); var r2 = call(M.itemCount, IBAG, 'GetItemCount', [BI1]); cnt[nm] = r2 && !r2.isNull() ? r2.add(16).readS32() : null; });
         send({k: 'buddy', what: 'count', counts: cnt}); BUSY = false; return; }
-      if (c.what === 'who') {                   /* the current buddy + swaps left (the service's own getters, answered at once) */
-        var w = {k: 'buddy', what: 'who'};
-        if (M.bWho && isA(BUD.pok, K.pok)) { var bp = call(M.bWho, BUD.pok, 'get_BuddyPokemon');
-          if (bp && !bp.isNull()) { var bo2 = offs(klassOf(bp)); w.buddyId = bp.add(bo2.BuddyPokemonId).readU64().toString(); w.setMs = Number(bp.add(bo2.LastSetTimestampMs).readS64()); } }
-        if (M.bLeft && isA(BUD.pok, K.pok)) { var bl = call(M.bLeft, BUD.pok, 'get_BuddySwapsLeft'); if (bl && !bl.isNull()) w.swapsLeft = bl.add(16).readS32(); }
-        send(w); BUSY = false; return; }
-      if (c.what === 'stats' && M.bStats && isA(BUD.rpc, K.rpc)) pr = call(M.bStats, BUD.rpc, 'RequestBuddyStats');
-      else if (c.what === 'hist' && M.bHist && isA(BUD.rpc, K.rpc)) pr = call(M.bHist, BUD.rpc, 'RequestBuddyHistory');
+      if (c.what === 'hist' && M.bHist && isA(BUD.rpc, K.rpc)) pr = call(M.bHist, BUD.rpc, 'RequestBuddyHistory');
       else if (c.what === 'pet' && M.bPet && isA(BUD.rpc, K.rpc)) pr = call(M.bPet, BUD.rpc, 'Pet');
       else if (c.what === 'feed' && M.bFeed && isA(BUD.rpc, K.rpc) && ITEM[c.arg] !== undefined) {
         BI1.writeS32(ITEM[c.arg]); BI2.writeS32(1); pr = call(M.bFeed, BUD.rpc, 'Feed', [BI1, BI2]); }
@@ -152,14 +200,15 @@ function frameTick() {                        /* the game thread; one buddy call
 }
 
 rpc.exports = {
-  install: function () {
+  install: function () {                      /* lookups + one liveness pass; NO hook (act() adds one only while an action runs) */
+    hookOff(); QUIET = false; GRAPH = null; GRAPH_NOTES = []; CPP.path = null; BUD.q.length = 0; BUD.fly = null;
     var ks = byName('Niantic.Zeppelin.Scheduler', 'Scheduler'), kr = byName('Niantic.Holoholo.Buddy', 'BuddyRpcService'),
-        kp = byName('Niantic.Holoholo.Buddy', 'BuddyPokemonService'), ki = byName('Holoholo.Rpc', 'Item');
-    if (!ks || !kr || !kp || !ki) return {ok: false, why: 'class missing', ks: !!ks, kr: !!kr, kp: !!kp, ki: !!ki};
-    K.rpc = kr; K.pok = kp; ITEM = enumLits(ki);
-    M.bFeed = methodOn(kr, 'Feed', 2); M.bPet = methodOn(kr, 'Pet', 0); M.bStats = methodOn(kr, 'RequestBuddyStats', 0);
+        kp = byName('Niantic.Holoholo.Buddy', 'BuddyPokemonService'), ki = byName('Holoholo.Rpc', 'Item'),
+        kc = byName('Holoholo.Rpc', 'ClientPlayerProto');
+    if (!ks || !kr || !kp || !ki || !kc) return {ok: false, why: 'class missing', ks: !!ks, kr: !!kr, kp: !!kp, ki: !!ki, kc: !!kc};
+    K.rpc = kr; K.pok = kp; K.cpp = kc; K.hist = byName('Holoholo.Rpc', 'BuddyHistoryData'); ITEM = enumLits(ki);
+    M.bFeed = methodOn(kr, 'Feed', 2); M.bPet = methodOn(kr, 'Pet', 0);
     M.bHist = methodOn(kr, 'RequestBuddyHistory', 0); M.bSet = methodOn(kp, 'SetBuddyPokemon', 1);
-    M.bWho = methodOn(kp, 'get_BuddyPokemon', 0); M.bLeft = methodOn(kp, 'get_BuddySwapsLeft', 0);
     var hr = -1, hp = -1;
     fieldsOf(kr).forEach(function (x) { if (cs(TN(x.t)) === 'Niantic.Holoholo.Rpc.IRpcHandler') hr = x.off; });
     fieldsOf(kp).forEach(function (x) { if (cs(TN(x.t)) === 'Niantic.Holoholo.Rpc.IRpcHandler') hp = x.off; });
@@ -168,17 +217,40 @@ rpc.exports = {
       var bo = -1, ibs = []; fieldsOf(kb).forEach(function (x) { if (cs(TN(x.t)) === 'Niantic.Holoholo.IPokemonBag') bo = x.off; });
       instances(kb, 8).forEach(function (b) { try { var pb = b.add(bo).readPointer(); if (bo >= 0 && !pb.isNull() && klassOf(pb).equals(kpb)) ibs.push(b); } catch (e) {} });
       IBAG = pickGraph(ibs); }
+    if (!GRAPH || !GRAPH.player) return {ok: false, why: 'no live service graph', graphNotes: GRAPH_NOTES};
     var cr = [], cq = [];
     instances(kr, 4).forEach(function (o) { try { if (hr >= 0 && !o.add(hr).readPointer().isNull()) cr.push(o); } catch (e) {} });
     instances(kp, 4).forEach(function (o) { try { if (hp >= 0 && !o.add(hp).readPointer().isNull()) cq.push(o); } catch (e) {} });
     BUD.rpc = graphPick(cr, 'BuddyRpcService'); BUD.pok = graphPick(cq, 'BuddyPokemonService');   /* the live graph's -- never the first hit */
     if (!BUD.rpc || !BUD.pok) return {ok: false, why: 'service instance not found in the live graph', rpc: !!BUD.rpc, pok: !!BUD.pok, graphNotes: GRAPH_NOTES};
     var lu = methodOn(ks, 'LateUpdate'); if (!lu) return {ok: false, why: 'no LateUpdate'};
-    Interceptor.attach(lu.readPointer(), function () { if (QUIET) return; frameTick(); });   /* PROBE form: no return trap */
-    return {ok: true, methods: {feed: !!M.bFeed, pet: !!M.bPet, stats: !!M.bStats, hist: !!M.bHist, set: !!M.bSet},
-            bag: !!IBAG, berries: BERRIES.filter(function (n) { return ITEM[n] !== undefined; }), graph: GRAPH, graphNotes: GRAPH_NOTES};
+    LU = lu.readPointer();
+    CPP.path = findCpp(ptr(GRAPH.player), 3);
+    return {ok: true, methods: {feed: !!M.bFeed, pet: !!M.bPet, hist: !!M.bHist, set: !!M.bSet}, cppPath: CPP.path,
+            bag: !!IBAG, berries: BERRIES.filter(function (n) { return ITEM[n] !== undefined; }), graph: GRAPH, graphNotes: GRAPH_NOTES,
+            hist: histRead()};
   },
-  buddy: function (what, arg) { BUD.q.push({what: what, arg: arg}); return BUD.q.length; },
-  quiesce: function () { QUIET = true; return !BUSY; }
+  peek: function () {                         /* pure reads: no game call, no hook, no server traffic */
+    try {
+      var o = CPP.path ? follow(CPP.path) : null;
+      if (!o) { CPP.path = findCpp(ptr(GRAPH.player), 3); o = CPP.path ? follow(CPP.path) : null; }
+      if (!o) return {err: 'no ClientPlayerProto reachable from the live PlayerService'};
+      var out = cppRead(o); out.via = 'path'; return out;
+    } catch (e) { return {err: 'peek ' + e}; }
+  },
+  peekScan: function () {                     /* fallback when no path exists: a liveness lookup; the freshest copy wins (newest buddy
+                                                 set time, then most hearts -- a frozen copy never moves forward) */
+    try {
+      var best = null;
+      instances(K.cpp, 8).forEach(function (o) { try { var r = cppRead(o); if (!r.buddyId) return;
+        if (!best || (r.setMs || 0) > (best.setMs || 0) || ((r.setMs || 0) === (best.setMs || 0) && (r.pts || 0) > (best.pts || 0))) best = r; } catch (e) {} });
+      if (!best) return {err: 'no ClientPlayerProto in memory'};
+      best.via = 'scan'; return best;
+    } catch (e) { return {err: 'peekScan ' + e}; }
+  },
+  act: function (what, arg) { if (QUIET) return -1; BUD.q.push({what: what, arg: arg}); hookOn(); return BUD.q.length; },
+  idle: function () { return (BUD.q.length || BUD.fly) ? false : hookOff(); },   /* true = no hook of ours in the game */
+  cancel: function () { BUD.q.length = 0; return !BUD.fly; },
+  quiesce: function () { QUIET = true; BUD.q.length = 0; return hookOff(); }
 };
 """
