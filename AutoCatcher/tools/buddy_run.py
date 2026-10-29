@@ -280,7 +280,7 @@ def trainer(a, p):
 def loop(a, T):
     names, rot = bag()
     hist = {i: v[0] for i, v in T.hist.items()}
-    if not hist:                                                 # none in memory: ask once, like opening the buddy history screen
+    if not hist and not a.dry:                                   # none in memory: ask once, like opening the buddy history screen
         r = T.act("hist") or {}
         hist = {x[0]: x[2] for x in r.get("hist") or []}
         say(f"  no buddy history in memory -- asked the game once: {len(hist)} records{' ' + str(r.get('err')) if r.get('err') else ''}")

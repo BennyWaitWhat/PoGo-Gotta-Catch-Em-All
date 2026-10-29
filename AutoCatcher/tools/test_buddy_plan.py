@@ -93,7 +93,23 @@ st = ST(ours=J, at_set={J: 281}, played={J: D})
 ok(st, P(J, 282, play=1, walk=3), 10, ("feed", None), "--feed: treats count as room, so walk 3/3 alone is not 'capped'", a=fa)
 assert br.next_in_cycle([E, J, F, G], G, [E, J]) == E and br.next_in_cycle([E, J, F, G], SNOM, [F]) == F
 assert br.room(P(J, 0, play=1, walk=2), False) == 1 and br.room(P(J, 0, play=1, walk=3, treat=1), True) == 2
-print(f"ok: {n} rotation decisions + cycle/room checks passed")
+
+
+class FakeT:                                                     # --dry must not act, even with no history in memory
+    hist, scan, acts = {}, False, []
+    def peek(self):
+        return {"name": "BennyValentinC", "buddyId": SNOM, "pts": 10, "today": {"cats": {}}}
+    def act(self, what, arg=None):
+        self.acts.append(what)
+
+
+br.bag = lambda: ({E: "Espeon 1", J: "Jolteon 2"}, [E, J])
+br.say = lambda msg: None
+fake = FakeT()
+br.loop(types.SimpleNamespace(dry=True, first=None, every=3, idle=60, feed=False, trainer="BennyValentinC", cmd=None), fake)
+assert fake.acts == [], f"--dry acted: {fake.acts}"
+n += 1
+print(f"ok: {n} rotation decisions + cycle/room + dry-run checks passed")
 
 # ---- buddy_tapper's walk to the player record (findCpp / follow / isA), the real JS under node ----
 def js_fn(name):
