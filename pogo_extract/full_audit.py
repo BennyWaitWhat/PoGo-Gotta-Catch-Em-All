@@ -47,7 +47,16 @@ def finish_step(rc):
     a human/assistant step (it needs the artifact tool)."""
     argv = sys.argv[1:]
     if rc == 0 and '--audits-only' not in argv and '--no-sync' not in argv and '--no-pages' not in argv:
-        for sc in ('gen_artifacts.py', 'gen_bag_pulse.py'):
+        # the dashboard pages feed neither the report nor Bag Pulse: written in the background (user 2026-10-29, "the
+        # report process, it takes too long" -- 9 s of every pass). shortcut: a failure there prints nowhere; check the
+        # art_*.html times if the dashboard looks stale.
+        try:
+            subprocess.Popen([PY, 'gen_artifacts.py'], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                             stderr=subprocess.DEVNULL)
+            say('gen_artifacts: started in the background')
+        except Exception as _e:
+            say('gen_artifacts: skipped (%s)' % _e)
+        for sc in ('gen_bag_pulse.py',):
             try:
                 _p = subprocess.run([PY, sc], capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=600)
                 _last = [l for l in (_p.stdout or '').splitlines() if l.strip()]
