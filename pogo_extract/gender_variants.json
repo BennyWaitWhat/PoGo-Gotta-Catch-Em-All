@@ -1,13 +1,26 @@
 {
  "_source": "Bulbapedia, List of Pokemon with gender differences (fetched 2026-09-23); Pokemon GO shows every one of these (GO Wiki / GO Center; Eevee since client 0.163). Species whose gender is already a separate FORM in GO (Unfezant, Frillish, Jellicent, Pyroar, Meowstic, Indeedee, Basculegion, Oinkologne) are included -- harmless.",
- "_rule": "user 2026-09-23 (\"why is dark hippo tagged? ... this cant be the only pokemon\"): male and female LOOK different, so each gender is its own plain ladder / variant for these species.",
+ "_rule": "user 2026-09-23 (\"why is dark hippo tagged? ... this cant be the only pokemon\"): male and female LOOK different, so each gender is its own plain ladder / variant for these species. NARROWED 102 -> 14 on 2026-10-29 (user, shown the list: \"Just the ones with actual physical differences and colors and patterns.\", then \"remove\" on Snover, Shinx, Doduo, Dodrio, Magikarp, Gyarados, Butterfree, Wobbuffet, every pattern difference and Steelix, Heracross, the Gible line, Wooper, Luxio; the size-only ones went too: \"good as is, cull.\"): Venusaur, Pikachu, Raichu, Combee, Hippopotas, Hippowdon + the 8 Gen 5+ looks. The other 88 are in _removed_2026_10_29.",
  "pids": [
   3,
+  25,
+  26,
+  415,
+  449,
+  450,
+  521,
+  592,
+  593,
+  668,
+  678,
+  876,
+  902,
+  916
+ ],
+ "_removed_2026_10_29": [
   12,
   19,
   20,
-  25,
-  26,
   41,
   42,
   44,
@@ -76,7 +89,6 @@
   404,
   405,
   407,
-  415,
   417,
   418,
   419,
@@ -84,8 +96,6 @@
   443,
   444,
   445,
-  449,
-  450,
   453,
   454,
   456,
@@ -95,14 +105,6 @@
   461,
   464,
   465,
-  473,
-  521,
-  592,
-  593,
-  668,
-  678,
-  876,
-  902,
-  916
+  473
  ]
 }

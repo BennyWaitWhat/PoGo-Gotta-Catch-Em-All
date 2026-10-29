@@ -686,7 +686,7 @@ def main():
     # gender-split for gender-evolvers (audit F7): the displacing specials pool must use the SAME key as
     # _stage_key, else a male shiny eats a female Combee's plain-floor slot (her line is the one that evolves).
     def _gterm(r):
-        # GENDER IS A LOOK (2026-09-23): gender-locked evolvers AND the 102 visibly dimorphic species (gender_variants.json,
+        # GENDER IS A LOOK (2026-09-23): gender-locked evolvers AND the visibly dimorphic species (gender_variants.json, 14 since 2026-10-29,
         # e.g. the dark female Hippowdon) each get a ladder per gender -- evolvable_forms.gender_key is the ONE answer.
         return evolvable_forms.gender_key(r['pokemon_id'], r['gender'])
     # THE stage key. (pid, cf, gender) for every ordinary line; for a PATTERN-POOLED line (pattern_pools /
