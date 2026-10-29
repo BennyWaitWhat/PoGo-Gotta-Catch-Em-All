@@ -27,7 +27,7 @@ function run(name, opts, want) {
     api.tick(NOW);
   }
   const st = api.get('AP.st');
-  const got = { taps, range: api.get('AP.maxDist'), items: st.items, dup: st.dup || 0 };
+  const got = { taps, range: api.get('AP.maxDist'), items: st.items, dup: st.dup || 0, mons: st.mons, skipped: st.skipped || 0 };
   const bad = Object.keys(want).filter((k) => JSON.stringify(got[k]) !== JSON.stringify(want[k]));
   if (bad.length) failed++;
   console.log((bad.length ? 'FAIL ' : 'ok   ') + name.padEnd(12), 'taps', JSON.stringify(taps), 'range', got.range, 'items', JSON.stringify(got.items),
@@ -60,9 +60,14 @@ run('same-reward', { script: (s, W, api, now) => {
   if (s === 3) api.reply('0xb', 1, [[1152, 1]], -1, -1, null, now);                                                            // a 2nd tap, same reward
   if (s === 5) { api.reply('0xc', 1, [[1155, 1]], -1, -1, null, now); api.reply('0xd', 1, [[1155, 1]], -1, -1, null, now + 20); }   // + a clone 20 ms later
 } }, { items: { 'Tart Apple': 2, 'Syrupy Apple': 1 }, dup: 2 });
-// APPLE POKEMON (09-30): catchTick waits for the game to open it; after 4 s without that, tap its apple -- once a minute
+// APPLE POKEMON (10-29, "skip the catch sequence"): a revealed Pokemon waiting on the map is never tapped -- a tap opens the
+// game's encounter screen; catchTick opens it in the background instead
 const waiting = (api, now) => api.set("E['20']", { st: 'new', firstSeen: now });
-run('enc-retap', { script: (s, W, api, now) => { if (s === 0) { W.p1 = mk(20, { isEnc: true }); waiting(api, now); } } }, { taps: [20, 20] });
-run('enc-opened', { script: (s, W, api, now) => { if (s === 0) { W.p1 = mk(20, { isEnc: true }); waiting(api, now); } if (s === 20) { api.set("GOENC['20']", now); api.set("E['20'].st", 'ready'); } } }, { taps: [20] });
-run('enc-far', { script: (s, W, api, now) => { if (s === 0) { W.p1 = mk(20, Object.assign({ isEnc: true }, far)); waiting(api, now); } } }, { taps: [] });
+run('enc-untapped', { script: (s, W, api, now) => { if (s === 0) { W.p1 = mk(20, { isEnc: true }); waiting(api, now); } } }, { taps: [] });
+// BOX POKEMON (10-29): our tap's reveal is emptied (skipped); its second parse pass reads the same items without the
+// Pokemon and counts once. A reveal no tap of ours explains (a hand's tap) is left to the game.
+run('box-skip', { script: (s, W) => { if (s === 0) W.p1 = mk(21, { type: 'TAPPABLE_TYPE_HALLOWEEN' }); },
+  onTap: (k, W, pend) => { pend.push({ sk: '0xb', st: 1, items: [[25, 6]], sp: 92 }); pend.push({ sk: '0xb', st: 1, items: [[25, 6]] }); delete W[k]; } },
+  { taps: [21], items: { 'item 25': 6 }, mons: 1, skipped: 1, dup: 1 });
+run('hand-reveal', { script: (s, W, api, now) => { if (s === 1) api.reply('0xc', 1, [], 92, -1, null, now); } }, { taps: [], mons: 1, skipped: 0 });
 process.exit(failed ? 1 : 0);
