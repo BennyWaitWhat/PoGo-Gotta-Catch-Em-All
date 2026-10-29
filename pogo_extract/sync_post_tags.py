@@ -56,8 +56,8 @@ def _signal(path, want, timeout_s=900):
 
 def main():
     """--go-file F: PRE-STARTED WITH THE SYNC (2026-10-29, user: "I need it to be 60 secs. With same results, just faster."
-    -> "go 1 2"). full_audit starts this with the sync job; it attaches once F says 'attach' (prune's session is up and
-    gated) and runs only once F says 'go' (the sync ended clean) -- 'stop' at either point and nothing runs. What it does
+    -> "go 1 2"). full_audit starts this with the sync job; it attaches once F says 'attach' (prune's write was answered)
+    and runs only once F says 'go' (the sync ended clean) -- 'stop' at either point and nothing runs. What it does
     after 'go' is the old run, in the old order: the offers are computed then, on the DB mirror that sync just wrote."""
     gf = sys.argv[sys.argv.index('--go-file') + 1] if '--go-file' in sys.argv else None
     if not gf:
@@ -68,11 +68,13 @@ def main():
     import pogo_il2cpp as pg
     pg.wait_ready_to_attach(timeout_s=300)
     sess, pid = pg.get_session()
+    print('post-push: attached %s, waiting for the sync' % time.strftime('%H:%M:%S'), flush=True)
     handed = False
     try:
         if _signal(gf, ('go',)) == 'stop':
             print('post-push: not run -- the sync did not end clean')
             return 0
+        print('post-push: go %s' % time.strftime('%H:%M:%S'), flush=True)
         handed = True                    # _main detaches it
         return _main((sess, pid))
     finally:

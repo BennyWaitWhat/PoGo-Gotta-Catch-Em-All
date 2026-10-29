@@ -566,9 +566,9 @@ POST_PUSH_ARGS = ('--reconcile', '--retire')
 
 def post_push_start():
     """THE POST-PUSH SESSION, STARTED WITH THE SYNC (2026-10-29, user: "I need it to be 60 secs. With same results, just
-    faster." -> "go 1 2"): sync_post_tags.py --go-file waits for this file's word -- 'attach' once prune's session is up
-    and gated (post_push_say), 'go' after a clean sync, 'stop' otherwise -- so its start, imports and attach overlap the
-    sync instead of following it. Its run after 'go' is the old one. -> (Popen, signal path) or None (then it runs after
+    faster." -> "go 1 2"): sync_post_tags.py --go-file waits for this file's word -- 'attach' once prune's write was
+    answered (post_push_say), 'go' after a clean sync, 'stop' otherwise -- so its start, imports and attach overlap prune's
+    verify and the DB mirror instead of following them (no write in the sync: it attaches at 'go', as before). Its run after 'go' is the old one. -> (Popen, signal path) or None (then it runs after
     the sync, as before)."""
     import tempfile
     _f = os.path.join(tempfile.gettempdir(), 'pogo_post_push_%d.txt' % os.getpid())
@@ -1099,7 +1099,8 @@ def _main():
     try:
         rc, log = run_job('/api/sync', {'dry': False, 'audited_pile_members': _audited, 'audited_tagsets': _audited_files,
                                         'reconcile': False},    # its reconcile rides the post-push session below (pick 2)
-                          on_poll=lambda j: post_push_say(_pp, 'attach') if 'INFO READY' in (j.get('log') or '') else None)
+                          # attach once the write is answered: its attach overlaps prune's verify, never the write
+                          on_poll=lambda j: post_push_say(_pp, 'attach') if 'INFO apply_changes:' in (j.get('log') or '') else None)
     except BaseException:
         post_push_say(_pp, 'stop')
         raise
