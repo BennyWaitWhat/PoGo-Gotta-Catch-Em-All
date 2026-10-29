@@ -509,11 +509,17 @@ function catchTick(now) {
          if the game has not opened it within 8 s of our first sighting, open it ourselves (the old path). */
       if (!e.firstSeen) e.firstSeen = now;
       var go = GOENC[enc];
-      if (go && go > (AP.goneAt[enc] || 0)) { e.st = 'ready'; e.tOpen = now; e.due = Math.max(now, go + 300); e.probs = AP.probs[enc] || null; e.gameOpened = 1; ST.appleGameOpen = (ST.appleGameOpen || 0) + 1; continue; }
-      if (now - e.firstSeen < 8000 || now - (AP.encTap[enc] || 0) < 8000) { PEND.push(enc); continue; }   /* appleTick re-taps its apple at 4 s */
-      /* never opened by the game = a stale reveal: 27 duds + 4 flees in 4 min came only from these, 0 from fresh ones.
-         Cool down 60 s, then try again while it is still on the map (appleTick taps its apple, as a hand would). */
-      AP.gaveUp[enc] = now + 60000; AP.goneAt[enc] = now; ST.appleStale = (ST.appleStale || 0) + 1; finish(enc, 'applestale'); continue;
+      if (go && go > (AP.goneAt[enc] || 0)) {
+        e.gameOpened = 1; ST.appleGameOpen = (ST.appleGameOpen || 0) + 1;
+        /* someone else opened an emptied reveal: that open goes over the network, so wait for its reply like our own open.
+           Thrown 0.3-0.5 s after it, 3 of 4 fled (10-29 05:39-05:40). */
+        if (AP.skipped[enc]) { e.st = 'open'; e.tOpen = go; e.opens++; continue; }
+        e.st = 'ready'; e.tOpen = now; e.due = Math.max(now, go + 300); e.probs = AP.probs[enc] || null; continue;
+      }
+      /* A reveal we emptied (AP.skipped) never gets the game's encounter screen: open it now, in the background like any
+         spawn. Any other reveal gets 8 s for the game's own open first. Giving up there and re-tapping its apple (which
+         makes the game open its screen) skipped every reveal the game did not open -- 2 or 3 at once (10-29). */
+      if (!AP.skipped[enc] && now - e.firstSeen < 8000) { PEND.push(enc); continue; }
     }
     openOne(enc, e, o, now); n++;
   }
@@ -524,6 +530,7 @@ function catchTick(now) {
       if (r && r.t < e.tOpen - 100) { delete RESP[enc]; r = null; }   /* an older answer: your own manual encounter */
       if (r) {
         delete RESP[enc];
+        if (e.apple) log('APPLEOPEN #' + e.pid + ' enc=' + enc + ' reply status=' + r.st);
         if (r.st === 1) { e.probs = r.p; e.st = 'ready'; e.due = now + READY_MS; }
         else if (notInRange(e, r.st) && e.opens < 3) { e.st = 'new'; e.retryAt = now + 4000; PEND.push(enc); }
         else if (bagFull(e, r.st)) { HOLD = now + 60000; HOLDWHY = 'Pokemon storage is full'; ST.holds++; log('HOLD 60s: ' + HOLDWHY); e.st = 'new'; e.retryAt = now + 60000; PEND.push(enc); }
@@ -533,6 +540,7 @@ function catchTick(now) {
         /* APPLE POKEMON: the game answers its encounter from the tappable reply it already holds -- SendEncounterRequest
            sends nothing (traced 2026-09-29: bfni -> SendEncounterRequest, no EncounterProto), so no reply will come.
            Throw with the reveal's catch probabilities. (Waiting gave 26 NORESP in 3 min.) */
+        log('APPLEOPEN #' + e.pid + ' enc=' + enc + ' no reply in 1.5 s -- throwing');
         e.probs = AP.probs[enc] || null; e.st = 'ready'; e.due = now + READY_MS;
       } else if (now - e.tOpen > 8000) {
         if (e.opens < 2) { e.st = 'new'; PEND.push(enc); } else { log('NORESP ' + e.cls + ' #' + e.pid + ' (retry in 20 s)'); finish(enc, 'noresp'); }
@@ -755,7 +763,7 @@ var AP = {ctl: NULL, f: null, gos: [], handler: null, evF: NULL, ev: NULL, int32
              visibleRadiusMeters) and shrink below the first ERROR_NOT_IN_RANGE (status 4), never below the farthest success.
              (09-30: starting at 80 m and growing +10 m per edge success sat at 100 m with no failure ever seen.) */
           maxDist: 150, gap: 500, q: [], retry: {}, okD: 0, failD: 9999,
-          encTap: {}, goneAt: {}, lastPtr: '',   /* encTap: enc -> when we tapped its apple Pokemon; goneAt: enc -> last give-up */
+          goneAt: {}, lastPtr: '', skipped: {},   /* goneAt: enc -> last give-up; skipped: enc -> when we emptied its reveal */
           /* APPLE POKEMON (user: "sometimes an apple is a pokemon you gotta catch"): a reveal leaves the Pokemon on the map as a
              HIDDEN wild (VisibleOnMap 0) that walk() used to skip -- census 'Wild 8/0 hidden=8'. Every revealed encounter id
              (reply to our tap, or an IsEncounter tappable seen on the map) goes here and walk() catches it. */
@@ -802,17 +810,9 @@ function appleTick(now) {   /* UnityMain, from pump() */
     if (!s) { delete AP.cand[k]; continue; }
     if (s.despawn && s.despawn < now) { delete AP.cand[k]; AP.dead[k] = s.enc; AP.st.expired++; continue; }
     var key = s.enc + ':' + s.isEnc;
-    if (s.isEnc) { if (!AP.revealed[s.enc]) OUT.revealed.push(s.enc); AP.revealed[s.enc] = now; }   /* live encounter tappable: keep it fresh */
-    if (s.isEnc) {
-      /* An apple Pokemon still on the map that the game has not opened: tap its apple, as a hand would, so the game opens
-         it (then catchTick throws). Only once catchTick has waited 4 s for the game, and at most once a minute. */
-      var ee = E[s.enc];
-      if (!ee || ee.st !== 'new' || !ee.firstSeen || now - ee.firstSeen < 4000 || GOENC[s.enc] > (AP.goneAt[s.enc] || 0)
-          || now - (AP.encTap[s.enc] || 0) < 60000 || !s.ready || !me) continue;
-      var de = meters(me.lat, me.lng, s.lat, s.lng);
-      if (de <= AP.maxDist && (!best || de < best.d)) best = {o: o, key: key, d: de, enc: s.enc, isEnc: true};
-      continue;
-    }
+    /* A live encounter tappable is a revealed Pokemon still on the map: keep it fresh for walk(). Never tapped -- a tap
+       makes the game open its encounter screen (Benny 2026-10-29: "skip the catch sequence"); catchTick opens it instead. */
+    if (s.isEnc) { if (!AP.revealed[s.enc]) OUT.revealed.push(s.enc); AP.revealed[s.enc] = now; continue; }
     var want = s.type && !AP.skip[s.type];
     if (want && !AP.seen[key]) { AP.seen[key] = 1; AP.st.live++; }
     if (AP.tapped[key] || s.isEnc || !want || !s.ready || !me) continue;
@@ -823,8 +823,7 @@ function appleTick(now) {   /* UnityMain, from pump() */
   }
   if (best && now - AP.lastTap >= AP.gap) {   /* the nearest apple first */
     if (AP.ev.isNull() && !AP.evF.isNull()) { var box = Memory.alloc(PS); box.writePointer(NULL); il().staticGet(AP.evF, box); AP.ev = box.readPointer(); }
-    AP.lastTap = now; delete AP.retry[best.key];
-    if (best.isEnc) { AP.encTap[best.enc] = now; AP.st.retaps = (AP.st.retaps || 0) + 1; } else AP.tapped[best.key] = now;
+    AP.lastTap = now; delete AP.retry[best.key]; AP.tapped[best.key] = now;
     call(AP.handler, best.o, [best.o.add(AP.f.gesture).readPointer(), AP.ev]);
     AP.st.taps++;
     if (!LASTOK) bump(AP.st.fails, 'tapexc');
@@ -838,7 +837,7 @@ function appleTick(now) {   /* UnityMain, from pump() */
   for (var ge in GOENC) if (now - GOENC[ge] > 60000) delete GOENC[ge];
   for (var rk in AP.revealed) if (now - AP.revealed[rk] > 600000) { delete AP.revealed[rk]; delete AP.probs[rk]; }
   for (var uk in AP.goneAt) if (now - AP.goneAt[uk] > 600000) { delete AP.goneAt[uk]; delete AP.gaveUp[uk]; }
-  for (var tk in AP.encTap) if (now - AP.encTap[tk] > 600000) delete AP.encTap[tk];
+  for (var tk in AP.skipped) if (now - AP.skipped[tk] > 600000) delete AP.skipped[tk];
   if (Object.keys(AP.gaveUp).length > 3000) AP.gaveUp = {};
 }
 function onTappableOut(s) {   /* ProcessTappableOutProto, any thread: memory reads only */
@@ -865,7 +864,7 @@ function onTappableOut(s) {   /* ProcessTappableOutProto, any thread: memory rea
     if (AP.capOff >= 0) var probs = readProbs(en.add(AP.capOff).readPointer());
   }
   if (st === 0 && !items.length && sp < 0) return;   /* an empty pass (the same reply goes through two parse methods) */
-  apReply(s.toString(), st, items, sp, cp, probs, now);
+  if (apReply(s.toString(), st, items, sp, cp, probs, now) && AP.rf.encOk) s.add(AP.rf.Encounter).writePointer(NULL);
 }
 function apReply(sk, st, items, sp, cp, probs, now) {   /* the reply's effect, plain JS (tools/catcher_apple_sim.js runs it) */
   /* The same reply goes through two parse methods: same object, same content -- count it once (a clone of it would be a new
@@ -880,8 +879,17 @@ function apReply(sk, st, items, sp, cp, probs, now) {   /* the reply's effect, p
   if (q && st === 4) { AP.failD = Math.min(AP.failD, q.d); AP.maxDist = Math.max(30, AP.okD, Math.min(AP.maxDist, q.d - 5)); delete AP.tapped[q.key]; AP.retry[q.key] = now + 3000; }
   if (st !== 1) { bump(AP.st.fails, 'status' + st); log('APPLEFAIL status=' + st + (st === 4 ? ' (not in range at ' + (q ? q.d : '?') + ' m -> range ' + AP.maxDist + ' m, retry when closer)' : st === 2 ? ' (not found)' : '')); return; }
   items.forEach(function (x) { var nm = AP.names[x[0]] || ('item ' + x[0]); AP.st.items[nm] = (AP.st.items[nm] || 0) + x[1]; log('APPLE +' + x[1] + ' ' + nm); });
-  if (sp >= 0 && q) { AP.revealed[q.enc] = now; OUT.revealed.push(q.enc); if (probs) AP.probs[q.enc] = probs; }
   if (sp >= 0) { AP.st.mons++; log('APPLE revealed #' + sp + (cp >= 0 ? ' CP' + cp : '') + (q ? ' enc=' + q.enc : '') + ' -- catching it'); }
+  if (!(sp >= 0 && q)) return false;
+  AP.revealed[q.enc] = now; OUT.revealed.push(q.enc); if (probs) AP.probs[q.enc] = probs;
+  /* NO ENCOUNTER SCREEN (Benny 2026-10-29: "just reveal the pokemon, skip the catch sequence, ... let the autocatcher do
+     its job, but do get the items"). true = the caller empties this reply's Encounter, so the game handles it like an
+     items-only box: no reveal, no encounter screen; catchTick opens the Pokemon itself. The game's own screen after 2-3
+     reveals in a row went with 5 PoGo deaths on 10-29 (UnityMain, uncaught Il2CppExceptionWrapper, 1-3 s after them).
+     The reply's next parse pass (or a clone) then reads the same items without the Pokemon: the same reply. */
+  AP.skipped[q.enc] = now; AP.st.skipped = (AP.st.skipped || 0) + 1;
+  AP.lastSig = st + '|' + JSON.stringify(items) + '|-1|-1';
+  return true;
 }
 function appleInstall() {   /* RPC thread: metadata + hooks only */
   var h = il();
@@ -914,7 +922,8 @@ function appleInstall() {   /* RPC thread: metadata + hooks only */
   var rsp = clsByName('Holoholo.Rpc', 'ProcessTappableOutProto'), nr = 0;
   if (!rsp.isNull()) {
     var RF = fieldsAll(rsp);
-    AP.rf = {Status: RF.Status ? RF.Status.off : 0x10, Reward: RF.Reward ? RF.Reward.off : 0x18, Encounter: RF.Encounter ? RF.Encounter.off : 0x20};
+    AP.rf = {Status: RF.Status ? RF.Status.off : 0x10, Reward: RF.Reward ? RF.Reward.off : 0x18, Encounter: RF.Encounter ? RF.Encounter.off : 0x20,
+             encOk: !!RF.Encounter && /TappableEncounterProto$/.test(RF.Encounter.tn)};   /* only a field found by name is ever written */
     var lpk = clsByName('Holoholo.Rpc', 'LootProto'); if (!lpk.isNull()) { var LF = fieldsAll(lpk); AP.loot = LF.LootItem ? LF.LootItem.off : 0x10; }
     var lik = clsByName('Holoholo.Rpc', 'LootItemProto');
     if (!lik.isNull()) { var IF = fieldsAll(lik); AP.liCount = IF.Count ? IF.Count.off : -1;
@@ -1144,6 +1153,14 @@ def flag(name):
         return False
 
 
+def flag_mtime(name):
+    """When the app last wrote this switch (any write, same value or not)."""
+    try:
+        return os.stat(FLAGS[name]).st_mtime_ns
+    except OSError:
+        return None
+
+
 def paused_until():
     try:
         with open(PAUSE_FILE) as fh:
@@ -1289,9 +1306,8 @@ def apple_part(stt, it):
     got = ",".join(f"{k.replace(' Apple', '')}+{v}" for k, v in a["items"].items()) or "0"
     duds = (stt.get("st") or {}).get("appleDuds", 0)
     gopen = (stt.get("st") or {}).get("appleGameOpen", 0)
-    stale = (stt.get("st") or {}).get("appleStale", 0)
-    return (f" | apples taps={a['taps']} retaps={a.get('retaps', 0)} got={got} revealed={a['mons']} seen={a['live']} duds={duds}"
-            f" gameopened={gopen} stale={stale}" + (f" dup={a['dup']}" if a.get("dup") else "")
+    return (f" | apples taps={a['taps']} got={got} revealed={a['mons']} noscreen={a.get('skipped', 0)} seen={a['live']} duds={duds}"
+            f" gameopened={gopen}" + (f" dup={a['dup']}" if a.get("dup") else "")
             + (f" fails={a['fails']}" if a["fails"] else "") + f" range={ap.get('range')}m (ok<={ap.get('okD')} fail>={ap.get('failD')})"
             + f" bag S/T/Sy={bag} ({gain} this run)")
 
@@ -1426,10 +1442,17 @@ def session_loop(w, done_ids, base):
     if base["quick"] >= 2:
         w(f"!!! SAFETY HOLD: PoGo died within {QUICK_S}s of our attach {base['quick']}x in a row -- not attaching "
           f"for {HOLD_S // 60} min (toggle catching off/on to override)")
-        end = time.time() + HOLD_S
+        # The override is watched HERE: with Apples always on, catch-off no longer ends this process, so the hold sat out its
+        # 30 min through three off/on toggles in the app (2026-10-29 05:11-05:15).
+        end, mt0, n = time.time() + HOLD_S, flag_mtime("catch"), 0
         while time.time() < end:
-            time.sleep(60)
-            w(f"safety hold ({int(end - time.time()) // 60} min left)")
+            time.sleep(1)
+            n += 1
+            if flag_mtime("catch") != mt0:
+                w("safety hold lifted: catching was switched in the app")
+                break
+            if n % 60 == 0:
+                w(f"safety hold ({int(end - time.time()) // 60} min left)")
         base["quick"] = 0
 
 
