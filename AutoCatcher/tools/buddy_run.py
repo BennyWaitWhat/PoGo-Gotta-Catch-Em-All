@@ -264,6 +264,13 @@ def shot(a):
         say(f"   (no screencap: {e})")
 
 
+def swaps_today(p, now):
+    """the game's own switch count for today. DailyBuddySwaps.Window is a day number, UTC or local (both read 20755 at
+    16:03 EDT 2026-10-29): either one counts, so 20:00-24:00 EDT never forgets his switches (the game allows 20)."""
+    days = (int(now // 86400), int((now + time.localtime(now).tm_gmtoff) // 86400))
+    return (p.get("swapsCount") or 0) if p.get("swapsWindow") in days else 0
+
+
 def table(st, names, cur=None):
     for i in st["rot"]:
         p = st["hist"].get(i)
@@ -279,7 +286,7 @@ def status(p, names, st, now):
     return (f"buddy {name_of(names, cur)}: {pts} hearts" + (f" ({BEST - pts} to Best)" if pts < BEST else " (Best)")
             + " | today " + ", ".join(f"{CAT[c]} {h.get(c, 0)}/{CAP[c]}" for c in (2, 4, 1, 5, 3, 6))
             + f" | walk {today.get('km') or 0:.2f}/2 km" + (f" | +{since} since set" if since is not None else "")
-            + f" | switches today {p.get('swapsCount') if p.get('swapsWindow') == int(now // 86400) else 0}")
+            + f" | switches today {swaps_today(p, now)}")
 
 
 def trainer(a, p):
@@ -369,7 +376,7 @@ def loop(a, T):
 
 
 def switch(a, T, st, p, want, why, names, now, today):
-    used = max(p.get("swapsCount") or 0 if p.get("swapsWindow") == int(now // 86400) else 0, st["swaps"].get(today, 0))
+    used = max(swaps_today(p, now), st["swaps"].get(today, 0))
     if used >= a.max_swaps:
         if st.get("budget") != today:
             st["budget"] = today

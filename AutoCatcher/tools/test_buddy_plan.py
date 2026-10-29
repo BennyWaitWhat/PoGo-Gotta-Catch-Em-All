@@ -195,7 +195,22 @@ T.hist = {E: [290, 0, 0]}                                        # the current b
 br.loop(types.SimpleNamespace(dry=True, first=None, every=3, idle=60, feed=False, trainer="BennyValentinC", cmd=None), T)
 rows = [s for s in said if "hearts (" in s]
 assert "Jolteon" in rows[0] and "295" in rows[0], f"the buddy's live count sets its place in the order: {rows}"
-n += 5
+now = time.time()
+utc_day, local_day = int(now // 86400), int((now + time.localtime(now).tm_gmtoff) // 86400)
+assert br.swaps_today({"swapsWindow": utc_day, "swapsCount": 13}, now) == 13
+assert br.swaps_today({"swapsWindow": local_day, "swapsCount": 13}, now) == 13, "a local-day window still counts"
+assert br.swaps_today({"swapsWindow": utc_day - 2, "swapsCount": 13}, now) == 0, "an old window is not today"
+
+
+class NoActT:
+    def act(self, what, arg=None):
+        raise AssertionError("a switch past the day's budget must not reach the game")
+
+
+st = ST(ours=J)
+assert br.switch(types.SimpleNamespace(max_swaps=10), NoActT(), st, dict(P(J, 281), swapsWindow=local_day, swapsCount=13), F,
+                 "test", {}, now, D) is False, "his 13 switches today hold the runner at its 10"
+n += 9
 print(f"ok: {n} rotation decisions + cycle/room + dry-run + background checks passed")
 
 # ---- buddy_tapper's walk to the player record (findCpp / follow / isA), the real JS under node ----
