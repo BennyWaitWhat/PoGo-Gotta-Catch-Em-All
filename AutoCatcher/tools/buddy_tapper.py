@@ -31,7 +31,7 @@ var SGV = f('il2cpp_field_static_get_value', 'void', ['pointer', 'pointer']);
 var RINV = f('il2cpp_runtime_invoke', 'pointer', ['pointer', 'pointer', 'pointer', 'pointer']);
 var FEXC = EX['il2cpp_format_exception'] ? f('il2cpp_format_exception', 'void', ['pointer', 'pointer', 'int']) : null;
 var EXC = Memory.alloc(PS), EXC_TXT = Memory.alloc(512);
-function klassOf(o) { return o.readPointer(); }
+function klassOf(o) { return jsClass(o).k; }   /* checked: a pointer from object memory reaches il2cpp only if it names a class */
 function nameOf(k) { return cs(k.add(0x10).readPointer()); }
 function isA(o, k) { try { return !!k && !o.isNull() && o.readPointer().equals(k); } catch (e) { return false; } }
 function byName(ns, name) {                   /* exact-name lookup per image -- never a walk over every class */
@@ -227,7 +227,7 @@ rpc.exports = {
     LU = lu.readPointer();
     CPP.path = findCpp(ptr(GRAPH.player), 3);
     return {ok: true, methods: {feed: !!M.bFeed, pet: !!M.bPet, hist: !!M.bHist, set: !!M.bSet}, cppPath: CPP.path,
-            bag: !!IBAG, berries: BERRIES.filter(function (n) { return ITEM[n] !== undefined; }), graph: GRAPH, graphNotes: GRAPH_NOTES,
+            bag: !!IBAG, itemCount: !!M.itemCount, berries: BERRIES.filter(function (n) { return ITEM[n] !== undefined; }), graph: GRAPH, graphNotes: GRAPH_NOTES,
             hist: histRead()};
   },
   peek: function () {                         /* pure reads: no game call, no hook, no server traffic */
