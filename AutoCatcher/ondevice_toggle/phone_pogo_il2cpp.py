@@ -77,7 +77,14 @@ function cFN(ns, cls) {
     _ensureInit();
     var key = ns + '|' + cls;
     if (CLASS_CACHE[key]) return CLASS_CACHE[key];
-    var k = IL2.cFN(GAME_IMAGE, Memory.allocUtf8String(ns), Memory.allocUtf8String(cls));
+    var n = Memory.allocUtf8String(ns), c = Memory.allocUtf8String(cls);
+    var k = IL2.cFN(GAME_IMAGE, n, c);
+    // game 0.435.0 (2026-10-29) moved PokemonBagImpl, ItemBagImpl, InventoryCache and PlayerService into
+    // holo-game-player-model.dll, names unchanged: a class holo-game.dll lacks is looked up in every other assembly
+    if (k.isNull()) {
+        var sp = Memory.alloc(4), asms = IL2.dGA(IL2.dG(), sp), na = sp.readS32();
+        for (var a = 0; a < na && k.isNull(); a++) k = IL2.cFN(IL2.aGI(asms.add(a * Process.pointerSize).readPointer()), n, c);
+    }
     CLASS_CACHE[key] = k;
     return k;
 }
