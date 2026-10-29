@@ -113,17 +113,18 @@ def _stages(r, lg):
 
 
 def combup_uncovered(rows, pile, labels, *, own_of, later_fn, fits_fn, reaches_fn, caps, floor, rare_pids,
-                     legacy_uids, protected_pids, cf, shadow_floor, shadow_leagues):
+                     legacy_uids, protected_pids, cf, shadow_floor, shadow_leagues, ladder_cap):
     """Pile members that are a LAW bucket 2c opportunity nobody kept. -> [(uid, league, target, rank, why)]
 
-    LAW 2c: for every Great / Ultra League TARGET stage, the copy whose evolved self would BECOME YOUR BEST of that
-    species (user 2026-10-29: "we evolve with intention. no one sits.") -- it can become the stage (form, costume,
-    gender: `later_fn`), still fits the league there at its true level (`fits_fn`), and its rank there beats that
-    species' Best (2b: its best copy's rank at ANY stage that copy can reach, once it can enter the league at one) --
-    inside the Best GL/UL floor (the legendary roster exempt). A shadow target is judged against the best shadow
-    (bucket 7): only in `shadow_leagues`, inside `shadow_floor`. One copy per target. Never a copy evolving would
-    destroy: your best at its OWN stage in either league, an own-stage top-5 spread, a legacy move, the last copy or only
-    shiny of its form, a protected species. Every pick is KEPT.
+    LAW 2c: for every Great / Ultra League TARGET stage, the copy whose evolved self would BECOME YOUR BEST there
+    (user 2026-10-29: "we evolve with intention. no one sits.") -- it can become the stage (form, costume, gender:
+    `later_fn`), still fits the league there at its true level (`fits_fn`), and its rank there beats your best copy AS
+    that stage (2b ranks a copy as itself since 2026-10-29) -- inside the Best GL/UL floor (the legendary roster exempt).
+    A shadow target is judged against the best shadow (bucket 7, at any stage it can reach): only in `shadow_leagues`,
+    inside `shadow_floor`. One copy per target. Never a copy evolving would destroy: a Best as itself (your best at its
+    OWN stage in either league, inside the floor or of the legendary roster), an own-stage top-5 spread, a legacy move,
+    a stage with no spare (you hold no more of its species and form than `ladder_cap(its stage)` keeps, and never the
+    last copy), the only shiny of its form, a protected species. Every pick is KEPT.
 
     So a PILED copy that can do that for (league, target, shadow-or-not) is lawful only when a KEPT copy already covers
     that target: `labels` (the engine's pvp_combup_labels.json: uid -> {target, leagues}) names it, and ITS OWN rank
@@ -137,7 +138,7 @@ def combup_uncovered(rows, pile, labels, *, own_of, later_fn, fits_fn, reaches_f
         if _get(r, 'fresh_shiny'):
             shinies[(_get(r, 'pokemon_id'), cf(r))] += 1
     # what you own AS each stage in each league: the best own-stage rank of a copy that can play there now
-    owned, own_best = {}, set()
+    owned, own_rank = {}, {}
     for lg, cap in caps.items():
         best = {}
         for r in rows:
@@ -148,13 +149,14 @@ def combup_uncovered(rows, pile, labels, *, own_of, later_fn, fits_fn, reaches_f
                     if k not in best or (rk, r['uid_hex']) < best[k]:
                         best[k] = (rk, r['uid_hex'])
         owned[lg] = best
-        own_best |= {u for _rk, u in best.values()}
-    # each species' Best today (LAW 2b / bucket 7): (reaches the cap first, rank) at the best stage a copy can reach, among
-    # its copies that can enter the league at one of those stages
+        for rk, u in best.values():
+            own_rank[u] = min(rk, own_rank.get(u, rk))
+    # each shadow species' best shadow today (bucket 7): (reaches the cap first, rank) at the best stage a copy can reach,
+    # among its copies that can enter the league at one of those stages
     best_of = {lg: {} for lg in caps}
     for lg, cap in caps.items():
         for r in rows:
-            if sh(r) and lg not in shadow_leagues:
+            if not sh(r) or lg not in shadow_leagues:
                 continue
             o, lt = own_of(r), later_fn(r)
             reach = [(st, rk) for st, rk in _stages(r, lg) if st == o or lt is None or st in lt]
@@ -165,19 +167,23 @@ def combup_uncovered(rows, pile, labels, *, own_of, later_fn, fits_fn, reaches_f
                 best_of[lg][k] = v
 
     def destroyed_by_evolving(r):
-        if r['uid_hex'] in own_best or r['uid_hex'] in legacy_uids or _get(r, 'pokemon_id') in protected_pids:
+        if r['uid_hex'] in legacy_uids or _get(r, 'pokemon_id') in protected_pids:
             return True
+        if r['uid_hex'] in own_rank and (own_rank[r['uid_hex']] <= floor or _get(r, 'pokemon_id') in rare_pids):
+            return True                                  # a Best as itself
         key = (_get(r, 'pokemon_id'), cf(r))
-        if forms[key] <= 1 or (_get(r, 'fresh_shiny') and shinies[key] <= 1):
+        if forms[key] <= max(1, ladder_cap(own_of(r))) or (_get(r, 'fresh_shiny') and shinies[key] <= 1):
             return True
         o = own_of(r)
         return any(st == o and rk <= 5 and reaches_fn(st, cap) and fits_fn(r, st, cap)
                    for lg, cap in caps.items() for st, rk in _stages(r, lg))
 
     cover = defaultdict(list)                        # (league, target, shadow) -> [kept copies the engine assigned]
+    gone = defaultdict(int)                          # (pid, form) -> kept copies promised away from that stage
     for u, lab in (labels or {}).items():
         if u in pile or u not in by or not isinstance(lab, dict):
             continue
+        gone[(_get(by[u], 'pokemon_id'), cf(by[u]))] += 1
         for lg in lab.get('leagues') or ():
             cover[(lg, lab.get('target'), sh(by[u]))].append(by[u])
     out = []
@@ -196,15 +202,26 @@ def combup_uncovered(rows, pile, labels, *, own_of, later_fn, fits_fn, reaches_f
                     continue
                 if rk > (shadow_floor if sh(p) else floor) and _get(p, 'pokemon_id') not in rare_pids:
                     continue
-                mine = best_of[lg].get((st, sh(p)))
-                if mine is not None and (0, rk) >= mine:
-                    continue                             # it would not take that species' Best
+                if sh(p):
+                    mine = best_of[lg].get((st, 1))
+                    if mine is not None and (0, rk) >= mine:
+                        continue                         # it would not take that species' best shadow
+                    mine = mine and mine[1]
+                else:
+                    mine = owned[lg].get((st, 0))
+                    if mine is not None and rk >= mine[0]:
+                        continue                         # you already own a copy of that stage at least this good
+                    mine = mine and mine[0]
                 ok = [k for k in cover[(lg, st, sh(p))]
                       if any(s2 == st and r2 <= rk for s2, r2 in _stages(k, lg))]
+                key = (_get(p, 'pokemon_id'), cf(p))
+                same = sum(1 for k in cover[(lg, st, sh(p))] if (_get(k, 'pokemon_id'), cf(k)) == key)
+                if forms[key] - (gone[key] - same) <= max(1, ladder_cap(own_of(p))):
+                    continue                             # the evolves promised to OTHER targets used up that stage's spares
                 if not ok:
-                    out.append((u, lg, st, rk, 'evolving it gives a %s #%d %s%s (its Best today: %s) and no kept copy '
+                    out.append((u, lg, st, rk, 'evolving it gives a %s #%d %s%s (your best there: %s) and no kept copy '
                                 'covers that target' % (lg.upper(), rk, st, ' (shadow)' if sh(p) else '',
-                                                        ('#%d' % mine[1]) if mine else 'none')))
+                                                        ('#%d' % mine) if mine else 'none')))
     return out
 
 
@@ -305,7 +322,7 @@ if __name__ == '__main__':
            mk('x3', 'eevee:50(94%);umbreon:30(97%)')]
     kw = dict(own_of=lambda r: 'eevee', later_fn=lambda r: {'umbreon', 'espeon'}, fits_fn=lambda r, s, c: True,
               reaches_fn=lambda s, c: True, caps={'gl': 1500}, floor=55, rare_pids=set(), legacy_uids=set(),
-              protected_pids=set(), cf=lambda r: 0, shadow_floor=55, shadow_leagues=('ul',))
+              protected_pids=set(), cf=lambda r: 0, shadow_floor=55, shadow_leagues=('ul',), ladder_cap=lambda s: 1)
     miss = combup_uncovered(bag, {'x2'}, {'x3': {'target': 'umbreon', 'leagues': ['gl']}}, **kw)
     assert {(m[0], m[2]) for m in miss} == {('x2', 'umbreon'), ('x2', 'espeon')}, miss   # x3 covers umbreon only at #30
     assert combup_uncovered(bag, {'x3'}, {'x2': {'target': 'umbreon', 'leagues': ['gl']}}, **kw) == [], 'x3 covered by x2 (#12)'
@@ -314,10 +331,17 @@ if __name__ == '__main__':
     assert combup_uncovered(bag, {'x2'}, {}, **dict(kw, legacy_uids={'x2'})) == [], 'a legacy mover is never a candidate'
     assert combup_uncovered(bag, {'x2'}, {}, **dict(kw, floor=5)) == [], 'outside the floor'
     assert combup_uncovered([dict(b, fresh_alignment=1) for b in bag], {'x2'}, {}, **kw) == [], 'no GL shadow is kept'
-    # 2026-10-29 (the Nidorino): the Umbreon you own is Best as a later stage at #9 -- an Eevee at #12 would not take it
+    # 2026-10-29: an Umbreon counts as itself (#60), whatever a later stage would make it -- an Eevee at #12 beats it
     nido = bag + [dict(mk('u1', 'umbreon:60(90%);umbreon_x:9(99%)'), pokemon_id=197, species_name='Umbreon')]
     kw2 = dict(kw, own_of=lambda r: r['species_name'].lower(), later_fn=lambda r: {'umbreon', 'espeon', 'umbreon_x'})
-    assert {m[2] for m in combup_uncovered(nido, {'x2'}, {}, **kw2)} == {'espeon'}, 'Umbreon: its Best (#9) is not beaten'
+    assert {m[2] for m in combup_uncovered(nido, {'x2'}, {}, **kw2)} == {'umbreon', 'espeon'}, 'u1 is #60 as an Umbreon'
+    assert combup_uncovered(bag, {'x2'}, {}, **dict(kw, ladder_cap=lambda s: 3)) == [], 'no spare: 3 Eevees, 3 kept'
+    one = [mk('z1', 'eevee:60(90%);umbreon:9(99%)'), mk('z2', 'eevee:70(90%);espeon:8(99%)'), mk('z3', 'eevee:80(90%)')]
+    assert combup_uncovered(one, {'z1'}, {'z2': {'target': 'espeon', 'leagues': ['gl']}}, **dict(kw, ladder_cap=lambda s: 2)) \
+        == [], 'one spare is one evolve: z2 took it for an Espeon'
+    worthless = [mk('y1', 'eevee:60(90%);umbreon:10(99%)'), mk('y2', 'eevee:70(90%)'), mk('y3', 'eevee:80(90%)')]
+    assert {(m[0], m[2]) for m in combup_uncovered(worthless, {'y1'}, {}, **kw)} == {('y1', 'umbreon')}, \
+        'your best Eevee is #60 as itself, outside the floor: it may evolve, so piling it loses an Umbreon #10'
     # shiny ladder: a spare shiny past the cap that would take an open shiny spot one stage up is HELD, whatever the candy
     sb = lambda u, s, iv, **kw: dict(dict(uid_hex=u, pokemon_id=532 if s == 'timburr' else 533, species_name=s, form=0,
                                           fresh_shiny=1, fresh_alignment=0, iv_total=iv), **kw)

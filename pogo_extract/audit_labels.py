@@ -154,11 +154,10 @@ def main():
                    or (r['ul_stage'] == own and r['ul_rank'] is not None and r['ul_rank'] <= READY_RANK and viable(own, UL_CAP)))
         if own_pvp:                                   # every producer (2026-09-29): bucket 2 comes first; 2c names it too
             bad.append(name + ': own-stage PvP asset (rank <= %d) advised to evolve' % READY_RANK)
-        # a Best GL / Best UL copy (rule 15d) whose USABLE winning stage is its OWN stage is never advised to evolve --
-        # by any producer (user 2026-09-23). Mirrors keep_policy's _own_pvp and refresh_evolve_shiny.
-        # A Best copy with no usable stage at all reads as own-stage (it could not have won; never consume it).
-        if (('pvp_best_gl' in reasons and usable_stage(r, 'gl', GL_CAP) in (own, None))
-                or ('pvp_best_ul' in reasons and usable_stage(r, 'ul', UL_CAP) in (own, None))):
+        # a Best GL / Best UL copy (rule 15d) is never advised to evolve by any producer (user 2026-09-23): since
+        # 2026-10-29 every Best wins AS ITSELF, so every one is an own-stage asset. Mirrors keep_policy's _own_pvp and
+        # refresh_evolve_shiny.
+        if 'pvp_best_gl' in reasons or 'pvp_best_ul' in reasons:
             bad.append(name + ': Best GL/UL copy at its own stage advised to evolve')
         if evolvable_forms.row_can_evolve(r) is False:
             bad.append(name + ': this FORM has no evolution branch in the game master (%s)' % (r['fresh_form'] or r['form']))

@@ -327,7 +327,7 @@ try:
 except Exception as _e:
     print('  *** evolution graph unavailable (%s) -- Best GL/UL judged on the ranker\'s chain as it stands' % _e)
     _pu_later = lambda r: None
-def _pvp_usable(r, lg, cap):
+def _pvp_usable(r, lg, cap, own_only=False):
     """(reaches-the-cap-first key, rank) of the best stage this copy can REACH (own, or a later stage its form /
     costume / gender can become) and ENTER (fits: its CP there at its TRUE level inside the cap), or None."""
     own = _sh_pvid(r['species_name'], r.get('form') or 0)
@@ -342,6 +342,10 @@ def _pvp_usable(r, lg, cap):
     if not stages and r.get(lg + '_rank') is not None:
         stages = [(r.get(lg + '_stage'), r.get(lg + '_rank'))]
     reach = [(s, k) for s, k in stages if s and (s == own or later is None or s in later)]   # evolution counts everywhere (2026-09-24)
+    if own_only:                                          # Best GL / UL: AS ITSELF since 2026-10-29 (LAW 2b): a later stage counts only through the comb-up (2c)
+        reach = [(s, k) for s, k in reach if s == own]
+        if later and not _sh_via(own, cap):
+            return None                                   # a pre-evolution that cannot reach the cap as itself is no Best
     if not any(_pu_fits(r, s, cap, _SH_BS) for s, _k in reach):
         return None                                       # cannot ENTER the league at any stage it can reach
     best = None
@@ -352,8 +356,8 @@ def _pvp_usable(r, lg, cap):
 def _pvp_usable_winner(lst, lg, cap):
     _c = [(k, x) for x in lst for k in (_pvp_usable(x, lg, cap),) if k is not None]
     return min(_c, key=lambda y: (y[0][0], y[0][1], y[1]['uid_hex']))[1]['uid_hex'] if _c else None
-def _pvp_usable_winner_rk(lst, lg, cap):                     # (uid, usable rank) -- the shadow floor needs the rank
-    _c = [(k, x) for x in lst for k in (_pvp_usable(x, lg, cap),) if k is not None]
+def _pvp_usable_winner_rk(lst, lg, cap, own_only=False):     # (uid, usable rank) -- the shadow floor needs the rank
+    _c = [(k, x) for x in lst for k in (_pvp_usable(x, lg, cap, own_only),) if k is not None]
     _b = min(_c, key=lambda y: (y[0][0], y[0][1], y[1]['uid_hex'])) if _c else None
     return (_b[1]['uid_hex'], _b[0][1]) if _b else (None, None)
 _SRF = keep_config.pvp('shadow_rank_floor')                 # rule 7 shadow rank floor (2026-09-24): top half only
@@ -579,7 +583,7 @@ for r in _crows:                                     # (2026-09-26) fused compon
 _BRF = keep_config.pvp('best_rank_floor')                   # rule 15d best rank floor (2026-09-24): top 20% only
 for lst in _pbg.values():
     for _lg, _cap in (('gl', _PB_GL), ('ul', _PB_UL)):
-        _w, _wr = _pvp_usable_winner_rk(lst, _lg, _cap)
+        _w, _wr = _pvp_usable_winner_rk(lst, _lg, _cap, own_only=True)
         if _w and (_wr <= _BRF or rows[_w]['pokemon_id'] in _RARE_PIDS):   # legendaries: no rank floor (2026-09-24)
             _pvp_best_keep.add(_w)
     _c = [x for x in lst if x.get('ml_rank') is not None and (x['ml_rank'] <= _BRF or x['pokemon_id'] in _RARE_PIDS)]
@@ -646,12 +650,15 @@ try:
     _il_labels = json.load(open(os.path.join('system', 'analysis', 'pvp_combup_labels.json'), encoding='utf-8'))
 except (OSError, ValueError):
     _il_labels = None                                   # no record of the picks: every opportunity below reads uncovered
+_IL_MID = ({t for _ts in _PU_GRAPH[4].values() for t in _ts if _PU_GRAPH[0].get(t)}   # middle stages: their ladder keeps fewer
+           if '_PU_GRAPH' in globals() else set())
 _il_cu = _il.combup_uncovered(
     _crows, ps, _il_labels or {}, own_of=lambda r: _sh_pvid(r['species_name'], r.get('form') or 0), later_fn=_pu_later,
     fits_fn=lambda r, s, c: _pu_fits(r, s, c, _SH_BS), reaches_fn=_sh_via, caps={'gl': _SH_GL, 'ul': _SH_UL},
     floor=keep_config.pvp('best_rank_floor'), rare_pids=_RARE_PIDS, legacy_uids=_legrec,
     protected_pids=keep_config.protected_pids(), cf=cf, shadow_floor=keep_config.pvp('shadow_rank_floor'),
-    shadow_leagues=keep_config.shadow_leagues())
+    shadow_leagues=keep_config.shadow_leagues(),
+    ladder_cap=lambda s: keep_config.cap('plain_line_preevo' if s in _IL_MID else 'plain_line'))
 print('  %-18s %-5d %s   (LAW bucket 2c re-derived: a piled copy whose evolved self would take its species\' Best)'
       % ('comb-up (law)', len(_il_cu), chk('comb-up (law)', len(_il_cu))))
 for _u, _lg, _st, _rk, _why in _il_cu[:6]:

@@ -285,7 +285,9 @@ def _pb_usable(r, lg, cap):
                 pass
     if not st and r.get(lg + '_rank') is not None:
         st = [(r.get(lg + '_stage'), r.get(lg + '_rank'))]
-    reach = [(s, k) for s, k in st if s and (s == own or later is None or s in later)]   # evolution counts everywhere (2026-09-24)
+    reach = [(s, k) for s, k in st if s and s == own]    # AS ITSELF since 2026-10-29 (LAW 2b): a later stage counts only through the comb-up (2c)
+    if later and not _pb_via(own, cap):
+        return None                                       # a pre-evolution that cannot reach the cap as itself is no Best
     if not any(_pb_fits(r, s, cap, _PB_BS) for s, _k in reach):
         return None
     ok = [(0 if _pb_via(s, cap) else 1, k) for s, k in reach]

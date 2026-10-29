@@ -75,16 +75,9 @@ def compute_target(why=None, spent=None, detail=None, gated=None, items_spent=No
     _later_sh = {u: set(pvp_later_stages(fr, _graph5)) for u, fr in _full.items() if fr['is_shiny']}   # per specimen
 
     def _best_at_own_stage(u, rs, own):
-        """A Best GL / Best UL copy whose USABLE winning stage is its OWN stage (keep_policy's _own_pvp): never advised
-        to evolve. The stage is pvp_iv_rule.usable_best over the stages pvp_later_stages says it can become -- the same
-        call keep_policy's rule 15d makes. No full row, or no usable stage -> own stage (the side that never consumes)."""
-        for lg, cap in (('gl', GL_CAP), ('ul', UL_CAP)):
-            if 'pvp_best_' + lg in rs:
-                fr = _full.get(u)
-                ub = usable_best(fr, lg, cap, _BSx, later=pvp_later_stages(fr, _graph5)) if fr is not None else None
-                if ub is None or ub[2] == own:
-                    return True
-        return False
+        """A Best GL / Best UL copy (keep_policy's _own_pvp): never advised to evolve. Since 2026-10-29 rule 15d ranks
+        every Best as itself, so every one is an own-stage asset (a later stage is reached through Evolve for GL / UL)."""
+        return 'pvp_best_gl' in rs or 'pvp_best_ul' in rs
 
     # can_evolve_estimated is species-level -- it doesn't know a *costume* variant is Noevolve.
     # A costume whose raw enum name carries 'Noevolve' has its evolve button greyed out in-game
