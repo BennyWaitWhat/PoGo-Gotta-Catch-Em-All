@@ -189,7 +189,13 @@ try:
 except br.Stop:
     pass
 br.time.sleep = real_sleep
-n += 4
+said.clear()
+T = LoopT([P(J, 295)], {})
+T.hist = {E: [290, 0, 0]}                                        # the current buddy is not in the game's history list
+br.loop(types.SimpleNamespace(dry=True, first=None, every=3, idle=60, feed=False, trainer="BennyValentinC", cmd=None), T)
+rows = [s for s in said if "hearts (" in s]
+assert "Jolteon" in rows[0] and "295" in rows[0], f"the buddy's live count sets its place in the order: {rows}"
+n += 5
 print(f"ok: {n} rotation decisions + cycle/room + dry-run + background checks passed")
 
 # ---- buddy_tapper's walk to the player record (findCpp / follow / isA), the real JS under node ----

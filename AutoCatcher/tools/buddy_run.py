@@ -295,11 +295,13 @@ def loop(a, T):
         r = T.act("hist") or {}
         hist = {x[0]: x[2] for x in r.get("hist") or []}
         say(f"  no buddy history in memory -- asked the game once: {len(hist)} records{' ' + str(r.get('err')) if r.get('err') else ''}")
+    p = trainer(a, T.peek())
+    if p["buddyId"] in rot:                                      # the history lists past buddies only: the buddy's own live count
+        hist[p["buddyId"]] = p["pts"]
     first = a.first.split(":") if a.first else None
     st = {"rot": sorted(rot, key=lambda i: -hist.get(i, 0)), "hist": hist, "ours": None, "at_set": {}, "gain_at": time.time(),
           "played": {}, "capped": {}, "swaps": {}, "hands_off": False, "paused": False, "first": (first[0], int(first[1])) if first else None,
           "key": None, "said": None, "why": None, "table_at": time.time(), "bg": False}
-    p = trainer(a, T.peek())
     say(f"trainer {p.get('name')}; the rotation, closest to Best Buddy first (hearts from the game's buddy history):")
     table(st, names, p["buddyId"])
     if a.dry:
