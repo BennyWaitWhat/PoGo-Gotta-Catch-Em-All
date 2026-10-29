@@ -561,7 +561,10 @@ def report_step(verify_failed=False, bg=None):
         say('report: skipped (%s)' % _e)
 
 
-POST_PUSH_ARGS = ('--reconcile', '--retire')
+# NO RECONCILE IN THE POST-PUSH SESSION (2026-10-29, user: "go 1." -- drop the second tag check after the write, ~6 s):
+# the sync passes only on prune's own fresh post-write re-walk (set equality on every tag it pushed, then
+# revalidate_graph). The dashboard's Sync still ends with reconcile_tags --report, and sync_post_tags.py --reconcile works.
+POST_PUSH_ARGS = ('--retire',)
 
 
 def post_push_start():
@@ -655,7 +658,7 @@ def post_tags_say(_p, sec):
             say('tag order: %s' % ' | '.join(l[len('TAG ORDER '):] for l in _or))
         _pl = os.path.join('system', 'analysis', 'last_job_post_tags.log')
         _plog = (_p.stdout or '') + (('\n--- stderr ---\n' + _p.stderr) if (_p.stderr or '').strip() else '')
-        echo_job_warnings('post-push session (reconcile / retire / remote trade / tag order)'
+        echo_job_warnings('post-push session (retire / remote trade / tag order)'
                           if (sec.get('RECONCILE') or sec.get('RETIRE')) else 'remote trade / tag order', _plog, _pl)
         # A CRASH AFTER A PUSH MUST NOT READ LIKE A CLEAN PUSH (2026-09-23) -- same rc line the old steps printed.
         if _p.returncode and not any(' rc=' in l or 'TIMED OUT' in l or ' stopped' in l or ' failed' in l or ' skipped' in l
@@ -1122,13 +1125,11 @@ def _main():
         say('SYNC FAILED rc=%s' % rc); return 3
     catcher_pause(wait=False)                  # re-arm (90 s) for retire / verify / Remote Trade / Evolve for Size / tag order
 
-    # ONE POST-PUSH SESSION (2026-09-30, cull speed pick 2; user: "1,2, go"). The reconcile report that ended the sync job,
-    # the retire step and Remote Trade + the tag order each attached on their own: 3 of the cull's 5 attaches, each a
-    # crash roll and ~5-8 s. sync_post_tags.py --reconcile --retire runs them in ONE session, in the old order: the
-    # reconcile first -- read-only, still a fresh session next to prune's (the independent check it exists for) -- and on
-    # drift it stops before any label write (rc 3) -> SYNC FAILED here, exactly as a drifting reconcile inside the sync
-    # job failed it. Then retire (fail-soft), Remote Trade, the tag order. The ladder starts first so it overlaps that
-    # phone time; it already overlapped Remote Trade's DB mirror, the only thing this session writes that it reads.
+    # ONE POST-PUSH SESSION (2026-09-30, cull speed pick 2; user: "1,2, go"). The retire step and Remote Trade + the tag
+    # order each attached on their own: each a crash roll and ~5-8 s. sync_post_tags.py --retire runs them in ONE
+    # session, in the old order: retire (fail-soft), Remote Trade, the tag order. Its reconcile report left the cull
+    # 2026-10-29 (POST_PUSH_ARGS). The ladder starts first so it overlaps that phone time; it already overlapped Remote
+    # Trade's DB mirror, the only thing this session writes that it reads.
     _lr = ladder_start()
     _rb = report_start()
     try:
@@ -1136,23 +1137,6 @@ def _main():
     except Exception as _pe:
         _post = (subprocess.CompletedProcess(['sync_post_tags.py'], 1, '', 'not run: %s' % _pe),
                  {'RECONCILE': [], 'RETIRE': [], 'REMOTE TRADE': [], 'TAG ORDER': []})
-    _rec = '\n'.join(_post[1]['RECONCILE'])
-    for l in _rec.splitlines():
-        if 'All tags in sync' in l or 'Drift detected' in l:
-            say('  ' + l.strip()[:100])
-    if 'All tags in sync.' not in _rec:
-        # the sync job's own failure path: its last lines, then SYNC FAILED rc 3 -- no report, no label write
-        print('\n'.join([l for l in (_rec or ((_post[0].stdout or '') + '\n' + (_post[0].stderr or ''))).splitlines()
-                         if l.strip()][-8:]))
-        if _lr is not None:                    # the ladder started above: let it end (a kill could tear its history)
-            try:
-                _lr.communicate(timeout=300)
-            except Exception:
-                _lr.kill()
-        report_cancel(_rb)                     # no report on a failed sync: as if it never ran
-        say('SYNC FAILED rc=%s -- the post-push reconcile %s (log: system/analysis/last_job_post_tags.log)'
-            % (_post[0].returncode, 'found drift' if 'Drift detected' in _rec else 'gave no verdict'))
-        return 3
     catcher_pause(wait=False)                  # re-arm (90 s) for verify
 
     # RETIRED tag shells (2026-09-09): prune has just stripped their members; retire_tags deletes the empty shells one
@@ -1173,41 +1157,40 @@ def _main():
             say('retire:   %s' % _l.strip()[:160])
     say('retire: %s' % ((_rfail[-1] if _rfail else _rl[-1]).strip()[:240] if _rl else 'no output'))
 
-    if 'All tags in sync.' in _rec:
+    try:
+        sys.path.insert(0, os.getcwd())
+        import verify_tags_live as _vtl
+        _playing = _vtl.user_is_playing()
+    except Exception:
+        _playing = True
+    # NEVER RESTART POGO UNDER THE CATCHER (user 2026-09-25: "without interrupting the catcher at all, cull"): the
+    # server-proof restart kills the game the auto-catcher is attached to. A live catcher on the gadget (:27047)
+    # counts as playing, so the proof stays deferred.
+    if not _playing:
         try:
-            sys.path.insert(0, os.getcwd())
-            import verify_tags_live as _vtl
-            _playing = _vtl.user_is_playing()
+            import pogo_il2cpp as _pg
+            _n = subprocess.run(['adb', '-s', _pg.ADB_TARGET, 'shell', "su -c 'ss -tn | grep -c :27047'"],
+                                capture_output=True, text=True, timeout=15).stdout.strip()
+            if _n not in ('', '0'):
+                _playing = True
+                say('catcher attached on :27047 -> counted as playing (no second cache read)')
         except Exception:
-            _playing = True
-        # NEVER RESTART POGO UNDER THE CATCHER (user 2026-09-25: "without interrupting the catcher at all, cull"): the
-        # server-proof restart kills the game the auto-catcher is attached to. A live catcher on the gadget (:27047)
-        # counts as playing, so the proof stays deferred.
-        if not _playing:
-            try:
-                import pogo_il2cpp as _pg
-                _n = subprocess.run(['adb', '-s', _pg.ADB_TARGET, 'shell', "su -c 'ss -tn | grep -c :27047'"],
-                                    capture_output=True, text=True, timeout=15).stdout.strip()
-                if _n not in ('', '0'):
-                    _playing = True
-                    say('catcher attached on :27047 -> counted as playing (no second cache read)')
-            except Exception:
-                _playing = True                # cannot tell -> do not restart
-        _pending = _proof_pending(_sync_changed_tags(log))
-        if _playing or not _pending:
-            # the post-push reconcile already proved the client cache equal; a second cache read adds an attach
-            # and nothing else. The restart-based SERVER proof only happens when the phone is idle AND a write is
-            # still waiting for it (this pass's, or one deferred while he was playing) -- and since 2026-09-25 it never
-            # happens at all (verify_tags_live is cache-only; see _unproven_note).
-            say('VERIFY OK (the client-cache reconcile after the push is clean; %s) -- %s'
-                % ('user playing -> no second cache read' if _playing else 'no tag written -> no second cache read',
-                   _unproven_note(log)))
-            say('DONE -- %s tagged for Transfer' % state()['pile'])
-            post_tags_say(*_post)              # Remote Trade + the tag order ran in the post-push session above
-            catcher_resume()                   # last phone step done -- the reports are offline
-            ladder_finish(_lr)
-            report_step(bg=_rb)
-            return 0
+            _playing = True                    # cannot tell -> do not restart
+    _pending = _proof_pending(_sync_changed_tags(log))
+    if _playing or not _pending:
+        # prune's fresh post-write re-walk already proved every pushed tag equal; a second cache read adds an attach
+        # and nothing else. The restart-based SERVER proof only happens when the phone is idle AND a write is
+        # still waiting for it (this pass's, or one deferred while he was playing) -- and since 2026-09-25 it never
+        # happens at all (verify_tags_live is cache-only; see _unproven_note).
+        say("VERIFY OK (prune's fresh read-back after the push is clean; %s) -- %s"
+            % ('user playing -> no second cache read' if _playing else 'no tag written -> no second cache read',
+               _unproven_note(log)))
+        say('DONE -- %s tagged for Transfer' % state()['pile'])
+        post_tags_say(*_post)                  # Remote Trade + the tag order ran in the post-push session above
+        catcher_resume()                       # last phone step done -- the reports are offline
+        ladder_finish(_lr)
+        report_step(bg=_rb)
+        return 0
     catcher_pause(wait=False)                  # verify is a cache reconcile only -- it never restarts PoGo (2026-09-25)
     v = subprocess.run([PY, 'verify_tags_live.py'], capture_output=True, text=True,
                        encoding='utf-8', errors='replace')
