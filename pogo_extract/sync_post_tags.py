@@ -39,7 +39,49 @@ def _forget_rt_stamp(why):
         print('!! Remote Trade: not verified (%s) and %s could NOT be removed (%s) -- delete it by hand' % (why, RT_STAMP, e))
 
 
+def _signal(path, want, timeout_s=900):
+    """full_audit's word in `path`: one of `want`, or 'stop'. No word inside timeout_s counts as 'stop'."""
+    t_end = time.time() + timeout_s
+    while time.time() < t_end:
+        try:
+            with open(path, encoding='utf-8') as f:
+                w = f.read().strip()
+        except OSError:
+            w = ''
+        if w == 'stop' or w in want:
+            return w
+        time.sleep(0.1)
+    return 'stop'
+
+
 def main():
+    """--go-file F: PRE-STARTED WITH THE SYNC (2026-10-29, user: "I need it to be 60 secs. With same results, just faster."
+    -> "go 1 2"). full_audit starts this with the sync job; it attaches once F says 'attach' (prune's session is up and
+    gated) and runs only once F says 'go' (the sync ended clean) -- 'stop' at either point and nothing runs. What it does
+    after 'go' is the old run, in the old order: the offers are computed then, on the DB mirror that sync just wrote."""
+    gf = sys.argv[sys.argv.index('--go-file') + 1] if '--go-file' in sys.argv else None
+    if not gf:
+        return _main()
+    if _signal(gf, ('attach', 'go')) == 'stop':
+        print('post-push: not run -- the sync stopped before its push')
+        return 0
+    import pogo_il2cpp as pg
+    pg.wait_ready_to_attach(timeout_s=300)
+    sess, pid = pg.get_session()
+    handed = False
+    try:
+        if _signal(gf, ('go',)) == 'stop':
+            print('post-push: not run -- the sync did not end clean')
+            return 0
+        handed = True                    # _main detaches it
+        return _main((sess, pid))
+    finally:
+        if not handed:
+            sess.detach()
+
+
+def _main(early=None):
+    """early: (session, pid) already attached by main()'s --go-file wait."""
     # each tag's inputs in its OWN try: a crash computing one must not cost the other its refresh (review 2026-09-24)
     rt_want = es_want = None
     print('=== REMOTE TRADE ===')
@@ -71,15 +113,20 @@ def main():
     # reconcile report first (read-only; drift -> rc 3 and no label write at all), then retire's empty-shell deletions,
     # Remote Trade and the tag order. One attach instead of three. A failed offer computation no longer skips them.
     shared = '--reconcile' in sys.argv or '--retire' in sys.argv
-    if rt_want is None and not shared:
+    if (rt_want is None and not shared) or '--dry-run' in sys.argv:
+        if early:
+            early[0].detach()
+        if '--dry-run' in sys.argv:
+            print('--dry-run: no phone contact.'); return 0
         return 1
-    if '--dry-run' in sys.argv:
-        print('--dry-run: no phone contact.'); return 0
 
     import pogo_il2cpp as pg
     from ready_gate import ensure_ready_for_writes
-    pg.wait_ready_to_attach(timeout_s=300)
-    sess, pid = pg.get_session()
+    if early:
+        sess, pid = early
+    else:
+        pg.wait_ready_to_attach(timeout_s=300)
+        sess, pid = pg.get_session()
     rc = 0 if rt_want is not None else 1
     try:
         if '--reconcile' in sys.argv:

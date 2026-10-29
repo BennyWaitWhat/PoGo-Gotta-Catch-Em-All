@@ -189,9 +189,10 @@ def _py(*argv):
 # Auto-tag button ended up on a completely different (ungated) engine. If a stage changes, it changes
 # for every caller at once.
 
-def _recrawl_steps():
+def _recrawl_steps(preflight_later=False):
     return [
-        ('full pipeline (walk + recompute + preflight + audit + live storage cap)', _py(os.path.join(HERE, 'pogo_pipeline.py'))),
+        ('full pipeline (walk + recompute + preflight + audit + live storage cap)',
+         _py(os.path.join(HERE, 'pogo_pipeline.py'), *(['--preflight-later'] if preflight_later else []))),
         # the live storage cap (player_state.json) is read INSIDE the pipeline's session since 2026-09-12
         # (step_read_player_state); read_player_state.py remains as the standalone tool.
     ]
@@ -610,7 +611,8 @@ def api_tagdiff():
 
 @app.post('/api/recrawl')
 def api_recrawl():
-    ok = start_job('recrawl', _recrawl_steps())
+    # preflight_later (2026-10-29): full_audit runs the walk's closing pre-flight beside its 11 audits, before any sync
+    ok = start_job('recrawl', _recrawl_steps((request.get_json(silent=True) or {}).get('preflight_later') is True))
     return jsonify({'ok': ok, 'error': None if ok else 'a job is already running'}), (200 if ok else 409)
 
 
