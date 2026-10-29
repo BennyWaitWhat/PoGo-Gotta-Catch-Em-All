@@ -34,7 +34,7 @@ WORK = os.path.join(BASE, 'pokegenie_work')
 OUT = os.path.join(BASE, 'pokegenie_out')
 SPR = os.path.join(WORK, 'sprites')
 RAW = 'https://raw.githubusercontent.com/PokeMiners/pogo_assets/master/'
-TREE = 'https://api.github.com/repos/PokeMiners/pogo_assets/git/trees/master?recursive=1'
+TREES = 'https://api.github.com/repos/PokeMiners/pogo_assets/git/trees/'
 _lock = threading.Lock()
 
 # PokeGenie's Pokedex-art form suffix -> upstream form token (only where normalising is not enough)
@@ -63,18 +63,35 @@ def image_id(seed):
     return ''.join(out)
 
 
+def _tree(sha):
+    """One level of the upstream git tree."""
+    req = urllib.request.Request(TREES + urllib.parse.quote(sha),
+                                 headers={'User-Agent': 'pg-art', 'Accept': 'application/vnd.github+json'})
+    with urllib.request.urlopen(req, timeout=120) as r:
+        d = json.load(r)
+    if d.get('truncated'):
+        raise SystemExit('upstream tree listing came back TRUNCATED -- refusing to build on it')
+    return d['tree']
+
+
 def load_listing(refresh):
     p = os.path.join(SPR, 'upstream_files.json')
     if refresh or not os.path.exists(p):
-        req = urllib.request.Request(TREE, headers={'User-Agent': 'pg-art',
-                                                    'Accept': 'application/vnd.github+json'})
-        with urllib.request.urlopen(req, timeout=180) as r:
-            d = json.load(r)
-        if d.get('truncated'):
-            raise SystemExit('upstream tree listing came back TRUNCATED -- refusing to build on it')
-        files = sorted(t['path'] for t in d.get('tree', [])
-                       if t['type'] == 'blob' and t['path'].startswith('Images/Pokemon')
-                       and t['path'].endswith('.png'))
+        # The recursive whole-repo listing returns HTTP 500 since 2026-09-30, so walk
+        # Images/Pokemon* one level at a time instead (a handful of small calls).
+        images = next(t['sha'] for t in _tree('master') if t['path'] == 'Images' and t['type'] == 'tree')
+        todo = [('Images/' + t['path'], t['sha']) for t in _tree(images)
+                if t['type'] == 'tree' and t['path'].startswith('Pokemon')]
+        files = []
+        while todo:
+            base, sha = todo.pop()
+            for t in _tree(sha):
+                path = base + '/' + t['path']
+                if t['type'] == 'tree':
+                    todo.append((path, t['sha']))
+                elif t['type'] == 'blob' and path.endswith('.png'):
+                    files.append(path)
+        files.sort()
         json.dump(files, open(p, 'w', encoding='utf-8'))
         print('refreshed upstream listing: %d pokemon images' % len(files))
     return json.load(open(p, encoding='utf-8'))
@@ -140,7 +157,9 @@ def main():
             return ''
         cands = [name]
         s = name
-        for cand in (species, (species or '').replace(' ', ''), (species or '').replace('_', '')):
+        sp = species or ''
+        bare = re.sub(r'\s*\(.*\)\s*$', '', sp)         # 'Minior (Core)' -> 'Minior'
+        for cand in (sp, sp.replace(' ', ''), sp.replace('_', ''), bare, bare.replace(' ', '')):
             if cand and s.lower().startswith(cand.lower()):
                 cands.append(s[len(cand):])
                 break
