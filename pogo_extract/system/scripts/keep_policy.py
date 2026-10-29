@@ -1950,6 +1950,16 @@ def main():
         json.dump(_cul, open(_cul_path, 'w'), indent=0)
     except Exception as _e:
         print('pvp comb-up labels skipped:', _e)
+    # A COSTUME / DECORATED MON WHOSE FORM READS BLANK (2026-10-29): audit_cull LAYER 8 calls it an incomplete display
+    # read and refuses to see it tagged -- rule 0's never-cull-on-incomplete-data for a blank (0) form instead of a NULL.
+    # It held only while every such copy was kept for something else, until a 2025 costume Noibat (form 0, beside today's
+    # form-3070 copies) lost its ladder slot and stopped the 05:24 sync. Held as 'data_incomplete' (Safety Hold) only when
+    # nothing else keeps it.
+    for r in rows:
+        _d = r['costume_decoration_id']
+        if (not keep.get(r['uid_hex']) and (r['fresh_costume'] or (_d and str(_d) != '0'))
+                and not (r['form'] or r['fresh_form'])):
+            mark(r['uid_hex'], 'data_incomplete')
     # ---- KEEP / TRANSFER ----
     allu = {r['uid_hex'] for r in rows}
     keepu = set(keep)
