@@ -216,26 +216,69 @@ rpc.exports = {
 """
 
 
-def main():
-    sess, pid = pg.get_session()
-    print(f"attached pid {pid}")
+SCANS = os.path.join(ROOT, "system", "analysis", "scans")   # one copy per scan, named by game version (git-ignored: Maps key)
+
+
+def game_version():
+    """versionName of the installed game, from `dumpsys package` (adb only, the game is not touched)."""
+    import re
+    import subprocess
+    try:
+        out = subprocess.run(["adb", "-s", pg.ADB_TARGET, "shell", "dumpsys package com.nianticlabs.pokemongo | grep -m1 versionName"],
+                             capture_output=True, text=True, timeout=20).stdout
+    except Exception:
+        return None
+    m = re.search(r"versionName=(\S+)", out or "")
+    return m.group(1) if m else None
+
+
+def save(doc, out, stem):
+    """Write the latest copy to `out` and an archive copy to scans/<stem>_<version>_<stamp>.json; returns the archive path."""
+    os.makedirs(os.path.dirname(out), exist_ok=True)
+    os.makedirs(SCANS, exist_ok=True)
+    arch = os.path.join(SCANS, f"{stem}_{doc.get('game_version') or 'unknown'}_{time.strftime('%Y%m%d-%H%M')}.json")
+    for p in (out, arch):
+        with open(p, "w", encoding="utf-8") as fh:
+            json.dump(doc, fh, indent=1)
+    return arch
+
+
+def run(sess, pid, version=None):
+    """One read of both sources on an attached session. The script is always unloaded, even on an error."""
     sc = sess.create_script(JS)
     sc.load()
-    t = time.time()
-    gs = sc.exports_sync.global_settings()
-    print(f"GlobalSettingsProto: {gs.get('instances')} instance(s), {len(json.dumps(gs.get('settings') or {}))} bytes, {time.time() - t:.1f}s")
-    n = sc.exports_sync.gm_settings_count()
-    tpl = []
-    for i in range(0, n, 20):   # chunks, so the shared JS lock is released between calls
-        tpl.extend(sc.exports_sync.gm_settings(i, 20))
-    print(f"game master settings objects: {n}, dumped {len(tpl)}")
-    sc.unload()
-    sess.detach()
-    os.makedirs(os.path.dirname(OUT), exist_ok=True)
-    with open(OUT, "w", encoding="utf-8") as fh:
-        json.dump({"pid": pid, "read_at": time.strftime("%Y-%m-%d %H:%M:%S"), "global_settings": gs.get("settings"),
-                   "game_master_settings": sorted(tpl, key=lambda x: x["type"])}, fh, indent=1)
-    print(f"wrote {OUT} ({os.path.getsize(OUT) // 1024} KB)")
+    try:
+        t = time.time()
+        gs = sc.exports_sync.global_settings()
+        print(f"GlobalSettingsProto: {gs.get('instances')} instance(s), {len(json.dumps(gs.get('settings') or {}))} bytes, {time.time() - t:.1f}s",
+              flush=True)
+        n = sc.exports_sync.gm_settings_count()
+        tpl = []
+        for i in range(0, n, 20):   # chunks, so the shared JS lock is released between calls
+            tpl.extend(sc.exports_sync.gm_settings(i, 20))
+        print(f"game master settings objects: {n}, dumped {len(tpl)}", flush=True)
+    finally:
+        try:
+            sc.unload()
+        except Exception:
+            pass
+    return {"pid": pid, "game_version": version, "read_at": time.strftime("%Y-%m-%d %H:%M:%S"), "global_settings": gs.get("settings"),
+            "game_master_settings": sorted(tpl, key=lambda x: x["type"])}
+
+
+def main():
+    version = game_version()
+    sess, pid = pg.get_session()
+    print(f"attached pid {pid} (game {version})")
+    try:
+        doc = run(sess, pid, version)
+    finally:
+        try:
+            sess.detach()
+        except Exception:
+            pass
+    arch = save(doc, OUT, "game_limits")
+    print(f"wrote {OUT} ({os.path.getsize(OUT) // 1024} KB) and {arch}")
 
 
 if __name__ == "__main__":

@@ -281,54 +281,70 @@ def decode(ut, raw):
     return raw & ((1 << (8 * SIZE.get(ut, 8))) - 1)
 
 
-def main():
-    sess, pid = pg.get_session()
-    print(f"attached pid {pid}")
+def run(sess, pid, version=None):
+    """One class walk on an attached session. The script is always unloaded, even on an error."""
     sc = sess.create_script(JS)
     sc.load()
-    pr = sc.exports_sync.probe()
-    imgs = pr["images"]
-    print(f"{len(imgs)} images; exports: {pr['exports']}; static_fields probe: {pr['sf']}")
-    hits = (pr.get("sf") or {}).get("hits") or []
-    sf_off = hits[0] if len(hits) == 1 else 0
-    print(f"static readonly reads: {'ON, Il2CppClass.static_fields @0x%x' % sf_off if sf_off else 'OFF (offset not proven)'}")
-    idxs = [i for i, (name, n) in enumerate(imgs) if not SKIP_IMAGES.search(name)]
-    print("walking: " + ", ".join(f"{imgs[i][0]}({imgs[i][1]})" for i in idxs))
-    sc.exports_sync.start(idxs, sf_off, 1500)
-    rows, t0, steps, slow = [], time.time(), 0, 0
-    while True:
-        r = sc.exports_sync.step()
-        steps += 1
-        slow = max(slow, r["ms"])
-        for line in r["text"].splitlines():
-            p = line.split("\t")
-            if len(p) != 8:
-                continue
-            img, ns, cls, fld, kind, te, ut, val = p
-            te, ut = int(te), int(ut)
-            if kind == "a":
-                n, _, hv = val.partition(":")
-                v = {"count": int(n), "values": [decode(ut, int(h, 16)) for h in hv.split(",") if h]}
-            else:
-                v = decode(ut, int(val, 16))
-            rows.append({"image": imgs[idxs[int(img)]][0], "ns": ns, "class": cls, "field": fld,
-                         "kind": {"c": "const", "s": "static readonly", "a": "static readonly array"}[kind],
-                         "type": ("enum:" if te == 0x11 and ut != 0x7f else "") + TYPE.get(ut, hex(ut)) + ("[]" if kind == "a" else ""),
-                         "value": v})
-        if r["done"]:
-            break
-        if steps % 20 == 0:
-            print(f"  step {steps}: image {r['img']} class {r['cls']} rows {len(rows)} (slowest step {slow} ms)")
-    n = r["n"]
-    print(f"done in {time.time() - t0:.1f}s, {steps} steps, slowest {slow} ms: {n[0]} classes, {n[1]} static fields, "
-          f"{n[2]} consts, {n[3]} static readonly values")
-    sc.unload()
-    sess.detach()
-    os.makedirs(os.path.dirname(OUT), exist_ok=True)
-    with open(OUT, "w", encoding="utf-8") as fh:
-        json.dump({"pid": pid, "read_at": time.strftime("%Y-%m-%d %H:%M:%S"), "static_fields_offset": sf_off,
-                   "images": [imgs[i] for i in idxs], "constants": rows}, fh, indent=0)
-    print(f"wrote {OUT} ({os.path.getsize(OUT) // 1024} KB, {len(rows)} values)")
+    try:
+        pr = sc.exports_sync.probe()
+        imgs = pr["images"]
+        print(f"{len(imgs)} images; exports: {pr['exports']}; static_fields probe: {pr['sf']}", flush=True)
+        hits = (pr.get("sf") or {}).get("hits") or []
+        sf_off = hits[0] if len(hits) == 1 else 0
+        print(f"static readonly reads: {'ON, Il2CppClass.static_fields @0x%x' % sf_off if sf_off else 'OFF (offset not proven)'}", flush=True)
+        idxs = [i for i, (name, n) in enumerate(imgs) if not SKIP_IMAGES.search(name)]
+        print("walking: " + ", ".join(f"{imgs[i][0]}({imgs[i][1]})" for i in idxs), flush=True)
+        sc.exports_sync.start(idxs, sf_off, 1500)
+        rows, t0, steps, slow = [], time.time(), 0, 0
+        while True:
+            r = sc.exports_sync.step()
+            steps += 1
+            slow = max(slow, r["ms"])
+            for line in r["text"].splitlines():
+                p = line.split("\t")
+                if len(p) != 8:
+                    continue
+                img, ns, cls, fld, kind, te, ut, val = p
+                te, ut = int(te), int(ut)
+                if kind == "a":
+                    n, _, hv = val.partition(":")
+                    v = {"count": int(n), "values": [decode(ut, int(h, 16)) for h in hv.split(",") if h]}
+                else:
+                    v = decode(ut, int(val, 16))
+                rows.append({"image": imgs[idxs[int(img)]][0], "ns": ns, "class": cls, "field": fld,
+                             "kind": {"c": "const", "s": "static readonly", "a": "static readonly array"}[kind],
+                             "type": ("enum:" if te == 0x11 and ut != 0x7f else "") + TYPE.get(ut, hex(ut)) + ("[]" if kind == "a" else ""),
+                             "value": v})
+            if r["done"]:
+                break
+            if steps % 20 == 0:
+                print(f"  step {steps}: image {r['img']} class {r['cls']} rows {len(rows)} (slowest step {slow} ms)", flush=True)
+        n = r["n"]
+        print(f"done in {time.time() - t0:.1f}s, {steps} steps, slowest {slow} ms: {n[0]} classes, {n[1]} static fields, "
+              f"{n[2]} consts, {n[3]} static readonly values", flush=True)
+    finally:
+        try:
+            sc.unload()
+        except Exception:
+            pass
+    return {"pid": pid, "game_version": version, "read_at": time.strftime("%Y-%m-%d %H:%M:%S"), "static_fields_offset": sf_off,
+            "images": [imgs[i] for i in idxs], "constants": rows}
+
+
+def main():
+    import dump_game_limits as dl
+    version = dl.game_version()
+    sess, pid = pg.get_session()
+    print(f"attached pid {pid} (game {version})")
+    try:
+        doc = run(sess, pid, version)
+    finally:
+        try:
+            sess.detach()
+        except Exception:
+            pass
+    arch = dl.save(doc, OUT, "game_constants")
+    print(f"wrote {OUT} ({os.path.getsize(OUT) // 1024} KB, {len(doc['constants'])} values) and {arch}")
 
 
 if __name__ == "__main__":
