@@ -25,6 +25,19 @@ from cpm_table import cpm_list
 CPM = cpm_list()
 
 
+def _engine(box):
+    return rpk.run_engine(*box)
+
+
+def _engines(boxes):
+    """run_engine on each (sandbox, db): side by side in worker processes when there is more than one."""
+    if len(boxes) < 2:
+        return [rpk.run_engine(*bx) for bx in boxes]
+    from concurrent.futures import ProcessPoolExecutor
+    with ProcessPoolExecutor(max_workers=len(boxes)) as ex:
+        return list(ex.map(_engine, boxes))
+
+
 def main():
     # THE ADVICE TABLE (2026-09-29, the fold): every Evolve Once / Twice / Gated copy with its target(s) and producer, as
     # build_tagsets recorded it (granular_tags.evolve_advice). Trusted for the targets as promises.json was; the members
@@ -108,12 +121,17 @@ def main():
                       % (rows[u]['species_name'], (rows[u]['iv_total'] or 0) * 100 // 45, '/'.join(todo[u])))
         del todo[u]
     branches = max((len(t) for t in todo.values()), default=1)
-    for b in range(branches):
-        sandbox = tempfile.mkdtemp(prefix='promise_audit_')
-        try:
-            sb_db = rpk.build_sandbox(sandbox)
+    # EVERY BRANCH'S SANDBOX FIRST, THEN THEIR ENGINES SIDE BY SIDE (2026-10-29, user: "I need it to be 60 secs. With same
+    # results, just faster."): each is the unmodified engine on its own sandbox, ~3 s apiece, and they ran one after
+    # another. Their verdicts are still read branch by branch, in order.
+    boxes = []                                   # [sandbox, sb_db, moved] per branch
+    try:
+        for b in range(branches):
+            sandbox = tempfile.mkdtemp(prefix='promise_audit_')
+            boxes.append([sandbox, None, {}])
+            sb_db = boxes[-1][1] = rpk.build_sandbox(sandbox)
             con = sqlite3.connect(sb_db)
-            moved = {}
+            moved = boxes[-1][2]
             for u, targets in todo.items():
                 r = rows[u]
                 t = targets[min(b, len(targets) - 1)]
@@ -140,7 +158,8 @@ def main():
                     con.execute('UPDATE pokemon SET height_m=?, weight_kg=? WHERE uid_hex=?', (_sz[0], _sz[1], u))
                 moved[u] = t
             con.commit(); con.close()
-            pile, reasons, out, err = rpk.run_engine(sandbox, sb_db)
+        for b, ((sandbox, sb_db, moved), (pile, reasons, out, err)) in enumerate(
+                zip(boxes, _engines([(sb, db) for sb, db, _m in boxes]))):
             if err:
                 print('engine aborted in the sandbox (branch %d): %s' % (b, err)); return 2
             for u, t in moved.items():
@@ -155,7 +174,8 @@ def main():
                                   % (r['species_name'], (r['iv_total'] or 0) * 100 // 45, t, b))
                 elif b == 0:
                     reasons_at[','.join(sorted(reasons.get(u, [])))] += 1
-        finally:
+    finally:
+        for sandbox, _db, _m in boxes:
             shutil.rmtree(sandbox, ignore_errors=True)
 
     # WHY EACH EVOLUTION IS WORTH IT, judged on the LIVE bag at its first target.

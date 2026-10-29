@@ -2205,8 +2205,12 @@ def main():
         # 2026-05-29) but ~44x faster: caches the per-species 4096-combo IV tables
         # (rebuilt only when pvpoke_gamemaster.json changes) while still re-ranking
         # EVERY in-bag mon every run (no per-mon skip). Fallback: compute_all_ranks.py.
+        # side by side (2026-10-29, "same results, just faster"): detect_legacy reads moves / form / species / alignment
+        # only -- none of the rank columns rank_cache writes -- and rank_cache never reads legacy_accurate.json
+        _p2 = _sub.Popen([sys.executable, 'detect_legacy.py'], cwd=here_dir, stdout=_sub.PIPE, stderr=_sub.PIPE, text=True)
         r1 = _sub.run([sys.executable, os.path.join('system', 'scripts', 'rank_cache.py')], cwd=here_dir, capture_output=True, text=True)
-        r2 = _sub.run([sys.executable, 'detect_legacy.py'], cwd=here_dir, capture_output=True, text=True)
+        _o2, _e2 = _p2.communicate()         # communicate, never wait(): a full pipe would deadlock wait()
+        r2 = _sub.CompletedProcess(_p2.args, _p2.returncode, _o2, _e2)
         _tick(f"   ranks rc={r1.returncode}  legacy rc={r2.returncode}")
         if r1.returncode or r2.returncode:
             # FATAL, not a warning. This used to _tick and fall straight through into cull_v9 +

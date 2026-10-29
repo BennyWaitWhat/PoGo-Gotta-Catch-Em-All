@@ -629,6 +629,7 @@ def main():
         bt = tag_ops._load_bulk_tag_script(sess)
         try:
             tag_ops.ensure_ready(sess, svc, bt)
+            _ix = tag_ops.tag_index(bt, svc)    # every existing tag from ONE RPC (2026-10-29: was 2 per tag, ~4 s)
             write_failed = False   # any add/remove that did not fully apply -> non-zero exit at the end
             change_map = {}        # atomic mode: uid_hex -> {'add': {tagproto..}, 'remove': {tagproto..}}
             def _chg(uh, kind, tp):
@@ -662,7 +663,7 @@ def main():
                     if addition: print(f'      would add:    {sorted(addition)[:12]}')
                     continue
                 try:
-                    tagproto = tag_ops.create_tag(bt, svc, name, color)   # FRESH (needed for untag persistence)
+                    tagproto = tag_ops.create_tag(bt, svc, name, color, index=_ix)   # FRESH (needed for untag persistence)
                 except tag_ops.DuplicateTagName as exc:           # (2026-09-30) never write into an ambiguous tag
                     print(f'  !! {name}: SKIPPED this pass -- {exc}')
                     write_failed = True
@@ -716,7 +717,7 @@ def main():
                 if dry:
                     continue
                 try:
-                    tagproto = tag_ops.create_tag(bt, svc, name, 0)   # exists -> returns its live tagproto; colour ignored
+                    tagproto = tag_ops.create_tag(bt, svc, name, 0, index=_ix)   # exists -> returns its live tagproto; colour ignored
                 except tag_ops.DuplicateTagName as exc:
                     print(f'  !! {name}: SKIPPED this pass -- {exc}')
                     write_failed = True

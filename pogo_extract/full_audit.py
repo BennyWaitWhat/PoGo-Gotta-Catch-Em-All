@@ -486,19 +486,70 @@ def catcher_resume():
         say('catcher resume failed (%s) -- its deadline releases it anyway' % _e)
 
 
-def report_step(verify_failed=False):
+REPORT_STATE = os.path.join('system', 'analysis', 'last_report.json')
+
+
+def report_start():
+    """THE REPORT IN THE BACKGROUND (2026-10-29, user: "I need it to be 60 secs. With same results, just faster."), started
+    with the post-push session, whose ~19 s of phone time it overlaps. It reads nothing that session writes: the sync
+    log, this walk's files and the DB's non-tag columns (the Remote Trade mirror, the session's only DB write, is a tag
+    column the report never reads). report_step(bg=...) prints it; a pass that ends without a report puts
+    last_report.json back (report_cancel), as if it never ran. -> (Popen, last_report.json bytes or None) or None."""
+    try:
+        _bak = open(REPORT_STATE, 'rb').read() if os.path.exists(REPORT_STATE) else None
+        _env = dict(os.environ)
+        _env.pop('CULL_VERIFY', None)
+        return subprocess.Popen([PY, 'cull_report.py'], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+                                encoding='utf-8', errors='replace', env=_env), _bak
+    except Exception as _e:
+        say('report: not started in the background (%s) -- it runs after the post-push session' % _e)
+        return None
+
+
+def report_cancel(bg):
+    """No report this pass (or a re-run with CULL_VERIFY=FAILED): let the background one end -- a kill could tear
+    last_report.json -- then put that file back exactly as it was."""
+    if not bg:
+        return
+    try:
+        bg[0].communicate(timeout=300)
+    except Exception:
+        bg[0].kill()
+    try:
+        if bg[1] is None:
+            if os.path.exists(REPORT_STATE):
+                os.remove(REPORT_STATE)
+        else:
+            open(REPORT_STATE, 'wb').write(bg[1])
+    except OSError as _e:
+        say('report: last_report.json NOT put back (%s) -- the next report may count from this walk' % _e)
+
+
+def report_step(verify_failed=False, bg=None):
     """THE REPORT (user 2026-09-24: "Why does it take you so long to make the report? it shouldnt..."): what improved,
     why each pile mon is there, the safety check and which way to evolve -- written by cull_report.py from this pass's
     own files, printed verbatim after '=== REPORT ==='. Never fails the cull.
     verify_failed (R-B review): the report's lead line reads only the sync log, whose prune verify had passed -- after
-    VERIFY *** FAILED *** it still said "Release the N ... (the game read back N ...)". CULL_VERIFY=FAILED stops that."""
+    VERIFY *** FAILED *** it still said "Release the N ... (the game read back N ...)". CULL_VERIFY=FAILED stops that.
+    bg: report_start()'s background run, printed instead of a new one (a failed verify re-runs it with the flag)."""
+    if bg and verify_failed:
+        report_cancel(bg)
+        bg = None
     try:
         _env = dict(os.environ)
         _env.pop('CULL_VERIFY', None)
         if verify_failed:
             _env['CULL_VERIFY'] = 'FAILED'
-        _p = subprocess.run([PY, 'cull_report.py'], capture_output=True, text=True, encoding='utf-8',
-                            errors='replace', timeout=300, env=_env)
+        if bg:
+            try:
+                _o, _e = bg[0].communicate(timeout=300)
+            except subprocess.TimeoutExpired:
+                bg[0].kill()
+                raise
+            _p = subprocess.CompletedProcess(bg[0].args, bg[0].returncode, _o, _e)
+        else:
+            _p = subprocess.run([PY, 'cull_report.py'], capture_output=True, text=True, encoding='utf-8',
+                                errors='replace', timeout=300, env=_env)
         print('=== REPORT ===')
         print('\n'.join(l for l in (_p.stdout or '').splitlines() if not l.startswith('[adventure_effect]')), flush=True)
         if _p.returncode:
@@ -977,6 +1028,7 @@ def _main():
     # job failed it. Then retire (fail-soft), Remote Trade, the tag order. The ladder starts first so it overlaps that
     # phone time; it already overlapped Remote Trade's DB mirror, the only thing this session writes that it reads.
     _lr = ladder_start()
+    _rb = report_start()
     try:
         _post = post_tags_run(('--reconcile', '--retire'))
     except Exception as _pe:
@@ -995,6 +1047,7 @@ def _main():
                 _lr.communicate(timeout=300)
             except Exception:
                 _lr.kill()
+        report_cancel(_rb)                     # no report on a failed sync: as if it never ran
         say('SYNC FAILED rc=%s -- the post-push reconcile %s (log: system/analysis/last_job_post_tags.log)'
             % (_post[0].returncode, 'found drift' if 'Drift detected' in _rec else 'gave no verdict'))
         return 3
@@ -1051,7 +1104,7 @@ def _main():
             post_tags_say(*_post)              # Remote Trade + the tag order ran in the post-push session above
             catcher_resume()                   # last phone step done -- the reports are offline
             ladder_finish(_lr)
-            report_step()
+            report_step(bg=_rb)
             return 0
     catcher_pause(wait=False)                  # verify is a cache reconcile only -- it never restarts PoGo (2026-09-25)
     v = subprocess.run([PY, 'verify_tags_live.py'], capture_output=True, text=True,
@@ -1081,7 +1134,7 @@ def _main():
     post_tags_say(*_post)                      # Remote Trade + the tag order ran in the post-push session above
     catcher_resume()                           # last phone step done -- the reports are offline
     ladder_finish(_lr)
-    report_step(verify_failed=v.returncode != 0)
+    report_step(verify_failed=v.returncode != 0, bg=_rb)
     return 0 if v.returncode == 0 else 4
 
 if __name__ == '__main__':
