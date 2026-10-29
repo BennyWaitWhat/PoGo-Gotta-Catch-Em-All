@@ -44,7 +44,8 @@ run('encounter', { script: (s, W) => { if (s === 0) W.p1 = mk(4, { isEnc: true }
 run('far', { script: (s, W) => { if (s === 0) W.p1 = mk(5, far); } }, { taps: [] });
 run('two-apples', { script: (s, W) => { if (s === 0) { W.p1 = mk(6); W.p2 = mk(7); } }, onTap: gone }, { taps: [6, 7] });
 run('pool-reuse', { script: (s, W) => { if (s === 0) W.p1 = mk(8, { despawn: 1790716800000 - 1 }); if (s === 100) W.p1 = mk(9); }, onTap: gone }, { taps: [9] });
-run('other-type', { script: (s, W) => { if (s === 0) W.p1 = mk(10, { type: 'TAPPABLE_TYPE_POKEBALL' }); } }, { taps: [] });
+run('route-pin', { script: (s, W) => { if (s === 0) W.p1 = mk(10, { type: 'TAPPABLE_TYPE_ROUTE_PIN' }); } }, { taps: [] });
+run('event-type', { script: (s, W) => { if (s === 0) W.p1 = mk(18, { type: 'TAPPABLE_TYPE_HALLOWEEN' }); }, onTap: gone }, { taps: [18] });   // a new event's type is tapped too
 run('not-ready', { script: (s, W) => { if (s === 0) W.p1 = mk(11, { ready: false }); if (s === 50) W.p1 = mk(11); }, onTap: gone }, { taps: [11] });
 // RANGE (09-30): start at 150 m; the first NOT_IN_RANGE (status 4) shrinks it below that distance
 run('range-122m', { script: (s, W) => { if (s === 0) W.p1 = mk(12, at(122)); }, onTap: gone }, { taps: [12], range: 150 });

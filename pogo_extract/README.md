@@ -2,7 +2,7 @@
 
 The Pokémon GO bag pipeline: read every Pokémon out of the live game, decide what to keep under
 [`LAW.md`](LAW.md), prove the decision, and tag the rest. **It only tags — Benny releases by hand.**
-Sessions: the operating manual is [`CLAUDE.md`](CLAUDE.md); this page is the overview.
+Sessions: the operating manual is `CLAUDE.md`; this page is the overview.
 
 ## One command
 ```bash
@@ -32,7 +32,7 @@ is the gate working — find the cause, never work around it.
 ## Where the rules live
 - [`LAW.md`](LAW.md) — the keep law in words (edit it first for any policy change).
 - `keep_config.json` — the numbers (per account; in the phone data store, not git).
-- [`CLAUDE.md`](CLAUDE.md) — hard rules, the map of entry points, the offline gate.
+- `CLAUDE.md` — hard rules, the map of entry points, the offline gate.
 - [`RUNBOOK.md`](RUNBOOK.md) — stamp, gate and trap details.
 
 Most other `*.py` files here are one-off research and older iterations kept for reference; the entry points above are
