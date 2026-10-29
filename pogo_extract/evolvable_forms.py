@@ -414,8 +414,8 @@ GENDER_TERMINALS = {
 }
 
 
-# GENDER IS A LOOK (user 2026-09-23, Hippowdon: "why is dark hippo tagged? i have 4 dark ones"): for the 102 species whose
-# males and females look different (gender_variants.json, Bulbapedia's list -- GO renders all of them), each gender is
+# GENDER IS A LOOK (user 2026-09-23, Hippowdon: "why is dark hippo tagged? i have 4 dark ones"): for the species whose
+# males and females look clearly different (gender_variants.json: 14 since 2026-10-29, picked by him from Bulbapedia's 102), each gender is
 # its own plain ladder / variant, exactly like a costume. Gender-LOCKED evolvers (GENDER_TERMINALS) were already keyed
 # by gender. gender_key() is the ONE answer every stage key uses: engine, audits, tag ordinals.
 try:
