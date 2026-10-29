@@ -6,6 +6,7 @@ import re
 import subprocess
 import sys
 import tempfile
+import time
 import types
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -109,7 +110,87 @@ fake = FakeT()
 br.loop(types.SimpleNamespace(dry=True, first=None, every=3, idle=60, feed=False, trainer="BennyValentinC", cmd=None), fake)
 assert fake.acts == [], f"--dry acted: {fake.acts}"
 n += 1
-print(f"ok: {n} rotation decisions + cycle/room + dry-run checks passed")
+
+
+class FakeExports:                                               # Tapper.act's end of a wait: no frame vs in flight vs a late reply
+    def __init__(self, inflight=False, late=None):
+        self.inflight, self.late = inflight, late
+    def act(self, what, arg):
+        return 1
+    def cancel(self):
+        if self.late:
+            self.late()
+        return not self.inflight
+    def idle(self):
+        return True
+
+
+def tapper(ex):
+    t = object.__new__(br.Tapper)
+    t.sess, t.last, t.detached, t.scan, t.bg = None, {}, False, False, False
+    t.sc = types.SimpleNamespace(exports_sync=ex)
+    return t
+
+
+t = tapper(FakeExports())
+assert t.act("pet", timeout=0.3) == {"noframe": True} and t.bg, "no game frame: nothing was sent, not a failure"
+t = tapper(FakeExports(inflight=True))
+assert t.act("pet", timeout=0.3) is None, "sent but never answered: a failure"
+t = tapper(None)
+t.sc = types.SimpleNamespace(exports_sync=FakeExports(late=lambda: t.last.__setitem__("pet", (time.time(), {"res": 1}))))
+assert t.act("pet", timeout=0.3) == {"res": 1} and not t.bg, "a reply that lands at the timeout is the reply"
+n += 3
+
+
+class Done(Exception):
+    pass
+
+
+class LoopT:                                                     # the loop with scripted reads and action replies
+    hist, scan, bg = {E: [290, 0, 0], J: [280, 0, 0]}, False, False
+    def __init__(self, peeks, acts):
+        self.peeks, self.acts, self.calls = list(peeks), acts, []
+    def peek(self):
+        if not self.peeks:
+            raise Done
+        return dict(self.peeks.pop(0), name="BennyValentinC")
+    def act(self, what, arg=None):
+        self.calls.append(what)
+        self.bg = bool(self.acts.get(what, {}).get("noframe"))
+        return self.acts.get(what, {})
+    def unhook(self):
+        pass
+
+
+said, real_sleep = [], br.time.sleep
+br.say, br.time.sleep = said.append, lambda s: None
+
+
+def run_loop(peeks, acts, feed=False):
+    T = LoopT(peeks, acts)
+    try:
+        br.loop(types.SimpleNamespace(dry=False, first=None, every=3, idle=60, feed=feed, reserve=0, max_swaps=10, tick=0,
+                                      trainer="BennyValentinC", cmd=None), T)
+    except Done:
+        pass
+    return T
+
+
+NF = {"noframe": True}
+T = run_loop([P(J, 280), P(J, 280)], {"pet": NF})
+assert T.calls == ["pet"] and any("not in front" in s for s in said), "play with PoGo in the background: no stop, said once"
+T = run_loop([P(SNOM, 10), P(SNOM, 10)], {"set": NF})
+assert T.calls == ["set"], "a switch with PoGo in the background: no stop"
+T = run_loop([P(J, 281, play=1), P(J, 281, play=1)], {"count": NF}, feed=True)
+assert T.calls == ["count"], "a treat with PoGo in the background: no stop, treats stay on"
+try:
+    run_loop([P(J, 280), P(J, 280)], {"pet": {"err": "x"}})
+    raise AssertionError("a refused play must stop the run")
+except br.Stop:
+    pass
+br.time.sleep = real_sleep
+n += 4
+print(f"ok: {n} rotation decisions + cycle/room + dry-run + background checks passed")
 
 # ---- buddy_tapper's walk to the player record (findCpp / follow / isA), the real JS under node ----
 def js_fn(name):
@@ -130,10 +211,12 @@ function O(id, klass, fields) {                 /* a mock object: readPointer() 
   REG[id] = o; return o;
 }
 function ptr(s) { return REG[s]; }
-function C(name) { var k = {name: name, equals: function (x) { return x === k; }}; return k; }
+function C(name) { var k = {name: name, equals: function (x) { return x === k; },   /* Il2CppClass: name@0x10 */
+  add: function (off) { return {readPointer: function () { return {readCString: function () { return name; }}; }}; }}; return k; }
 var TYPES = {PlayerService: [['info', 0x12, 16], ['self', 0x12, 32], ['vt', 0x15, 40, 'VT'], ['list', 0x15, 48, 'REF']],
              PlayerInfo: [['proto', 0x12, 24], ['n', 0x08, 8]], Deep: [['a', 0x12, 8]], ClientPlayerProto: []};
-function fieldsOf(k) { return (TYPES[k.name] || []).map(function (x) { return {name: x[0], te: x[1], off: x[2], t: x[3] || null}; }); }
+var CALLED = [];                                /* every class handed to il2cpp's field enumeration */
+function fieldsOf(k) { CALLED.push(k.name); return (TYPES[k.name] || []).map(function (x) { return {name: x[0], te: x[1], off: x[2], t: x[3] || null}; }); }
 var IL = {isValueType: function (c) { return c === 'VT'; }, classFromType: function (t) { return t; }};
 var KPS = C('PlayerService'), KPI = C('PlayerInfo'), KD = C('Deep'), K = {cpp: C('ClientPlayerProto')}, GRAPH = null;
 function ok(c, m) { if (!c) { console.log('FAIL: ' + m); process.exit(1); } }
@@ -154,10 +237,12 @@ ok(findCpp(ps2, 3) === null, 'a value-type field is never followed as a pointer'
 var d3 = O('d3', KD, {8: O('cppdeep', K.cpp)}), d2 = O('d2', KD, {8: d3}), d1 = O('d1', KD, {8: d2}), ps3 = O('ps3', KPS, {16: d1});
 ok(findCpp(ps3, 3) === null && JSON.stringify(findCpp(ps3, 4)) === '[16,8,8,8]', 'the depth limit holds');
 ok(isA(cpp1, K.cpp) && !isA(pi, K.cpp) && !isA(NULLP, K.cpp), 'isA');
-console.log('ok: 8 player-record walk checks passed');
+var ps5 = O('ps5', KPS, {16: O('notobj', C('\u0001\u0007'))}); CALLED.length = 0;
+ok(findCpp(ps5, 3) === null && CALLED.indexOf('\u0001\u0007') < 0, 'memory that is not an object never reaches il2cpp');
+console.log('ok: 9 player-record walk checks passed');
 """
 with tempfile.NamedTemporaryFile("w", suffix=".js", delete=False, encoding="utf-8") as f:
-    f.write(MOCK + js_fn("klassOf") + js_fn("isA") + js_fn("findCpp") + js_fn("follow") + TESTS)
+    f.write(MOCK + js_fn("jsClass") + js_fn("klassOf") + js_fn("isA") + js_fn("findCpp") + js_fn("follow") + TESTS)
 try:
     r = subprocess.run(["node", f.name], capture_output=True, text=True)
     print(r.stdout.strip() or r.stderr.strip())

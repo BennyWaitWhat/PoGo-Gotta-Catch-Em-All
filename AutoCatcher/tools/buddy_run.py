@@ -12,8 +12,11 @@ CAREFUL, after the 2026-09-26 lockout:
 - Hands off when he picks a buddy himself: an Eevee from the list is adopted, anything else pauses the rotation until an
   Eevee from the list is buddy again.
 - Stops, with a phone screencap, on anything unexpected: a failed action, another trainer, an unreadable buddy, a memory read
-  that does not show its own switch. One attach; if the game dies it waits until the game has run 2 min and attaches once
-  more, and a second death within 30 min ends the run.
+  that does not show its own switch. One attach; if the game dies it waits 1 min and until the game has run 2 min, attaches
+  once more, and a second death within 30 min ends the run.
+- PoGo not in front (another app, the screen off): the game runs no frames, so an action is never sent; it is tried again at
+  a later read, never counted as a failure.
+- No pointer path to the player record (game 0.435.0): reads are heap scans instead, 5 min after an action, else every 15 min.
 - No game hook between actions (buddy_tapper adds one only while an action runs). Not next to gym_run.py (own buddy module).
 
 usage: python buddy_run.py --dry          look only: the rotation, the current buddy and the next step; nothing is done
@@ -164,7 +167,7 @@ class Tapper:
 
     def __init__(self, sess):
         import buddy_tapper as bt
-        self.sess, self.last, self.detached, self.scan = sess, {}, False, False
+        self.sess, self.last, self.detached, self.scan, self.bg = sess, {}, False, False, False
         self.sc = sess.create_script(bt.JS)
         self.sc.on("message", self.on_msg)
         sess.on("detached", lambda *x: setattr(self, "detached", True))
@@ -210,10 +213,18 @@ class Tapper:
                     raise Detached("game connection lost")
                 v = self.last.get(what)
                 if v and v[0] >= t0:
+                    self.bg = False
                     return v[1]
                 time.sleep(0.2)
-            self.sc.exports_sync.cancel()                          # no frame came (game in the background?): drop the queued call
-            return None
+            if not self.sc.exports_sync.cancel():                  # sent, but no reply: a failure
+                return None
+            time.sleep(0.5)                                        # nothing in flight: the reply is on its way, or...
+            v = self.last.get(what)
+            if v and v[0] >= t0:
+                self.bg = False
+                return v[1]
+            self.bg = True                                         # ...no game frame came at all: nothing was sent
+            return {"noframe": True}
         finally:
             self.unhook()
 
@@ -287,7 +298,7 @@ def loop(a, T):
     first = a.first.split(":") if a.first else None
     st = {"rot": sorted(rot, key=lambda i: -hist.get(i, 0)), "hist": hist, "ours": None, "at_set": {}, "gain_at": time.time(),
           "played": {}, "capped": {}, "swaps": {}, "hands_off": False, "paused": False, "first": (first[0], int(first[1])) if first else None,
-          "key": None, "said": None, "why": None, "table_at": time.time()}
+          "key": None, "said": None, "why": None, "table_at": time.time(), "bg": False}
     p = trainer(a, T.peek())
     say(f"trainer {p.get('name')}; the rotation, closest to Best Buddy first (hearts from the game's buddy history):")
     table(st, names, p["buddyId"])
@@ -334,18 +345,25 @@ def loop(a, T):
             say(f"DONE: {why}")
             table(st, names, p["buddyId"])
             return
+        acted = False
         if what == "pet":
             r = T.act("pet") or {}
-            if r.get("err") or r.get("res") != 1:
-                raise Stop(f"!! play with {name_of(names, p['buddyId'])} failed: {r or 'no reply'}")
-            st["played"][p["buddyId"]] = today
-            say(f"  PLAY with {name_of(names, p['buddyId'])}: {p['pts']} -> {r.get('pts')} hearts")
+            if not r.get("noframe"):
+                if r.get("err") or r.get("res") != 1:
+                    raise Stop(f"!! play with {name_of(names, p['buddyId'])} failed: {r or 'no reply'}")
+                st["played"][p["buddyId"]] = today
+                say(f"  PLAY with {name_of(names, p['buddyId'])}: {p['pts']} -> {r.get('pts')} hearts")
+                acted = True
         elif what == "set":
-            switch(a, T, st, p, arg, why, names, now, today)
+            acted = switch(a, T, st, p, arg, why, names, now, today)
         elif what == "feed":
-            feed(a, T, p, names)
+            acted = feed(a, T, p, names)
+        if T.bg != st["bg"]:
+            st["bg"] = T.bg
+            say("  PoGo is not in front (no game frame for 25 s) -- nothing sent; trying again later" if T.bg
+                else "  PoGo is in front again")
         T.unhook()                                               # leftovers from an action whose reply came late
-        time.sleep(300 if T.scan else a.tick)
+        time.sleep(a.tick if not T.scan else 300 if acted else 900)
 
 
 def switch(a, T, st, p, want, why, names, now, today):
@@ -354,8 +372,10 @@ def switch(a, T, st, p, want, why, names, now, today):
         if st.get("budget") != today:
             st["budget"] = today
             say(f"  {why} -- but today's {a.max_swaps} switches are used ({used}); keeping {name_of(names, p['buddyId'])}")
-        return
+        return False
     r = T.act("set", want) or {}
+    if r.get("noframe"):
+        return False
     if r.get("err") or r.get("res") != 1 or r.get("buddyId") != want:
         raise Stop(f"!! the switch to {name_of(names, want)} failed: {r or 'no reply'}")
     st["swaps"][today] = st["swaps"].get(today, 0) + 1
@@ -369,7 +389,7 @@ def switch(a, T, st, p, want, why, names, now, today):
         for _ in range(10):
             time.sleep(2)
             if T.peek().get("buddyId") == want:
-                return
+                return True
         if attempt == 1:
             say("  !! the memory read does not show the switch -- finding the game objects again")
             T.install()
@@ -377,17 +397,23 @@ def switch(a, T, st, p, want, why, names, now, today):
 
 
 def feed(a, T, p, names):
-    cnt = (T.act("count") or {}).get("counts") or {}
+    r = T.act("count") or {}
+    if r.get("noframe"):
+        return False
+    cnt = r.get("counts") or {}
     pick = max((b for b in REGULAR if (cnt.get(b) or 0) > a.reserve), key=lambda b: cnt.get(b) or 0, default=None)
     if not pick:
-        say(f"  no regular berries above the reserve ({a.reserve}) for treats: {cnt}")
+        say(f"  no regular berries above the reserve ({a.reserve}) for treats: {cnt or 'the bag counts are unreadable'} -- treats off")
         a.feed = False
-        return
+        return False
     r = T.act("feed", pick) or {}
+    if r.get("noframe"):
+        return False
     if r.get("err") or r.get("res") != 1:
         raise Stop(f"!! treat {pick} -> {name_of(names, p['buddyId'])} failed: {r or 'no reply'}")
     say(f"  TREAT {pick} -> {name_of(names, p['buddyId'])}: {p['pts']} -> {r.get('pts')} hearts, full until "
         f"{time.strftime('%H:%M', time.localtime((r.get('fullUntil') or 0) / 1000))}")
+    return True
 
 
 def run(a):
@@ -402,7 +428,7 @@ def run(a):
     try:
         r = T.install()
         say(f"attached pid {pid}: player record path {r.get('cppPath')}, {len(T.hist)} buddy records in memory, "
-            f"live graph {r.get('graph')}{' -- notes: ' + str(r['graphNotes']) if r.get('graphNotes') else ''}")
+            f"calls {r.get('methods')}, berry counts {'readable' if r.get('itemCount') else 'UNREADABLE'}, live graph {r.get('graph')}{' -- notes: ' + str(r['graphNotes']) if r.get('graphNotes') else ''}")
         return loop(a, T)
     finally:
         T.close()
@@ -440,7 +466,8 @@ def main():
             if a.dry or len(deaths) >= 2:
                 say(f"!! lost the game ({type(e).__name__}: {e}){' twice within 30 min' if len(deaths) >= 2 else ''} -- stopping")
                 return
-            say(f"lost the game ({type(e).__name__}: {e}) -- attaching once more when it has run 2 min")
+            say(f"lost the game ({type(e).__name__}: {e}) -- attaching once more in 1 min, when it has run 2 min")
+            time.sleep(60)                                       # never a quick re-attach (the 2026-10-23 gadget crash)
         except Exception as e:
             say(f"!! {type(e).__name__}: {e} -- stopping")
             shot(a)
