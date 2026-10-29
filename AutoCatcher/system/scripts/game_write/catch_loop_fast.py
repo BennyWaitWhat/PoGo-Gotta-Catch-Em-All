@@ -361,6 +361,7 @@ function pickBall(pr, prio) {
   return 0;
 }
 function berryFor(e) {
+  if (!M.useItem) return 0;
   var b = pickBall(e.probs, e.prio), p = (e.probs && b && e.probs[b] !== undefined) ? e.probs[b] : -1;
   if (CFG.razz && p >= 0 && p < CFG.razzThresh && have(701, CFG.razzFloor)) return 701;
   if (CFG.pinap && have(705, CFG.pinapFloor)) return 705;
@@ -992,8 +993,10 @@ rpc.exports = {
       'CaptureAwardProto', 'CaptureScoreProto', 'IncenseEncounterOutProto', 'DiskEncounterOutProto', 'DailyEncounterOutProto', 'AttractedPokemonEncounterOutProto',
       'DailyBonusSpawnEncounterOutProto', 'StationPokemonEncounterOutProto'], K);
     findClasses(['UnityEngine.InputLegacyModule.dll', 'UnityEngine.CoreModule.dll'], ['Input', 'Camera'], K);
-    /* the item bag: the concrete class with GetItemCount(int) */
-    var h = il(), imgs = images(), gi = imgs['holo-game.dll'];
+    /* the item bag: ItemBagImpl by exact name in any assembly (0.435.0: the holo-game.dll scan below found none, while the
+       class still answered GetItemCount by name), else the concrete holo-game.dll class with GetItemCount(int) */
+    var h = il(), imgs = images(), gi = imgs['holo-game.dll'], ibk = clsByName('Niantic.Holoholo.Internal', 'ItemBagImpl');
+    if (!ibk.isNull() && methodOf(ibk, 'GetItemCount', 1)) { K.ItemBag = ibk; st.bag = 'ItemBagImpl'; }
     [/ItemBag/, /Bag|Item|Invent/, /./].forEach(function (re) {   /* by name first; any concrete class if names are obfuscated */
       if (K.ItemBag || !gi) return;
       var cc = h.classCount(gi), gic = Memory.allocUtf8String('GetItemCount'), uie = Memory.allocUtf8String('UseItemForEncounter');
@@ -1011,9 +1014,16 @@ rpc.exports = {
     M.activeStops = methodOf(K.MapPlaceDirectoryService, 'get_ActivePokestops', 0);
     M.itemCount = methodOf(K.ItemBag, 'GetItemCount', 1);
     M.useItem = methodOf(K.ItemBag, 'UseItemForEncounter', 2);
+    if (!M.useItem) {   /* renamed on an update: the (Item, MapPokemon) method that returns the berry reply */
+      var ui = Memory.alloc(PS), um; ui.writePointer(NULL);
+      while ((um = h.methods(K.ItemBag, ui)) && !um.isNull())
+        if (h.paramCount(um) === 2 && cstr(h.typeName(h.retType(um))).indexOf('UseItemEncounterOutProto') >= 0 &&
+            /(^|\.)Item$/.test(cstr(h.typeName(h.param(um, 0)))) && cstr(h.typeName(h.param(um, 1))).indexOf('MapPokemon') >= 0) { M.useItem = um; break; }
+    }
     M.avatarLoc = K.MapAvatar ? methodOf(K.MapAvatar, 'get_Location', 0) : null;
-    st.missing = ['allPokemon', 'itemCount', 'useItem'].filter(function (n) { return !M[n]; });
+    st.missing = ['allPokemon', 'itemCount'].filter(function (n) { return !M[n]; });
     if (st.missing.length) return st;
+    st.berries = M.useItem ? cstr(h.methodName(M.useItem)) : 'off (no berry call found)';   /* catching never waits on berries */
     var off1 = function (k, names) { for (var i = 0; i < names.length; i++) { var o = fieldOff(k, names[i]); if (o >= 0) return o; } return -1; };
     OFF.cStatus = off1(K.CatchPokemonOutProto, ['Status', 'status_']); if (OFF.cStatus < 0) OFF.cStatus = 0x10;
     OFF.cCaptured = off1(K.CatchPokemonOutProto, ['CapturedPokemonId', 'capturedPokemonId_']); if (OFF.cCaptured < 0) OFF.cCaptured = 0x20;
@@ -1388,14 +1398,22 @@ def session_loop(w, done_ids, base):
     sc.load()
     st = sc.exports_sync.install(cfg_now(), list(done_ids), revealed_load())
     if not st.get("pump"):
-        w(f"install failed: {st} -- retrying in 5s")
+        # A game update can break the lookup until a fix ships: 0.435.0 (2026-10-29) re-attached every 6 s, 130+ times.
+        base["ifails"] = base.get("ifails", 0) + 1
+        delay = min(600, 5 * 2 ** (base["ifails"] - 1))
+        w(f"install failed: {st} -- retrying in {delay}s")
         release(sess)
-        time.sleep(5)
+        end = time.time() + delay
+        while time.time() < end:   # a line every 2 min: run_catch.sh restarts a catcher whose log is silent 240 s
+            time.sleep(max(0, min(120, end - time.time())))
+            if time.time() < end:
+                w(f"install still failing -- next try in {int(end - time.time())}s")
         return
+    base["ifails"] = 0
     base["attached_at"] = time.time()
     w(f"reply types hooked: {', '.join(st.get('otherTypes') or [])}")
     w(f"attached pid={pid} age={age and int(age)}s in {time.time() - t_att:.1f}s | hooks={st.get('hooks')} "
-      f"award={st.get('award')} bag={st.get('bag', 'ItemBag')} tap={st.get('tap')} apples={st.get('apples')}")
+      f"award={st.get('award')} bag={st.get('bag', 'ItemBag')} berries={st.get('berries')} tap={st.get('tap')} apples={st.get('apples')}")
     if not st.get("award"):
         w(f"award fields: catchOut=[{st.get('catchOutFields')}] award=[{st.get('awardFields')}]")
     t0 = time.time()
