@@ -650,8 +650,9 @@ _il_cu = _il.combup_uncovered(
     _crows, ps, _il_labels or {}, own_of=lambda r: _sh_pvid(r['species_name'], r.get('form') or 0), later_fn=_pu_later,
     fits_fn=lambda r, s, c: _pu_fits(r, s, c, _SH_BS), reaches_fn=_sh_via, caps={'gl': _SH_GL, 'ul': _SH_UL},
     floor=keep_config.pvp('best_rank_floor'), rare_pids=_RARE_PIDS, legacy_uids=_legrec,
-    protected_pids=keep_config.protected_pids(), cf=cf)
-print('  %-18s %-5d %s   (LAW bucket 2c re-derived: a piled copy that would beat your best of a stage after evolving)'
+    protected_pids=keep_config.protected_pids(), cf=cf, shadow_floor=keep_config.pvp('shadow_rank_floor'),
+    shadow_leagues=keep_config.shadow_leagues())
+print('  %-18s %-5d %s   (LAW bucket 2c re-derived: a piled copy whose evolved self would take its species\' Best)'
       % ('comb-up (law)', len(_il_cu), chk('comb-up (law)', len(_il_cu))))
 for _u, _lg, _st, _rk, _why in _il_cu[:6]:
     print('     ! %s %s: %s' % (rows[_u]['species_name'], _u, _why))

@@ -1612,8 +1612,10 @@ def main():
     # 15e. PvP COMB-UP (user 2026-09-24: "im basically asking for the scan to be expanded to everyone so all ul and gl get
     # combed up" + "I don't want to waste time catching pokemon just to lose opportunities"). 15d keeps ONE copy per
     # identity -- on a branching / multi-stage line the copy that would make your best Jolteon, Glaceon or Honchkrow
-    # rode on luck. For every GL / UL target stage, the copy that would beat the best you own THERE after evolving
-    # (and still fit the league) is kept -- one copy per target, never a copy evolving would destroy (own-stage best,
+    # rode on luck. For every GL / UL target stage, the copy whose evolved self would TAKE that species' Best (15d's own
+    # usable-rank model, 2026-10-29: "we evolve with intention. no one sits." -- beating the copies you own AS the stage
+    # once sent an 89% Nidoran M to a Nidorino the pile took) and still fit the league is kept -- one copy per target,
+    # never a copy evolving would destroy (own-stage best,
     # top-5 spread, legacy move, last copy / only shiny of its form, protected). ONE definition: pvp_combup.pick,
     # called with this engine's own graph; preflight_transfer, audit_cull, _lawcheck, audit_tags_membership and
     # audit_tag_truth call it on the same files. Tags 'Evolve for GL' / 'Evolve for UL' (2026-09-30).
