@@ -87,7 +87,7 @@ WATCH_ITEMS = {
 JS = r"""
 function imgByName(name){_ensureInit();var sp=Memory.alloc(4);var asms=IL2.dGA(IL2.dG(),sp);var na=sp.readS32();
   for(var a=0;a<na;a++){var img=IL2.aGI(asms.add(a*Process.pointerSize).readPointer());if(IL2.iGN(img).readCString()===name)return img;}return null;}
-function gmCls(ns,name){var i=imgByName('holo-game.dll');return IL2.cFN(i,Memory.allocUtf8String(ns),Memory.allocUtf8String(name));}
+function gmCls(ns,name){return cFN(ns,name);}   // the preamble's lookup: any assembly (0.435.0 moved InventoryCache + ItemBagImpl)
 function protoCls(ns,name){var i=imgByName('holo-protos.dll');return IL2.cFN(i,Memory.allocUtf8String(ns),Memory.allocUtf8String(name));}
 
 var _oGC=null,_cGNm=null,_cGF=null,_fGN=null,_fGO=null,_fGT=null,_tGN=null,_fGV=null;
