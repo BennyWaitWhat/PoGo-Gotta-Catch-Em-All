@@ -11,9 +11,14 @@ For each league (GL, UL) and each TARGET (a PvP stage, shadow or not -- a shadow
   * candidates = copies whose chain reaches the target (rank_cache's per-stage ranks) AND that can actually become it
     (later_fn: keep_policy.pvp_later_stages -- form, costume, gender), whose target stage can reach the league cap,
     and that would still FIT the league there at their true level (pvp_iv_rule.fits -- CP only goes up);
-  * it is a comb-up when the best candidate's rank at the target beats the best copy you already own AS the target
-    that can enter the league (or you own none), and the rank is inside the Best GL/UL floor (keep_config
-    pvp.best_rank_floor) -- the legendary roster is exempt, exactly as for Best GL/UL;
+  * it is a comb-up only when the evolved copy BECOMES YOUR BEST of the target's species (user 2026-10-29: "we evolve
+    with intention. no one sits."): its rank at the target beats the target species' Best GL / UL -- the copy
+    keep_policy 15d keeps, its USABLE rank at any stage it can reach and enter (pvp_iv_rule.usable_best), not just the
+    copies you own AS the target stage (on 10-29 the 89% Nidoran M beat every Nidorino as a Nidorino, but the 60%
+    Nidorino was Best GL as a Nidoking, so the evolved copy went straight to the pile) -- and the rank is inside the
+    Best GL/UL floor (keep_config pvp.best_rank_floor) -- the legendary roster is exempt, exactly as for Best GL/UL. A
+    shadow target is judged the same way against the best shadow (keep_policy rule 2: only in
+    keep_config.shadow_leagues(), inside pvp.shadow_rank_floor) -- no GL shadow is kept, so no GL shadow comb-up;
   * NEVER a candidate (evolving would destroy something): the copy that is your best at its OWN stage in either league,
     an own-stage top-5 spread, a copy with a legacy move (moves reroll on evolution), the only copy of its form, the
     only shiny of its form ("do not cull my only shinies" -- evolving it would leave that stage with none), a
@@ -40,10 +45,10 @@ def _g(r, k):
 
 
 def pick(rows, later_fn, BS, floor, rare_pids, legacy_uids=(), protected_pids=()):
-    """{'gl': {uid: (target_stage, rank_there, your_best_rank_there_or_None)}, 'ul': {...}} -- see the module doc.
+    """{'gl': {uid: (target_stage, rank_there, the_target_species_best_rank_or_None)}, 'ul': {...}} -- see the module doc.
     `rows` may be sqlite3.Row or dict; the form grouping is computed HERE (granular_tags._base_form_map, keep_policy's
     form-0 normalisation), never taken from the caller, so every caller gets the identical answer."""
-    from pvp_iv_rule import pvid, chain_stage_ranks, fits, maxcp, GL_CAP, UL_CAP, VIABILITY_MARGIN
+    from pvp_iv_rule import pvid, chain_stage_ranks, fits, maxcp, usable_best, GL_CAP, UL_CAP, VIABILITY_MARGIN
     import keep_config, granular_tags
     caps = {'gl': GL_CAP, 'ul': UL_CAP}
     rows = [r if isinstance(r, dict) else keep_config.row_dict(r) for r in rows]
@@ -80,6 +85,25 @@ def pick(rows, later_fn, BS, floor, rare_pids, legacy_uids=(), protected_pids=()
                 if k not in owned[lg] or (rk, u) < owned[lg][k]:
                     owned[lg][k] = (rk, u)
     own_best = {u for lg in LEAGUES for (_rk, u) in owned[lg].values()}
+    later_memo = {}
+
+    def later_of(r):
+        if r['uid_hex'] not in later_memo:
+            later_memo[r['uid_hex']] = later_fn(r)
+        return later_memo[r['uid_hex']]
+
+    # the Best each target species keeps today (15d / shadow rule 2): (viable_first, usable rank) of its best copy
+    sh_leagues, sh_floor = tuple(keep_config.shadow_leagues()), keep_config.pvp('shadow_rank_floor')
+    best_of = {lg: {} for lg in LEAGUES}
+    for lg in LEAGUES:
+        for r in rows:
+            u = r['uid_hex']
+            if sh_of[u] and lg not in sh_leagues:
+                continue
+            ub = usable_best(r, lg, caps[lg], BS, later=later_of(r))
+            k = (own_of[u], sh_of[u])
+            if ub is not None and (k not in best_of[lg] or ub[:2] < best_of[lg][k]):
+                best_of[lg][k] = ub[:2]
 
     def blocked(r):
         u = r['uid_hex']
@@ -104,11 +128,13 @@ def pick(rows, later_fn, BS, floor, rare_pids, legacy_uids=(), protected_pids=()
             continue
         for lg in LEAGUES:
             cap = caps[lg]
+            if sh_of[u] and lg not in sh_leagues:
+                continue                                 # no Best shadow is kept in this league: nothing to become
             for st, rk in chains[lg][u]:
                 if st == own_of[u] or not viable(st, cap):
                     continue
                 if u not in later_cache:
-                    later_cache[u] = set(later_fn(r) or ())
+                    later_cache[u] = set(later_of(r) or ())
                 if st not in later_cache[u] or not fits(r, st, cap, BS):
                     continue
                 cands[lg][(st, sh_of[u])].append((rk, u, r))
@@ -123,16 +149,16 @@ def pick(rows, later_fn, BS, floor, rare_pids, legacy_uids=(), protected_pids=()
     promised = {}                                        # uid -> the stage it is promised to become
     out = {lg: {} for lg in LEAGUES}
     for _best, lg, st, sh, lst in todo:
-        cur = owned[lg].get((st, sh))
+        cur = best_of[lg].get((st, sh))
         for rk, u, r in lst:
-            if cur is not None and rk >= cur[0]:
-                break                                    # no candidate left that beats what you own there
-            if rk > floor and _g(r, 'pokemon_id') not in rare_pids:
-                break                                    # outside the top-15% cut (candidates are rank-sorted)
+            if cur is not None and (0, rk) >= cur:
+                break                                    # it would not take the Best (a tie goes by uid, and evolving makes a new one)
+            if rk > (sh_floor if sh else floor) and _g(r, 'pokemon_id') not in rare_pids:
+                break                                    # outside the Best floor (candidates are rank-sorted)
             if promised.get(u, st) != st:
                 continue                                 # already promised to another stage -- next-best copy
             promised[u] = st
-            out[lg][u] = (st, rk, cur[0] if cur else None)
+            out[lg][u] = (st, rk, cur[1] if cur else None)
             break
     return out
 
@@ -186,6 +212,10 @@ if __name__ == '__main__':
         assert res['gl']['x3'] == ('b', 10, 300) and res['gl']['x2'] == ('c', 30, None), res   # x3 -> b, x2 freed for c
         res = pick(rows, lambda r: {'b', 'c'}, BS, 15, set())
         assert res['gl'] == {'x3': ('b', 10, 300)}, res            # the floor stops rank 30
+        # 2026-10-29 (the Nidorino): a B whose Best is as C (#5) -- no B copy you could evolve beats THAT, so no B comb-up
+        rows.append(dict(mk('own_b3', 'b:500(90%);c:5(99%)'), species_name='B', pokemon_id=2))
+        res = pick(rows, lambda r: {'b', 'c'}, BS, 614, set())
+        assert res['gl'] == {'own_b3': ('c', 5, None)}, res        # no A beats B's Best (#5 as C); own_b3 itself is the one for C
     finally:
         P.fits, P.maxcp = real
     print('pvp_combup self-check OK')

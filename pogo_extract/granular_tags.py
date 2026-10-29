@@ -105,8 +105,8 @@ EVOLVE_MID, EVOLVE_FINAL = 'Evolve to Mid', 'Evolve to Final'
 # dups?" -> "The tag is the bug ... fix it."). 'Evo GL / UL Rank 1-5' sat on EVERY kept copy a later stage ranks top 5
 # and read as "evolve this": 13 of its 14 UL members were copies of a stage he already owned as good or better (three
 # Pidgeotto beside two Pidgeot #1). An evolve word now sits ONLY where evolving is the advice: 'Evolve for GL' / 'Evolve
-# for UL' (was 'Evo Best GL' / 'Evo Best UL') on the one comb-up pick per target (pvp_combup.pick: it beats every copy
-# you own there), beside the count, and its Best GL / UL chip comes off (the Evolve tag says it). Every OTHER kept copy
+# for UL' (was 'Evo Best GL' / 'Evo Best UL') on the one comb-up pick per target (pvp_combup.pick: the evolved copy takes
+# that species' Best GL / UL, 2026-10-29), beside the count, and its Best GL / UL chip comes off (the Evolve tag says it). Every OTHER kept copy
 # a later stage ranks top 5 wears '<league> 1-5 No Evolve': a top-5 spread (still kept, rule 15b), not the copy to
 # evolve -- you own one as good or better, it is your best as it is, or the item / candy is missing (build(), below).
 EVOLVE_FOR = {'gl': 'Evolve for GL', 'ul': 'Evolve for UL'}
@@ -161,7 +161,7 @@ SIMPLE = {
     'pvp_best_ul': 'Best UL',
     'pvp_best_ml': 'Best ML',     # Master League joins 2026-09-23
     # 2026-09-24 (user: "expanded to everyone so all ul and gl get combed up"): keep rule 15e / pvp_combup.pick -- EVOLVE
-    # this one: it would be a better Great / Ultra League copy of that stage than any you own. Rank-free. Named 'Evo Best
+    # this one: evolved, it becomes that species' Best GL / UL (2026-10-29). Rank-free. Named 'Evo Best
     # GL / UL' until 2026-09-30 (THE SECOND FOLD above).
     'pvp_combup_gl': EVOLVE_FOR['gl'],
     'pvp_combup_ul': EVOLVE_FOR['ul'],

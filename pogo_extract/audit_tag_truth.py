@@ -172,8 +172,8 @@ for _u, _r in rows.items():
             and (_sl.best_points(_r) is None or _sl.best_points(_r) >= _SC_MIN):   # evolution counts (2026-09-24)
         _scg[own(_r)].append(_r)
 _SC_TOP = set(_sl.xxl_keepers([r for r in rows.values() if not keep_config.is_fused_component(r)]))   # ONE SELECTION (2026-09-29)
-# EVO BEST GL / UL (rule 15e, 2026-09-24): evolving THIS copy would give a better GL / UL copy of that stage than any
-# you own -- it can become the stage, still fits the league there, and its rank there beats yours (pvp_combup.pick).
+# EVO BEST GL / UL (rule 15e, 2026-09-24): evolving THIS copy would give that species' new Best GL / UL -- it can become
+# the stage, still fits the league there, and its rank there beats the species' Best (pvp_combup.pick, 2026-10-29).
 import pvp_combup as _pcu
 _CU = _pcu.pick_default([r for r in rows.values() if not keep_config.is_fused_component(r)])   # (2026-09-26) fused components hold no ladder slot
 try:

@@ -1273,7 +1273,8 @@ def main():
                 bag, _pile_set, _labels_l, own_of=_own_l, later_fn=_later_l,
                 fits_fn=lambda r, st, cap: _fitl(r, st, cap, _BSl), reaches_fn=lambda st, cap: _viable(st, cap, _BSl),
                 caps={'gl': GL_CAP, 'ul': UL_CAP}, floor=keep_config.pvp('best_rank_floor'), rare_pids=_L1 | _L2 | _L3 | _L4,
-                legacy_uids=legacy_set, protected_pids=keep_config.protected_pids(), cf=_cf_norm):
+                legacy_uids=legacy_set, protected_pids=keep_config.protected_pids(), cf=_cf_norm,
+                shadow_floor=keep_config.pvp('shadow_rank_floor'), shadow_leagues=keep_config.shadow_leagues()):
             _found.append((_u, 'pvp_combup(law: %s)' % _why))
         for _u, _why in _il.shiny_ladder_violations(
                 bag, _pile_set, own_of=_own_l, next_of=_next_l, can_evolve=lambda r: bool(_later_l(r)),
