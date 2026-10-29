@@ -17,7 +17,6 @@ Why it is built this way (each rule is a crash we had):
 import os
 import re
 import signal
-import socket
 import subprocess
 import sys
 import time
@@ -749,7 +748,8 @@ function tapTick() {
    Encounter tappables (IsEncounter) are never tapped here. The reply arrives mostly through an obfuscated parse method
    (36 of 38 on 2026-09-29, 'puj'), so every 1-argument parse method is hooked, not just MergeFrom. */
 var AP = {ctl: NULL, f: null, gos: [], handler: null, evF: NULL, ev: NULL, int32: NULL, cand: {}, dead: {}, tapped: {}, seen: {},
-          last: 0, lastTap: 0, types: {TAPPABLE_TYPE_MAPLE: 1}, names: {}, inst: null,
+          /* every type but these: each event brings a new one (Halloween 2026 boxes went untapped under a MAPLE-only list) */
+          last: 0, lastTap: 0, skip: {TAPPABLE_TYPE_ROUTE_PIN: 1, TAPPABLE_TYPE_UNSET: 1}, names: {}, inst: null,
           /* SPEED + RANGE (user 2026-09-29: "not picking up the apples as fast as the pokemon"; 697 sightings were skipped as
              >60 m): nearest first, a tap every 0.5 s, and a range LEARNED from the server. Start at 150 m (the game's
              visibleRadiusMeters) and shrink below the first ERROR_NOT_IN_RANGE (status 4), never below the farthest success.
@@ -813,8 +813,9 @@ function appleTick(now) {   /* UnityMain, from pump() */
       if (de <= AP.maxDist && (!best || de < best.d)) best = {o: o, key: key, d: de, enc: s.enc, isEnc: true};
       continue;
     }
-    if (AP.types[s.type] && !AP.seen[key]) { AP.seen[key] = 1; AP.st.live++; }
-    if (AP.tapped[key] || s.isEnc || !AP.types[s.type] || !s.ready || !me) continue;
+    var want = s.type && !AP.skip[s.type];
+    if (want && !AP.seen[key]) { AP.seen[key] = 1; AP.st.live++; }
+    if (AP.tapped[key] || s.isEnc || !want || !s.ready || !me) continue;
     if (AP.retry[key] && now < AP.retry[key]) continue;
     var d = meters(me.lat, me.lng, s.lat, s.lng);
     if (!(d <= AP.maxDist)) continue;
@@ -1167,15 +1168,9 @@ def wait_while_paused(w):
 
 
 def gadget_up():
-    sk = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    sk.settimeout(2.0)
-    try:
-        sk.connect(("127.0.0.1", 27047))
-        return True
-    except OSError:
-        return False
-    finally:
-        sk.close()
+    """Is the gadget LISTENing on 27047 (0x69A7)? Read /proc/net/tcp, never connect: a connect-and-hang-up probe hits the
+    gadget's server mid-accept, and it aborts the game ('could not get remote address', gdbus SIGSEGV, 10 crashes 10-27/28)."""
+    return ":69A7 00000000:0000 0A" in su("cat /proc/net/tcp")
 
 
 def su(cmd, timeout=10):
@@ -1213,6 +1208,7 @@ def cfg_now():
     c = dict(CFG)
     for k in FLAGS:
         c[k] = flag(k)
+    c["apples"] = True   # Benny 2026-10-29: "i want anything to always be picked up" -- map items no longer wait on a switch
     return c
 
 

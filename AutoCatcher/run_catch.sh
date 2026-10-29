@@ -14,8 +14,10 @@ CATCHER=$HOME/pogo/system/scripts/game_write/catch_phone.py
 # and the catcher never started again. Two-digit minors come after one-digit ones here, so the last match is the newest.
 PY=
 for p in "$PREFIX"/bin/python3.[0-9] "$PREFIX"/bin/python3.[0-9][0-9]; do [ -f "$p" ] && PY=$p; done
-on() { for t in catch spin perfect tap; do [ "$(tr -d '[:space:]' < /data/local/tmp/pogo_$t.on 2>/dev/null)" = 1 ] && return 0; done; return 1; }
-game_up() { (exec 3<>/dev/tcp/127.0.0.1/27047) 2>/dev/null; }   # PoGo's gadget listens only while the game runs
+on() { for t in catch spin perfect tap apples; do [ "$(tr -d '[:space:]' < /data/local/tmp/pogo_$t.on 2>/dev/null)" = 1 ] && return 0; done; return 1; }
+# PoGo's gadget listens only while the game runs. Read its LISTEN entry, never connect: a connect-and-hang-up probe hits
+# the gadget's server mid-accept and aborts the game ("could not get remote address", 10 crashes 2026-10-27/28).
+game_up() { su -c 'cat /proc/net/tcp' 2>/dev/null | grep -q ':69A7 00000000:0000 0A'; }
 say() { echo "$(date +%H:%M:%S) SUPERVISOR $*" >> "$LOG"; }
 # SIGTERM first so the catcher detaches cleanly; -9 only if it is wedged past 3s.
 end() { kill -TERM "$1" 2>/dev/null; for _ in 1 2 3 4 5 6 7 8 9 10 11 12; do kill -0 "$1" 2>/dev/null || return 0; sleep 0.25; done; kill -9 "$1" 2>/dev/null; }
