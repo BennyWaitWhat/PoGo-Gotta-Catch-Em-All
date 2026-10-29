@@ -4,7 +4,7 @@ Each trainer has its own pokemon.db, keep_config.json and history (ladder, repor
 snapshots). The LIVE set sits in the usual paths; the others rest in accounts/<name>/. `active_account.txt` names
 the trainer the live set belongs to.
 
-  trainer_name(sess)  -> the logged-in trainer's name, read-only (PlayerService -> ClientPlayerProto.Name)
+  trainer_name(sess)  -> the logged-in trainer's name, read-only (PlayerService.get_PlayerName)
   check(sess)         -> raise SystemExit BEFORE any DB write when the phone's trainer is not the active one
                          (2026-09-26: a walk of a second account landed in the main DB). A failed READ only warns.
   python switch_account.py <name>  -- park the live set in accounts/<active>/, bring <name>'s back.
@@ -18,9 +18,18 @@ ACTIVE = os.path.join(HERE, 'active_account.txt')
 TRAINERS = {'oyebenny': 'BennyValentinC'}
 
 _JS = r'''
-rpc.exports.readPtr = function (p, off) { return ptr(p).add(off).readPointer().toString(); };
-rpc.exports.readStr = function (p) { var s = ptr(p); if (s.isNull()) return null; var n = s.add(0x10).readS32();
-    return (n >= 0 && n < 200) ? s.add(0x14).readUtf16String(n) : null; };
+// ONE plain invoke on the live PlayerService with a real Il2CppException** slot (read_player_state's get_MaxPokemon pattern)
+rpc.exports.playerName = function (p) {
+    _ensureInit();
+    var o = ptr(p), m = cMN(o.readPointer(), 'get_PlayerName', 0);
+    if (!m || m.isNull()) return {err: 'get_PlayerName not found'};
+    var exc = Memory.alloc(Process.pointerSize); exc.writePointer(ptr(0));
+    var s = IL2.rI(m, o, ptr(0), exc);
+    if (!exc.readPointer().isNull()) return {err: 'get_PlayerName threw'};
+    if (s.isNull()) return {name: null};
+    var n = s.add(0x10).readS32();
+    return {name: (n >= 0 && n < 200) ? s.add(0x14).readUtf16String(n) : null};
+};
 '''
 
 
@@ -32,20 +41,19 @@ def active():
 
 
 def trainer_name(sess):
-    """ClientPlayerProto.Name via PlayerService's PlayerInfo field (found by TYPE -- the service is obfuscated, the proto
-    is not). Plain reads + one field enumeration; the PlayerService pick is the pipeline's cached, world-safe one."""
+    """The trainer name the game shows: PlayerService.get_PlayerName, one plain invoke on the live graph's PlayerService
+    (the walk's storage-cap read makes the same kind of call). Game 0.435.0 (2026-10-29) moved PlayerService into
+    holo-game-player-model.dll and the old field path (a field typed PlayerService.PlayerInfo) stopped matching."""
     import pogo_il2cpp as pg
-    import read_medals as rm
     psvc = pg.pick_singleton(sess, 'Niantic.Holoholo', 'PlayerService')
-    sc = pg.get_script_with_helpers(sess, rm._ENGINE + _JS)
+    sc = pg.get_script_with_helpers(sess, _JS)
     try:
-        svc = sc.exports_sync.read_obj_fields(psvc)['fields']
-        off = next(v['off'] for v in svc.values() if (v.get('type') or '').endswith('PlayerService.PlayerInfo'))
-        pinfo = sc.exports_sync.read_ptr(psvc, off)
-        noff = sc.exports_sync.read_obj_fields(pinfo)['fields']['Name']['off']
-        return sc.exports_sync.read_str(sc.exports_sync.read_ptr(pinfo, noff))
+        r = sc.exports_sync.player_name(psvc)
     finally:
         sc.unload()
+    if r.get('err'):
+        raise RuntimeError(r['err'])
+    return r.get('name')
 
 
 def check(sess, say=print):
