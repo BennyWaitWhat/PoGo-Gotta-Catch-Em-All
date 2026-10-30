@@ -44,6 +44,7 @@ public class MainActivity extends Activity {
     static final String PERFECTFLAG = "/data/local/tmp/pogo_perfect.on";
     static final String TAPFLAG     = "/data/local/tmp/pogo_tap.on";
     static final String STATE       = "/data/local/tmp/pogo_state.txt";
+    static final String WAITING     = "WAITING: ";
     static final String STATUS_REWARD = "/data/local/tmp/pogo_rewards.txt";
     // Transfer-on-Catch config. A JSON file rather than a flag because it holds several
     // values; the catcher re-reads it every report, so edits take effect live with no
@@ -436,6 +437,7 @@ public class MainActivity extends Activity {
                             r.sw.setOnCheckedChangeListener(r.listener);
                         }
                         stats.setText(line);
+                        stats.setTextColor(Color.parseColor(line.contains(WAITING) ? "#e3b341" : "#9aa7b8"));
                         refreshToc();
                         showReward(rw);
                     }
@@ -542,6 +544,10 @@ public class MainActivity extends Activity {
         if (xp != null) sb.append("  +").append(xp).append(" XP");
         if (items != null) sb.append("  ").append(items).append(" items");
         if (ready != null) sb.append("  (").append(ready).append(" ready)");
+        // why= (always last, spaces allowed) = why nothing is being caught. 2026-10-30: the toggle read ON with no
+        // catches for 2.5 h while the ball bag was empty, and nothing on this screen said so.
+        int w = s.indexOf(" why=");
+        if (w >= 0) sb.append(sb.length() > 0 ? "\n" : "").append(WAITING).append(s.substring(w + 5).trim());
         return sb.length() > 0 ? sb.toString() : s;
     }
 

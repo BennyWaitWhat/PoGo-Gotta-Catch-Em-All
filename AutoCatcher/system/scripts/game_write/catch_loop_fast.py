@@ -1322,6 +1322,22 @@ def apple_part(stt, it):
             + f" bag S/T/Sy={bag} ({gain} this run)")
 
 
+_STATE = {"counters": "caught=0 fled=0 spins=0 xp=0 items=0 ready=0 cooling=0"}
+
+
+def state(why="", counters=None):
+    """The AutoCatcher app's live line (re-read every 4 s). The key=value counters come first: walk_tripwires reads
+    caught= from them. why= (the rest of the line) says why nothing is being caught; the app shows it under the counters.
+    2026-10-30: "i turned it on and its still not catching" was an empty ball bag, and the app could not say so."""
+    if counters:
+        _STATE["counters"] = counters
+    try:   # root pre-creates the file (catcher_ctl.sh): Termux can write in /data/local/tmp but not create files there
+        with open(STATE_FILE, "w") as fh:
+            fh.write(_STATE["counters"] + (f" why={why}" if why else "") + "\n")
+    except OSError:
+        pass
+
+
 def report(w, stt, t0, base):
     st, it, sp = stt["st"], stt["items"], stt["spin"]
     mins = max((time.time() - t0) / 60.0, 1e-6)
@@ -1356,13 +1372,15 @@ def report(w, stt, t0, base):
             w(f"MINUTE {base['minute']} caught={c - base.get('mc', 0)} fled={st['fled'] - base.get('mf', 0)} "
               f"dust=+{st['dust'] - base.get('md', 0)}")
         base.update(minute=minute, mc=c, mf=st["fled"], md=st["dust"])
-    try:
-        with open(STATE_FILE, "w") as fh:
-            fh.write(f"caught={c} fled={st['fled']} spins={sp['ok']} xp={sp['xp']} items={sp['items']} "
-                     f"ready={max(0, sp['inRange'] - sp['cooling'])} cooling={sp['cooling']}\n")
-        os.chmod(STATE_FILE, 0o666)
-    except OSError:
-        pass
+    fl = CFG["floors"]
+    balls = [it.get(k, -1) for k in ("1", "2", "3")]
+    if all(0 <= n <= fl[k] for n, k in zip(balls, ("1", "2", "3"))):   # every ball type at its floor: no throw is allowed
+        why = (f"out of balls: {balls[0]} Poke, {balls[1]} Great, {balls[2]} Ultra left "
+               f"(it saves the last {fl['1']}/{fl['2']}/{fl['3']} for you)")
+    else:
+        why = stt["holdWhy"] if stt["hold"] else ""
+    state(why, f"caught={c} fled={st['fled']} spins={sp['ok']} xp={sp['xp']} items={sp['items']} "
+               f"ready={max(0, sp['inRange'] - sp['cooling'])} cooling={sp['cooling']}")
 
 
 def session_loop(w, done_ids, base):
@@ -1371,6 +1389,7 @@ def session_loop(w, done_ids, base):
     if not gadget_up():
         # wait here instead of exiting: the supervisor only looked every 30 s, which made every game restart slow
         w("waiting for PoGo...")
+        state("PoGo is not open")
         n = 0
         while not gadget_up():
             time.sleep(1)
@@ -1402,6 +1421,8 @@ def session_loop(w, done_ids, base):
         base["ifails"] = base.get("ifails", 0) + 1
         delay = min(600, 5 * 2 ** (base["ifails"] - 1))
         w(f"install failed: {st} -- retrying in {delay}s")
+        state(f"the catcher can't hook this game version (missing {', '.join(st.get('missing') or []) or 'its main hook'}), "
+              f"next try in {delay}s")
         release(sess)
         end = time.time() + delay
         while time.time() < end:   # a line every 2 min: run_catch.sh restarts a catcher whose log is silent 240 s
@@ -1443,6 +1464,7 @@ def session_loop(w, done_ids, base):
                 report(w, stt, t0, base)
             else:
                 w(f"waiting for the map ({stt['stale']})")
+                state("starting: waiting for the game map to load")
             # frame counter frozen = game backgrounded / screen off: poll slower (battery)
             idle = idle + 1 if stt["frame"] == last_frame else 0
             last_frame = stt["frame"]
@@ -1463,6 +1485,7 @@ def session_loop(w, done_ids, base):
         # The override is watched HERE: with Apples always on, catch-off no longer ends this process, so the hold sat out its
         # 30 min through three off/on toggles in the app (2026-10-29 05:11-05:15).
         end, mt0, n = time.time() + HOLD_S, flag_mtime("catch"), 0
+        state(f"safety pause, PoGo died twice right after attaching ({HOLD_S // 60} min left; switch Catch off and on to resume)")
         while time.time() < end:
             time.sleep(1)
             n += 1
@@ -1471,6 +1494,8 @@ def session_loop(w, done_ids, base):
                 break
             if n % 60 == 0:
                 w(f"safety hold ({int(end - time.time()) // 60} min left)")
+                state(f"safety pause, PoGo died twice right after attaching ({int(end - time.time()) // 60} min left; "
+                      f"switch Catch off and on to resume)")
         base["quick"] = 0
 
 
@@ -1495,6 +1520,7 @@ def main():
             slow = "libil2cpp.so not loaded" in str(e)
             delay = min(60, 4 * fails) if slow else min(15, 2 * fails)
             w(f"--- error: {str(e)[:120]} -- retry in {delay}s ---")
+            state(f"can't reach the game ({str(e).splitlines()[0][:60] if str(e) else type(e).__name__}), retrying in {delay}s")
             try:
                 if SESS["s"]:
                     SESS["s"].detach()
