@@ -47,6 +47,10 @@ setflag() { # setflag <file> <0|1> <label>
 mkflag() {
   su -c "echo $2 > $1 && chmod 666 $1 && chcon u:object_r:shell_data_file:s0 $1" >/dev/null 2>&1
 }
+# The app's live catcher line (catch_loop_fast's state()). Same trap: the 2026-10-15 cleanup deleted it, nothing made it
+# again, and until 2026-10-30 the app said "waiting for catcher..." while the catcher ran. Every verb remakes it if gone.
+STATEF=/data/local/tmp/pogo_state.txt
+[ -e "$STATEF" ] || mkflag "$STATEF" ""
 
 start_proc() {
   running && return 0
