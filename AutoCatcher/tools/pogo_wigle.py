@@ -58,6 +58,9 @@ CREATE TABLE IF NOT EXISTS replies (t TEXT, cells INT, forts INT, wild INT, near
 # raw_t = when `raw` (the full record) was read, so its age is always visible.
 NEW_COLS = (("raw", "TEXT"), ("name", "TEXT"), ("slots", "INT"), ("gym_cp", "INT"), ("motivation", "REAL"),
             ("occupied_ms", "INT"), ("in_battle", "INT"), ("gym_state_t", "TEXT"), ("raw_t", "TEXT"))
+# raw keys a partial record (see store()) never carries; none of them changes during play
+STATIC_RAW = ("Latitude", "Longitude", "FortType", "IsExRaidEligible", "PartnerId", "FortVpsInfo", "ArExperiencesAllowed",
+              "IsArScanEligible")
 SELFCHECK_EVERY = 300                       # seconds; the self-check reads the DB only
 HEALTH = os.path.join(os.path.dirname(DB), "selfcheck.json")
 
@@ -279,16 +282,21 @@ def store(db, rep_):
             if not f.get("id"):
                 continue
             nf += 1
-            kind = "stop" if f["type"] == 1 else "gym"
             lured = 1 if f["lure"] else 0
             # raid / incident are not decoded (user, 2026-09-25): store NULL (= unknown), never 0 / "none"
             disp = f.get("disp") if "disp" in f else None
             rocket = sum(1 for d in disp or [] if isinstance(d, dict) and d.get("IncidentDisplayType"))
             raid = json.dumps(f["raid"]) if f.get("raid") else None
             ndisp = len(disp) if disp is not None else None
-            row = db.execute("SELECT team, lured, displays, raid, visited, slots, last_seen FROM forts WHERE id=?", (f["id"],)).fetchone()
+            row = db.execute("SELECT team, lured, displays, raid, visited, slots, last_seen, kind FROM forts WHERE id=?", (f["id"],)).fetchone()
             if row is not None and row[6] and row[6] > t:
                 continue                # a reply older than what the bank already holds never overwrites it
+            # game 0.435.0 resends a fort it already holds as a PARTIAL record (2026-10-31): the changing fields only --
+            # no position and no FortType (which then reads 0 = gym). It never places, types or creates a fort.
+            partial = not f["lat"] and not f["lng"]
+            if partial and row is None:
+                continue                # banked when the game sends its full record
+            kind = row[7] if partial else ("stop" if f["type"] == 1 else "gym")
             if row is None:
                 db.execute("INSERT INTO forts (id, lat, lng, kind, first_seen, last_seen, times_seen, team, guard, enabled,"
                            " visited, ex, lured, lure_item, displays, raid, power_up_pts, closed, image, cell)"
@@ -305,10 +313,17 @@ def store(db, rep_):
                     db.execute("INSERT INTO fort_events VALUES (?,?,?,?)", (t, f["id"], "incident", json.dumps(f.get("disp"))[:500]))
                 if raid and raid != row[3]:
                     db.execute("INSERT INTO fort_events VALUES (?,?,?,?)", (t, f["id"], "raid", raid[:500]))
-                db.execute("""UPDATE forts SET lat=?, lng=?, last_seen=?, times_seen=times_seen+1, team=?, guard=?, enabled=?, visited=?, ex=?,
-                              lured=?, lure_item=?, displays=?, raid=?, power_up_pts=?, closed=?, image=COALESCE(?, image) WHERE id=?""",
-                           (f["lat"], f["lng"], t, f["team"], f["guard"], f["en"], f["vis"], f["ex"], lured, f["lure"][0] if f["lure"] else None,
-                            ndisp, raid, f["pup"], f["closed"], f["img"], f["id"]))
+                if partial:             # position, kind, EX and image stay as the last full record gave them
+                    db.execute("""UPDATE forts SET last_seen=?, times_seen=times_seen+1, team=?, guard=?, enabled=?, visited=?,
+                                  lured=?, lure_item=?, displays=?, raid=?, power_up_pts=?, closed=? WHERE id=?""",
+                               (t, f["team"], f["guard"], f["en"], f["vis"], lured, f["lure"][0] if f["lure"] else None,
+                                ndisp, raid, f["pup"], f["closed"], f["id"]))
+                else:
+                    db.execute("""UPDATE forts SET lat=?, lng=?, kind=?, last_seen=?, times_seen=times_seen+1, team=?, guard=?, enabled=?,
+                                  visited=?, ex=?, lured=?, lure_item=?, displays=?, raid=?, power_up_pts=?, closed=?,
+                                  image=COALESCE(?, image) WHERE id=?""",
+                               (f["lat"], f["lng"], kind, t, f["team"], f["guard"], f["en"], f["vis"], f["ex"], lured,
+                                f["lure"][0] if f["lure"] else None, ndisp, raid, f["pup"], f["closed"], f["img"], f["id"]))
             gs = f.get("gs") if kind == "gym" else None
             # a NEUTRAL gym whose reply has no GymDisplay was still read at this sighting: stamp it with NULL slots / CP
             # (= not reported), so the self-check does not call it lagging; a HELD gym without one stays an error
@@ -324,8 +339,12 @@ def store(db, rep_):
                            (slots, _num(gs.get("cp"), int), _num(gs.get("mot"), float), _num(gs.get("occ"), int),
                             None if gs.get("battle") is None else (1 if gs["battle"] else 0), t, f["id"], t))
             if f.get("full"):
+                full = f["full"]
+                if partial:             # a partial full-read keeps the static fields of the record it replaces
+                    old = ab._raw(db.execute("SELECT raw FROM forts WHERE id=?", (f["id"],)).fetchone()[0]) or {}
+                    full = dict(full, **{k: old[k] for k in STATIC_RAW if k in old and k not in full})
                 db.execute("UPDATE forts SET raw=?, raw_t=? WHERE id=? AND (raw_t IS NULL OR raw_t <= ?)",
-                           (json.dumps(f["full"]), t, f["id"], t))
+                           (json.dumps(full), t, f["id"], t))
         for w in c["wild"]:
             nw += 1
             db.execute("INSERT OR IGNORE INTO spawns VALUES (?,?,?,?,?,?,?,?,?,?,?)",
