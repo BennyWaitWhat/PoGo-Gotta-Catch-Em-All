@@ -349,14 +349,17 @@ def bearing(a, b):
 
 
 def plan_clover(bbox, km, petals=4, near=None, candidates=900, source="map"):
-    """PETALS loops that all start and end at one hub: the anchor with the most spot value within 150 m (nearest
-    `near` if given). Each petal grows only in its own compass sector, with km/PETALS of the budget."""
+    """PETALS loops that all start and end at one hub: the anchor with the most spot value within 150 m (only anchors
+    within 300 m of `near` if given). Each petal grows only in its own compass sector, with km/PETALS of the budget."""
     t0 = time.time()
     ctx = prepare(bbox, source)
     pos, anchors, val, spots, sg = ctx["pos"], ctx["anchors"], ctx["val"], ctx["spots"], ctx["sg"]
     petals = max(1, min(petals, int(km * 1000 // MIN_PETAL_M)))
     core = {a: sum(val[s] for s in sg.near(pos[a], 150.0) if hav(spots[s]["p"], pos[a]) <= 150.0) for a in anchors}
-    hub = max(anchors, key=lambda a: core[a] - (hav(pos[a], near) / 400.0 if near else 0.0))
+    pick = list(anchors)
+    if near:                                                      # never drift to a denser hub elsewhere in the bbox
+        pick = [a for a in anchors if hav(pos[a], near) <= 300.0] or [min(anchors, key=lambda a: hav(pos[a], near))]
+    hub = max(pick, key=lambda a: core[a])
     budget = km * 1000.0 / petals
     reach = budget / 2 / DET                                      # a petal goes out and back: it reaches ~half its length
     ranked = sorted(anchors, key=lambda a: -sum(val[s] for s in anchors[a]))[:candidates]
