@@ -72,6 +72,7 @@ system/analysis/map_full.json
 system/analysis/map_density.json
 system/analysis/pogo_map_data.js
 system/map/manhattan_ways.json
+system/map/ways_*.json
 system/map/*.pkl
 system/map/*.db
 system/map/routes/unspun_*
