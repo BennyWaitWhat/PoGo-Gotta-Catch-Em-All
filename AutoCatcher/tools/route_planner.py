@@ -17,6 +17,7 @@ off their 5-min cooldown each time a petal brings you back. Output: waypoints fo
 GPX file (importable as a saved joystick route) and an HTML map.
 """
 import argparse
+import glob
 import heapq
 import html
 import json
@@ -79,10 +80,18 @@ def seg_dist(p, a, b):
 
 
 def ways_for(bbox):
-    """The walkable-way file covering bbox: the Manhattan dump, else an Overpass download cached per bbox."""
+    """The walkable-way file covering bbox: the Manhattan dump, any cached download whose bbox contains it, else an
+    Overpass download cached per bbox."""
     s, w, n, e = bbox
     if MANHATTAN[0] <= s and n <= MANHATTAN[2] and MANHATTAN[1] <= w and e <= MANHATTAN[3]:
         return WAYS
+    for p in glob.glob(os.path.join(ROOT, "system", "map", "ways_*.json")):
+        try:
+            cs, cw, cn, ce = (float(x) for x in os.path.basename(p)[5:-5].split("_"))
+        except ValueError:
+            continue
+        if cs <= s and n <= cn and cw <= w and e <= ce:
+            return p
     path = os.path.join(ROOT, "system", "map", f"ways_{s:.3f}_{w:.3f}_{n:.3f}_{e:.3f}.json")
     if not os.path.exists(path):
         q = f'[out:json][timeout:180];way["highway"]({s},{w},{n},{e});out geom;'
