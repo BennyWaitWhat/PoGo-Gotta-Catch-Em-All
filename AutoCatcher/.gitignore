@@ -74,4 +74,5 @@ system/analysis/pogo_map_data.js
 system/map/manhattan_ways.json
 system/map/*.pkl
 system/map/*.db
+system/map/enums.json
 system/map/routes/unspun_*
