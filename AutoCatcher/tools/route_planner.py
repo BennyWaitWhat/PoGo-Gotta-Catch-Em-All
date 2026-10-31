@@ -2,6 +2,10 @@
 
   python tools/route_planner.py plan --km 4 [--bbox S,W,N,E] [--near LAT,LNG] [--name NAME]
                                      [--spots map|bank] [--pattern loop|clover] [--petals 4]
+  python tools/route_planner.py hubs [--bbox S,W,N,E] [--spots map|bank] [--n 5] [--sep 1200]
+
+hubs prints the n densest centres (stops + gyms within 300 m), at least --sep metres apart: where to centre a route
+(pass one as --near).
 
 Spots come from system/analysis/map_full.json (map_read.py: PokemonFortProto read live from PoGo), or with
 --spots bank from the scanner's bank system/map/pogo_wigle.db (pogo_wigle.py: every map reply while you walk). A spot
@@ -154,16 +158,18 @@ def load_graph(bbox, ways=None):
 
 
 def load_bank_spots(bbox):
-    """Every enabled stop/gym the scanner banked inside bbox (lure state = its last sighting; Rocket unknown). The
-    `closed` column is not a filter: the game sets Closed on every held gym."""
+    """Every enabled stop/gym the scanner banked inside bbox (lured = lured at a sighting in the last 30 min; Rocket
+    unknown). The `closed` column is not a filter: the game sets Closed on every held gym."""
     s, w, n, e = bbox
     db = sqlite3.connect(f"file:{BANK}?mode=ro", uri=True)
     where = "lat BETWEEN ? AND ? AND lng BETWEEN ? AND ?"
+    fresh = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(time.time() - LURE_MAX_S))
     spots = {}
-    for fid, lat, lng, kind, lured, team, visited in db.execute(
-            f"SELECT id, lat, lng, kind, lured, team, visited FROM forts WHERE {where} AND COALESCE(enabled, 1) = 1", (s, n, w, e)):
+    for fid, lat, lng, kind, lured, team, visited, seen in db.execute(
+            f"SELECT id, lat, lng, kind, lured, team, visited, last_seen FROM forts WHERE {where} AND COALESCE(enabled, 1) = 1",
+            (s, n, w, e)):
         stop = kind == "stop"
-        spots[fid] = {"p": (lat, lng), "stop": stop, "lured": bool(lured), "rocket": False,
+        spots[fid] = {"p": (lat, lng), "stop": stop, "lured": bool(lured) and (seen or "") >= fresh, "rocket": False,
                       "team": None if stop else int(team or 0), "visited": bool(visited)}
     read_at = db.execute(f"SELECT MAX(last_seen) FROM forts WHERE {where}", (s, n, w, e)).fetchone()[0] or ""
     db.close()
@@ -366,7 +372,7 @@ def plan_clover(bbox, km, petals=4, near=None, candidates=900, source="map"):
             tot[sector(a, off)] += sum(val[s] for s in anchors[a])
         return min(tot)
     off = max(range(0, max(5, int(width)), 5), key=balance)
-    covered, path, real, lens, n = set(anchors[hub]), [], 0.0, [], 1
+    covered, path, real, lens, ends, n = set(anchors[hub]), [], 0.0, [], [], 1
     for i in range(petals):
         tour, _ = grow([hub], 0.0, [a for a in cand if sector(a, off) == i], covered, budget, ctx)
         if len(tour) < 2:
@@ -377,11 +383,28 @@ def plan_clover(bbox, km, petals=4, near=None, candidates=900, source="map"):
         path += p if not path else p[1:]
         real += L
         lens.append(L / 1000)
+        ends.append(len(path))                                    # points[:ends[0]] = petal 1, and so on
         n += len(tour) - 1
     res = result(path, real, n, t0, ctx)
-    res.update({"pattern": "clover", "petals": lens, "hub": pos[hub],
+    res.update({"pattern": "clover", "petals": lens, "petal_ends": ends, "hub": pos[hub],
                 "hub_spots": sum(1 for s in sg.near(pos[hub], RANGE) if hav(spots[s]["p"], pos[hub]) <= RANGE)})
     return res, spots
+
+
+def hubs(bbox, n=5, sep=1200.0, radius=300.0, source="map"):
+    """The n densest centres (spot value within `radius`), at least `sep` apart: where routes should be centred."""
+    ctx = prepare(bbox, source)
+    pos, anchors, val, spots, sg = ctx["pos"], ctx["anchors"], ctx["val"], ctx["spots"], ctx["sg"]
+    dens = {a: sum(val[s] for s in sg.near(pos[a], radius) if hav(spots[s]["p"], pos[a]) <= radius) for a in anchors}
+    out = []
+    for a in sorted(dens, key=lambda a: -dens[a]):
+        if all(hav(pos[a], h["p"]) >= sep for h in out):
+            out.append({"p": pos[a], "value": dens[a],
+                        "stops": sum(1 for s in sg.near(pos[a], radius) if spots[s]["stop"] and hav(spots[s]["p"], pos[a]) <= radius),
+                        "gyms": sum(1 for s in sg.near(pos[a], radius) if not spots[s]["stop"] and hav(spots[s]["p"], pos[a]) <= radius)})
+            if len(out) == n:
+                break
+    return out
 
 
 def simplify(pts, tol=4.0):
@@ -462,7 +485,7 @@ map.fitBounds(line.getBounds(), {{padding: [30, 30]}});
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("cmd", choices=["plan"])
+    ap.add_argument("cmd", choices=["plan", "hubs"])
     ap.add_argument("--km", type=float, default=4.0)
     ap.add_argument("--bbox", default="40.745,-73.995,40.772,-73.965")     # Midtown: 34th..64th St, 9th Ave..Lexington
     ap.add_argument("--near", default="")
@@ -470,9 +493,15 @@ def main():
     ap.add_argument("--spots", choices=["map", "bank"], default="map")
     ap.add_argument("--pattern", choices=["loop", "clover"], default="loop")
     ap.add_argument("--petals", type=int, default=4)
+    ap.add_argument("--n", type=int, default=5)
+    ap.add_argument("--sep", type=float, default=1200.0)
     a = ap.parse_args()
     bbox = tuple(float(x) for x in a.bbox.split(","))
     near = tuple(float(x) for x in a.near.split(",")) if a.near else None
+    if a.cmd == "hubs":
+        for i, h in enumerate(hubs(bbox, a.n, a.sep, source=a.spots), 1):
+            print(f"{i}. {h['p'][0]:.6f},{h['p'][1]:.6f}  {h['stops']} stops + {h['gyms']} gyms within 300 m")
+        return
     if a.pattern == "clover":
         res, spots = plan_clover(bbox, a.km, a.petals, near, source=a.spots)
     else:
