@@ -46,7 +46,8 @@ ROOT = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)),
 # keys of PokemonFortProto that change during play: a consumer must take them from the live columns, never from raw
 DYNAMIC_RAW = re.compile(r"""["'](GymDisplay|SlotsAvailable|TotalGymCp|LowestPokemonMotivation|OccupiedMillis|IsInBattle|"""
                          r"""Team|GuardPokemonId|ActiveFortModifier|Visited|RaidInfo|PokestopDisplays)["']""")
-LINT_SKIP = {"pogo_wigle.py", "audit_bank.py"}      # the writer and this checker compare raw against the columns
+LINT_SKIP = {"pogo_wigle.py", "audit_bank.py",      # the writer and this checker compare raw against the columns
+             "route_planner.py"}                    # dynamic keys from map_full.json (a live read); the bank via columns
 DB = os.path.join(ROOT, "system", "map", "pogo_wigle.db")
 HEALTH = os.path.join(ROOT, "system", "map", "selfcheck.json")
 LIVE_DATA = os.path.join(ROOT, "system", "analysis", "pogo_map_data.js")
