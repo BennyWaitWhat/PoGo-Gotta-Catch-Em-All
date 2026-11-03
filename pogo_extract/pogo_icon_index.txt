@@ -1,4 +1,4 @@
-# pogo_icon_index v1 -- PokeMiners/pogo_assets  commit 8353f3c4451f4b9154684222ce55128b8a33c7e4  committed 2026-09-26  listed 2026-09-30
+# pogo_icon_index v1 -- PokeMiners/pogo_assets  commit db10df75d6f6f92018d9786af0aecc238fecc4ef  committed 2026-10-28  listed 2026-11-03
 # icons = file names in 'Images/Pokemon - 256x256/Addressable Assets/' ; cards = stems in 'Images/LocationCards/' (every .png there)
 # Rebuilt by `python bag_art.py --refresh-index --tree FILE | --clone DIR`; never edit by hand.
 [icons]
@@ -346,6 +346,8 @@ pm167.icon.png
 pm167.s.icon.png
 pm168.icon.png
 pm168.s.icon.png
+pm169.fHALLOWEEN_2026_01.icon.png
+pm169.fHALLOWEEN_2026_01.s.icon.png
 pm169.icon.png
 pm169.s.icon.png
 pm17.icon.png
@@ -910,6 +912,10 @@ pm25.fANNIVERSARY_2026_TAIWAN_01.g2.icon.png
 pm25.fANNIVERSARY_2026_TAIWAN_01.g2.s.icon.png
 pm25.fANNIVERSARY_2026_TAIWAN_01.icon.png
 pm25.fANNIVERSARY_2026_TAIWAN_01.s.icon.png
+pm25.fANNIVERSARY_2026_THAILAND_01.g2.icon.png
+pm25.fANNIVERSARY_2026_THAILAND_01.g2.s.icon.png
+pm25.fANNIVERSARY_2026_THAILAND_01.icon.png
+pm25.fANNIVERSARY_2026_THAILAND_01.s.icon.png
 pm25.fBB_2026.g2.icon.png
 pm25.fBB_2026.g2.s.icon.png
 pm25.fBB_2026.icon.png
@@ -1066,6 +1072,10 @@ pm25.fGOTOUR_2026_C_02.g2.icon.png
 pm25.fGOTOUR_2026_C_02.g2.s.icon.png
 pm25.fGOTOUR_2026_C_02.icon.png
 pm25.fGOTOUR_2026_C_02.s.icon.png
+pm25.fHALLOWEEN_2026.g2.icon.png
+pm25.fHALLOWEEN_2026.g2.s.icon.png
+pm25.fHALLOWEEN_2026.icon.png
+pm25.fHALLOWEEN_2026.s.icon.png
 pm25.fHORIZONS.g2.icon.png
 pm25.fHORIZONS.g2.s.icon.png
 pm25.fHORIZONS.icon.png
@@ -1802,6 +1812,10 @@ pm408.icon.png
 pm408.s.icon.png
 pm409.icon.png
 pm409.s.icon.png
+pm41.fHALLOWEEN_2026_01.g2.icon.png
+pm41.fHALLOWEEN_2026_01.g2.s.icon.png
+pm41.fHALLOWEEN_2026_01.icon.png
+pm41.fHALLOWEEN_2026_01.s.icon.png
 pm41.g2.icon.png
 pm41.g2.s.icon.png
 pm41.icon.png
@@ -1842,6 +1856,10 @@ pm419.g2.icon.png
 pm419.g2.s.icon.png
 pm419.icon.png
 pm419.s.icon.png
+pm42.fHALLOWEEN_2026_01.g2.icon.png
+pm42.fHALLOWEEN_2026_01.g2.s.icon.png
+pm42.fHALLOWEEN_2026_01.icon.png
+pm42.fHALLOWEEN_2026_01.s.icon.png
 pm42.g2.icon.png
 pm42.g2.s.icon.png
 pm42.icon.png
@@ -3133,6 +3151,36 @@ pm770.icon.png
 pm770.s.icon.png
 pm771.icon.png
 pm771.s.icon.png
+pm774.fBLUE.icon.png
+pm774.fBLUE.s.icon.png
+pm774.fGREEN.icon.png
+pm774.fGREEN.s.icon.png
+pm774.fINDIGO.icon.png
+pm774.fINDIGO.s.icon.png
+pm774.fMETEOR.icon.png
+pm774.fMETEOR.s.icon.png
+pm774.fMETEOR_BLUE.icon.png
+pm774.fMETEOR_BLUE.s.icon.png
+pm774.fMETEOR_GREEN.icon.png
+pm774.fMETEOR_GREEN.s.icon.png
+pm774.fMETEOR_INDIGO.icon.png
+pm774.fMETEOR_INDIGO.s.icon.png
+pm774.fMETEOR_ORANGE.icon.png
+pm774.fMETEOR_ORANGE.s.icon.png
+pm774.fMETEOR_RED.icon.png
+pm774.fMETEOR_RED.s.icon.png
+pm774.fMETEOR_VIOLET.icon.png
+pm774.fMETEOR_VIOLET.s.icon.png
+pm774.fMETEOR_YELLOW.icon.png
+pm774.fMETEOR_YELLOW.s.icon.png
+pm774.fORANGE.icon.png
+pm774.fORANGE.s.icon.png
+pm774.fRED.icon.png
+pm774.fRED.s.icon.png
+pm774.fVIOLET.icon.png
+pm774.fVIOLET.s.icon.png
+pm774.fYELLOW.icon.png
+pm774.fYELLOW.s.icon.png
 pm775.icon.png
 pm775.s.icon.png
 pm776.icon.png
@@ -3356,14 +3404,22 @@ pm853.icon.png
 pm853.s.icon.png
 pm854.fANTIQUE.icon.png
 pm854.fANTIQUE.s.icon.png
+pm854.fA_HALLOWEEN_2026_01.icon.png
+pm854.fA_HALLOWEEN_2026_01.s.icon.png
 pm854.fPHONY.icon.png
 pm854.fPHONY.s.icon.png
+pm854.fP_HALLOWEEN_2026_01.icon.png
+pm854.fP_HALLOWEEN_2026_01.s.icon.png
 pm854.icon.png
 pm854.s.icon.png
 pm855.fANTIQUE.icon.png
 pm855.fANTIQUE.s.icon.png
+pm855.fA_HALLOWEEN_2026_01.icon.png
+pm855.fA_HALLOWEEN_2026_01.s.icon.png
 pm855.fPHONY.icon.png
 pm855.fPHONY.s.icon.png
+pm855.fP_HALLOWEEN_2026_01.icon.png
+pm855.fP_HALLOWEEN_2026_01.s.icon.png
 pm855.icon.png
 pm855.s.icon.png
 pm856.icon.png
@@ -3423,6 +3479,8 @@ pm88.fALOLA.icon.png
 pm88.fALOLA.s.icon.png
 pm88.icon.png
 pm88.s.icon.png
+pm884.fGIGANTAMAX.icon.png
+pm884.fGIGANTAMAX.s.icon.png
 pm884.icon.png
 pm884.s.icon.png
 pm885.icon.png
@@ -3715,6 +3773,8 @@ lc_2026_NPB_toyamaAllstars
 lc_2026_NPB_yokohamaStadium
 lc_2026_NPB_yomiuriGiants
 lc_2026_NPB_zozoMarine
+lc_2026_gowa_mexicocity
+lc_2026_gowa_sendai
 lc_2026_jp_green
 lc_2026_jp_red
 lc_2026_ppk_001
@@ -3809,6 +3869,7 @@ lc_Wcs2026_sanFrancisco
 lc_busanFireworksFestival_2025
 lc_carnivalFlamigo_cologne_2026
 lc_carnivalFlamigo_rio_2026
+lc_fc2026_seoul
 lc_nagasaki2025
 lc_nationalTrust_angleseyAbbey
 lc_nationalTrust_attinghampark
@@ -3837,6 +3898,8 @@ lc_nationalTrust_tredegarHouse
 lc_nationalTrust_trelissick
 lc_nationalTrust_tyntesfield
 lc_nationalTrust_whimpole
+lc_nightOut2026_LA
+lc_nightOut2026_London
 lc_pokecenter_GOLab
 lc_pokecenter_fukuoka
 lc_pokecenter_hiroshima
@@ -3916,6 +3979,7 @@ sb_2024_decemberCdRecap
 sb_9thAnniversary
 sb_Community_2026
 sb_Concierge2025
+sb_DiaDeMuertos_2026
 sb_FestivalofColors_2026
 sb_GOWA2025_Global
 sb_GOWA_fukuoka
@@ -3953,5 +4017,6 @@ sb_TeamLeader_red
 sb_TeamLeader_yellow
 sb_WorldSpecial_Blue
 sb_arraia_2026
+sb_black
 sb_lego_2026
 sb_s24_sep_2026

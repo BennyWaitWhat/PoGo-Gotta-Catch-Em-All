@@ -1353,9 +1353,10 @@ def check_staleness(con, kc, cfm):
         for _lvl, _msg, _do in _gm_f:
             fail(WARN, _msg, _do)
         if not _gm_f:
-            ok('the client game master is stamped: batch %s UTC (APK %s), last compared with PokeMiners %s UTC, game %s'
-               % (_gm_meta['batch_utc'], _gm_meta.get('apk') or '?', _gm_meta.get('checked_at', '?'),
-                  (_gm_gv or {}).get('version', '?')))
+            ok('the client game master is stamped: batch %s UTC from %s (APK %s), last compared with upstream %s UTC, game %s'
+               ' (installed %s)' % (_gm_meta['batch_utc'], _gm_meta.get('source', 'pokeminers'), _gm_meta.get('apk') or '?',
+                                    _gm_meta.get('checked_at', '?'), (_gm_gv or {}).get('version', '?'),
+                                    (_gm_gv or {}).get('updated') or '?'))
     except Exception as e:
         fail(WARN, 'could not judge the client game master stamp (%s: %s)' % (type(e).__name__, e),
              'Check pogo_extract/gm_guard.py imports and gamemaster_pokeminers.json.meta.')
