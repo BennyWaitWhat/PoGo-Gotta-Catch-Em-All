@@ -91,8 +91,13 @@ The rest also comes from the game master, never a hand list (2026-09-17, "learn 
   in the bag (it spends it; the real count -- 999 Gimmighoul coins -- is read); the rest are listed with what they
   need in the game's OWN words -- the evolution quest's i18n text with its own number ("Walk 15 km with your buddy", "Defeat 15
   Dark- or Steel-type Raid Bosses"; `official_names_en.json` 'quests', rebuilt by `bag_art.py --refresh-names`; 2026-09-30).
-- LEGACY MOVES: a move is special when no form of the species can roll it today per the game master's movepools, as
-  well as when pvpoke calls it elite. The union only ever adds protection (Raichu Volt Tackle, Dialga Roar of Time ...).
+- LEGACY MOVES: a move is special when pvpoke calls it elite, and when no form of the species can roll it today per the
+  client game master's movepools -- unless that file is OLDER than pvpoke's and lists the move nowhere while pvpoke rolls
+  it (2026-11-03, user: "psywave isnt a legacy move for snorlax": the September 2026 season gave Snorlax Psywave, Raichu
+  Volt Tackle, Crobat Gust ... after PokeMiners' last batch of 08-28; the 11-02 client game master lists all of them). A
+  form's own Adventure-Effect move (Roar of Time on Origin Dialga, Behemoth Blade on Crowned Zacian, Freeze Shock on Black
+  Kyurem ...) is its Adventure Effect, not a legacy move -- unless the game sells it as an Elite TM (Eternatus's Dynamax
+  Cannon stays legacy); the same move on another form (an Altered Dialga's Roar of Time) stays legacy.
 - RANKS: a mon is ranked only at the stages it can reach (form, costume and gender gates above).
 - A STAGE IS A (speciesId, FORM). pvpoke gives one id to every Florges colour, both Gastrodon seas and all 28 Unown
   letters; the evolved copy keeps its own lineage, and the game names the exact target form (a West Shellos becomes
