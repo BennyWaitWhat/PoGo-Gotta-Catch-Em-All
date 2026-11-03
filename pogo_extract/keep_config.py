@@ -55,6 +55,8 @@ DEFAULTS = {
         "shadow": 1,
         "nundo": 1,           # rule 8  -- nundos kept per look, most exotic catch place first (user 2026-09-17)
         "location_card": 3,          # rule 13 -- top-N per (species, form, card) by IV (user 2026-09-24: 5 -> 3; 6 -> 5 on 09-23)
+        "species_min": 0,     # species minimum -- every species keeps at least N copies, the best by IV then CP, under any
+        #                       floor (user 2026-11-03: "3"); 0 = off (the account's keep_config.json sets it)
     },
     "pvp": {
         "ready_rank": 5,      # gl/ul_rank <= this is a keeper (top-5 of 4096 spreads)

@@ -335,6 +335,8 @@ AXES = {
     'favorite':         dict(model='keep_all', cap_key=None, per_sp=False, reasons=['favorite']),   # user 2026-09-17 'keep em'
     'shiny_ladder':     dict(model='keep_all', cap_key=None, per_sp=False, reasons=['shiny_ladder']),   # shiny ladder like plains (2026-09-17)
     'dex_only':         dict(model='keep_all', cap_key=None, per_sp=False, reasons=['dex_only_copy']),
+    # every species keeps at least caps.species_min copies: a top-up slice of the best left (user 2026-11-03 "3")
+    'species_min':      dict(model='capped', cap_key='species_min', per_sp=False, reasons=['species_min']),
     'pvp_iv':           dict(model='keep_all', cap_key=None, per_sp=False, reasons=['gl_iv', 'ul_iv']),
     'pvp_spread':       dict(model='keep_all', cap_key=None, per_sp=False, reasons=['pvp_spread']),
     'pvp_rank':         dict(model='keep_all', cap_key=None, per_sp=False, reasons=['pvp_rank']),
@@ -374,6 +376,7 @@ MARK_MODEL = {
     'pvp_combup_gl': 'uncapped', 'pvp_combup_ul': 'uncapped',   # pvp_combup.pick (2026-09-24), one per target, never a slice
     'rank_unknown': 'uncapped', 'data_incomplete': 'uncapped', 'evolve_<n>': 'uncapped',
     'fused': 'uncapped',          # every fusion component, never a slice (2026-09-26)
+    'species_min': 'capped',      # the [:short] top-up slice per species (2026-11-03)
 }
 
 ENGINE = 'system/scripts/keep_policy.py'
