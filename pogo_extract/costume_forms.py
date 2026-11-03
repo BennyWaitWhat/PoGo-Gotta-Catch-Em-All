@@ -261,6 +261,21 @@ def is_costume_form(form_code):
     return f in COSTUME_FORMS or is_unknown_form(f)
 
 
+def blank_form_means_normal(species_name, costume_field=False, enum=None):
+    """True when a blank (0) form can only be the species' Normal form: the live enum names a base ('...Normal') form for it
+    and no alternative a blank could hide. 2026-11-02 (user: "why is the data missing? tf fix it."): a 2025 costume Noibat
+    read form 0 beside the 2026 copies on NoibatNormal (3070), a GO Tour bandana Pikachu form 0 beside two on PikachuNormal
+    -- an older catch stores its form unset: a complete read, not a missing one. A copy wearing its costume in the costume
+    FIELD never also carries a costume FORM (bag-wide that day: 177 on a Normal form, 52 blank, 5 on a Pumpkaboo/Gourgeist
+    size, none on a costume form), so for it costume forms are no alternative; a regional, size or battle form still is,
+    and a species with none named keeps the hold. A name prefix that also matches another species (Mew / Mewtwo) only
+    adds forms, so it can keep a hold but never lift one."""
+    p = re.sub(r'[^0-9a-z]', '', (species_name or '').lower())
+    fs = [('costume' if f in COSTUME_FORMS else classify(nm))         # the game master's own isCostume counts too (PikachuDoctor)
+          for f, nm in (FORM_ENUM if enum is None else enum).items() if p and nm and nm.lower().startswith(p)]
+    return 'base' in fs and all(k == 'base' or (costume_field and k == 'costume') for k in fs)
+
+
 def _col(r, k):
     try:
         return r[k]
@@ -309,6 +324,13 @@ def _selftest():
                      ('RaichuAlolan', 'regional'), ('UnownA', 'form'), ('', 'base'), (None, 'base')):
         assert classify(nm) == want, (nm, classify(nm), want)
         n += 1
+    fe = {900001: 'NoibatNormal', 900002: 'PikachuNormal', 900003: 'PikachuFlying03', 900004: 'MewNormal',   # ids no live enum uses
+          900005: 'MewtwoA', 900006: 'RaichuNormal', 900007: 'RaichuAlola'}
+    assert blank_form_means_normal('Noibat', enum=fe) and not blank_form_means_normal('Pikachu', enum=fe)   # a costume FORM exists ...
+    assert blank_form_means_normal('Pikachu', True, fe)                     # ... but not for a costume-FIELD copy
+    assert not blank_form_means_normal('Mew', True, fe) and not blank_form_means_normal('Raichu', True, fe)   # prefix collision / regional
+    assert not blank_form_means_normal('Zubat', True, fe) and not blank_form_means_normal('', True, fe)       # nothing named = keep the hold
+    n += 1
     enum = {1: 'FooBar2019', 2: 'FooPlain', 3: 'FooSkin', 4: 'ArceusFlying'}
     assert _costume_set(enum, {}) == {1}
     assert _costume_set(enum, {_norm('FOO_SKIN'): True}) == {1, 3}                                  # the game adds ...

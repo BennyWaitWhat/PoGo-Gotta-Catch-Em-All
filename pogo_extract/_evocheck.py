@@ -344,8 +344,12 @@ def sweep(drop_trophies, drop_piled, commits=None):
             _cosf = is_costume_form(r['fresh_form']) or is_costume_form(r['form'])
             for _k in {evolvable_forms.stage_of(sid_of(r), r['form'] or 0)} | (set() if _cosf else {(sid_of(r), '')}):
                 card_lad[_k + (r['fresh_loc_card_enum'],)].append((iv(r), _cp(r), keep_config.card_look(r), _trophy(r)))
-        # a form-ENCODED costume is its own stage key in the engine: it neither displaces nor dominates the plain form
-        _split = (r['pokemon_id'] in GENDER_TERMINALS or pattern_pools.is_pooled(r['pokemon_id'])
+        # a form-ENCODED costume is its own stage key in the engine: it neither displaces nor dominates the plain form.
+        # A GENDER TERMINAL (Ralts, Kirlia, Combee ...) is no longer split here (2026-11-02): _kk keys it by gender, as the
+        # engine's _stage_key / _domgrp do (F7), so its specials displace and dominate their own gender only. Split outright,
+        # a 98% Dynamax Kirlia left the female plain slot reading open, and a 69% Ralts the 75% floor piled read as a missed
+        # upgrade there (the engine rightly gives that slot to the Dynamax copy).
+        _split = (pattern_pools.is_pooled(r['pokemon_id'])
                   or is_costume_form(r['fresh_form']) or is_costume_form(r['form']))
         if (r['fresh_alignment'] or 0) != 1 and iv(r) != 45 and (r['fresh_shiny'] or not _truly_plain(r)) and not _split:
             for _k in _kk(sid_of(r), r['form'], r):
