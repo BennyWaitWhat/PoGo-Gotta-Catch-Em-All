@@ -21,6 +21,7 @@ import re
 import sqlite3
 import sys
 from collections import defaultdict
+from datetime import datetime, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
@@ -196,6 +197,8 @@ def build_form_resolver(by_dex, form_enum):
 
 GM_CLIENT = ROOT / "gamemaster_pokeminers.json"
 GM_MIN_DEX = 900      # a healthy client game master gives move pools for 1,023 dex (APK 0.427.0); see main()
+GM_CLIENT_META = ROOT / "gamemaster_pokeminers.json.meta"          # refresh_gamemaster's stamp: batch_ts = when the game wrote it
+AE_FORMS = ROOT / "system" / "analysis" / "ae_roster_derived.json"  # derive_ae_roster: pvpoke speciesId -> its Adventure-Effect moves
 
 
 def _game_master_rollable(move_map, gm=None):
@@ -233,10 +236,11 @@ def _game_master_rollable(move_map, gm=None):
     return pools
 
 
-def _game_master_pools(move_map, gm=None):
+def _game_master_pools(move_map, gm=None, keys=("quickMoves", "cinematicMoves", "nonTmCinematicMoves")):
     """{pokedex number: every move ANY form of that species can roll normally}, from the client game master.
     Empty dict if the file is missing -- the pvpoke test above still stands alone then.
-    `gm`: an already-parsed template list to judge instead of the installed file (see _game_master_rollable)."""
+    `gm`: an already-parsed template list to judge instead of the installed file (see _game_master_rollable).
+    `keys`: the movepool fields to collect -- ("eliteQuickMove", "eliteCinematicMove") gives the Elite-TM pool instead."""
     if gm is None:
         if not GM_CLIENT.exists():
             return {}
@@ -248,12 +252,38 @@ def _game_master_pools(move_map, gm=None):
         m = re.match(r"V(\d{4})_POKEMON_", t.get("templateId", ""))
         if not s or not m:
             continue
-        for k in ("quickMoves", "cinematicMoves", "nonTmCinematicMoves"):
+        for k in keys:
             for x in s.get(k) or []:
                 n = names.get(x) if isinstance(x, int) else x
                 if n:
                     pools[int(m.group(1))].add(n)
     return pools
+
+
+def _pvpoke_newer_than_client():
+    """True when pvpoke's file was written AFTER the installed client game master's batch (2026-11-03). PokeMiners published
+    nothing after 2026-08-28 while the September season added moves to 16 species; pvpoke had them by 09-08, so the old file's
+    SILENCE flagged 29 mons whose move the game rolls normally now (Snorlax Psywave, Raichu Volt Tackle, Crobat Gust ...; the
+    11-02 client game master lists every one). False when either date cannot be read: the client's silence still counts."""
+    try:
+        pv = datetime.strptime(json.loads(GM.read_text(encoding="utf-8"))["timestamp"], "%Y-%m-%d %H:%M:%S")
+        batch_ms = json.loads(GM_CLIENT_META.read_text(encoding="utf-8"))["batch_ts"]
+        return pv.replace(tzinfo=timezone.utc).timestamp() > batch_ms / 1000.0
+    except Exception:
+        return False
+
+
+def _ae_form_moves():
+    """{pvpoke speciesId: its Adventure-Effect moves}: Roar of Time on Origin Dialga, Behemoth Blade on Crowned Zacian ... --
+    the form's own signature move (it has its own Adventure Effect tag and keep rule), never a legacy move ON THAT FORM; an
+    Altered Dialga with Roar of Time stays legacy (2026-11-03: 18 Origin / Crowned / fused copies wore Legacy Moves), and so
+    does an effect move the client game master sells as an Elite TM (Eternatus's Dynamax Cannon). The live registry is read
+    every walk; a missing file exempts nothing (protected)."""
+    try:
+        forms = json.loads(AE_FORMS.read_text(encoding="utf-8")).get("species_ids") or {}
+        return {k: {canon_move(m) for m in v} for k, v in forms.items()}
+    except Exception:
+        return {}
 
 
 def main():
@@ -282,8 +312,16 @@ def main():
     # pvpoke says: 30 in-bag mons were missed this way (Raichu Volt Tackle, Snorlax Psywave, Dialga Roar of Time,
     # Palkia Spacial Rend, Houndoom Incinerate, Grafaiai Foul Play, Maschiff/Mabosstiff Psychic Fangs, Smeargle's
     # sketched moves ...). UNION only: this can add protection, never remove it.
-    gm_normal = _game_master_pools(move_map)
-    gm_rollable = _game_master_rollable(move_map)     # the game's plain-TM pool: vetoes a stale pvpoke elite flag
+    # 2026-11-03 (user: "psywave isnt a legacy move for snorlax"): most of those examples were WRONG. The client file was older
+    # than pvpoke's and only SILENT on the September moves (_pvpoke_newer_than_client), and Roar of Time / Spacial Rend are
+    # the Origin forms' Adventure-Effect moves (_ae_form_moves). 339 -> 292 Legacy flags; every one left is elite, non-TM or
+    # unlisted in the 11-02 client game master.
+    cgm = json.loads(GM_CLIENT.read_text(encoding="utf-8")) if GM_CLIENT.exists() else []    # parsed ONCE (19 MB)
+    gm_normal = _game_master_pools(move_map, cgm)
+    gm_rollable = _game_master_rollable(move_map, cgm)     # the game's plain-TM pool: vetoes a stale pvpoke elite flag
+    gm_elite = _game_master_pools(move_map, cgm, ("eliteQuickMove", "eliteCinematicMove"))
+    pv_newer = _pvpoke_newer_than_client()
+    ae_form = _ae_form_moves()
     # FAIL CLOSED (2026-09-30, PokeMiners deep dive): a missing client game master, or one whose move lists were renamed or
     # emptied, used to leave both pools empty and fall back to pvpoke alone WITH rc 0 -- measured on a copy of the bag: 339 ->
     # 299 legacy flags, 9 of them mons whose ONLY keep reason is Legacy (Houndoom, Skarmory, 4 Snorlax ...), silently
@@ -294,6 +332,8 @@ def main():
               "alone: restore the file (python system/scripts/refresh_gamemaster.py) and re-run.", file=sys.stderr)
         sys.exit(1)
     stale_elite = defaultdict(int)                   # pvpoke said elite, the game rolls it normally
+    ae_signature = defaultdict(int)                  # the form's own Adventure-Effect move
+    pv_fresher = defaultdict(int)                    # an older client file is silent, the newer pvpoke rolls it normally
 
     con = sqlite3.connect(f"file:{DB}?mode=ro", uri=True)
     cur = con.cursor()
@@ -342,6 +382,8 @@ def main():
             continue
 
         union = dex_union_pool.get(pid, full)
+        own_ae = set(ae_form.get(entry["speciesId"].replace("_shadow", ""), ())) - {   # an Elite-TM move stays legacy (Dynamax Cannon)
+            canon_move(x[:-5] if x.endswith("_FAST") else x) for x in gm_elite.get(pid, ())}
         legacy_moves = []
         for raw in (m1, m2, m3):
             nm = normalize_db_move(raw, move_map)
@@ -358,6 +400,9 @@ def main():
             if nm in NEVER_LEGACY:
                 continue
             cm = canon_move(nm)
+            if cm in own_ae:
+                ae_signature[species] += 1
+                continue
             _game_nm = move_map.get(str(raw)) if raw not in (None, 0) else None      # the GAME's spelling
             if cm in elite and gm_rollable.get(pid) and _game_nm in gm_rollable[pid]:
                 stale_elite[species] += 1        # pvpoke's elite list lags: the client rolls this move from a TM now
@@ -378,9 +423,13 @@ def main():
             for raw in (m1, m2, m3):
                 nm = normalize_db_move(raw, move_map)          # pvpoke spelling (no _FAST), for the output
                 full_nm = move_map.get(str(raw)) if raw not in (None, 0) else None   # the GAME's spelling
-                if nm is None or isinstance(nm, tuple) or not full_nm or nm in NEVER_LEGACY or nm in legacy_moves:
+                if (nm is None or isinstance(nm, tuple) or not full_nm or nm in NEVER_LEGACY or nm in legacy_moves
+                        or canon_move(nm) in own_ae):
                     continue
                 if full_nm not in _pool:
+                    if pv_newer and full_nm not in gm_elite.get(pid, ()):
+                        pv_fresher[species] += 1                   # the client lists it NOWHERE and is the older file
+                        continue
                     legacy_moves.append(nm)
                     game_only[species] += 1
 
@@ -411,6 +460,10 @@ def main():
     print(f"match reasons          : {dict(match_reasons)}")
     if game_only:
         print(f"special per the GAME MASTER only (pvpoke called them normal): {dict(game_only)}")
+    if pv_fresher:
+        print(f"NOT legacy -- the client game master predates pvpoke and lists the move nowhere; pvpoke rolls it: {dict(pv_fresher)}")
+    if ae_signature:
+        print(f"NOT legacy -- the form's own Adventure-Effect move: {dict(ae_signature)}")
     if form_mismatch_suppressed:
         print(f"form-mismatch moves suppressed (sibling-form moves): {dict(form_mismatch_suppressed)}")
     if unknown_moves:
