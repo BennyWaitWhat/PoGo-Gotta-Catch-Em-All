@@ -1954,11 +1954,13 @@ def main():
     # read and refuses to see it tagged -- rule 0's never-cull-on-incomplete-data for a blank (0) form instead of a NULL.
     # It held only while every such copy was kept for something else, until a 2025 costume Noibat (form 0, beside today's
     # form-3070 copies) lost its ladder slot and stopped the 05:24 sync. Held as 'data_incomplete' (Safety Hold) only when
-    # nothing else keeps it.
+    # nothing else keeps it. 2026-11-02: not when the species has no form but its Normal one -- that blank is an older
+    # catch's unset form, a complete read (the same Noibat sat held as "missing data"; costume_forms.blank_form_means_normal).
     for r in rows:
         _d = r['costume_decoration_id']
         if (not keep.get(r['uid_hex']) and (r['fresh_costume'] or (_d and str(_d) != '0'))
-                and not (r['form'] or r['fresh_form'])):
+                and not (r['form'] or r['fresh_form'])
+                and not costume_forms.blank_form_means_normal(r['species_name'], bool(r['fresh_costume']))):
             mark(r['uid_hex'], 'data_incomplete')
     # ---- KEEP / TRANSFER ----
     allu = {r['uid_hex'] for r in rows}

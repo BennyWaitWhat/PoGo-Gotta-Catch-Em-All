@@ -856,7 +856,8 @@ for u in sorted(t5, key=lambda z: (-(rows[z].get('iv_total') or 0), z)):
 print('  %-18s %-5d %s' % ('rank<=%d violations' % RR, viol, chk('pvp rank', viol)))
 
 print('\nLAYER 8  data quality (incomplete display reads)')
-barecos = [r for r in rows.values() if (r.get('fresh_costume') or deco(r)) and not (r.get('form') or r.get('fresh_form'))]
+barecos = [r for r in rows.values() if (r.get('fresh_costume') or deco(r)) and not (r.get('form') or r.get('fresh_form'))
+           and not __import__('costume_forms').blank_form_means_normal(r.get('species_name'), bool(r.get('fresh_costume')))]   # blank = unset Normal (2026-11-02)
 tagged_bare = set(r['uid_hex'] for r in barecos) & ps
 print('  costume/deco with blank form: %d | of those TAGGED: %d %s' % (len(barecos), len(tagged_bare), chk('bare-form tagged', len(tagged_bare))))
 # WRITER-REGRESSION SENTINEL for the cosmetic columns the pile is judged on. fresh_natural_art_bg has
