@@ -1962,6 +1962,21 @@ def main():
                 and not (r['form'] or r['fresh_form'])
                 and not costume_forms.blank_form_means_normal(r['species_name'], bool(r['fresh_costume']))):
             mark(r['uid_hex'], 'data_incomplete')
+    # SPECIES MINIMUM (user 2026-11-03, after the 75% floor piled his 2nd of 2 Spiritombs: "why on earth would you cull my
+    # 2nd spirittomb? ... i only have 2" -> "3"): every species (dex number, every form and look together) keeps at least
+    # caps.species_min copies, topped up with the best of the rest by IV, CP, uid -- no floor. Last, so it counts every keep.
+    _smin = keep_config.cap('species_min')
+    if _smin:
+        _spg = defaultdict(list)
+        for r in rows:
+            if r['pokemon_id']:
+                _spg[r['pokemon_id']].append(r)
+        for _lst in _spg.values():
+            _short = _smin - sum(1 for r in _lst if keep.get(r['uid_hex']))
+            _rest = sorted((r for r in _lst if not keep.get(r['uid_hex'])),
+                           key=lambda r: (-(r['iv_total'] or 0), -(r['cp'] or 0), r['uid_hex']))
+            for r in _rest[:max(0, _short)]:
+                mark(r['uid_hex'], 'species_min')
     # ---- KEEP / TRANSFER ----
     allu = {r['uid_hex'] for r in rows}
     keepu = set(keep)

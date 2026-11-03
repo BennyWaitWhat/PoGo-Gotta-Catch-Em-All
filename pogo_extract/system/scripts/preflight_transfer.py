@@ -669,6 +669,22 @@ def _legacy_kept_uids(bag, legacy):
 _LOC_CARD_KEPT = set()   # populated in main() before any _keeper_reasons call
 _COMBUP_KEPT = set()     # rule 15e (2026-09-24): pvp_combup.pick on this bag, populated in main() like _LOC_CARD_KEPT
 _LAW_KEEPERS = {}        # uid -> [reasons] from independent_law.py (H08, 2026-09-29), populated in main()
+_SPECIES_MIN_KEPT = set()  # species minimum (user 2026-11-03 "3"), populated in main() like _LOC_CARD_KEPT
+
+
+def _species_min_uids(bag, pile):
+    """The pile copies keep_policy's species minimum must keep, from counts alone: per species (dex number, every form),
+    the best by _ivkey until keep_config caps.species_min copies stay out of the pile."""
+    n = keep_config.cap('species_min')
+    by = defaultdict(list)
+    for r in bag:
+        if r['pokemon_id']:
+            by[r['pokemon_id']].append(r)
+    out = set()
+    for lst in by.values():
+        short = n - sum(1 for r in lst if r['uid_hex'] not in pile)
+        out |= {r['uid_hex'] for r in sorted((r for r in lst if r['uid_hex'] in pile), key=_ivkey)[:max(0, short)]}
+    return out
 
 
 def _loc_card_kept_uids(bag, cf_norm):
@@ -855,6 +871,8 @@ def _keeper_reasons(r, BS, legacy_set, gm_ok, dex_counts, event_txt, legacy_txt,
         why.append('shiny_ladder')
     if r['uid_hex'] in _COMBUP_KEPT:               # PvP comb-up copy (rule 15e, 2026-09-24)
         why.append('pvp_combup')
+    if r['uid_hex'] in _SPECIES_MIN_KEPT:          # one of the last caps.species_min copies of its species (2026-11-03)
+        why.append('species_min')
     if pvp_best is not None:                       # Best GL / UL / ML copy of its PvP identity (rule 15d, usable-only GL/UL)
         why.extend('pvp_best_%s' % lg.lower() for lg in sorted(pvp_best.get(r['uid_hex'], ())))
 
@@ -1195,7 +1213,10 @@ def main():
         _f = rr['form'] or 0
         return _base_form.get(rr['pokemon_id'], _f) if _f == 0 else _f
     # Use the same canonical form pool as the engine and the other independent cap checks.
-    global _LOC_CARD_KEPT, _COMBUP_KEPT
+    global _LOC_CARD_KEPT, _COMBUP_KEPT, _SPECIES_MIN_KEPT
+    _SPECIES_MIN_KEPT = _species_min_uids(bag, set(transfer_uids))
+    print('  species minimum: %d pile copies would leave a species under %d' % (len(_SPECIES_MIN_KEPT),
+                                                                            keep_config.cap('species_min')))
     _LOC_CARD_KEPT = _loc_card_kept_uids(bag, _cf_norm)
     _cu = __import__('pvp_combup').pick_default(bag)
     _COMBUP_KEPT = set(_cu['gl']) | set(_cu['ul'])
