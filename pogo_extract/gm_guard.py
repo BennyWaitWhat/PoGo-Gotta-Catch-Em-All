@@ -51,12 +51,19 @@ PM_BASE = 'https://raw.githubusercontent.com/PokeMiners/game_masters/master/late
 PM_TS_URL = PM_BASE + 'timestamp.txt'          # 13 bytes: the batch time in ms since the epoch
 PM_JSON_URL = PM_BASE + 'latest.json'
 PM_TREE_URL = 'https://api.github.com/repos/PokeMiners/game_masters/git/trees/master?recursive=1'
+# A SECOND UPSTREAM (2026-11-03, user: "ack ... update all sources"): PokeMiners published nothing after 2026-08-28 while the
+# game moved to 0.435 (the September season's moves, new costume forms); alexelgt/game_masters publishes the same file (a list of
+# {templateId, data}) every few days, its timestamp.json batchId on the same millisecond clock. Each run takes the NEWER batch of
+# the two; every check below judges it the same way. An alexelgt batch has no APK folder (apk None: no APK-skew WARN).
+AX_BASE = 'https://raw.githubusercontent.com/alexelgt/game_masters/master/'
+AX_TS_URL = AX_BASE + 'timestamp.json'
+AX_JSON_URL = AX_BASE + 'GAME_MASTER.json'
 MIN_POKEMON_SETTINGS = 1500     # what refresh_pokeminers() always required (18,8xx templates / 2,4xx pokemonSettings today)
 SHRINK_FLOOR = 0.9              # a candidate with < 90% of the installed pokemonSettings count looks truncated
 CANARY_FLOOR = 0.9              # ... and one under 90% of the installed file on ANY content_counts() count looks damaged
 CANARY_MIN = 10                 # an installed count under this is too small to judge by a ratio
 MIN_BAG_ROWS = 50               # fewer in-bag rows than this is not a bag: nothing can be judged -> STOP, never 'no flips'
-MAX_VERIFY_AGE_DAYS = 14        # the client GM was last compared with PokeMiners' latest longer ago than this -> WARN
+MAX_VERIFY_AGE_DAYS = 14        # the client GM was last compared with upstream's latest longer ago than this -> WARN
 MAX_BATCH_AGE_DAYS = 150        # longest 2026 PokeMiners gap was 133 days (Apr 17 -> Aug 28); older than this -> WARN
 SLOTS = ('move1', 'move2', 'move3')
 ROW_COLS = ('uid_hex, species_name, pokemon_id, form, fresh_form, fresh_costume, move1, move2, move3')
@@ -200,6 +207,17 @@ def parse_ts(text):
     return v
 
 
+def parse_ax_ts(text):
+    """alexelgt's timestamp.json ({"batchId": "<ms>", "uploadTime": "<ms>"}) -> the batchId, checked like parse_ts."""
+    if isinstance(text, bytes):
+        text = text.decode('utf-8', 'strict')
+    return parse_ts(str(json.loads(text)['batchId']))
+
+
+# name -> (timestamp url, game master url, timestamp parser); pokeminers_phase asks both and takes the newer batch
+SOURCES = OrderedDict([('pokeminers', (PM_TS_URL, PM_JSON_URL, parse_ts)), ('alexelgt', (AX_TS_URL, AX_JSON_URL, parse_ax_ts))])
+
+
 def parse_apk(folder):
     """'gm_v2_apk4270_2026.08.28-17.35.50' -> '0.427.0'; '..apk3951..' -> '0.395.1'. None when it does not parse.
     PokeMiners writes the version as digits: minor = all but the last digit, patch = the last digit."""
@@ -281,9 +299,10 @@ def lookup_apk(batch_ts_ms, fetch=http_get):
         return None, None
 
 
-def new_meta(batch_ts_ms, sha, apk, folder, now, tail_pending):
+def new_meta(batch_ts_ms, sha, apk, folder, now, tail_pending, source='pokeminers'):
     """The stamp of an INSTALLED (or adopted) batch. tail_pending = the reconcile + rank pass this GM still owes."""
     m = OrderedDict()
+    m['source'] = source
     m['batch_ts'] = int(batch_ts_ms)
     m['batch_utc'] = _utc(batch_ts_ms / 1000.0)
     m['apk'] = apk
@@ -886,8 +905,9 @@ def freshness_findings(meta, game_version, now=None):
     """[(WARN, message, do)] for audit_invariants I2.7. [] = nothing to say. NEVER raises: a missing or broken meta is a
     finding, not a crash. Four independent causes, each with its own remedy:
       no stamp     the client GM was installed before gm_guard (or its .meta was lost): batch and APK unknown
-      APK skew     the GM is for an older game than the phone runs (game_version.json is written by full_audit each cull)
-      not checked  the GM has not been compared with PokeMiners' latest for MAX_VERIFY_AGE_DAYS: refresh is not running
+      APK skew     the GM is for an older game than the phone runs (game_version.json is written by full_audit each cull);
+                   an alexelgt batch names no APK, so its batch time is held against the game's install time instead
+      not checked  the GM has not been compared with upstream's latest for MAX_VERIFY_AGE_DAYS: refresh is not running
       batch age    older than MAX_BATCH_AGE_DAYS (the longest quiet gap seen in 2026 was 133 days): upstream may be dead
       rejected     the newest upstream batch could not be loaded by the engine and was NOT installed (meta['rejected'])
     WARN, never BLOCK: the pile gate is the real gate; an older GM leaves what it does not know on protected defaults
@@ -895,8 +915,8 @@ def freshness_findings(meta, game_version, now=None):
     evolvability falls back to the species graph); and a BLOCK could not be cleared while PokeMiners is quiet (0.427.0 is
     upstream's newest today, the phone runs 0.429.1)."""
     now = time.time() if now is None else now
-    do = ('python system/scripts/refresh_gamemaster.py  (asks PokeMiners on every run; a new batch is installed only after '
-          'it is diffed against the bag, and stops for review if a keep verdict moves)')
+    do = ('python system/scripts/refresh_gamemaster.py  (asks PokeMiners and alexelgt on every run; a new batch is installed only '
+          'after it is diffed against the bag, and stops for review if a keep verdict moves)')
     out = []
     try:
         if not isinstance(meta, dict) or not isinstance(meta.get('batch_ts'), int):
@@ -909,26 +929,33 @@ def freshness_findings(meta, game_version, now=None):
         apk, gvt = apk_tuple(meta.get('apk')), apk_tuple(gv)
         newer = ''
         if ver_age is not None and ver_age <= MAX_VERIFY_AGE_DAYS:
-            newer = (' PokeMiners had published nothing newer when last checked (%s UTC): a refresh would change nothing yet.'
-                     % meta.get('checked_at', '?')) if meta.get('upstream_ts') == meta['batch_ts'] else \
-                    ' PokeMiners has a NEWER batch (seen %s UTC).' % meta.get('checked_at', '?')
+            newer = (' Upstream (PokeMiners, alexelgt) had published nothing newer when last checked (%s UTC): a refresh would '
+                     'change nothing yet.' % meta.get('checked_at', '?')) if meta.get('upstream_ts') == meta['batch_ts'] else \
+                    ' Upstream has a NEWER batch (seen %s UTC).' % meta.get('checked_at', '?')
         if apk and gvt and apk < gvt:
             out.append(('WARN', 'the client game master is APK %s (batch %s UTC) but the phone runs %s: forms, moves and '
                                 'evolutions added since are unknown to it (an unnamed move stays legacy, an unknown form stays a costume; '
                                 'nothing new is judged).%s' % (meta['apk'], meta['batch_utc'][:10], gv, newer), do))
+        upd = (game_version or {}).get('updated') if isinstance(game_version, dict) else None
+        # the phone prints its local time; this PC shares that clock (same place)
+        if not apk and upd and meta['batch_ts'] / 1000.0 < time.mktime(time.strptime(upd[:19], '%Y-%m-%d %H:%M:%S')):
+            out.append(('WARN', 'the client game master (batch %s UTC, from %s, which names no APK) is older than the game '
+                                'update the phone installed (%s at %s): forms, moves and evolutions that update added may be '
+                                'unknown to it (an unnamed move stays legacy, an unknown form stays a costume).%s'
+                        % (meta['batch_utc'][:16], meta.get('source', '?'), gv or '?', upd[:16], newer), do))
         if ver_age is None or ver_age > MAX_VERIFY_AGE_DAYS:
-            out.append(('WARN', 'the client game master has not been compared with PokeMiners\' latest for %s (limit %d '
+            out.append(('WARN', 'the client game master has not been compared with upstream\'s latest for %s (limit %d '
                                 'days): a cull does this on every run, so no cull has finished a refresh since'
                         % ('ever' if ver_age is None else '%.0f days' % ver_age, MAX_VERIFY_AGE_DAYS), do))
         rj = meta.get('rejected')
         if isinstance(rj, dict):
-            out.append(('WARN', 'the newest PokeMiners batch (%s UTC) was REJECTED at %s UTC and is NOT installed -- %s; the client '
+            out.append(('WARN', 'the newest upstream batch (%s UTC) was REJECTED at %s UTC and is NOT installed -- %s; the client '
                                 'game master is still batch %s UTC. Every refresh retries it. Refused as damaged but genuinely '
                                 'smaller (a format change)? On Benny\'s word: refresh_gamemaster.py --accept-smaller. One the '
                                 'loaders cannot read needs a fix in evolvable_forms / gm_guard' % (rj.get('batch_utc', '?'), rj.get('at', '?'), str(rj.get('reason', '?'))[:200],
                                                                   meta['batch_utc']), do))
         if batch_age > MAX_BATCH_AGE_DAYS:
-            out.append(('WARN', 'the client game master batch is %.0f days old (%s UTC; limit %d): PokeMiners may have '
+            out.append(('WARN', 'the client game master batch is %.0f days old (%s UTC; limit %d): PokeMiners and alexelgt may both have '
                                 'stopped publishing -- read the game\'s own data live instead' % (
                                     batch_age, meta['batch_utc'][:10], MAX_BATCH_AGE_DAYS), do))
     except Exception as e:                                       # a WARN check must never take the audit down
@@ -1429,6 +1456,12 @@ def selftest(rgm=None):
             ok(len(f) == 1 and 'phone runs 0.429.1' in f[0][1] and 'nothing newer' in f[0][1] and 'refresh_gamemaster.py' in f[0][2], 'APK skew: %s' % f)
             ok(freshness_findings(m, {'version': '0.427.0'}, now) == [] and freshness_findings(m, None, now) == [], 'no skew, or no game version')
             ok(freshness_findings(dict(m, apk=None), gv, now) == [], 'apk unknown (lookup blocked) and freshly checked: no noise')
+            _lt = lambda s: time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(s))    # how dumpsys prints lastUpdateTime
+            f = freshness_findings(dict(m, apk=None, source='alexelgt'), dict(gv, updated=_lt(ts / 1000.0 + 86400)), now)
+            ok(len(f) == 1 and 'older than the game update' in f[0][1] and 'alexelgt' in f[0][1], 'no APK, batch before the game update: %s' % f)
+            ok(freshness_findings(dict(m, apk=None), dict(gv, updated=_lt(ts / 1000.0 - 86400)), now) == [], 'no APK, batch after the update: no noise')
+            f = freshness_findings(m, dict(gv, updated=_lt(ts / 1000.0 + 86400)), now)
+            ok(len(f) == 1 and 'phone runs 0.429.1' in f[0][1], 'a known APK is judged by the APK alone (one WARN, not two): %s' % f)
             f = freshness_findings(dict(m, checked_ts=int(now - 20 * 86400), downloaded_ts=int(now - 20 * 86400)), {'version': '0.427.0'}, now)
             ok(len(f) == 1 and 'not been compared' in f[0][1], 'not checked for 20 days: %s' % f)
             f = freshness_findings(dict(m, batch_ts=int((now - 200 * 86400) * 1000), batch_utc='2026-03-13 00:00:00'), {'version': '0.427.0'}, now)
@@ -1459,9 +1492,14 @@ def _orchestrator_tests(rgm, td, put, rows, enum, ok):
         con.execute('INSERT INTO pokemon VALUES (?,?,?,?,?,?,?,?,?,1)', [r[k] for k in ROW_COLS.replace(' ', '').split(',')])
     con.commit()
     con.close()
-    served = {'json': None, 'ts': str(ts_b), 'n_json': 0, 'ts_seq': None, 'no_tree': False}
+    served = {'json': None, 'ts': str(ts_b), 'n_json': 0, 'ts_seq': None, 'no_tree': False, 'ax_ts': None, 'ax_json': None, 'n_ax': 0}
 
     def fetch(url, timeout=30):
+        if url.startswith(AX_TS_URL) and served['ax_ts']:
+            return json.dumps({'batchId': served['ax_ts'], 'uploadTime': served['ax_ts']}).encode()
+        if url.startswith(AX_JSON_URL) and served['ax_json']:
+            served['n_ax'] += 1
+            return served['ax_json'].encode()
         if url.startswith(PM_TS_URL):
             if served['ts_seq']:
                 return served['ts_seq'].pop(0).encode()
@@ -1797,6 +1835,18 @@ def _orchestrator_tests(rgm, td, put, rows, enum, ok):
         c.close()
         shutil.rmtree(adir)
         os.remove(os.path.join(td, 'active_account.txt'))
+        # A SECOND UPSTREAM (2026-11-03): alexelgt publishing a NEWER batch than PokeMiners is the one downloaded and judged
+        # (here a FLIPS: held), stamped source 'alexelgt' with no APK lookup; PokeMiners' own file is never fetched
+        reset(None)
+        served['ax_ts'], served['ax_json'], n_pm = str(ts_b + 1000), json.dumps(_fixture_gm('move')), served['n_json']
+        rc, out = run()
+        rec = json.load(open(rgm.REVIEW, encoding='utf-8'))
+        ok(rc == (2, False) and rec['batch_ts'] == ts_b + 1000 and rec['meta_new']['source'] == 'alexelgt'
+           and rec['meta_new']['apk'] is None and served['n_ax'] == 1 and served['n_json'] == n_pm and 'from alexelgt' in out,
+           'the newer alexelgt batch is the one judged and held: %s %s' % (rc, {k: rec['meta_new'].get(k) for k in ('source', 'apk')}))
+        os.remove(rgm.REVIEW)
+        os.remove(os.path.join(td, 'gm.pending.json'))
+        served['ax_ts'] = None
         # the owed reconcile + rank pass: _pm_tail_done clears the flag, and main() calls it once the ranks were diffed
         reset(None)
         write_meta(mtp, dict(read_meta(mtp), tail_pending=True))

@@ -303,12 +303,18 @@ def pokeminers_phase(argv, fetch=None, now=None, gm_path=None, meta_path=None, d
     meta = gg.read_meta(meta_path)
     state = gg.local_state(gm_path, meta)
     tail = bool(meta and meta.get('tail_pending'))
-    try:
-        up_ts = gg.parse_ts(fetch(gg.PM_TS_URL + '?cb=%d' % now, 15))
-    except Exception as e:
-        print('WARN pokeminers: cannot read upstream latest/timestamp.txt (%s) -- the client game master is left as it is' % e)
+    ups, errs = {}, []
+    for name, (ts_url, _j, parse) in gg.SOURCES.items():      # BOTH upstreams (2026-11-03): the newer batch is the one judged
+        try:
+            ups[name] = parse(fetch(ts_url + '?cb=%d' % now, 15))
+        except Exception as e:
+            errs.append('%s: %s' % (name, e))
+    if not ups:
+        print('WARN pokeminers: cannot read either upstream timestamp (%s) -- the client game master is left as it is' % '; '.join(errs))
         _PM_NOTE[0] = 'pokeminers %s: NOT checked (upstream unreachable)' % _pm_ident(meta)
         return None, tail
+    src = max(ups, key=lambda k: ups[k])
+    up_ts, (ts_url, json_url, parse) = ups[src], gg.SOURCES[src]
     if state == 'ok' and up_ts < meta['batch_ts']:
         # NEVER A DOWNGRADE (2026-09-30): batches only move forward. An OLDER timestamp is a stale CDN edge or a rollback --
         # installing it would put the previous batch back and stop the pass twice (now, and again when the edge heals)
@@ -327,26 +333,26 @@ def pokeminers_phase(argv, fetch=None, now=None, gm_path=None, meta_path=None, d
     if state == 'ok' and meta['batch_ts'] == up_ts and '--force' not in argv:
         meta['checked_ts'], meta['checked_at'], meta['upstream_ts'] = int(now), gg._utc(now), up_ts
         meta.pop('rejected', None)                           # upstream's newest IS what is installed: nothing is rejected any more
-        if meta.get('apk') is None:                          # the tree lookup is retried every run until it answers
+        if meta.get('apk') is None and meta.get('source', 'pokeminers') == 'pokeminers':   # retried every run until it answers
             meta['apk'], meta['folder'] = gg.lookup_apk(up_ts, fetch)
         if not gg.write_meta(meta_path, meta):
             print('WARN pokeminers: could not update %s (read-only?) -- its check time stays old' % os.path.basename(meta_path))
         _PM_NOTE[0] = 'pokeminers %s = upstream latest' % _pm_ident(meta)
         print('pokeminers: batch %s (%s UTC) is upstream\'s latest -- nothing to download' % (_pm_ident(meta), meta['batch_utc']))
         return None, tail
-    print('pokeminers: %s -- downloading batch %s UTC to judge it against the bag'
+    print('pokeminers: %s -- downloading batch %s UTC from %s to judge it against the bag'
           % ({'no-file': 'no local file', 'no-meta': 'the installed file has no stamp yet',
               'sha-mismatch': 'the installed file is not the one its stamp describes'}.get(
                   state, 're-checking (--force)' if '--force' in argv and meta and meta['batch_ts'] == up_ts else 'a NEW batch upstream'),
-             gg._utc(up_ts / 1000.0)))
+             gg._utc(up_ts / 1000.0), src))
     tmp = gm_path + '.download'
 
     def _drop():
         if os.path.exists(tmp):
             os.remove(tmp)
     try:
-        body = fetch(gg.PM_JSON_URL + '?cb=%d' % now, 180)
-        if gg.parse_ts(fetch(gg.PM_TS_URL + '?cb=%d' % (now + 1), 15)) != up_ts:
+        body = fetch(json_url + '?cb=%d' % now, 180)
+        if parse(fetch(ts_url + '?cb=%d' % (now + 1), 15)) != up_ts:
             raise ValueError('upstream published while it was downloading; retried next run')
         with open(tmp, 'wb') as f:
             f.write(body)
@@ -403,12 +409,12 @@ def pokeminers_phase(argv, fetch=None, now=None, gm_path=None, meta_path=None, d
                   'NOT adopted, asked again next run' % (meta['batch_ts'], up_ts))
             _PM_NOTE[0] = 'pokeminers %s: timestamp moved, content same (kept)' % _pm_ident(meta)
             return None, tail
-        apk, folder = gg.lookup_apk(up_ts, fetch)
+        apk, folder = gg.lookup_apk(up_ts, fetch) if src == 'pokeminers' else (None, None)
         # A file its stamp does not describe (sha-mismatch) may be a batch that was installed and killed before it was stamped:
         # the reconcile + rank pass it owed may never have run, so it is owed AGAIN (an extra pass is only slow; a missing one
         # leaves pvpoke's file drifted from the client game master)
         owed = bool(tail) or state == 'sha-mismatch'
-        nm = gg.new_meta(up_ts, res['new']['sha256'], apk, folder, now, tail_pending=owed)
+        nm = gg.new_meta(up_ts, res['new']['sha256'], apk, folder, now, tail_pending=owed, source=src)
         if named:
             nm['ids_named'] = named                          # the stamped sha256 is of the NAMED bytes, not upstream's
         if meta and state == 'ok':                           # --force on an unchanged file: keep its install time and a known APK
@@ -421,8 +427,8 @@ def pokeminers_phase(argv, fetch=None, now=None, gm_path=None, meta_path=None, d
         print('pokeminers: the installed file IS upstream batch %s -- stamped %s' % (_pm_ident(nm), os.path.basename(meta_path)))
         return None, owed
     # CLEAR or FLIPS: install with a dated, never-overwritten backup
-    apk, folder = gg.lookup_apk(up_ts, fetch)
-    nm = gg.new_meta(up_ts, res['new']['sha256'], apk, folder, now, tail_pending=True)
+    apk, folder = gg.lookup_apk(up_ts, fetch) if src == 'pokeminers' else (None, None)
+    nm = gg.new_meta(up_ts, res['new']['sha256'], apk, folder, now, tail_pending=True, source=src)
     if named:
         nm['ids_named'] = named                              # the stamped sha256 is of the NAMED bytes, not upstream's
     if v == 'FLIPS':

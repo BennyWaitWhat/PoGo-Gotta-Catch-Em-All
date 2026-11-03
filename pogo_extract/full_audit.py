@@ -268,6 +268,8 @@ def game_news_step():
         _o = subprocess.run(['adb', '-s', _pg.ADB_TARGET, 'shell', 'dumpsys package com.nianticlabs.pokemongo'],
                             capture_output=True, text=True, timeout=30).stdout
         _v = next((l.split('=', 1)[1].strip() for l in _o.splitlines() if 'versionName=' in l), None)
+        # when that version was installed (phone local time): an alexelgt game master names no APK, so I2.7 compares times
+        _u = next((l.split('=', 1)[1].strip() for l in _o.splitlines() if 'lastUpdateTime=' in l), None)
         _vp = os.path.join('system', 'analysis', 'game_version.json')
         _pdoc = json.load(open(_vp, encoding='utf-8')) if os.path.exists(_vp) else {}
         _prev = _pdoc.get('version')
@@ -284,7 +286,7 @@ def game_news_step():
             if _pm and _pdoc.get('pokemod') and _pdoc.get('pokemod') != _pm:
                 say('POKEMOD UPDATED %s -> %s: re-verify size_line.showcase_points against a Pokemod screen before trusting '
                     'any XXL top-2 change (its showcaseScoreMath is where the +178 XXL bonus comes from)' % (_pdoc.get('pokemod'), _pm))
-            json.dump({'version': _v, 'pokemod': _pm or _pdoc.get('pokemod'), 'seen': time.strftime('%Y-%m-%d %H:%M')},
+            json.dump({'version': _v, 'updated': _u, 'pokemod': _pm or _pdoc.get('pokemod'), 'seen': time.strftime('%Y-%m-%d %H:%M')},
                       open(_vp, 'w', encoding='utf-8'))
     except Exception as _e:
         say('game version: not read (%s)' % _e)
