@@ -110,7 +110,7 @@ def main():
     print(f"ONLY ON SERVER ({len(only_srv)}):")
     for u in sorted(only_srv):
         row = c.execute("""SELECT species_name, iv_pct, is_shiny, is_lucky, is_legendary,
-                                  in_bag, cull_decision_v9, cull_reason_v9
+                                  in_bag, auth_tag_names
                            FROM pokemon WHERE lower(uid_hex)=?""", (u,)).fetchone()
         print(f"   {u}  {row if row else '*** NOT IN DB AT ALL ***'}")
     print(f"ONLY IN DB ({len(only_db)}): {sorted(only_db)[:10]}")

@@ -91,13 +91,6 @@ def section_db_freshness(conn):
     if in_bag == 0:
         issues.append('in_bag count is 0 -- DB may be empty or stale')
 
-    # Check for NULL cull decisions on in_bag rows
-    null_cull = conn.execute(
-        "SELECT COUNT(*) FROM pokemon WHERE in_bag=1 AND cull_decision_v9 IS NULL"
-    ).fetchone()[0]
-    if null_cull > 0:
-        issues.append(f'{null_cull} in_bag rows have NULL cull_decision_v9')
-
     # Try Frida freshness (graceful degrade)
     frida_status = _try_frida_freshness(conn)
     if frida_status is not None:

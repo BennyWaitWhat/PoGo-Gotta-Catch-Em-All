@@ -815,7 +815,7 @@ def main():
     def _afford(r, ts):
         # THE STONE COUNTS TOO (user 2026-09-17: "it can evolve, i just dont have the stone to do it"). An evolution
         # the bag cannot pay for today is not advice, it is a chore he cannot do -- hold it like a candy-short one and
-        # name the item in the report. Items unread (stale walk) -> _items_left is None -> candy alone decides.
+        # name the item in the report.
         # UNKNOWN IS NOT AFFORDABLE (2026-09-29, research A13-2): an unread count HOLDS the copy (kept, no Evolve label,
         # its slot committed) instead of promising what the bag may not have -- unknown data is never a chore or fodder.
         if _items_left is None and _need_items(r, ts):
@@ -2024,7 +2024,6 @@ def main():
     keepu = set(keep)
     transu = allu - keepu
     name = {r['uid_hex']: r['species_name'] for r in rows}
-    cull = {r['uid_hex']: r['cull_decision_v9'] for r in rows}
 
     # HARD INVARIANT TRIPWIRE (user 2026-06-05): a top-READY_RANK CP-viable PvP spread must NEVER be in the
     # Transfer pile. Rule 15b keeps them all, so this can only fire if that rule is ever broken -- in which
@@ -2165,9 +2164,6 @@ def main():
     for rs in keep.values():
         for why in rs: rc[why] += 1
     print("per-rule protects:", dict(sorted(rc.items(), key=lambda x: -x[1])))
-    newly_trim = [u for u in transu if cull.get(u) == 'KEEP']
-    newly_keep = [u for u in keepu if cull.get(u) == 'TRANSFER']
-    print(f"newly_trimmed (was cull KEEP): {len(newly_trim)}   newly_kept (was cull TRANSFER): {len(newly_keep)}")
     sp = defaultdict(int)
     for u in transu: sp[name.get(u, '?')] += 1
     # name tiebreak: `transu` is a SET, so ties used to be ordered by string-hash (PYTHONHASHSEED) and the

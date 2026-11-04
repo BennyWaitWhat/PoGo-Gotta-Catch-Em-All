@@ -170,9 +170,6 @@ def axes(r):
         # report false for all 52 while 2 of them are in fact best buddies). NOT a keep axis: the
         # best_buddy keep reason was removed 2026-06-07.
         'best_buddy_NOT_A_KEEP_AXIS': bool(r.get('is_best_buddy')),
-        # decommissioned May-30 engine; reads KEEP on 31 of 52 pile members. Kept under an explicit name
-        # so nobody mistakes it for a current verdict.
-        'cull_v9_stale_legacy_column': r.get('cull_decision_v9'),
     }
 
 
