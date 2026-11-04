@@ -103,6 +103,16 @@ def picks(pile=None):
     except OSError:
         _pile = set()
     big = [e for e in big if (e['score_after'] or 0) >= _min and norm(e['uid']) not in _pile]
+    # A PICK NEVER TAKES A PROMISED SLOT (2026-11-04): keep_policy writes the (copy, stage) pairs whose arrival would push a
+    # labelled evolve promise out of that stage's top-N -- the XXL Charcadet 91% over the promised 80% at Armarouge.
+    import json
+    try:
+        _blk = {norm(u): set(ts) for u, ts in json.load(open(os.path.join('system', 'analysis', 'showcase_blocked.json'),
+                                                              encoding='utf-8')).items()}
+    except (OSError, ValueError):
+        _blk = {}
+        print('  (showcase_blocked.json unreadable -- %s picks NOT checked against the evolve promises; audit_promises still is)' % TAG)
+    big = [e for e in big if e['target'] not in _blk.get(norm(e['uid']), ())]
     return {norm(e['uid']) for e in big}, big
 
 
