@@ -273,7 +273,6 @@ def main():
     # (special wins ties), the stage cap (middle = plain_line_preevo when a copy there can evolve, else plain_line; 2
     # per gender where the look differs), the collection floor (under it only the stage's best stays).
     _graph = (_is_pre, _term_sp, _dist_sp, _sp2dex, _allreach)
-    _FLOOR_IV = keep_config.collection_floor_iv()
     _own_plain, _own_spec, _own_step = collections.defaultdict(list), collections.defaultdict(list), collections.defaultdict(bool)
     # ...AND THE COLLAPSE (R-A review, 2026-09-29): keep_policy's dominance pass DELETES a true plain kept by nothing but its
     # slot when a KEPT copy of its own stage with a collectible attribute (shiny, background, card, costume, Max, shadow)
@@ -310,7 +309,7 @@ def main():
         _m0 = sorted([(a, b, 0) for a, b in _own_spec.get(_k0, ())] + [((x['iv_total'] or 0), (x['cp'] or 0), 1) for x in _pl],
                      key=lambda t: (-t[0], -t[1], t[2]))[:_c0]
         _srt0 = [x for i, x in enumerate(sorted(_pl, key=lambda x: (-(x['iv_total'] or 0), -(x['cp'] or 0), x['uid_hex'])))
-                 if i == 0 or (x['iv_total'] or 0) >= _FLOOR_IV]
+                 if i == 0 or (x['iv_total'] or 0) >= keep_config.floor_iv_for(x['pokemon_id'])]
         _OWN_STOCK |= {x['uid_hex'] for x in _srt0[:sum(1 for t in _m0 if t[2] == 1)]}
     # another keep reason the copy already had (a Best ML, a PvP rank ...) also makes it "kept anyway"; 'variant_floor'
     # is not one here -- on a promised or held copy beyond its stage cap it is the hold itself.

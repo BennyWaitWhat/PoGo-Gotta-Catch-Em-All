@@ -2004,15 +2004,27 @@ def main():
                 and not (r['form'] or r['fresh_form'])
                 and not costume_forms.blank_form_means_normal(r['species_name'], bool(r['fresh_costume']))):
             mark(r['uid_hex'], 'data_incomplete')
+    # A FORM IS NEVER EMPTIED (2026-11-04, rule 14's own intent -- "dex completeness"; audit_cull LAYER 5 'FORMS wiped' has
+    # always failed the pass on it): rule 14 keeps a form's LONE copy, but a form with 2+ copies all outside their ladder's
+    # slots could still go whole. The 87% floor did that to two Scatterbug patterns (2754, 2759) whose pattern pools are
+    # held by Vivillon. After every other keep, a (pid, form) with no kept copy keeps its best (IV, CP, uid).
+    if _R['dex_only']:
+        _fg = defaultdict(list)
+        for r in rows:
+            _fg[(_pkey(r) if keep_config.line_pool_all() else None) or (r['pokemon_id'], cf(r))].append(r)
+        for _lst in _fg.values():
+            if not any(keep.get(r['uid_hex']) for r in _lst):
+                mark(min(_lst, key=lambda r: (-(r['iv_total'] or 0), -(r['cp'] or 0), r['uid_hex']))['uid_hex'], 'dex_only_copy')
     # SPECIES MINIMUM (user 2026-11-03, after the 75% floor piled his 2nd of 2 Spiritombs: "why on earth would you cull my
-    # 2nd spirittomb? ... i only have 2" -> "3"): every species (dex number, every form and look together) keeps at least
+    # 2nd spirittomb? ... i only have 2" -> "3"): every species + form (pvid: Alolan Vulpix and Vulpix are two kinds, every
+    # look together -- per dex number until 2026-11-04 "a": "a back up and one to trade and one for me") keeps at least
     # caps.species_min copies, topped up with the best of the rest by IV, CP, uid -- no floor. Last, so it counts every keep.
     _smin = keep_config.cap('species_min')
     if _smin:
         _spg = defaultdict(list)
         for r in rows:
             if r['pokemon_id']:
-                _spg[r['pokemon_id']].append(r)
+                _spg[pvid(r['species_name'], r['form'] or 0)].append(r)
         for _lst in _spg.values():
             _short = _smin - sum(1 for r in _lst if keep.get(r['uid_hex']))
             _rest = sorted((r for r in _lst if not keep.get(r['uid_hex'])),

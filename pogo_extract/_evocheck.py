@@ -232,7 +232,6 @@ _cands = [by[u] for u in ps if u in by and _in_pool(by[u]) and not _trophy(by[u]
 # the non-hundo shinies and cosmetic copies of that stage displacing them by IV (special wins ties), the stage cap
 # (middle = plain_line_preevo, else plain_line; 2 per gender where the look differs), the collection floor. A copy
 # inside that top-cap stays as stock whatever happens -- it is never rescued.
-_FLOOR_IV = keep_config.collection_floor_iv()
 _NUNDO_ON = keep_config.rule_enabled('nundo')
 def _own_key(r):
     _s = sid_of(r)
@@ -258,7 +257,7 @@ for _k0, _pl in _own_plain.items():
     _m0 = sorted([(a, b, 0) for a, b in _own_spec.get(_k0, ())] + [(iv(x), _cp(x), 1) for x in _pl],
                  key=lambda t: (-t[0], -t[1], t[2]))[:_c0]
     _srt0 = [x for i, x in enumerate(sorted(_pl, key=lambda x: (-iv(x), -_cp(x), x['uid_hex'])))
-             if i == 0 or iv(x) >= _FLOOR_IV]          # the collection floor: under it, only the stage's best stays
+             if i == 0 or iv(x) >= keep_config.floor_iv_for(x['pokemon_id'])]   # the collection floor (legendaries: their own)
     _STOCK |= {x['uid_hex'] for x in _srt0[:sum(1 for t in _m0 if t[2] == 1)]}
 def _rescue_ok(r):
     """The engine's RESCUE, from the law: not stock at its own stage (above), and kept by nothing but the evolve
@@ -394,7 +393,7 @@ def sweep(drop_trophies, drop_piled, commits=None):
             _srt = sorted([(a, b, lk, 0) for a, b, lk, _tr in _grp] + [(i, cpc, keep_config.card_look(r), 1)],
                           key=lambda x: (-x[0], -x[1], x[3]))                  # an exact tie keeps the copy you hold
             _top = keep_config.floor_top([{'iv_total': a, 'look': lk, 'arr': w} for a, b, lk, w in _srt],
-                                         look=lambda d: d['look'])[:_nc]
+                                         look=lambda d: d['look'], pid=_DEX_SID.get(t))[:_nc]
             if any(d['arr'] for d in _top) and (len(_grp) >= _nc or i > max([x[0] for x in _lad] + [-1])):
                 return True
         if r is not None:                    # the dominance pass, exactly: a KEPT strict-superset copy with higher IV collapses it
@@ -409,7 +408,8 @@ def sweep(drop_trophies, drop_piled, commits=None):
         # THE COLLECTION FLOOR, as keep_policy.topn applies it to the plain pool (2026-10-25): under it a copy holds no slot
         # unless it is the stage's best -- the arrival too. The old blanket "under the floor it never moves beside any copy"
         # refused a sub-floor arrival that would be a stage's new best, which the engine rightly promises.
-        _in = {d['j'] for d in keep_config.floor_top([{'iv_total': x[0], 'j': j} for j, x in enumerate(pool)])[:n]}
+        _in = {d['j'] for d in keep_config.floor_top([{'iv_total': x[0], 'j': j} for j, x in enumerate(pool)],
+                                                     pid=_DEX_SID.get(t))[:n]}
         if not any(pool[j][2] == 1 for j in _in):
             return False                     # no plain slot for it: beyond the cap, under the floor or displaced by a special
         if len(pool) - 1 < n and not (rescue or i > best[tk]):
