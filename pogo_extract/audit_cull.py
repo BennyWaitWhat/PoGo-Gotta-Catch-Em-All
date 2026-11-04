@@ -826,6 +826,26 @@ ns = [r for r in rows.values() if r['iv_total'] == 0 and 'variant_floor' in pol.
 print('  %-18s %-5d %s' % ('hundos in floor', len(hs), chk('hundo slot', len(hs))))
 print('  %-18s %-5d %s' % ('nundos in floor', len(ns), chk('nundo slot', len(ns))))
 
+# KEEP SIDE, REPORT ONLY (2026-11-04 review): every layer above asks "is a keeper in the pile?". This asks the converse
+# for the capped axes this file already re-derives: a mon kept ONLY by soft ladder reasons must sit inside one of those
+# re-derived keep sets. Non-zero = an over-keep, or a mirror above that is narrower than the engine (which is also a
+# pile-side blind spot). Over-keeping loses nothing, so it never joins FAILS; the count rides on the verdict line.
+# Plain stage ladders (rule 1b) are not re-derived in this file: their holds are listed by ladder_report.
+_KS = {'shiny': _shiny_keep, 'rarity': _rarity_keep, 'legacy': _legacy_keep, 'location_card': _loc_keep,
+       'xxl': _xxl_keep, 'shadow_best': _shadow_keep}
+def _ks_ok(u):
+    r = rows[u]
+    for k in pol[u]:
+        if k == 'variant_floor':
+            if r.get('fresh_shiny') or (r.get('fresh_alignment') or 0) == 1 or _truly_plain(r) or u in _var_keep:
+                return True
+        elif u in _KS[k]:
+            return True
+    return False
+_over = sorted(u for u, rs in pol.items() if rs and set(rs) <= set(_KS) | {'variant_floor'} and not _ks_ok(u))
+print('  %-18s %-5d report only%s' % ('kept off-ladder', len(_over), (' -- ' + ', '.join(
+    '%s %d%%' % (rows[u]['species_name'], round((rows[u]['iv_total'] or 0) * 100 / 45)) for u in _over[:6])) if _over else ''))
+
 print('\nLAYER 7  PvP rank sanity on tagged')
 # READY_RANK and the viability margin are keep_config values, not literals -- raising ready_rank in the
 # dashboard used to silently shrink this layer's coverage (audit_tags_membership already reads it live).
@@ -935,5 +955,6 @@ try:
 except Exception as _e:
     print('\nbag %d / UNKNOWN  (player_state.json unreadable: %s)' % (len(rows), _e))
 
-print('\nVERDICT: %s' % ('ALL LAYERS PASS -- pile is keeper-free' if not FAILS else 'FAILURES: ' + ', '.join(FAILS)))
+print('\nVERDICT: %s | %d kept off-ladder' % ('ALL LAYERS PASS -- pile is keeper-free' if not FAILS else 'FAILURES: ' + ', '.join(FAILS),
+                                          len(_over)))
 sys.exit(1 if FAILS else 0)
