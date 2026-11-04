@@ -104,7 +104,7 @@ def main():
         # whole reason the prune exists, so it gets named in the log, not silently dropped.
         for u in stale:
             row = conn.execute(
-                "SELECT species_name, iv_pct, cull_decision_v9, cull_reason_v9 FROM pokemon "
+                "SELECT species_name, iv_pct, in_bag, auth_tag_names FROM pokemon "
                 "WHERE lower(uid_hex)=?", (u,)).fetchone()
             print(f"   STALE {u}  {row if row else '(not in db)'}")
         if a.dry:

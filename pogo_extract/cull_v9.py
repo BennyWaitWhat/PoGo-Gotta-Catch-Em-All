@@ -4,10 +4,10 @@
 READ THIS BEFORE RE-ARMING ANYTHING HERE (banner added 2026-09-02)
 ==============================================================================================
 The ONE keep engine is system/scripts/keep_policy.py, whose every cap and roster lives in
-keep_config.json. This file is a HISTORICAL second opinion: its only remaining job is the
-advisory `cull_decision_v9` column, which pogo_pipeline.py fills in-process and keep_policy
-reads solely to print a newly_trimmed / newly_kept diff line. Nothing releases from it and
-nothing should tag from it.
+keep_config.json. This file is a HISTORICAL second opinion, kept only as an in-memory library
+(deep_profile, build_map, iv_cull_plan, cull_whatif import is_protected). Its cull_decision_v9 /
+cull_reason_v9 columns were RETIRED and dropped 2026-11-04: pogo_pipeline no longer runs it and
+keep_policy no longer reads them. Nothing releases from it and nothing should tag from it.
 
 ITS CAPS ARE FROZEN IN 2026 AND ARE NOT THE USER'S CURRENT POLICY. Measured 2026-09-02:
       here                     live keep_config.json
@@ -25,7 +25,7 @@ extras were keepers -- 26 shiny, 13 variant_floor, 5 unconditionally-protected P
 2 of them PvP rank <= 5. auto_tag.py is retired; see its docstring.
 
 If you want to change what gets kept, change keep_config.json. If you want a second opinion,
-read the column. Do not tag, push, or release from it.
+run this file (it prints; it writes nothing). Do not tag, push, or release from it.
 ==============================================================================================
 
 V9: V8 refactored to a single PROTECTION_RULES registry.
@@ -390,58 +390,20 @@ def simulate_transfer(uid_hex):
 
 
 def main():
-    conn = sqlite3.connect('pokemon.db')
+    # Read-only since the cull_v9 pair was retired (2026-11-04): it used to ALTER TABLE + UPDATE the live db, which
+    # would re-create the dropped columns (and move keep_policy's db_content_sha256) whenever anyone ran it.
+    conn = sqlite3.connect('file:pokemon.db?mode=ro', uri=True)
     conn.row_factory = sqlite3.Row
-    c = conn.cursor()
-    cols = {r[1] for r in c.execute('PRAGMA table_info(pokemon)').fetchall()}
-    if 'cull_decision_v9' not in cols: c.execute('ALTER TABLE pokemon ADD COLUMN cull_decision_v9 TEXT')
-    if 'cull_reason_v9' not in cols:   c.execute('ALTER TABLE pokemon ADD COLUMN cull_reason_v9 TEXT')
-    conn.commit()
-    _tick("schema ensured")
-
-    _q = time.time()
-    rows, ctx = _load_rows_and_ctx(c)
-    _tick(f"rows + ctx built ({len(rows)} rows in {time.time()-_q:.2f}s)")
-
-    _p = time.time()
-    keep = xfer = 0
-    for p in rows:
-        reasons = is_protected(p, ctx)
-        if reasons:
-            decision, reason_str = 'KEEP', ';'.join(reasons[:8]); keep += 1
-        else:
-            decision, reason_str = 'TRANSFER', 'no_keep_rule';   xfer += 1
-        c.execute('UPDATE pokemon SET cull_decision_v9=?, cull_reason_v9=? WHERE uid_hex=?',
-                  (decision, reason_str, p['uid_hex']))
-    _tick(f"per-uid UPDATE loop done ({len(rows)} rows in {time.time()-_p:.2f}s)")
-    conn.commit()
-    _tick("commit done")
-    print(f'\nKEEP: {keep}  TRANSFER: {xfer}')
-
-    print('\n=== Sanity (all should be 0) ===')
-    for r in PROTECTION_RULES:
-        if not r.sanity_sql: continue  # bucket rules / UDF-only rules
-        n = c.execute(
-            f"SELECT COUNT(*) FROM pokemon WHERE in_bag=1 AND cull_decision_v9='TRANSFER' AND {r.sanity_sql}"
-        ).fetchone()[0]
-        marker = '!' if n > 0 else ' '
-        print(f'  {marker} {r.name:30s}: {n}')
-
-    # xxl_top3 sanity: check no uid in ctx['xxl_top3_uids'] is a TRANSFER
-    xfer_uids = {r[0] for r in c.execute(
-        "SELECT uid_hex FROM pokemon WHERE in_bag=1 AND cull_decision_v9='TRANSFER'")}
-    n_xxl = len(ctx['xxl_top3_uids'] & xfer_uids)
-    print(f'  {"!" if n_xxl else " "} {"xxl_top3":30s}: {n_xxl}')
-    for key, label in [('gl_qualify_uids','gl_pvp'), ('ul_qualify_uids','ul_pvp'),
-                       ('legacy_uids','legacy_move'), ('dex_gap_uids','dex_gap_evolution')]:
-        n = len(ctx.get(key, set()) & xfer_uids)
-        print(f'  {"!" if n else " "} {label:30s}: {n}')
-
+    rows, ctx = _load_rows_and_ctx(conn.cursor())
+    conn.close()
+    xfer = [p for p in rows if not is_protected(p, ctx)]
+    print(f'\nKEEP: {len(rows) - len(xfer)}  TRANSFER: {len(xfer)}   (advisory, frozen caps -- NOT the pile)')
+    counts = {}
+    for p in xfer:
+        counts[p['species_name']] = counts.get(p['species_name'], 0) + 1
     print('\n=== Top transfer species ===')
-    for r in c.execute("""SELECT species_name, COUNT(*) as n FROM pokemon
-                          WHERE cull_decision_v9='TRANSFER' AND in_bag=1
-                          GROUP BY species_name ORDER BY n DESC LIMIT 25"""):
-        print(f'  {r[0]:25s} {r[1]}')
+    for sp, n in sorted(counts.items(), key=lambda x: (-x[1], x[0]))[:25]:
+        print(f'  {sp:25s} {n}')
 
 
 if __name__ == '__main__':

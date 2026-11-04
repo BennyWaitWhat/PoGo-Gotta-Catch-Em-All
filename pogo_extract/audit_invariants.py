@@ -1400,7 +1400,6 @@ NULL_EXEMPT = {
                 'as `or 0`, and a row with every rank NULL is kept by rule 15c. The harness asserts below that no row has '
                 'its ML rank or stage NULL while it holds a GL or UL rank, which 15c would miss.'),
     'ml_stage': ('same as ml_rank -- read only alongside it.'),
-    'cull_decision_v9': ('reporting only -- the "newly trimmed vs cull_v9" print. Decides nothing.'),
 }
 
 # fresh_* rescan column -> the legacy pre-rescan column(s) that hold the same thing. Reading the

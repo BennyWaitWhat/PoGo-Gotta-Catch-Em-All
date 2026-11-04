@@ -1055,6 +1055,26 @@ def main():
     except Exception as e:
         out.append('(which way: not computed -- %s)' % e)
         targets = prev_targets
+    # A STOP STAYS A STOP (2026-11-04 review of the 11-03 ask). REPORT ONLY: no tag, keep reason or pile decision reads it, and
+    # it never fails the report. A copy that evolved INTO the stage the last report named for it and is now advised to evolve
+    # AGAIN. ladder_history cannot see it (engine promises only; an evolution gives the copy a new uid). 10-23..11-04: 22 such
+    # flips, all shiny upgrades or showcase picks; two shiny costume Greninjas evolved on flipped advice were piled 11-03 19:56.
+    try:
+        _now_t = {norm(_u): _t for _u, _t in targets.items()}
+        _flip = []
+        for _u, _src in sorted(origin.items()):
+            _meant = prev_targets.get(norm(_src['uid_hex'])) if _src else None
+            _nt = _now_t.get(norm(_u))
+            if _meant and _nt and any(sid(C[_u]).startswith(t.split('_')[0]) for t in _meant):
+                _flip.append('%s (stop at %s -> now %s)' % (desc(C[_u], False), ' / '.join(stg(t) for t in _meant),
+                                                            ' / '.join(stg(t) for t in _nt)))
+        if _flip:
+            if not ('ww' in dir() and ww):
+                out.extend(['', '**Which way to evolve**'])
+            out.append('- STOP FLIPPED (%d): the last report said stop at this stage, this one says evolve again -- it '
+                       'evolved as told, only the advice changed: %s' % (len(_flip), '; '.join(_flip)))
+    except Exception as e:
+        out.append('(stop check: not computed -- %s)' % e)
     # POWER UP COSTS (2026-09-30, Benny: "yes" to the game master's exact prices). REPORT ONLY: it reads the tag files and the walk's
     # balances and writes nothing -- no keep reason, no tag and no pile decision depends on it. Never fails the report.
     try:

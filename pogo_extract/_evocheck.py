@@ -287,17 +287,25 @@ _ORDER = sorted([(r, False) for r in _earmarked] + [(r, True) for r in _cands],
                 key=lambda x: (-iv(x[0]), -_cp(x[0]), x[0]['uid_hex']))
 
 
-# CANDY mirror (2026-09-17): the engine promises only what the family can afford, best-first, after Evolve Shiny.
-_CANDY = evolvable_forms.candy_now(walk=max((str(r['last_scanned']) for r in rows if r.get('last_scanned')), default=None))   # the walk, not the clock (2026-09-29)
-if _CANDY is not None:
+# CANDY mirror (2026-09-17) + ITEM mirror (2026-11-03): the engine promises only what the bag can pay -- family candy AND the
+# evolution item (keep_policy._afford / _spend) -- best-first, after Evolve Shiny. On candy alone a 96% Litwick the engine had
+# promised to Lampent (0 Unova Stones) was committed to Chandelure here, and the gate BLOCKED a correct pile (2026-11-03).
+_WALK = max((str(r['last_scanned']) for r in rows if r.get('last_scanned')), default=None)   # the walk, not the clock (2026-09-29)
+_CANDY = evolvable_forms.candy_now(walk=_WALK)
+_ITEMS = evolvable_forms.items_now(walk=_WALK)
+if _CANDY is not None or _ITEMS is not None:
     try:
         import refresh_evolve_shiny as _res
-        _sp = {}
-        _res.compute_target(why={u: set(v) for u, v in pol.items()}, spent=_sp)
-        for _f, _n in _sp.items():
-            _CANDY[_f] = _CANDY.get(_f, 0) - _n
+        _sp, _si = {}, {}
+        _res.compute_target(why={u: set(v) for u, v in pol.items()}, spent=_sp, walk=_WALK, items_spent=_si)
+        if _CANDY is not None:
+            for _f, _n in _sp.items():
+                _CANDY[_f] = _CANDY.get(_f, 0) - _n
+        if _ITEMS is not None:
+            for _k, _n in _si.items():
+                _ITEMS[_k] = _ITEMS.get(_k, 0) - _n
     except Exception as _e:
-        print('Evolve Shiny candy mirror skipped:', _e)
+        print('Evolve Shiny candy/item mirror skipped:', _e)
 
 
 def sweep(drop_trophies, drop_piled, commits=None):
@@ -410,16 +418,35 @@ def sweep(drop_trophies, drop_piled, commits=None):
         _out = [x[0] for j, x in enumerate(pool) if j not in _in]
         return not _out or max(_out) < i     # it must push out only copies weaker on IV, never on CP alone
     left = dict(_CANDY) if _CANDY is not None else None
+    ileft = dict(_ITEMS) if _ITEMS is not None else None
     def cost(r, ts):
         cs = [evolvable_forms.path_cost(sid_of(r), t, _allreach) for t in ts]
         return None if (not cs or any(c is None for c in cs)) else max(cs)
+    def need_items(r, ts):
+        need = {}
+        for t in ts:
+            for k, v in evolvable_forms.path_items(sid_of(r), t, _allreach).items():
+                need[k] = max(need.get(k, 0), v)
+        return need
     def afford(r, ts):
+        if ileft is None and need_items(r, ts):
+            return False
+        if ileft is not None:
+            for k, n in need_items(r, ts).items():
+                if ileft.get(evolvable_forms._item_key(k), 0) < n:
+                    return False
+        if left is None:
+            return False
         c, f = cost(r, ts), evolvable_forms.family(sid_of(r))
-        return left is None or c is None or f is None or left.get(f, 0) >= c
+        return c is None or f is None or left.get(f, 0) >= c
     def spend(r, ts):
         c, f = cost(r, ts), evolvable_forms.family(sid_of(r))
         if left is not None and c is not None and f is not None:
             left[f] = left.get(f, 0) - c
+        if ileft is not None:
+            for k, n in need_items(r, ts).items():
+                _k = evolvable_forms._item_key(k)
+                ileft[_k] = ileft.get(_k, 0) - n
     out = {}
     for r, is_pile in _ORDER:
         tg = targets(r)

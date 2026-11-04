@@ -815,7 +815,7 @@ def main():
     def _afford(r, ts):
         # THE STONE COUNTS TOO (user 2026-09-17: "it can evolve, i just dont have the stone to do it"). An evolution
         # the bag cannot pay for today is not advice, it is a chore he cannot do -- hold it like a candy-short one and
-        # name the item in the report. Items unread (stale walk) -> _items_left is None -> candy alone decides.
+        # name the item in the report.
         # UNKNOWN IS NOT AFFORDABLE (2026-09-29, research A13-2): an unread count HOLDS the copy (kept, no Evolve label,
         # its slot committed) instead of promising what the bag may not have -- unknown data is never a chore or fodder.
         if _items_left is None and _need_items(r, ts):
@@ -1899,6 +1899,46 @@ def main():
                 _promises[r['uid_hex']] = [_t]
                 _pbar[_t] = max(_pbar.get(_t, 0), r['iv_total'] or 0)
                 mark(r['uid_hex'], f"evolve_{_steps(_sid(r), _t)}")
+    # A SHOWCASE PICK NEVER TAKES A PROMISED SLOT (2026-11-04). sync_evolve_size.picks advises an XXL copy to evolve AFTER
+    # this engine sized every promise to the room at its stage, so that arrival was never counted: three Charcadets were
+    # promised to Armarouge (3 slots, none held), the XXL Charcadet 91% was advised there for the showcase, and
+    # audit_promises found the promised 80% "culled after evolving" (gate failed, 14:03). For every kept XXL copy and every
+    # stage it can become: would it push a labelled promise out of that stage's top-N (a plain copy through the plain
+    # ladder, a shiny or cosmetic through the merged top-cap _eff_cap reads)? picks() then drops that (copy, stage):
+    # nothing kept changes, the XXL stays as it is, and a later cull asks again once the promised copies are real.
+    _rowof = {r['uid_hex']: r for r in rows}
+    _arrive = defaultdict(list)                                   # stage key -> the labelled promises arriving there
+    for _u, _ts in _promises.items():
+        if _u in _rowof and any(x.startswith('evolve_') for x in keep.get(_u, ())):
+            for _t in _ts:
+                _arrive[_tkey(_t, _rowof[_u])].append(_virtual(_rowof[_u]))
+    def _plain_in(k, pool):
+        return {x['uid_hex'] for x in topn(pool, _eff_cap(k, pool))}
+    _showcase_blocked = defaultdict(list)
+    for r in rows:
+        if ((r['pokemon_size_category'] or 0) != 5 or r['uid_hex'] not in keep or r['uid_hex'] in _promises
+                or r['fresh_alignment'] == 1 or _slot_exempt(r)):
+            continue                                              # not an XXL keeper, promised already, a shadow, a trophy
+        _special = bool(r['fresh_shiny']) or not _truly_plain(r)
+        for _t in sorted(allreach_sp.get(_sid(r), ())):
+            k = _tkey(_t, r)
+            if not _arrive.get(k):
+                continue
+            pool = list(stage_pool.get(k, ())) + _arrive[k]
+            before = _plain_in(k, pool)
+            if _special:                                          # a shiny / cosmetic takes a merged top-cap slot
+                _gk = (k[0], k[1], k[2] if len(k) > 2 else 0)
+                _special_iv_grp[_gk].append(((r['iv_total'] or 0), (r['cp'] or 0)))
+                try:
+                    after = _plain_in(k, pool)
+                finally:
+                    _special_iv_grp[_gk].pop()
+                    if not _special_iv_grp[_gk]:
+                        del _special_iv_grp[_gk]
+            else:
+                after = _plain_in(k, pool + [_virtual(r)])
+            if any(c['uid_hex'] in before and c['uid_hex'] not in after for c in _arrive[k]):
+                _showcase_blocked[r['uid_hex']].append(_t)
     try:                                                          # held back for candy -> ladder report (2026-09-17)
         _cs = {r['uid_hex']: r for r in _candy_short if not any(x.startswith('evolve_') for x in keep.get(r['uid_hex'], ()))}
         json.dump([{'uid': u, 'species': r['species_name'], 'iv': r['iv_total'], 'family': evolvable_forms.family(_sid(r)),
@@ -1906,6 +1946,8 @@ def main():
                   open(os.path.join(ROOT, 'system', 'analysis', 'candy_short.json'), 'w'))
         json.dump({u: t for u, t in _promises.items() if any(x.startswith('evolve_') for x in keep.get(u, ()))},
                   open(os.path.join(ROOT, 'system', 'analysis', 'promises.json'), 'w'))
+        json.dump({u: sorted(ts) for u, ts in sorted(_showcase_blocked.items())},
+                  open(os.path.join(ROOT, 'system', 'analysis', 'showcase_blocked.json'), 'w'))
         # THE UNPAID HOLDS THAT COMMIT A SLOT (2026-09-29): _evocheck replays them as earmarked copies, or it would read
         # their later-stage slots as open and call every piled surplus copy an upgrade.
         json.dump(sorted(u for u in _unpaid_committed if u in keep),
@@ -1982,7 +2024,6 @@ def main():
     keepu = set(keep)
     transu = allu - keepu
     name = {r['uid_hex']: r['species_name'] for r in rows}
-    cull = {r['uid_hex']: r['cull_decision_v9'] for r in rows}
 
     # HARD INVARIANT TRIPWIRE (user 2026-06-05): a top-READY_RANK CP-viable PvP spread must NEVER be in the
     # Transfer pile. Rule 15b keeps them all, so this can only fire if that rule is ever broken -- in which
@@ -2123,9 +2164,6 @@ def main():
     for rs in keep.values():
         for why in rs: rc[why] += 1
     print("per-rule protects:", dict(sorted(rc.items(), key=lambda x: -x[1])))
-    newly_trim = [u for u in transu if cull.get(u) == 'KEEP']
-    newly_keep = [u for u in keepu if cull.get(u) == 'TRANSFER']
-    print(f"newly_trimmed (was cull KEEP): {len(newly_trim)}   newly_kept (was cull TRANSFER): {len(newly_keep)}")
     sp = defaultdict(int)
     for u in transu: sp[name.get(u, '?')] += 1
     # name tiebreak: `transu` is a SET, so ties used to be ordered by string-hash (PYTHONHASHSEED) and the

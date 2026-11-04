@@ -1,5 +1,5 @@
 """Single-attach Frida pipeline: walk bag -> reconcile DB -> refresh size -> refresh
-server tags -> read dex hundos -> run cull_v9 -> sanity check -> summary.
+server tags -> read dex hundos -> keep_policy + build_tagsets -> summary.
 
 Replaces the ~10 min chain of run_full_inventory.py + reconcile_inventory_v3.py +
 refresh_size_category.py + refresh_tag_bindings.py + read_pokedex_liveness.py +
@@ -1854,48 +1854,9 @@ def step_read_dex(script, dex_addr):
     return r, new_hundo_pids
 
 
-def step_run_cull(conn):
-    """Run cull_v9 logic in-process (no subprocess re-import)."""
-    import cull_v9
-    rows = [dict(r) for r in conn.execute("SELECT * FROM pokemon WHERE in_bag=1").fetchall()]
-    gm = json.load(open('pvpoke_gamemaster.json'))
-    ctx = cull_v9.build_ctx(rows, gm)
-    c = conn.cursor()
-    cols = {r[1] for r in c.execute('PRAGMA table_info(pokemon)').fetchall()}
-    if 'cull_decision_v9' not in cols: c.execute('ALTER TABLE pokemon ADD COLUMN cull_decision_v9 TEXT')
-    if 'cull_reason_v9' not in cols: c.execute('ALTER TABLE pokemon ADD COLUMN cull_reason_v9 TEXT')
-
-    keep = xfer = 0
-    transfer_uids = []
-    for p in rows:
-        reasons = cull_v9.is_protected(p, ctx)
-        if reasons:
-            decision, reason_str = 'KEEP', ';'.join(reasons[:8]); keep += 1
-        else:
-            decision, reason_str = 'TRANSFER', 'no_keep_rule'; xfer += 1
-            transfer_uids.append(p['uid_hex'])
-        c.execute('UPDATE pokemon SET cull_decision_v9=?, cull_reason_v9=? WHERE uid_hex=?',
-                  (decision, reason_str, p['uid_hex']))
-    conn.commit()
-    return {'keep': keep, 'transfer': xfer, 'transfer_uids': transfer_uids, 'ctx': ctx}
-
-
-def step_sanity(conn, ctx):
-    """Run cull_v9 sanity checks - every count must be 0."""
-    import cull_v9
-    c = conn.cursor()
-    drift = []
-    for r in cull_v9.PROTECTION_RULES:
-        if not r.sanity_sql: continue
-        n = c.execute(
-            f"SELECT COUNT(*) FROM pokemon WHERE in_bag=1 AND cull_decision_v9='TRANSFER' AND {r.sanity_sql}"
-        ).fetchone()[0]
-        if n > 0: drift.append((r.name, n))
-    xfer_uids = {r[0] for r in c.execute(
-        "SELECT uid_hex FROM pokemon WHERE in_bag=1 AND cull_decision_v9='TRANSFER'")}
-    n_xxl = len(ctx['xxl_top3_uids'] & xfer_uids)
-    if n_xxl > 0: drift.append(('xxl_top3', n_xxl))
-    return drift
+# REMOVED 2026-11-04: step_run_cull() + step_sanity() -- the cull_v9 pair (cull_decision_v9 / cull_reason_v9) they
+# wrote every walk decided nothing (keep_policy only printed a diff line from it) yet misled readers five times, two
+# outside reviews included. Both columns were dropped from pokemon.db the same day (user: "do 1-4").
 
 
 # ---------------------------------------------------------------------------
@@ -2240,17 +2201,6 @@ def main():
             conn.close()
             raise SystemExit(2)
 
-    with _step('cull_v9'):
-        cull_r = step_run_cull(conn)
-        _tick(f"   KEEP={cull_r['keep']} TRANSFER={cull_r['transfer']}")
-
-    with _step('sanity'):
-        drift = step_sanity(conn, cull_r['ctx'])
-        if drift:
-            for name, n in drift: _tick(f"   ! {name}: {n}")
-        else:
-            _tick("   all rules clean (0 drift)")
-
     # 2026-05-30: fold the tag-truth recompute INTO the crawl so the tagset files
     # can never go stale behind a forgotten manual step (step 6). keep_policy.py is
     # the authoritative keep engine (-> 6_Transfer.txt + policy_reasons.json);
@@ -2258,7 +2208,7 @@ def main():
     # subprocesses (no Frida) and only refresh FILES -- the server push stays the
     # deliberate `prune_tags.py` step (needs foreground). Non-fatal on error.
     with _step('keep_tagsets'):
-        conn.commit()  # flush cull writes; keep_policy reads cull_decision_v9
+        conn.commit()  # flush this process's writes before keep_policy opens its own connection
         kp = _sub.run([sys.executable, os.path.join('system', 'scripts', 'keep_policy.py')],
                       cwd=here_dir, capture_output=True, text=True)
         bt2 = _sub.run([sys.executable, os.path.join('system', 'scripts', 'build_tagsets.py')],
@@ -2286,15 +2236,9 @@ def main():
     print(f"PIPELINE COMPLETE in {wall:.2f}s")
     print('=' * 60)
     print(f"\nBag:        {recon['parsed']} pokemon + {recon['skipped_eggs']} eggs ({len(entries)} walk records)")
-    print(f"Cull:       KEEP={cull_r['keep']}  TRANSFER={cull_r['transfer']}")
     print(f"New dex hundos since last run: {len(new_hundo_pids)}"
           + (f"  pids={new_hundo_pids[:20]}{'...' if len(new_hundo_pids) > 20 else ''}"
              if new_hundo_pids else ""))
-    if drift:
-        print(f"DRIFT WARNINGS ({len(drift)}):")
-        for name, n in drift: print(f"   ! {name}: {n}")
-    else:
-        print("Drift: none (all sanity rules pass)")
 
     print(f"\nPer-step timing:")
     for name, d in _STEP_TIMES.items():
