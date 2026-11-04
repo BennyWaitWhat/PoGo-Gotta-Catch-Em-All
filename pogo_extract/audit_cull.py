@@ -599,6 +599,9 @@ for nm, p in [('hundo', lambda r: (r['iv_total'] or 0) == 45),
               # capped axes: only a WITHIN-CAP copy in the pile is a leak (an over-cap dupe is fodder)
               ('gigantamax (top-N)', lambda r: evolvable_forms.max_axis(_bmn(r)) == 'gigantamax' and r['uid_hex'] in _bread_keep),
               ('dynamax (top-N)', lambda r: evolvable_forms.max_axis(_bmn(r)) == 'dynamax' and r['uid_hex'] in _bread_keep),
+              # rule 1a's costume / art-bg / decoration top-N: the non-Max rest of _var_keep, computed above and never checked
+              # (2026-11-04 review: until now only _lawcheck caught a piled within-cap costume copy)
+              ('cosmetic (top-N)', lambda r: not _bmn(r) and r['uid_hex'] in _var_keep),
               # E+F ORIGIN (engine reason: 'origin'; tag: "Traded by E+F"). Lucky is NOT required --
               # ANY trade whose ORIGINAL OWNER is a keep-all partner qualifies (most of Ethan's are
               # traded-but-not-lucky). Trades/luckies from anyone else are NORMAL and cullable.
