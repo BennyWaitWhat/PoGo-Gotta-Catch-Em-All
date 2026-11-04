@@ -287,7 +287,9 @@ _ORDER = sorted([(r, False) for r in _earmarked] + [(r, True) for r in _cands],
                 key=lambda x: (-iv(x[0]), -_cp(x[0]), x[0]['uid_hex']))
 
 
-# CANDY + ITEM mirror (2026-09-17): the engine promises only what the family can afford (candy + evolution stones), best-first, after Evolve Shiny.
+# CANDY mirror (2026-09-17) + ITEM mirror (2026-11-03): the engine promises only what the bag can pay -- family candy AND the
+# evolution item (keep_policy._afford / _spend) -- best-first, after Evolve Shiny. On candy alone a 96% Litwick the engine had
+# promised to Lampent (0 Unova Stones) was committed to Chandelure here, and the gate BLOCKED a correct pile (2026-11-03).
 _WALK = max((str(r['last_scanned']) for r in rows if r.get('last_scanned')), default=None)   # the walk, not the clock (2026-09-29)
 _CANDY = evolvable_forms.candy_now(walk=_WALK)
 _ITEMS = evolvable_forms.items_now(walk=_WALK)
@@ -303,7 +305,7 @@ if _CANDY is not None or _ITEMS is not None:
             for _k, _n in _si.items():
                 _ITEMS[_k] = _ITEMS.get(_k, 0) - _n
     except Exception as _e:
-        print('Evolve Shiny candy mirror skipped:', _e)
+        print('Evolve Shiny candy/item mirror skipped:', _e)
 
 
 def sweep(drop_trophies, drop_piled, commits=None):
