@@ -75,6 +75,8 @@ DEFAULTS = {
     "rarity_ladders": {},                                # {dex: {ml, ul, gl, keep_iv_over}} league ladders instead of the top-N (rarity_ladder_keep)
     "shadow_best_leagues": ["gl", "ul"],                 # rule 7 -- leagues whose best shadow is kept beside the best-ML one (shadow_leagues)
     "rarity_floor_iv": 46,                               # rule 5 -- 3-star floor OFF (user 2026-09-23: "Remove the 3 star thing"); 37 = the in-game 3-star line
+    "roster_floor_iv": None,                             # the collection floor for LEGENDARY / mythical / UB / paradox ladders (None = collection_floor_iv;
+    #                                                      user 2026-11-04 "a": they keep 75% while the rest goes to 87%) -- floor_iv_for / floor_top
     "collection_floor_iv": 0,                            # EVERY capped collection ladder (plain / costume / Max / legendary / legacy / cards): a copy below this
     #                                                      IV total takes no slot unless it is the ladder's best (0 = off; 12 = under 25%, user 2026-09-24)
     "shiny_floor_iv": 0,                                 # rule 3 -- a PLAIN shiny below this IV total takes no plain-shiny slot unless it is its form's best
@@ -233,6 +235,30 @@ def collection_floor_iv():
     return _int(CFG.get("collection_floor_iv", d), d)
 
 
+_ROSTER = None
+
+
+def roster_floor_iv():
+    """The collection floor for the legendary / mythical / UB / paradox roster's ladders, or None = the same as
+    collection_floor_iv (user 2026-11-04 "a": the rest went 75% -> 87%, legendaries stay at 75%)."""
+    v = CFG.get("roster_floor_iv", DEFAULTS["roster_floor_iv"])
+    return None if v is None or isinstance(v, bool) or not isinstance(v, int) else v
+
+
+def floor_iv_for(pid):
+    """THE floor a ladder of dex number `pid` uses: roster_floor_iv for a roster species (when set), else
+    collection_floor_iv. pid None / unknown -> collection_floor_iv. One answer for the engine and every mirror."""
+    global _ROSTER
+    rf = roster_floor_iv()
+    if rf is not None and pid:
+        if _ROSTER is None:
+            from references import LEGENDARY_IDS, MYTHICAL_IDS, ULTRA_BEAST_IDS, PARADOX_IDS
+            _ROSTER = frozenset(LEGENDARY_IDS | MYTHICAL_IDS | ULTRA_BEAST_IDS | PARADOX_IDS)
+        if pid in _ROSTER:
+            return rf
+    return collection_floor_iv()
+
+
 _ROWKEYS_OK = {}
 
 
@@ -267,14 +293,22 @@ def row_dict(r):
     return dict(zip(k, r)) if ok else dict(r)
 
 
-def floor_top(rows_sorted, look=None):
+def floor_top(rows_sorted, look=None, pid=None):
     """THE collection floor, applied to a ladder already sorted best-first (IV desc, CP desc, uid): the first copy always
     stays, every later copy must reach collection_floor_iv. Rows may be dicts or sqlite3.Rows. Used by keep_policy.topn
     AND every mirror (audit_cull, _lawcheck, preflight_transfer) so the floor cannot drift between them.
     look (2026-10-25): a ladder that holds several LOOKS -- one card's plain, shiny, shadow and Max copies (card_look) --
     keeps the best copy of EACH look the way it keeps its best: the floor never removes the last copy of a picture. At the
-    50% floor a 53% shiny card Popplio was its card ladder's best, and both 47% normal copies of that card went to the pile."""
-    fl = collection_floor_iv()
+    50% floor a 53% shiny card Popplio was its card ladder's best, and both 47% normal copies of that card went to the pile.
+    pid (2026-11-04): the ladder's dex number, for floor_iv_for (legendaries keep their own floor). A ladder is one species, so
+    when pid is not given it is read from the first row's pokemon_id; rows without one (synthetic) use collection_floor_iv."""
+    rows_sorted = list(rows_sorted)
+    if pid is None and rows_sorted:
+        try:
+            pid = rows_sorted[0]["pokemon_id"]
+        except (KeyError, IndexError, TypeError):
+            pid = None
+    fl = floor_iv_for(pid)
     if fl <= 0:
         return list(rows_sorted)
     if look is None:
@@ -566,6 +600,9 @@ def validate(cfg):
     rf = cfg.get("rarity_floor_iv", DEFAULTS["rarity_floor_iv"])
     if isinstance(rf, bool) or not isinstance(rf, int) or not (0 <= rf <= 46):
         probs.append("'rarity_floor_iv' must be an integer 0..46 (46 = floor off)")
+    rfl = cfg.get("roster_floor_iv", DEFAULTS["roster_floor_iv"])
+    if rfl is not None and (isinstance(rfl, bool) or not isinstance(rfl, int) or not (0 <= rfl <= 45)):
+        probs.append("'roster_floor_iv' must be null or an integer 0..45 (null = same as collection_floor_iv)")
     cfl = cfg.get("collection_floor_iv", DEFAULTS["collection_floor_iv"])
     if isinstance(cfl, bool) or not isinstance(cfl, int) or not (0 <= cfl <= 45):
         probs.append("'collection_floor_iv' must be an integer 0..45 (0 = floor off)")
@@ -621,7 +658,7 @@ def validate(cfg):
                 if dup:
                     probs.append("pattern_line_pools: pid(s) %s listed in more than one line" % sorted(dup))
                 _seen_pids |= set(pids)
-    _allowed = {"line_pool_all", "caps", "pvp", "legacy_species_caps", "legacy_default_cap", "rarity_keep_all_pids", "rarity_ladders", "shadow_best_leagues", "rarity_floor_iv", "shiny_floor_iv", "shiny_floor_keep", "collection_floor_iv",
+    _allowed = {"line_pool_all", "caps", "pvp", "legacy_species_caps", "legacy_default_cap", "rarity_keep_all_pids", "rarity_ladders", "shadow_best_leagues", "rarity_floor_iv", "shiny_floor_iv", "shiny_floor_keep", "collection_floor_iv", "roster_floor_iv",
                 "protected_keep_all_pids", "adventure_effect_pids", "origin_owners",
                 "showcase_weights", "pvp_spread_keep", "rules", "per_species_caps", "pattern_line_pools", "_note"}
     for k in cfg:

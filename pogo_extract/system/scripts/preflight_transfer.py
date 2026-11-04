@@ -673,13 +673,14 @@ _SPECIES_MIN_KEPT = set()  # species minimum (user 2026-11-03 "3"), populated in
 
 
 def _species_min_uids(bag, pile):
-    """The pile copies keep_policy's species minimum must keep, from counts alone: per species (dex number, every form),
-    the best by _ivkey until keep_config caps.species_min copies stay out of the pile."""
+    """The pile copies keep_policy's species minimum must keep, from counts alone: per species + form (pvid, every look;
+    per dex number until 2026-11-04 "a"), the best by _ivkey until keep_config caps.species_min copies stay out of the pile."""
+    from pvp_iv_rule import pvid as _pv
     n = keep_config.cap('species_min')
     by = defaultdict(list)
     for r in bag:
         if r['pokemon_id']:
-            by[r['pokemon_id']].append(r)
+            by[_pv(r['species_name'], r['form'] or 0)].append(r)
     out = set()
     for lst in by.values():
         short = n - sum(1 for r in lst if r['uid_hex'] not in pile)

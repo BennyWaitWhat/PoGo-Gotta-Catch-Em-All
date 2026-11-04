@@ -806,10 +806,15 @@ if keep_config.line_pool_all():
     _pooled_pids = {rows[u]['pokemon_id'] for u in _ps_v if _pkx(rows[u])}
     w = [p for p in w if p not in _pooled_pids] + [k for k, n in _ppil.items() if _pcnt[k] == n]
 print('  %-18s %-5d %s' % ('species wiped', len(w), chk('species wiped', len(w))))
-# SPECIES MINIMUM (user 2026-11-03 "3"): what stays of every species is at least caps.species_min copies, or all it has
+# SPECIES MINIMUM (user 2026-11-03 "3"): what stays of every species + form (pvid, every look; per dex number until
+# 2026-11-04 "a") is at least caps.species_min copies, or all it has
+from pvp_iv_rule import pvid as _sm_pvid
 _smin = keep_config.cap('species_min')
-sm = [p for p, n in _pp_v.items() if _cnt_v[p] - n < min(_smin, _cnt_v[p])]
-print('  %-18s %-5d %s   (at least %d of every species)' % ('species under min', len(sm), chk('species under minimum', len(sm)), _smin))
+_smk = lambda r: _sm_pvid(r['species_name'], r['form'] or 0)
+_cnt_k = collections.Counter(_smk(r) for r in _crows if r['pokemon_id'])
+_pp_k = collections.Counter(_smk(rows[u]) for u in _ps_v if rows[u]['pokemon_id'])
+sm = [p for p, n in _pp_k.items() if _cnt_k[p] - n < min(_smin, _cnt_k[p])]
+print('  %-18s %-5d %s   (at least %d of every species + form)' % ('species under min', len(sm), chk('species under minimum', len(sm)), _smin))
 fc = collections.Counter((r['pokemon_id'], cf(r)) for r in _crows)
 fp2 = collections.Counter((rows[u]['pokemon_id'], cf(rows[u])) for u in _ps_v)
 fw = [k for k, n in fp2.items() if fc[k] == n]
