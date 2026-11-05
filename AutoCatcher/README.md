@@ -15,6 +15,7 @@ belongs to the **Pokemon Inventory** session. No session edits another's files.
 | **Phone** (Termux, always on) | The catcher: wild/lure/incense catching, apples, auto-spin, limit detection | `system/scripts/game_write/catch_loop_fast.py`, run by `catch_phone.py` → `run_catch.sh` → `catcher_ctl.sh` |
 | Phone | Toggles | flag files `/data/local/tmp/pogo_{catch,spin,tap,perfect,apples}.on` (content `1`/`0`), the Auto-Catcher app, or `catcher_ctl.sh <feature>-on/off` |
 | Phone | Reward catcher, on demand | `catcher_ctl.sh rewards [--dry]` → `reward_phone.py` → `reward_catcher.py` |
+| Phone → PC | CULL NOW button (app 1.2, 2026-11-05) | the app writes `/data/local/tmp/pogo_cull.req` as root; the PC's `pogo_extract/cull_button.py` (Pokemon Inventory) runs one cull per tap and writes `/data/local/tmp/pogo_cull_status.txt`, which the app shows |
 | **Cloud session** (Linux VM, the phone via the bridge) — the default place for AutoCatcher work | Everything the desktop does: deploys, toggles, reward catcher, probes, analysis | same files; `ADB_TARGET` is exported by the session hook |
 | **Desktop** (Windows, adb over Tailscale) — fallback | Same as the cloud | `reward_catcher.py`, `tools/*.py` (attach through `pogo_il2cpp.get_session`) |
 
