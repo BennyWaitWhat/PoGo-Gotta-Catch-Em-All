@@ -999,6 +999,7 @@ def main():
         pool = list(stage_pool.get(key, ())) + _committed.get(key, []) + [v]
         _n = _eff_cap(key, pool)
         _in = {x['uid_hex'] for x in topn(pool, _n)}
+        _held = topn(pool[:-1], _n)                       # the copies that HOLD a slot now: one under the floor holds none (2026-11-05: a 71% Noctowl made the stage read full)
         if v['uid_hex'] not in _in:
             return False                                  # no plain slot: beyond the cap or displaced by a special
         # WORTH IT (user 2026-09-17 "make sure you dont make me evolve pokemon for no reason"): the evolved copy must
@@ -1024,12 +1025,12 @@ def main():
         # staying as stock, never release. _evocheck / audit_promises re-derive the same fact from the bag.
         _rescue = r['uid_hex'] in _collapsing or (r['uid_hex'] not in _stock_uids
                                                   and not ((keep.get(r['uid_hex']) or set()) - {'evolve_1', 'evolve_2'}))
-        if len(pool) - 1 < _n and (v['iv_total'] or 0) <= _best and not _rescue:
+        if len(_held) < _n and (v['iv_total'] or 0) <= _best and not _rescue:
             return False
         # A FULL stage must be IMPROVED, not reshuffled (2026-09-17): with every slot taken, an arrival whose IV
         # EQUALS the copy it pushes out only out-ranks it on the CP tie-break, so the evolution costs candy AND a
         # copy and leaves the ladder exactly where it was. _evocheck.improves has always been strict (`i > bar`).
-        _drop = [x for x in pool if x['uid_hex'] != v['uid_hex'] and x['uid_hex'] not in _in]
+        _drop = [x for x in _held if x['uid_hex'] not in _in]
         if _drop and max((x['iv_total'] or 0) for x in _drop) >= (v['iv_total'] or 0):
             return False
         mv, ivv = _domattr(v), (v['iv_total'] or 0)
