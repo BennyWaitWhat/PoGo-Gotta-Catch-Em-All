@@ -77,6 +77,8 @@ DEFAULTS = {
     "rarity_floor_iv": 46,                               # rule 5 -- 3-star floor OFF (user 2026-09-23: "Remove the 3 star thing"); 37 = the in-game 3-star line
     "roster_floor_iv": None,                             # the collection floor for LEGENDARY / mythical / UB / paradox ladders (None = collection_floor_iv;
     #                                                      user 2026-11-04 "a": they keep 75% while the rest goes to 87%) -- floor_iv_for / floor_top
+    "look_keep": None,                                   # a ladder made only of SPECIAL copies (costume / Max / card / background / shiny / shadow)
+    #                                                      keeps its first N whatever the floor (None = off; user 2026-11-05 "This." -> 3) -- floor_top
     "collection_floor_iv": 0,                            # EVERY capped collection ladder (plain / costume / Max / legendary / legacy / cards): a copy below this
     #                                                      IV total takes no slot unless it is the ladder's best (0 = off; 12 = under 25%, user 2026-09-24)
     "shiny_floor_iv": 0,                                 # rule 3 -- a PLAIN shiny below this IV total takes no plain-shiny slot unless it is its form's best
@@ -259,6 +261,30 @@ def floor_iv_for(pid):
     return collection_floor_iv()
 
 
+def look_keep():
+    """How many copies a ladder of SPECIAL copies keeps whatever the floor, or None = off (only its best stays, like any
+    ladder). User 2026-11-05 "This." (3): option A's 87% floor had left him one Gigantamax Pikachu -- "a back up and one
+    to trade and one for me" is kept for every special set, while regular copies keep the plain floor."""
+    v = CFG.get("look_keep", DEFAULTS["look_keep"])
+    return None if v is None or isinstance(v, bool) or not isinstance(v, int) or v < 1 else v
+
+
+def _special_copy(r):
+    """A copy that is more than its species + form: shiny, shadow, Max mode, costume (or a costume form), art background,
+    decoration or location card -- the sets look_keep protects. Rows without these fields (synthetic) read as plain."""
+    def g(k):
+        try:
+            return r[k]
+        except (KeyError, IndexError, TypeError):
+            return None
+    d = g("costume_decoration_id")
+    if (g("fresh_shiny") or g("fresh_alignment") == 1 or (g("fresh_bread_mode") or 0) or (g("fresh_costume") or 0)
+            or (g("fresh_natural_art_bg") or 0) or g("fresh_has_location_card") == 1 or (d and str(d) != "0")):
+        return True
+    from costume_forms import is_costume_form
+    return any(f and is_costume_form(f) for f in (g("fresh_form"), g("form")))
+
+
 _ROWKEYS_OK = {}
 
 
@@ -311,12 +337,14 @@ def floor_top(rows_sorted, look=None, pid=None):
     fl = floor_iv_for(pid)
     if fl <= 0:
         return list(rows_sorted)
+    # SPECIAL SETS KEEP 3 (user 2026-11-05 "This."): a ladder whose every copy is special keeps its first look_keep copies
+    first = look_keep() if rows_sorted and look_keep() and all(_special_copy(r) for r in rows_sorted) else 1
     if look is None:
-        return [r for i, r in enumerate(rows_sorted) if i == 0 or (r["iv_total"] or 0) >= fl]
+        return [r for i, r in enumerate(rows_sorted) if i < first or (r["iv_total"] or 0) >= fl]
     seen, out = set(), []
     for i, r in enumerate(rows_sorted):
         lk = look(r)
-        if i == 0 or (r["iv_total"] or 0) >= fl or lk not in seen:
+        if i < first or (r["iv_total"] or 0) >= fl or lk not in seen:
             out.append(r)
         seen.add(lk)
     return out
@@ -603,6 +631,9 @@ def validate(cfg):
     rfl = cfg.get("roster_floor_iv", DEFAULTS["roster_floor_iv"])
     if rfl is not None and (isinstance(rfl, bool) or not isinstance(rfl, int) or not (0 <= rfl <= 45)):
         probs.append("'roster_floor_iv' must be null or an integer 0..45 (null = same as collection_floor_iv)")
+    lkp = cfg.get("look_keep", DEFAULTS["look_keep"])
+    if lkp is not None and (isinstance(lkp, bool) or not isinstance(lkp, int) or not (1 <= lkp <= 10)):
+        probs.append("'look_keep' must be null or an integer 1..10 (null = off)")
     cfl = cfg.get("collection_floor_iv", DEFAULTS["collection_floor_iv"])
     if isinstance(cfl, bool) or not isinstance(cfl, int) or not (0 <= cfl <= 45):
         probs.append("'collection_floor_iv' must be an integer 0..45 (0 = floor off)")
@@ -658,7 +689,7 @@ def validate(cfg):
                 if dup:
                     probs.append("pattern_line_pools: pid(s) %s listed in more than one line" % sorted(dup))
                 _seen_pids |= set(pids)
-    _allowed = {"line_pool_all", "caps", "pvp", "legacy_species_caps", "legacy_default_cap", "rarity_keep_all_pids", "rarity_ladders", "shadow_best_leagues", "rarity_floor_iv", "shiny_floor_iv", "shiny_floor_keep", "collection_floor_iv", "roster_floor_iv",
+    _allowed = {"line_pool_all", "caps", "pvp", "legacy_species_caps", "legacy_default_cap", "rarity_keep_all_pids", "rarity_ladders", "shadow_best_leagues", "rarity_floor_iv", "shiny_floor_iv", "shiny_floor_keep", "collection_floor_iv", "roster_floor_iv", "look_keep",
                 "protected_keep_all_pids", "adventure_effect_pids", "origin_owners",
                 "showcase_weights", "pvp_spread_keep", "rules", "per_species_caps", "pattern_line_pools", "_note"}
     for k in cfg:
