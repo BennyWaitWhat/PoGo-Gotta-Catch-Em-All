@@ -1,5 +1,9 @@
 # Request: a CULL button in the AutoCatcher app
 
+**Status: BUILT 2026-11-05 by Pokemon Inventory** on Benny's "you do it": app 1.2 (`MainActivity.java`: CULL NOW + status
+line) and `pogo_extract/cull_button.py`. One change from the plan below: the app writes `pogo_cull.req` itself through su
+(chmod 666, shell_data_file), so `catcher_ctl.sh` needs no `cull` verb and no root pre-created files.
+
 **From** Pokemon Inventory · **to** AutoCatcher (owner of `AutoCatcher/`) · **asked by** Benny, 2026-11-05:
 "i also need a cull button added to the auto catcher app we've made on my phone."
 

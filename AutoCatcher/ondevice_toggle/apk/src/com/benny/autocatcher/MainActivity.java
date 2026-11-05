@@ -51,6 +51,10 @@ public class MainActivity extends Activity {
     // restart. Root pre-creates it 666 -- this app can WRITE an existing world-writable
     // file but cannot CREATE one in /data/local/tmp.
     static final String TOCFILE     = "/data/local/tmp/pogo_toc.json";
+    // CULL NOW (Benny 2026-11-05): the cull runs on the PC (pogo_extract/cull_button.py). A tap writes one request line
+    // as root; the PC picks it up within ~15 s and writes its progress to CULL_STATUS (queued / running / done / STOPPED).
+    static final String CULL_REQ    = "/data/local/tmp/pogo_cull.req";
+    static final String CULL_STATUS = "/data/local/tmp/pogo_cull_status.txt";
 
     /** One toggleable feature: switch + status line + the control verbs that back it. */
     private class FeatureRow {
@@ -61,8 +65,9 @@ public class MainActivity extends Activity {
     }
 
     private ArrayList<FeatureRow> rows = new ArrayList<FeatureRow>();
-    private android.widget.Button rewardBtn;
-    private TextView stats, rewardStatus;
+    private android.widget.Button rewardBtn, cullBtn;
+    private TextView stats, rewardStatus, cullStatus;
+    private long cullTapMs = 0;   // when the last CULL NOW tap was sent (0 = none this session)
     private Handler handler = new Handler();
     private Runnable ticker;
 
@@ -154,6 +159,33 @@ public class MainActivity extends Activity {
                                 rewardBtn.setEnabled(true);
                             }
                         });
+                    }
+                }).start();
+            }
+        });
+
+        root.addView(desc("Asks the PC to run one cull. It only tags the Transfer pile -- you release by hand. "
+                + "The PC must be on."));
+        cullBtn = new android.widget.Button(this);
+        cullBtn.setText("CULL NOW");
+        cullBtn.setTextSize(15);
+        LinearLayout.LayoutParams clp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        clp.setMargins(0, dp(10), 0, dp(4));
+        root.addView(cullBtn, clp);
+        cullStatus = statusView();
+        root.addView(cullStatus);
+        cullBtn.setOnClickListener(new View.OnClickListener() {
+            public void onClick(View v) {
+                cullBtn.setEnabled(false);
+                cullTapMs = System.currentTimeMillis();
+                cullStatus.setText("sent -- waiting for the PC...");
+                cullStatus.setTextColor(Color.parseColor("#e3b341"));
+                new Thread(new Runnable() {
+                    public void run() {
+                        shell("echo \"requested $(date +%s) $(date +%H:%M:%S)\" > " + CULL_REQ
+                                + " && chmod 666 " + CULL_REQ + " && chcon u:object_r:shell_data_file:s0 " + CULL_REQ);
+                        runOnUiThread(new Runnable() { public void run() { refresh(); } });
                     }
                 }).start();
             }
@@ -427,6 +459,8 @@ public class MainActivity extends Activity {
                 for (int i = 0; i < rows.size(); i++) on[i] = flagOn(rows.get(i).flag);
                 final String line = lastSummary();
                 final String rw = readFile(STATUS_REWARD);
+                final String cs = readFile(CULL_STATUS);
+                final long csMs = new java.io.File(CULL_STATUS).lastModified();   // 0 when missing
                 runOnUiThread(new Runnable() {
                     public void run() {
                         for (int i = 0; i < rows.size(); i++) {
@@ -440,6 +474,7 @@ public class MainActivity extends Activity {
                         stats.setTextColor(Color.parseColor(line.contains(WAITING) ? "#e3b341" : "#9aa7b8"));
                         refreshToc();
                         showReward(rw);
+                        showCull(cs, csMs);
                     }
                 });
             }
@@ -458,6 +493,29 @@ public class MainActivity extends Activity {
         } else {
             rewardStatus.setTextColor(Color.parseColor("#e3b341"));
         }
+    }
+
+    /** The PC's cull status line. A tap the PC has not answered yet says so; the button stays off while a cull is
+     *  queued or running, so one tap is one cull. */
+    private void showCull(String s, long statusMs) {
+        long now = System.currentTimeMillis();
+        boolean unanswered = cullTapMs > 0 && statusMs < cullTapMs - 2000;   // the PC has not written since the tap
+        if (unanswered) {
+            boolean late = now - cullTapMs > 45000;
+            cullStatus.setText(late ? "the PC has not picked it up -- is it on and is the listener running?"
+                                    : "sent -- waiting for the PC...");
+            cullStatus.setTextColor(Color.parseColor(late ? "#f85149" : "#e3b341"));
+            cullBtn.setEnabled(late);
+            return;
+        }
+        String l = s == null ? "" : s.toLowerCase();
+        boolean stale = statusMs > 0 && now - statusMs > 15 * 60 * 1000L;   // a PC that died mid-pass never says done
+        boolean busy = (l.startsWith("queued") || l.startsWith("running")) && !stale;
+        cullBtn.setEnabled(!busy);
+        cullStatus.setText(s == null || s.length() == 0 ? "" : (stale && !busy && (l.startsWith("queued") || l.startsWith("running"))
+                ? s + " (no update for 15+ min)" : s));
+        cullStatus.setTextColor(Color.parseColor(l.startsWith("done") ? "#3ad29f"
+                : l.startsWith("stopped") ? "#f85149" : busy ? "#e3b341" : "#9aa7b8"));
     }
 
     private int dp(int v) {
