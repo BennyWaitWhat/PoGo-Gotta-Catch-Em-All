@@ -161,3 +161,20 @@ def describe():
     for pid, nm in r.items():
         lines.setdefault(nm, []).append(pid)
     return '; '.join('%s: dex %s' % (nm, ','.join(str(p) for p in sorted(ps))) for nm, ps in sorted(lines.items())) or '(none)'
+
+
+UNOWN = 201
+
+
+def min_group(pid, species_name, form):
+    """The group keep_config caps.pattern_min counts (user 2026-11-07, of Scatterbug patterns and Unown letters: "for those
+    two, I want 2 of each at a min"): one PATTERN of a pattern-pooled line (Scatterbug + Spewpa + Vivillon of that pattern
+    together) or one Unown LETTER; None for anything else. A pooled form with no readable pattern counts by its own form id.
+    ONE definition: keep_policy, preflight_transfer and audit_cull all group by it."""
+    pid = int(pid or 0)
+    line = roster().get(pid)
+    if line is not None:
+        return ('pattern', line, pattern(species_name, form) or 'form %s' % (form or 0))
+    if pid == UNOWN and form:
+        return ('unown', int(form))
+    return None

@@ -57,6 +57,8 @@ DEFAULTS = {
         "location_card": 3,          # rule 13 -- top-N per (species, form, card) by IV (user 2026-09-24: 5 -> 3; 6 -> 5 on 09-23)
         "species_min": 0,     # species minimum -- every species keeps at least N copies, the best by IV then CP, under any
         #                       floor (user 2026-11-03: "3"); 0 = off (the account's keep_config.json sets it)
+        "pattern_min": 0,     # pattern minimum -- every Scatterbug pattern (its whole line) and every Unown letter keeps at least
+        #                       N copies, the best by IV then CP, under any floor (user 2026-11-07: "2 of each at a min"); 0 = off
     },
     "pvp": {
         "ready_rank": 5,      # gl/ul_rank <= this is a keeper (top-5 of 4096 spreads)

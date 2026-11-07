@@ -2032,6 +2032,23 @@ def main():
                            key=lambda r: (-(r['iv_total'] or 0), -(r['cp'] or 0), r['uid_hex']))
             for r in _rest[:max(0, _short)]:
                 mark(r['uid_hex'], 'species_min')
+    # PATTERN MINIMUM (user 2026-11-07, of Scatterbug patterns and Unown letters: "for those two, I want 2 of each at a min"):
+    # the species minimum counts every pattern / letter as one kind, so a single one could fall to 1 copy. Every pattern of
+    # a pattern-pooled line (Scatterbug + Spewpa + Vivillon together) and every Unown letter keeps at least
+    # caps.pattern_min copies, topped up the same way. Groups: pattern_pools.min_group (shared with the mirrors).
+    _pmin = keep_config.cap('pattern_min')
+    if _pmin:
+        _pmg = defaultdict(list)
+        for r in rows:
+            _g = pattern_pools.min_group(r['pokemon_id'], r['species_name'], r['form'] or 0)
+            if _g:
+                _pmg[_g].append(r)
+        for _lst in _pmg.values():
+            _short = _pmin - sum(1 for r in _lst if keep.get(r['uid_hex']))
+            _rest = sorted((r for r in _lst if not keep.get(r['uid_hex'])),
+                           key=lambda r: (-(r['iv_total'] or 0), -(r['cp'] or 0), r['uid_hex']))
+            for r in _rest[:max(0, _short)]:
+                mark(r['uid_hex'], 'pattern_min')
     # ---- KEEP / TRANSFER ----
     allu = {r['uid_hex'] for r in rows}
     keepu = set(keep)

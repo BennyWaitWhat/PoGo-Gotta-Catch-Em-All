@@ -256,7 +256,7 @@ b = '<div class="card">' + lat + ('<div class="mut big" style="margin-top:6px">'
 
 b += '<h2>The keep axes &mdash; how many mons each one protects right now</h2><div class="card">'
 LBL={'variant_floor':'Variant floor (top-N per cosmetic)','shiny':'Shiny (cap per form)','hundo':'Hundo 100%','rarity':'Legendary / rare',
-'legacy':'Legacy move','xxl':'XXL showcase','shadow_best':'Best shadow','dex_only_copy':'Only copy (dex)','species_min':'Species minimum (last copies)','location_card':'Location card',
+'legacy':'Legacy move','xxl':'XXL showcase','shadow_best':'Best shadow','dex_only_copy':'Only copy (dex)','species_min':'Species minimum (last copies)','pattern_min':'Pattern minimum (last copies of a pattern / letter)','location_card':'Location card',
 'adventure_effect':'Adventure Effect','pvp_rank':'PvP rank &le;5','gl_iv':'Great League','ul_iv':'Ultra League','nundo':'Nundo 0%',
 'origin':'Lucky/traded (E+F)','evolve_1':'Evolve (advisory)','pvp_spread':'PvP spread trophy','protected':'Protected keep-all',
 'evolve_2':'Evolve 2 (advisory)','mighty':'Mighty',

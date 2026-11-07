@@ -246,6 +246,7 @@ NATIVE_COVERED_REASONS = frozenset({'rarity', 'shiny', 'location_card', 'adventu
                                     'shiny_ladder',    # a shiny held to evolve: the Shiny chip + the Evolve Shiny tag
                                     'fused',           # held inside a fused Kyurem: the game shows it there (2026-09-26)
                                     'species_min',     # one of the last caps.species_min of a species: the bag shows how few (2026-11-03)
+                                    'pattern_min',     # one of the last caps.pattern_min of a pattern / letter (2026-11-07)
                                     'dex_only_copy'})  # the ONLY copy of a form explains itself in the bag (2026-09-24: the shadow
                                                        # rank floor left a lone shadow Vibrava kept for that alone; the 'Last Copy'
                                                        # chip stays retired, user 2026-09-23)
@@ -493,7 +494,7 @@ def evolve_advice(kept, reasons, pile):
     # a showcase pick is an evolution promise too now (bucket 8 under the label law, audit_labels 2026-09-29): never a copy
     # another bucket will not give up -- the last copy of its form, a trophy, protected, legacy, Mighty, Adventure Effect,
     # a card holder, a legendary, a best shadow, a fused component. The XXL badge itself carries through (its point).
-    _SIZE_BLOCK = {'protected', 'legacy', 'location_card', 'mighty', 'dex_only_copy', 'species_min', 'rarity', 'adventure_effect',
+    _SIZE_BLOCK = {'protected', 'legacy', 'location_card', 'mighty', 'dex_only_copy', 'species_min', 'pattern_min', 'rarity', 'adventure_effect',
                    'shadow_best', 'hundo', 'nundo', 'fused'}
     for u, e in _sz_best.items():                         # 4. the showcase picks
         if _SIZE_BLOCK & set(reasons.get(pad(u)) or ()):

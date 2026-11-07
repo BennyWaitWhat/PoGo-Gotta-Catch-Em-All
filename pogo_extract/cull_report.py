@@ -66,7 +66,8 @@ NO_LONGER = {'favorite': 'a favorite (starred)', 'protected': 'on the keep-every
              # R-B review: keep_policy.mark emits these too -- losing one was dropped without a word
              'dex_only_copy': 'kept as the last copy of its form', 'data_incomplete': 'held for incomplete data',
              'xxs': 'kept as an XXS',
-             'species_min': 'kept as one of your last copies of its species and form'}
+             'species_min': 'kept as one of your last copies of its species and form',
+             'pattern_min': 'kept as one of your last copies of its pattern or letter'}
 
 pct = lambda r: round((r['iv_total'] or 0) * 100 / 45)
 norm = lambda u: format(int(u, 16), 'x')
@@ -939,6 +940,7 @@ def main():
                 # (dex_only_copy), a Pichu (protected), a GL/UL IV keeper -- and "no new keepers this time" could print
                 dex_only_copy=('your last copy of its line' if keep_config.line_pool_all() else 'your last copy of its form'),
                 species_min='one of your last %d of its species and form' % keep_config.cap('species_min'),
+                pattern_min='one of your last %d of its pattern or letter' % keep_config.cap('pattern_min'),
                 protected='keep-every-copy list', gl_iv='GL IV keeper', ul_iv='UL IV keeper',
                 # 'not read yet' was false: the ranks are computed and can stay missing for good (keep_policy 1467-1470)
                 rank_unknown='missing its PvP ranks', data_incomplete='held for incomplete data',
