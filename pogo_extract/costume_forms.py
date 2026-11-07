@@ -303,8 +303,13 @@ def backgrounds_first(rows_sorted):
     thats just a costume" -> "Backgrounds first"): stable partition of an IV-sorted costume ladder -- every costume
     copy that carries a background card ahead of the costume-only copies, each side in the caller's own order. Rows
     that are not folded costume copies (a Max-only variant, anything shiny or shadow) keep their place in the tail."""
-    bg = lambda r: card_folds_into_costume(r) and _col(r, 'fresh_has_location_card') == 1
-    return [r for r in rows_sorted if bg(r)] + [r for r in rows_sorted if not bg(r)]
+    return [r for r in rows_sorted if bg_first_row(r)] + [r for r in rows_sorted if not bg_first_row(r)]
+
+
+def bg_first_row(r):
+    """The row backgrounds_first() puts ahead: a folded costume copy that carries a background card. ONE definition for
+    the slot picker and for the slot COUNT, which must use the same order (keep_policy / audit_cull _var_eff_cap, 2026-11-07)."""
+    return card_folds_into_costume(r) and _col(r, 'fresh_has_location_card') == 1
 
 
 def form_name(form_code):
