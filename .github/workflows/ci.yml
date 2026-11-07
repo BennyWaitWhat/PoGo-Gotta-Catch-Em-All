@@ -38,6 +38,7 @@ jobs:
           python tools/pogo_data.py selftest
           python pogo_extract/walk_tripwires.py --selftest
           python pogo_extract/cull_report.py --selftest
+          python -c "import sys; sys.path.insert(0, 'pogo_extract'); import full_audit as f; s = f.phase_line([(1.1, 'dashboard started'), (37.6, 'recrawl ok'), (70.0, 'sync: no warnings in its log'), (200.0, 'retire: all clear')]); assert s == 'PHASES: dashboard 1.1 s, walk 36.5 s, sync 32.4 s, post-push 130.0 s | whole pass 200.0 s | SLOW: sync 32.4 s > 25 s; post-push 130.0 s > 30 s; whole pass 200.0 s > 120 s', s"
           python pogo_extract/bag_art.py --selftest
           python pogo_extract/game_opportunities.py --selftest
           python pogo_extract/independent_law.py
