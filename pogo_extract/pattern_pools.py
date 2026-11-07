@@ -163,18 +163,30 @@ def describe():
     return '; '.join('%s: dex %s' % (nm, ','.join(str(p) for p in sorted(ps))) for nm, ps in sorted(lines.items())) or '(none)'
 
 
-UNOWN = 201
+_NOT_A_KIND = (None, 'Normal', 'Female', 'Male')   # unreadable, the plain form, and gender forms (the gender looks rule)
+_SHARED = None
 
 
 def min_group(pid, species_name, form):
-    """The group keep_config caps.pattern_min counts (user 2026-11-07, of Scatterbug patterns and Unown letters: "for those
-    two, I want 2 of each at a min"): one PATTERN of a pattern-pooled line (Scatterbug + Spewpa + Vivillon of that pattern
-    together) or one Unown LETTER; None for anything else. A pooled form with no readable pattern counts by its own form id.
-    ONE definition: keep_policy, preflight_transfer and audit_cull all group by it."""
+    """The group keep_config caps.pattern_min counts: one PATTERN of a pattern-pooled line (Scatterbug + Spewpa + Vivillon of
+    that pattern together; user 2026-11-07 "for those two, I want 2 of each at a min"), or one named form of one species that
+    the species minimum counts as one kind with other forms, because its pvpoke speciesId does not tell them apart: each
+    Unown letter, Spinda pattern, Flabebe color, Deerling season, Furfrou trim, Shellos sea, Minior core ... (user 2026-11-07,
+    "....yes."). None for form 0, costume forms (look_keep holds them), _NOT_A_KIND, and forms with a speciesId of their own
+    (Burmy cloaks, Lycanroc: the species minimum already keeps 3 of each). A pooled form with no readable pattern counts by
+    its own form id. ONE definition: keep_policy, preflight_transfer and audit_cull all group by it."""
+    global _SHARED
     pid = int(pid or 0)
     line = roster().get(pid)
     if line is not None:
         return ('pattern', line, pattern(species_name, form) or 'form %s' % (form or 0))
-    if pid == UNOWN and form:
-        return ('unown', int(form))
-    return None
+    if not form or costume_forms.is_costume_form(form) or pattern(species_name, form) in _NOT_A_KIND:
+        return None
+    from pvp_iv_rule import pvid
+    if _SHARED is None:     # (species, speciesId) -> how many named, non-costume form ids map to it
+        from collections import Counter
+        from form_overrides_complete import FORM_OVERRIDES
+        _SHARED = Counter((s, v) for (s, f), v in FORM_OVERRIDES.items()
+                          if f and costume_forms.form_name(f) and not costume_forms.is_costume_form(f))
+    sid = pvid(species_name, form)
+    return ('form', pid, int(form)) if sid == pvid(species_name, 0) or _SHARED[(species_name, sid)] > 1 else None

@@ -2032,10 +2032,10 @@ def main():
                            key=lambda r: (-(r['iv_total'] or 0), -(r['cp'] or 0), r['uid_hex']))
             for r in _rest[:max(0, _short)]:
                 mark(r['uid_hex'], 'species_min')
-    # PATTERN MINIMUM (user 2026-11-07, of Scatterbug patterns and Unown letters: "for those two, I want 2 of each at a min"):
-    # the species minimum counts every pattern / letter as one kind, so a single one could fall to 1 copy. Every pattern of
-    # a pattern-pooled line (Scatterbug + Spewpa + Vivillon together) and every Unown letter keeps at least
-    # caps.pattern_min copies, topped up the same way. Groups: pattern_pools.min_group (shared with the mirrors).
+    # PATTERN MINIMUM (user 2026-11-07: "for those two, I want 2 of each at a min" of Scatterbug patterns and Unown letters,
+    # then "....yes." for Spinda patterns, Flabebe colors, Furfrou trims, Deerling seasons): the species minimum counts all
+    # such forms of a species as one kind, so one could fall to 1 copy. Every pattern of a pattern-pooled line (Scatterbug +
+    # Spewpa + Vivillon together) and every lumped named form keeps caps.pattern_min copies. Groups: pattern_pools.min_group.
     _pmin = keep_config.cap('pattern_min')
     if _pmin:
         _pmg = defaultdict(list)

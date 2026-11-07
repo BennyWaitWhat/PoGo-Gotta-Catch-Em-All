@@ -246,7 +246,7 @@ NATIVE_COVERED_REASONS = frozenset({'rarity', 'shiny', 'location_card', 'adventu
                                     'shiny_ladder',    # a shiny held to evolve: the Shiny chip + the Evolve Shiny tag
                                     'fused',           # held inside a fused Kyurem: the game shows it there (2026-09-26)
                                     'species_min',     # one of the last caps.species_min of a species: the bag shows how few (2026-11-03)
-                                    'pattern_min',     # one of the last caps.pattern_min of a pattern / letter (2026-11-07)
+                                    'pattern_min',     # one of the last caps.pattern_min of a pattern / form (2026-11-07)
                                     'dex_only_copy'})  # the ONLY copy of a form explains itself in the bag (2026-09-24: the shadow
                                                        # rank floor left a lone shadow Vibrava kept for that alone; the 'Last Copy'
                                                        # chip stays retired, user 2026-09-23)
