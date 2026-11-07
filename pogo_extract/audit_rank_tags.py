@@ -42,8 +42,9 @@ def main():
     # tables and this audit said EVERY RANK TAG CHECKS OUT (measured: 0 of 150 disagreements under a changed stat
     # product, vs 144 with fresh tables). The per-tag checks now use tables built fresh in a throw-away path
     # (regress_pvp_keepers' pattern, ~10 ms a table), and a sample of the shared pickle is compared table-for-table.
-    import tempfile, random
+    import tempfile, random, atexit, shutil
     _tmp = tempfile.mkdtemp(prefix='audit_rank_')
+    atexit.register(shutil.rmtree, _tmp, True)   # ignore_errors: the throw-away tables go when the audit exits, pass or fail (nothing removed this folder: one audit_rank_* per run)
     cache = rank_cache.RankTableCache(pdb, rank_cache._content_hash(gm_bytes), pkl_path=os.path.join(_tmp, 'fresh.pkl'))
     shared = rank_cache.RankTableCache(pdb, rank_cache._content_hash(gm_bytes))        # the pipeline's own pickle
     _keys = [k for k, v in shared.tables.items() if v is not None]
