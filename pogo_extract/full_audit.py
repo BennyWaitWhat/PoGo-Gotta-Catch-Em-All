@@ -11,14 +11,47 @@ serial, because Frida is a single-attach resource and two attaches collide.
 
 HARD GATE: the Transfer pile is the ONE irreversible output. If ANY audit fails, the sync does NOT run.
 """
-import json, os, subprocess, sys, time, urllib.request
+import json, os, re, subprocess, sys, time, urllib.request
 sys.stdout.reconfigure(encoding='utf-8', errors='replace')
 ROOT = os.path.dirname(os.path.abspath(__file__)); os.chdir(ROOT)
 API = 'http://127.0.0.1:%d' % int(os.environ.get('DASH_PORT') or 8765)   # moves off a foreign listener, see ensure_dashboard
 PY = sys.executable
 t0 = time.time()
+_SAID = []                              # (seconds, text) of every say() line -- the phase timers read it
 def el(): return '%5.1fs' % (time.time() - t0)
-def say(s): print('[%s] %s' % (el(), s), flush=True)
+def say(s):
+    _SAID.append((time.time() - t0, s))
+    print('[%s] %s' % (el(), s), flush=True)
+
+# PHASE TIMES + BUDGETS (Benny 2026-11-07: "Leave phase timers in full_audit.py (no new script) and a time budget per phase
+# that flags a slowdown"). A phase ends at its last marker line. Budgets sit above the slowest typical pass of the 30 logged
+# 10-29..11-07 (medians: walk 36.5 s, sync 11.5 s, post-push 11.3 s, audits 5.2 s, whole pass 70.7 s). A flag never fails a pass.
+PHASES = [('dashboard', r'^dashboard started', 5), ('gamemaster', r'^gamemaster:', 15), ('walk', r'^recrawl', 60),
+          ('tripwires', r'^bag \d', 5), ('audits', r'^(TRANSFER PRE-FLIGHT|AUDIT GATE)|^.{15} (PASS|FAIL)  ', 12),
+          ('sync', r'^sync: ', 25), ('post-push', r'^retire: ', 30), ('verify', r'^VERIFY', 5),
+          ('pages', r'^(gen_bag_pulse|dashboard stopped)', 15)]
+PASS_BUDGET = 120
+
+
+def phase_line(said):
+    """'PHASES: walk 36.5 s, ... | whole pass 70.7 s [| SLOW: ...]' from (seconds, text) lines; None when no walk ran."""
+    ends = {}
+    for sec, text in said:
+        for name, rx, _b in PHASES:
+            if re.search(rx, text):
+                ends[name] = max(ends.get(name, 0.0), sec)
+    if 'walk' not in ends:
+        return None
+    out, slow, last = [], [], 0.0
+    for name, _rx, budget in PHASES:
+        if name in ends:
+            d, last = ends[name] - last, ends[name]
+            out.append('%s %.1f s' % (name, d))
+            if d > budget:
+                slow.append('%s %.1f s > %d s' % (name, d, budget))
+    if last > PASS_BUDGET:
+        slow.append('whole pass %.1f s > %d s' % (last, PASS_BUDGET))
+    return 'PHASES: %s | whole pass %.1f s%s' % (', '.join(out), last, (' | SLOW: ' + '; '.join(slow)) if slow else '')
 
 def api(path, method='GET', body=None, timeout=30):
     req = urllib.request.Request(API + path, method=method,
@@ -70,6 +103,9 @@ def finish_step(rc):
             say('dashboard stopped (started by this run)')
         except Exception as _e:
             say('dashboard: could not stop it (%s)' % _e)
+    _pl = phase_line(_SAID)
+    if _pl:
+        say(_pl)
 
 
 def ensure_dashboard():
