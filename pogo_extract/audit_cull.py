@@ -278,10 +278,11 @@ def _var_eff_cap(key, cap, pool):
     sh = _shvar.get(key)
     if not sh:
         return cap
-    merged = sorted([(i, c, 0) for i, c in sh]
-                    + [((r.get('iv_total') or 0), (r.get('cp') or 0), 1) for r in pool],
-                    key=lambda x: (-x[0], -x[1], x[2]))[:cap]       # tie -> shiny(0) first
-    return sum(1 for x in merged if x[2] == 1)
+    merged = sorted([(1, i, c, 0) for i, c in sh]                    # one order with the picker: card copies first (2026-11-07)
+                    + [(0 if __import__('costume_forms').bg_first_row(r) else 1, (r.get('iv_total') or 0), (r.get('cp') or 0), 1)
+                       for r in pool],
+                    key=lambda x: (x[0], -x[1], -x[2], x[3]))[:cap]       # tie -> shiny(0) first
+    return sum(1 for x in merged if x[3] == 1)
 _var_keep = set()
 for _k, lst in _vg.items():
     _ax = evolvable_forms.max_axis(_k[-1])

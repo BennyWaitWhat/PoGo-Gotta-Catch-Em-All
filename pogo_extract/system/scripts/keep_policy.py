@@ -620,10 +620,13 @@ def main():
         sh = _shvar.get(key)
         if not sh:
             return cap
-        merged = sorted([(iv, cp, 0) for iv, cp in sh]                                # shiny -> tag 0
-                        + [((r['iv_total'] or 0), (r['cp'] or 0), 1) for r in pool],  # plain -> tag 1
-                        key=lambda x: (-x[0], -x[1], x[2]))[:cap]                     # tie -> shiny(0) first
-        return sum(1 for x in merged if x[2] == 1)                                    # plain slots remaining
+        # ONE ORDER for counting and picking (2026-11-07): topn(bg_first=True) hands the slots to card copies first, so a
+        # shiny is counted in that same order -- counted by IV alone, a new 84% shiny took the slot of a 98% costume copy
+        merged = sorted([(1, iv, cp, 0) for iv, cp in sh]                                                 # shiny -> tag 0
+                        + [(0 if costume_forms.bg_first_row(r) else 1, (r['iv_total'] or 0), (r['cp'] or 0), 1)
+                           for r in pool],                                                                # plain -> tag 1
+                        key=lambda x: (x[0], -x[1], -x[2], x[3]))[:cap]                                   # tie -> shiny(0) first
+        return sum(1 for x in merged if x[3] == 1)                                                        # plain slots remaining
     _env_cc_raw = os.environ.get('COSMETIC_CAP')
     _env_cc = None
     if _env_cc_raw is not None and str(_env_cc_raw).strip() != '':
