@@ -28,6 +28,16 @@ STATE, LOG = os.path.join(AN, 'cull_button_state.json'), os.path.join(AN, 'cull_
 CULL_LOG, REPORT = os.path.join(AN, 'last_cull.log'), os.path.join(AN, 'cull_button_report.txt')
 POLL_S, MAX_AGE_S, GAP_S, GAME_UP_S = 15, 15 * 60, 180, 120
 MUTEX_PORT = 48766          # one listener at a time: the second one cannot bind and exits
+# Children run under python.exe even when this listener runs under pythonw.exe: under pythonw the audits' process pools
+# die (BrokenProcessPool), and the 11-05 01:23 tap stopped at "promises (no verdict line)". CREATE_NO_WINDOW keeps every
+# child (adb, python, powershell) from flashing a console window on the PC.
+PY = (os.path.join(os.path.dirname(sys.executable), 'python.exe') if sys.executable.lower().endswith('pythonw.exe')
+      else sys.executable)
+NOWIN = 0x08000000 if os.name == 'nt' else 0
+
+
+def _run(args, **kw):
+    return subprocess.run(args, creationflags=NOWIN, **kw)
 
 
 def log(msg):
@@ -37,7 +47,7 @@ def log(msg):
 
 def adb(cmd, timeout=25):
     try:
-        p = subprocess.run(['adb', '-s', ADB, 'shell', cmd], capture_output=True, text=True, timeout=timeout)
+        p = _run(['adb', '-s', ADB, 'shell', cmd], capture_output=True, text=True, timeout=timeout)
         return p.stdout.replace('\r', '').strip() if p.returncode == 0 else None
     except (subprocess.TimeoutExpired, OSError):
         return None
@@ -45,11 +55,11 @@ def adb(cmd, timeout=25):
 
 def connected():
     try:
-        out = subprocess.run(['adb', 'devices'], capture_output=True, text=True, timeout=15).stdout
+        out = _run(['adb', 'devices'], capture_output=True, text=True, timeout=15).stdout
         if re.search(r'^%s\s+device$' % re.escape(ADB), out.replace('\r', ''), re.M):
             return True
-        subprocess.run(['adb', 'connect', ADB], capture_output=True, text=True, timeout=15)
-        out = subprocess.run(['adb', 'devices'], capture_output=True, text=True, timeout=15).stdout
+        _run(['adb', 'connect', ADB], capture_output=True, text=True, timeout=15)
+        out = _run(['adb', 'devices'], capture_output=True, text=True, timeout=15).stdout
         return bool(re.search(r'^%s\s+device$' % re.escape(ADB), out.replace('\r', ''), re.M))
     except (subprocess.TimeoutExpired, OSError):
         return False
@@ -102,7 +112,7 @@ def parse_cull(text, rc):
 def data_versions():
     """(phone, here) inventory versions from pogo_data status, else (None, None)."""
     try:
-        out = subprocess.run([sys.executable, os.path.join('tools', 'pogo_data.py'), 'status'], cwd=ROOT,
+        out = _run([PY, os.path.join('tools', 'pogo_data.py'), 'status'], cwd=ROOT,
                              capture_output=True, text=True, timeout=120).stdout
     except (subprocess.TimeoutExpired, OSError):
         return None, None
@@ -111,7 +121,7 @@ def data_versions():
 
 
 def data(cmd):
-    p = subprocess.run([sys.executable, os.path.join('tools', 'pogo_data.py')] + cmd, cwd=ROOT,
+    p = _run([PY, os.path.join('tools', 'pogo_data.py')] + cmd, cwd=ROOT,
                        capture_output=True, text=True, timeout=900)
     log('pogo_data %s rc=%s %s' % (' '.join(cmd), p.returncode, (p.stdout.strip().splitlines() or [''])[-1][:160]))
     return p.returncode == 0
@@ -121,11 +131,11 @@ def cull_running():
     """Is a full_audit.py pass already running on this machine (a Claude session's cull, or anything else)?"""
     try:
         if os.name == 'nt':
-            out = subprocess.run(['powershell', '-NoProfile', '-Command',
+            out = _run(['powershell', '-NoProfile', '-Command',
                                   "Get-CimInstance Win32_Process -Filter \"Name like 'python%'\" | ForEach-Object CommandLine"],
                                  capture_output=True, text=True, timeout=30).stdout
         else:
-            out = subprocess.run(['ps', '-eo', 'args'], capture_output=True, text=True, timeout=30).stdout
+            out = _run(['ps', '-eo', 'args'], capture_output=True, text=True, timeout=30).stdout
     except (subprocess.TimeoutExpired, OSError):
         return True                                       # unknown = assume busy: never risk two passes at once
     return 'full_audit.py' in out
@@ -162,7 +172,7 @@ def one_pass(req_epoch):
     status('running since %s' % hhmm(start))
     log('cull for the tap at %s (pid %s, game up %ss)' % (hhmm(req_epoch), pid, up))
     with open(CULL_LOG, 'w', encoding='utf-8', errors='replace') as f:
-        rc = subprocess.run([sys.executable, 'full_audit.py'], cwd=HERE, stdout=f, stderr=subprocess.STDOUT).returncode
+        rc = _run([PY, 'full_audit.py'], cwd=HERE, stdout=f, stderr=subprocess.STDOUT).returncode
     text = open(CULL_LOG, encoding='utf-8', errors='replace').read()
     kind, line = parse_cull(text, rc)
     rep = text.split('=== REPORT ===', 1)
