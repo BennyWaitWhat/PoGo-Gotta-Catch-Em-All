@@ -14,6 +14,7 @@ Why it is built this way (each rule is a crash we had):
   3. No raw game pointer outlives the tick that read it: Pokemon are tracked by encounter id, and every action
      uses the pointer from a walk of the live list made in that same tick.
 """
+import json
 import os
 import re
 import signal
@@ -30,6 +31,7 @@ import pogo_il2cpp as pg  # noqa: E402  (get_session only; catch_phone.py points
 
 AN = os.path.join(ROOT, "system", "analysis", "pokemod")
 LOG = os.path.join(AN, "catch_loop.log")
+LEDGER = os.path.join(AN, "spawn_ledger.jsonl")   # one line per spawn (k=spawn) and per avatar fix (k=pos): tools/yield_report.py
 STATE_FILE = "/data/local/tmp/pogo_state.txt"      # read by the AutoCatcher app
 FLAGS = {k: f"/data/local/tmp/pogo_{k}.on" for k in ("catch", "spin", "tap", "perfect", "apples")}
 COLD_AGE_S = 12      # attach once PoGo is this old; install() then retries every 3 s until the map has loaded.
@@ -75,6 +77,20 @@ CFG = {
     # Harvest Festival 2026 apple encounters (Applin, flower-crown Cottonee, Skiddo, Lechonk, Smoliv): a HIDDEN Pokemon of
     # these species near you is an apple reveal waiting to be caught. Event ends 2026-10-05 20:00.
     "appleSpecies": [840, 546, 672, 915, 928],
+    # YIELD A/B (Benny 2026-11-07): ONE setting alternates by the clock in 5-minute blocks -- even block = abArms[0], odd =
+    # abArms[1]; every spawn record carries the settings it was handled under (tools/yield_report.py). abBlockS 0 = no A/B.
+    # Done 02:45-03:00: "order" fifo vs despawn-first = 91.2% vs 91.1% yield -- the server gives a wild spawn's real despawn
+    # time only in its last ~60 s (3 of 242 had one), so there is nothing to sort by. fifo kept.
+    # Done 03:01-03:20: "openMs" 300 vs 150 = 84.9% vs 88.9% yield (the gap is flees, which open spacing cannot cause);
+    # the real spacing only went 553 -> 460 ms (the pump enters JS every 6th frame: one open per tick), queue wait p90
+    # 2.4 -> 1.7 s, server replies unchanged, 0 refused, no spawn lost waiting in either arm. Not proven: 300 kept.
+    # Done 03:20-03:36: "nearWait" 0 vs 3000 = 89.0% vs 86.6% yield (429 / 216 spawns); spawns first seen beyond 55 m
+    # fled 7.9% vs 16.9%; 23 held throws, 4 fled. No help: off (0) kept.
+    # Running from 03:36: "readyMs" 150 vs 1000 -- first throws < 450 ms after the encounter reply fled 12.0% vs 7.7%
+    # for slower ones (1,029 throws 02:49-03:31, Snorlax left out, z 2.1).
+    "abBlockS": 300, "abKey": "readyMs", "abArms": [150, 1000], "order": "fifo",
+    "nearWait": 0, "nearM": 55,   # NEAR-WAIT (JS closingIn): hold a first throw while still > nearM m away and closing in, <= nearWait ms
+    "readyMs": 150,               # encounter reply -> first throw (was the JS constant READY_MS)
 }
 
 JS = r"""
@@ -213,9 +229,9 @@ function encOf(o) { var r = call(method(o, 'get_EncounterId', 0), o, []); return
 
 /* ---------------- state ---------------- */
 var K = {}, M = {}, OFF = {}, PBT_VT = false;
-var CFG = {catch: false, spin: false, tap: false, perfect: false, apples: false, appleSpecies: {}, openMs: 667, maxOpen: 6, thresh: 0.28,
+var CFG = {catch: false, spin: false, tap: false, perfect: false, apples: false, appleSpecies: {}, openMs: 667, maxOpen: 6, nearWait: 0, nearM: 55, readyMs: 150, thresh: 0.28,
            ballOrder: [2, 1, 3], floors: {1: 5, 2: 5, 3: 5}, pinap: true, pinapFloor: 20, razz: true, razzFloor: 5, razzThresh: 0.45,
-           legendary: {}, priority: {}};
+           legendary: {}, priority: {}, order: 'fifo'};
 var S = {ready: false, stale: 'first attach', nextLookup: 0, tries: 0, msvc: NULL, ib: NULL, avatar: NULL, ps: NULL};
 /* STALE MAP (2026-09-24 22:27-22:46: 20 min of vis=0 while attached, 3 Pokemon the second it re-attached). The game
    can rebuild its map -- a new MapPlaceDirectoryService, a new map camera -- and the objects found at attach then read
@@ -229,8 +245,8 @@ var HOLD = 0, HOLDWHY = '', FLEESTREAK = 0, LASTCATCHMS = 0;
 var ST = {caught: 0, fled: 0, esc: 0, miss: 0, err: 0, manual: 0, opened: 0, thrown: 0, dust: 0, candy: 0, xp: 0,
           fedPinap: 0, fedRazz: 0, holds: 0, skip: {}, errs: 0};
 var SPIN = {next: 0, total: 0, inRange: 0, cooling: 0, spins: 0, ok: 0, xp: 0, items: 0, fail: {}}, SPUN = {}, SPINNER_OFF = -1, SPINM = {};
-var OUT = {log: [], done: [], tap: [], revealed: []};
-var WALK_MS = 400, READY_MS = 150, BERRY_MS = 800, RETHROW_MS = 900;
+var OUT = {log: [], done: [], tap: [], revealed: [], led: [], pos: []};
+var WALK_MS = 400, BERRY_MS = 800, RETHROW_MS = 900;   /* reply -> first throw = CFG.readyMs */
 var WILD = 'WildMapPokemon', DISK = 'TroyDiskMapPlacePokemon', INCENSE = 'IncenseMapPokemon';
 var POLL_IDS = [1, 2, 3, 701, 705];
 function log(s) { OUT.log.push(s); if (OUT.log.length > 200) OUT.log.shift(); }
@@ -322,11 +338,14 @@ function pickLive(cands) {
 
 /* ---------------- LIMITS: is the account being refused? (user 2026-09-29: "detect in game if I'm rate limited, I can't spin") ----
    Spins: the server's own FortSearch result. OutOfRange (2) at a stop you are standing at is the refusal ("Try again
-   later"); 2+ in a row with no success = BLOCKED. ExceededDailyLimit (5) = the daily cap. Catches: fled on sure throws
+   later"); 6 in a row with no success = BLOCKED, probed every 30 s. (It was 2, probed every 10 min: on a moving route
+   the server's position trails the client's, so a stop at the edge of range is refused once or twice before the server
+   catches up -- 2026-11-07 03:46 and 04:02 that blacked out auto-spin with ready stops in range. A refused stop is
+   now retried 3 s later instead of being skipped for 330 s.) ExceededDailyLimit (5) = the daily cap. Catches: fled on sure throws
    (FLEESTREAK). Account: GetPlayerOutProto Banned / Warn / WarnExpireMs / WasSuspended, read from every GetPlayer reply;
    the game is asked for one at READY and hourly (2026-09-29 20:39 the server said banned 0, warn 0, suspended 0). */
 var LIM = {oorStreak: 0, oorSince: 0, lastOk: 0, lastSpin: 0, lastRes: -1, daily: 0, acct: null, acctT: 0, nextAcct: 0, sig: '', sigT: 0};
-function spinBlocked(now) { return LIM.oorStreak >= 2; }
+function spinBlocked(now) { return LIM.oorStreak >= 6; }
 function limitState(now) {
   var spin = LIM.lastSpin === 0 ? 'unknown' : (LIM.daily && now - LIM.daily < 86400000 && LIM.lastRes === 5) ? 'daily-limit'
            : spinBlocked(now) ? 'BLOCKED' : 'ok';
@@ -372,12 +391,86 @@ function berryFor(e) {
 var COOL = {};   /* enc -> time before which a not-final encounter is left alone */
 var FINAL = {caught: 1, fled: 1, legendary: 1, maxthrows: 1, catcherr: 1};
 function finish(enc, why) {
-  if (E[enc]) { delete E[enc]; NE--; }
+  if (E[enc]) { ledgerEnd(E[enc], enc, why, Date.now()); delete E[enc]; NE--; }
   if (why && why !== 'caught') bump(ST.skip, why);
   if (!FINAL[why] && why.indexOf('enc') !== 0) { COOL[enc] = Date.now() + 20000; return; }   /* gone / stale / noresp / noresult: retry later */
   if (!DONE[enc]) { DONE[enc] = 1; DONEQ.push(enc); OUT.done.push(enc); if (DONEQ.length > 6000) delete DONE[DONEQ.shift()]; }
 }
 var LIVE = {};   /* enc -> MapPokemon pointer. Valid ONLY in the tick that built it: every action reads it there. */
+
+/* YIELD LEDGER (Benny 2026-11-07: "measure the catch yield ... every spawn the server sends within 140 m ... every encounter
+   and catch request and reply with timestamps, and the avatar track"). One record per spawn per stay on the map, handed to
+   python (OUT.led) by finish(): first/last seen, the despawn time the game itself uses (MapPokemon.<DespawnTime>), spawn point
+   + position (the server's WildPokemonProto), avatar distance at first and last sight, our open, the server's reply, first
+   throw, result, throws, last ball + its odds, the queue order in force, the outcome. Memory reads only, plus one avatar
+   position read per 0.5 s; OUT.pos = the avatar track every 5 s. SRV = the server's own catch counter. */
+var POS = null, POSAT = 0, POSLOG = 0, SRV = {caught: -1, enc: -1, t: 0};
+function myPos(now) {
+  try {
+    if (now - POSAT >= 500 && !S.avatar.isNull()) {
+      POSAT = now; var p = avatarPos(S.avatar);
+      if (p) { POS = {lat: p.lat, lng: p.lng, t: now}; if (now - POSLOG >= 5000) { POSLOG = now; OUT.pos.push([now, +p.lat.toFixed(6), +p.lng.toFixed(6)]); } }
+    }
+  } catch (e) {}
+  return POS;
+}
+function epochMs(v) { return v > 1.5e12 && v < 2.5e12; }
+function spawnInfo(o) {   /* {exp, tth, lat, lng, sp} of a map Pokemon, from memory */
+  var r = {exp: 0, tth: null, lat: null, lng: null, sp: null}, now = Date.now();
+  /* A despawn time counts only inside [now - 60 s, now + 1 h]. Live 2026-11-07 02:50: every wild spawn carried the same
+     TimeTillHiddenMs ~1,258,500,000 (14.6 days, counting down in step) -- the server's "not telling" value; it tells the
+     real time only near the end. Unknown = 0, the back of a despawn-first queue. */
+  var ok = function (v) { return epochMs(v) && v > now - 60000 && v <= now + 3600000; };
+  try {   /* Nullable<Int64>: hasValue then value (generic definition order); take whichever word is an epoch-ms time */
+    var h = il(), k = h.objClass(o);
+    var dOff = fieldOffWhere(k, 'despawn', function (n) { return n === '<DespawnTime>k__BackingField'; });
+    if (dOff >= 0) { var a = o.add(dOff).readS64().toNumber(), b = o.add(dOff + 8).readS64().toNumber(); r.exp = ok(b) ? b : ok(a) ? a : 0; }
+    var pOff = fieldOffWhere(k, 'wpp', function (n, t) { return /(^|\.)WildPokemonProto$/.test(t); });
+    var w = pOff >= 0 ? o.add(pOff).readPointer() : NULL;
+    if (!w.isNull()) {
+      var wk = h.objClass(w), f = function (name) { return fieldOffWhere(wk, name, function (n) { return n === name; }); };
+      var la = f('Latitude'), ln = f('Longitude'), lm = f('LastModifiedMs'), th = f('TimeTillHiddenMs'), sp = f('SpawnPointId');
+      if (la >= 0 && ln >= 0) { r.lat = w.add(la).readDouble(); r.lng = w.add(ln).readDouble(); }
+      if (th >= 0) r.tth = w.add(th).readS32();
+      if (!r.exp && lm >= 0 && r.tth > 0) { var lmv = w.add(lm).readS64().toNumber() + r.tth; if (ok(lmv)) r.exp = lmv; }
+      if (sp >= 0) { var s = w.add(sp).readPointer(); if (!s.isNull()) { var n = s.add(0x10).readS32(); if (n > 0 && n < 64) r.sp = s.add(0x14).readUtf16String(n); } }
+    }
+  } catch (e) {}
+  return r;
+}
+function ledgerEnd(e, enc, why, now) {
+  try {
+  var p = (e.probs && e.ball && e.probs[e.ball] !== undefined) ? +e.probs[e.ball].toFixed(3) : null, me = POS;
+  OUT.led.push({e: enc, id: e.pid, c: e.cls.replace('MapPokemon', '').replace('MapPlacePokemon', ''), sp: e.sp, t0: e.t0, ls: e.seen,
+                lat: (e.lat !== null && e.lat !== undefined) ? +e.lat.toFixed(6) : null, lng: (e.lng !== null && e.lng !== undefined) ? +e.lng.toFixed(6) : null,
+                exp: e.exp || null, tx: e.tx || null, tth: e.tth, d0: e.d0, dT: e.dT === undefined ? null : e.dT, d1: (me && e.lat !== null) ? Math.round(meters(me.lat, me.lng, e.lat, e.lng)) : null,
+                tO: e.tO || null, tR: e.tR || null, rs: e.rs, tT: e.tT || null, tC: e.tC || null, n: e.att, opens: e.opens,
+                b: e.ball || null, pr: p, ord: CFG.order, om: CFG.openMs, nw: CFG.nearWait, nwt: e.nwait || 0, rm: CFG.readyMs, r: why, t1: now});
+  } catch (x) { ST.errs++; }
+}
+/* DESPAWN-FIRST (an A/B arm, Benny 2026-11-07): open the queue soonest-to-despawn first. Under 1.5 s left (the median
+   open-to-result time) or no known despawn time = the back of the queue, in arrival order; priority species stay in front. */
+/* NEAR-WAIT (an A/B arm, 2026-11-07): first throws from 60-90 m fled 16.8% vs 5.7% from 30-60 m (02:49-03:16, 547
+   throws). While a spawn with a known position is farther than CFG.nearM and the avatar is closing in on it, hold its
+   FIRST throw -- at most CFG.nearWait ms after the encounter reply. Moving away, level, or no position: throw now. */
+function closingIn(e, now) {
+  if (e.lat === null || e.lat === undefined || !POS || now - POS.t > 1500) return false;
+  var d = meters(POS.lat, POS.lng, e.lat, e.lng), prev = e.dPrev !== undefined ? e.dPrev : e.d0;
+  e.dPrev = d;
+  if (d <= CFG.nearM || now - (e.tR || e.tOpen || now) >= CFG.nearWait || prev === null || prev === undefined) return false;
+  if (d < prev - 0.3) { e.nwait = (e.nwait || 0) + 1; return true; }
+  return false;
+}
+function despawnFirst(now) {
+  var key = function (k) { var x = E[k]; if (!x) return 9e15; if (x.prio) return 0; return (x.exp && x.exp > now + 1500) ? x.exp : 8e15 + (x.t0 || 0); };
+  PEND.sort(function (a, b) { return key(a) - key(b); });
+}
+function onPlayerStats(s) {   /* any thread: memory reads only. The server's total, from every inventory update */
+  var c = s.add(OFF.nCap).readS32(), n = OFF.nEnc >= 0 ? s.add(OFF.nEnc).readS32() : -1;
+  /* the running maximum: the lifetime total only grows. (A "within 5000 of the last value" guard latched onto a wrong
+     first value after Pokemod relaunched the game at 03:42 and then refused the real ~398k total.) */
+  if (c > 0 && c < 100000000 && c >= SRV.caught) { SRV.caught = c; SRV.enc = Math.max(SRV.enc, n); SRV.t = Date.now(); }
+}
 /* CENSUS: per class, from the last walk -- [on map, tracked, no encounter id, hidden flag, skipped type/legendary,
    already handled (caught/fled, or cooling down before a retry)].
    "Not catching X" becomes one look at the status line instead of a guess. */
@@ -395,7 +488,7 @@ var HIDSP = {}, HIDLAST = {}, HIDNEAR = {min: 1e9, bad: 0}, HIDNEARLAST = null; 
 function walk(now) {
   LIVE = {}; HIDSP = {}; HIDNEAR = {min: 1e9, bad: 0};
   var coll = call(M.allPokemon, S.msvc, []); if (!coll) return;
-  var h = il(), vis = 0, cen = {};
+  var h = il(), vis = 0, cen = {}, me = myPos(now);
   each(coll, function (o) {
     var cls = cstr(h.className(h.objClass(o))), c = cen[cls] || (cen[cls] = [0, 0, 0, 0, 0, 0]);
     c[0]++;
@@ -403,7 +496,9 @@ function walk(now) {
     var enc = encOf(o); if (!enc) { c[2]++; return; }
     var gk = o.toString(); if (GAMEOPEN[gk]) { GOENC[enc] = GAMEOPEN[gk]; delete GAMEOPEN[gk]; }   /* bind the game's open to THIS encounter */
     if (DONE[enc] || (COOL[enc] && now < COOL[enc])) { c[5]++; return; }
-    var e = E[enc]; if (e) { LIVE[enc] = o; e.seen = now; vis++; c[1]++; return; }
+    var e = E[enc]; if (e) { LIVE[enc] = o; e.seen = now;
+      if (!e.exp && now - (e.si || 0) >= 1000) { e.si = now; var s2 = spawnInfo(o); if (s2.exp) { e.exp = s2.exp; e.tth = s2.tth; e.tx = now; } }   /* 1/s: the time comes late */
+      vis++; c[1]++; return; }
     /* Only a class that HAS the flag can say "not on the map". Incense and lure Pokemon have no get_VisibleOnMap;
        treating "no flag" as hidden skipped every one of them (945 wild, 0 incense, 0 lure caught since 19:30). */
     var vm = method(o, 'get_VisibleOnMap', 0);
@@ -422,6 +517,9 @@ function walk(now) {
     if (CFG.legendary[pid]) { c[4]++; finish(enc, 'legendary'); return; }
     LIVE[enc] = o; vis++; c[1]++;
     e = E[enc] = {pid: pid, cls: cls, prio: !!CFG.priority[pid], st: 'new', seen: now, att: 0, opens: 0, berry: 0, apple: appleMon};
+    var si = spawnInfo(o);
+    e.t0 = e.si = now; e.exp = si.exp; e.tx = si.exp ? now : 0; e.tth = si.tth; e.sp = si.sp; e.lat = si.lat; e.lng = si.lng;
+    e.d0 = (me && si.lat !== null) ? Math.round(meters(me.lat, me.lng, si.lat, si.lng)) : null;
     if (appleMon) { ST.appleMon = (ST.appleMon || 0) + 1; log('APPLEMON tracking hidden #' + pid + ' enc=' + enc); }
     NE++;
     if (e.prio) PEND.unshift(enc); else PEND.push(enc);
@@ -444,7 +542,7 @@ function openOne(enc, e, o, now) {
   try { call(method(o, 'SendEncounterRequest', 0), o, []); } finally { OPENING = false; }
   LASTOPEN = now;
   if (!LASTOK) { log('OPENFAIL ' + e.cls + ' #' + e.pid + ' (retry in 20 s)'); finish(enc, 'openfail'); return; }
-  e.st = 'open'; e.tOpen = now; e.opens++; ST.opened++;
+  e.st = 'open'; e.tOpen = now; e.opens++; ST.opened++; e.tO = e.tO || now;
   if (e.cls !== WILD) NWQ.push({enc: enc, t: now});
 }
 function feed(e, o, item) {
@@ -464,10 +562,12 @@ function throwAt(e, enc, o, now) {
   var last = REQQ[REQQ.length - 1];
   if (!(last && last.enc === enc && now - last.t < 1000)) { REQQ.push({enc: enc, t: now}); if (REQQ.length > 50) REQQ.shift(); }
   e.st = 'thrown'; e.tThrow = now; e.att++; e.ball = ball; e.fedWith = e.berry; e.berry = 0; ST.thrown++;
+  if (!e.tT) { e.tT = now; var mp = myPos(now); e.dT = (mp && e.lat !== null && e.lat !== undefined) ? Math.round(meters(mp.lat, mp.lng, e.lat, e.lng)) : null; }   /* avatar distance at the first throw */
   if (ITEMC[ball] > 0) ITEMC[ball]--;
 }
 function outcome(e, enc, r, now) {
-  var p = (e.probs && e.probs[e.ball] !== undefined) ? e.probs[e.ball] : -1;
+  e.tC = r.t || now;
+  var p =(e.probs && e.probs[e.ball] !== undefined) ? e.probs[e.ball] : -1;
   var line = e.cls.replace('MapPokemon', '').replace('MapPlacePokemon', '') + ' #' + e.pid + ' ball=' + e.ball + ' p=' + (p < 0 ? '?' : p.toFixed(2)) +
              ' att=' + e.att + ' berry=' + (e.fedWith || 0) + ' ' + ((now - e.tOpen) / 1000).toFixed(1) + 's' + (e.apple ? ' [apple]' : '');
   if (r.st === 1) {
@@ -500,6 +600,7 @@ function catchTick(now) {
   for (enc in E) if (E[enc].st === 'thrown') { inflight++; if (E[enc].apple) appleInflight = true; }
   var anyBall = ballOk(1) || ballOk(2) || ballOk(3);
   if (!anyBall && fresh && now >= HOLD && PEND.length) { HOLD = now + 30000; HOLDWHY = 'out of balls (at the floors)'; ST.holds++; log('HOLD 30s: ' + HOLDWHY); holding = true; }
+  if (CFG.order === 'despawn' && PEND.length > 1 && !holding) despawnFirst(now);
   for (var tries = PEND.length; tries > 0 && !holding && now - LASTOPEN >= CFG.openMs && n < CFG.maxOpen; tries--) {
     enc = PEND.shift(); e = E[enc]; if (!e || e.st !== 'new') continue;
     o = LIVE[enc];
@@ -530,9 +631,9 @@ function catchTick(now) {
       var r = RESP[enc];
       if (r && r.t < e.tOpen - 100) { delete RESP[enc]; r = null; }   /* an older answer: your own manual encounter */
       if (r) {
-        delete RESP[enc];
+        delete RESP[enc]; e.tR = e.tR || r.t; e.rs = r.st;
         if (e.apple) log('APPLEOPEN #' + e.pid + ' enc=' + enc + ' reply status=' + r.st);
-        if (r.st === 1) { e.probs = r.p; e.st = 'ready'; e.due = now + READY_MS; }
+        if (r.st === 1) { e.probs = r.p; e.st = 'ready'; e.due = now + CFG.readyMs; }
         else if (notInRange(e, r.st) && e.opens < 3) { e.st = 'new'; e.retryAt = now + 4000; PEND.push(enc); }
         else if (bagFull(e, r.st)) { HOLD = now + 60000; HOLDWHY = 'Pokemon storage is full'; ST.holds++; log('HOLD 60s: ' + HOLDWHY); e.st = 'new'; e.retryAt = now + 60000; PEND.push(enc); }
         else if (notInRange(e, r.st) || r.st === 0) { log('ENCRETRY ' + e.cls + ' #' + e.pid + ' status=' + r.st + ' (retry in 20 s)'); finish(enc, r.st ? 'notinrange' : 'srverror'); }
@@ -542,7 +643,7 @@ function catchTick(now) {
            sends nothing (traced 2026-09-29: bfni -> SendEncounterRequest, no EncounterProto), so no reply will come.
            Throw with the reveal's catch probabilities. (Waiting gave 26 NORESP in 3 min.) */
         log('APPLEOPEN #' + e.pid + ' enc=' + enc + ' no reply in 1.5 s -- throwing');
-        e.probs = AP.probs[enc] || null; e.st = 'ready'; e.due = now + READY_MS;
+        e.probs = AP.probs[enc] || null; e.st = 'ready'; e.due = now + CFG.readyMs;
       } else if (now - e.tOpen > 8000) {
         if (e.opens < 2) { e.st = 'new'; PEND.push(enc); } else { log('NORESP ' + e.cls + ' #' + e.pid + ' (retry in 20 s)'); finish(enc, 'noresp'); }
       }
@@ -561,6 +662,7 @@ function catchTick(now) {
     } else if (!holding && (e.st === 'ready' || e.st === 'fed') && now >= e.due) {
       if (appleInflight || (e.apple && inflight > 0)) continue;   /* see APPLE EXCLUSIVITY */
       o = LIVE[enc]; if (!o) continue;   /* not in this tick's list: try again next tick (walk() retires it after 6s) */
+      if (CFG.nearWait && !e.tT && closingIn(e, now)) continue;   /* NEAR-WAIT (an A/B arm): see closingIn */
       if (e.st === 'ready') { var b = berryFor(e); if (b) { feed(e, o, b); e.st = 'fed'; e.due = now + BERRY_MS; continue; } }
       throwAt(e, enc, o, now);
     }
@@ -629,7 +731,7 @@ function onCatchReq(s) {   /* CatchPokemonProto: encounterId @0x10 (ours and man
 function onCatchOut(s) {
   var st = s.add(OFF.cStatus).readS32(), cid = s.add(OFF.cCaptured).readU64().toString(), now = Date.now();
   var aw = OFF.cAward >= 0 ? s.add(OFF.cAward).readPointer() : NULL;
-  var r = {st: st, dust: 0, candy: 0, xp: 0};
+  var r = {st: st, dust: 0, candy: 0, xp: 0, t: now};
   if (!aw.isNull()) {
     if (OFF.aDust >= 0) r.dust = repInts(aw.add(OFF.aDust).readPointer());
     if (OFF.aCandy >= 0) r.candy = repInts(aw.add(OFF.aCandy).readPointer());
@@ -653,10 +755,11 @@ function onSpinOut(s) {
   var sig = res + '|' + s.add(0x70).readPointer();
   if (res !== 1 && !(sig === LIM.sig && now - LIM.sigT < 400)) {   /* a refusal: count it once (two parse passes) */
     LIM.sig = sig; LIM.sigT = now; LIM.lastSpin = now; LIM.lastRes = res;
-    if (res === 2) { if (!LIM.oorStreak) LIM.oorSince = now; LIM.oorStreak++; if (LIM.oorStreak === 2) log('LIMIT spins BLOCKED: the server answered OutOfRange twice in a row at stops in range'); }
+    if (res === 2) { if (!LIM.oorStreak) LIM.oorSince = now; LIM.oorStreak++; if (LIM.oorStreak === 6) log('LIMIT spins BLOCKED: the server answered OutOfRange 6 times in a row at stops in range'); }
     if (res === 5) { LIM.daily = now; log('LIMIT spins: daily limit reached (ExceededDailyLimit)'); }
   }
   var items = lootTotal(s.add(0x50).readPointer()) + lootTotal(s.add(0x58).readPointer());
+  if (res === 2 && SPIN.lastFid && SPUN[SPIN.lastFid]) SPUN[SPIN.lastFid] = now - 327000;   /* refused: try that stop again in 3 s */
   if (res === 1 && xp <= 0 && items <= 0) return;   /* empty second pass */
   if (res === 1) { SPIN.ok++; if (xp > 0 && xp < 100000) SPIN.xp += xp; SPIN.items += items;
     if (LIM.oorStreak >= 2) log('LIMIT spins OK again after ' + LIM.oorStreak + ' refusals'); LIM.oorStreak = 0; LIM.lastOk = now; LIM.lastSpin = now; LIM.lastRes = 1; }
@@ -699,7 +802,7 @@ function spinOne(ps) {
   return done('spun');
 }
 function spinTick(now) {
-  if (spinBlocked(now) && now - LIM.lastSpin < 600000) { SPIN.next = now + 60000; return; }   /* blocked: probe once per 10 min */
+  if (spinBlocked(now) && now - LIM.lastSpin < 30000) { SPIN.next = LIM.lastSpin + 30000; return; }   /* blocked: probe every 30 s */
   var coll = call(M.activeStops, S.msvc, []);
   var total = 0, inr = 0, cool = 0, did = false;
   each(coll, function (ps) {
@@ -709,7 +812,7 @@ function spinTick(now) {
     if (u8(call(method(ps, 'get_IsCoolingDown', 0), ps, [])) === 1) { cool++; return; }
     if (did || u8(call(method(ps, 'get_IsClosed', 0), ps, [])) === 1) return;
     var fid = fortId(ps); if (fid && SPUN[fid] && now - SPUN[fid] < 330000) return;
-    var r = spinOne(ps); if (fid) SPUN[fid] = now; did = true;
+    var r = spinOne(ps); if (fid) SPUN[fid] = now; SPIN.lastFid = fid; did = true;
     if (r !== 'spun') bump(SPIN.fail, r);
   });
   SPIN.total = total; SPIN.inRange = inr; SPIN.cooling = cool;
@@ -973,7 +1076,7 @@ function pump(self) {
 
 function applyCfg(c) {
   if (!c) return;
-  ['catch', 'spin', 'tap', 'perfect', 'apples', 'openMs', 'maxOpen', 'thresh', 'ballOrder', 'pinap', 'pinapFloor', 'razz', 'razzFloor', 'razzThresh'].forEach(function (k) { if (c[k] !== undefined) CFG[k] = c[k]; });
+  ['catch', 'spin', 'tap', 'perfect', 'apples', 'openMs', 'maxOpen', 'nearWait', 'nearM', 'readyMs', 'thresh', 'ballOrder', 'pinap', 'pinapFloor', 'razz', 'razzFloor', 'razzThresh', 'order'].forEach(function (k) { if (c[k] !== undefined) CFG[k] = c[k]; });
   if (c.floors) CFG.floors = {1: c.floors['1'], 2: c.floors['2'], 3: c.floors['3']};
   if (c.legendary) { CFG.legendary = {}; c.legendary.forEach(function (d) { CFG.legendary[d] = 1; }); }
   if (c.priority) { CFG.priority = {}; c.priority.forEach(function (d) { CFG.priority[d] = 1; }); }
@@ -1091,6 +1194,19 @@ rpc.exports = {
           Interceptor.attach(gc, {onEnter: function (a) { this.s = a[0]; }, onLeave: function () { try { if (this.s && !this.s.isNull()) onGetPlayerOut(this.s); } catch (e) { ST.errs++; } }}); st.limits++; }
       }
     } catch (e) { st.limits = 'err ' + String(e).slice(0, 80); }
+    try {   /* the yield check: the server's own catch total (PlayerStatsProto, in every inventory update) */
+      var pstk = clsByName('Holoholo.Rpc', 'PlayerStatsProto');
+      if (!pstk.isNull()) {
+        OFF.nCap = fieldOff(pstk, 'NumPokemonCaptured'); OFF.nEnc = fieldOff(pstk, 'NumPokemonEncountered');
+        /* the parse path is an obfuscated 1-arg method (MergeFrom alone never fired, 02:50): every 1-arg method but these,
+           the same as GetPlayerOutProto above and tools/cutoff_hunt.py */
+        if (OFF.nCap < 0) st.srv = 'no NumPokemonCaptured';
+        else { st.srv = 0; var si2 = Memory.alloc(PS); si2.writePointer(NULL); var sm;
+          while ((sm = h.methods(pstk, si2)) && !sm.isNull()) { if (h.paramCount(sm) !== 1) continue; var sn = cstr(h.methodName(sm));
+            if (['WriteTo', 'Equals', '.ctor', 'CalculateSize'].indexOf(sn) >= 0) continue; var sc2 = sm.readPointer(); if (sc2.isNull()) continue;
+            Interceptor.attach(sc2, {onEnter: function (a) { this.s = a[0]; }, onLeave: function () { try { if (this.s && !this.s.isNull()) onPlayerStats(this.s); } catch (e) { ST.errs++; } }}); st.srv++; } }
+      }
+    } catch (e) { st.srv = 'err ' + String(e).slice(0, 80); }
     return st;
   },
   cfg: function (c) { applyCfg(c); },
@@ -1098,10 +1214,10 @@ rpc.exports = {
     return {frame: GATE ? GATE.readS64().toNumber() : 0, ready: S.ready, stale: S.stale, st: ST, census: CENSUS, hidden: HIDLAST, hidNear: HIDNEARLAST, items: ITEMC, vis: VIS, tracked: NE, pend: PEND.length,
             hold: Math.max(0, Math.round((HOLD - Date.now()) / 1000)), holdWhy: HOLDWHY, lastCatchMs: LASTCATCHMS,
             spin: {total: SPIN.total, inRange: SPIN.inRange, cooling: SPIN.cooling, spins: SPIN.spins, ok: SPIN.ok, xp: SPIN.xp, items: SPIN.items, fail: SPIN.fail},
-            limit: limitState(Date.now()),
+            limit: limitState(Date.now()), srv: SRV, order: CFG.order, openMs: CFG.openMs,
             apples: AP.inst ? {on: !!CFG.apples, st: AP.st, cand: Object.keys(AP.cand).length, ids: APPLE_IDS, range: AP.maxDist, okD: AP.okD, failD: AP.failD < 9999 ? AP.failD : null} : null};
   },
-  drain: function () { var o = OUT; OUT = {log: [], done: [], tap: [], revealed: []}; return o; }
+  drain: function () { var o = OUT; OUT = {log: [], done: [], tap: [], revealed: [], led: [], pos: []}; return o; }
 };
 """
 
@@ -1236,7 +1352,22 @@ def cfg_now():
     for k in FLAGS:
         c[k] = flag(k)
     c["apples"] = True   # Benny 2026-10-29: "i want anything to always be picked up" -- map items no longer wait on a switch
+    if c.get("abBlockS") and c.get("abKey"):
+        c[c["abKey"]] = c["abArms"][int(time.time() // c["abBlockS"]) % 2]
     return c
+
+
+def ledger_write(recs, pos, pid):
+    """Append the drained spawn records and avatar fixes to spawn_ledger.jsonl. Best-effort: never stops the catcher."""
+    try:
+        with open(LEDGER, "a", encoding="utf-8") as fh:
+            for r in recs:
+                r["k"], r["pid"] = "spawn", pid
+                fh.write(json.dumps(r, separators=(",", ":")) + "\n")
+            for t, lat, lng in pos:
+                fh.write(json.dumps({"k": "pos", "t": t, "lat": lat, "lng": lng}, separators=(",", ":")) + "\n")
+    except (OSError, TypeError, ValueError):
+        pass
 
 
 SESS = {"s": None}
@@ -1368,10 +1499,15 @@ def report(w, stt, t0, base):
     # per-minute line for minute-by-minute rates
     minute = time.strftime("%H:%M")
     if base.get("minute") != minute:
+        srv = (stt.get("srv") or {}).get("caught", -1)
+        sen = (stt.get("srv") or {}).get("enc", -1)   # the server's NumPokemonEncountered: encountered - caught = its flees
         if base.get("minute"):
+            sd = srv - base["ms"] if srv >= 0 and base.get("ms", -1) >= 0 else "?"
+            se = sen - base["mse"] if sen >= 0 and base.get("mse", -1) >= 0 else "?"
             w(f"MINUTE {base['minute']} caught={c - base.get('mc', 0)} fled={st['fled'] - base.get('mf', 0)} "
-              f"dust=+{st['dust'] - base.get('md', 0)}")
-        base.update(minute=minute, mc=c, mf=st["fled"], md=st["dust"])
+              f"dust=+{st['dust'] - base.get('md', 0)} | server caught=+{sd} encountered=+{se} opens=+{st['opened'] - base.get('mo', 0)} "
+              f"throws=+{st['thrown'] - base.get('mt', 0)} order={stt.get('order')} openMs={stt.get('openMs')}")
+        base.update(minute=minute, mc=c, mf=st["fled"], md=st["dust"], mo=st["opened"], mt=st["thrown"], ms=srv, mse=sen)
     fl = CFG["floors"]
     balls = [it.get(k, -1) for k in ("1", "2", "3")]
     if all(0 <= n <= fl[k] for n, k in zip(balls, ("1", "2", "3"))):   # every ball type at its floor: no throw is allowed
@@ -1439,16 +1575,24 @@ def session_loop(w, done_ids, base):
         w(f"award fields: catchOut=[{st.get('catchOutFields')}] award=[{st.get('awardFields')}]")
     t0 = time.time()
     cfg = cfg_now()
+    if cfg.get("abKey"):   # the arm in force from the start (a restart mid-block logs no flip)
+        w(f"A/B {cfg['abKey']}={cfg[cfg['abKey']]} (block of {cfg.get('abBlockS')} s, at start)")
     last_rep, last_frame, idle = 0, None, 0
     while dropped["why"] is None:
         c = cfg_now()
         if c != cfg:
+            ab = c.get("abKey")
+            if ab and c.get(ab) != cfg.get(ab):
+                w(f"A/B {ab}={c[ab]} (block of {c.get('abBlockS')} s)")
+            if any(c[k] != cfg[k] for k in FLAGS):
+                w("toggles: " + " ".join(f"{k}={'on' if c[k] else 'off'}" for k in FLAGS))
             cfg = c
             sc.exports_sync.cfg(c)
-            w("toggles: " + " ".join(f"{k}={'on' if c[k] else 'off'}" for k in FLAGS))
         d = sc.exports_sync.drain()
         for line in d["log"]:
             w(line)
+        if d.get("led") or d.get("pos"):
+            ledger_write(d.get("led") or [], d.get("pos") or [], pid)
         done_ids.extend(d["done"])
         if d.get("revealed"):
             revealed_add(d["revealed"])
