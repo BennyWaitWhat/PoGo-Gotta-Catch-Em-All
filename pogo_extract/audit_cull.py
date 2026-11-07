@@ -815,6 +815,15 @@ _cnt_k = collections.Counter(_smk(r) for r in _crows if r['pokemon_id'])
 _pp_k = collections.Counter(_smk(rows[u]) for u in _ps_v if rows[u]['pokemon_id'])
 sm = [p for p, n in _pp_k.items() if _cnt_k[p] - n < min(_smin, _cnt_k[p])]
 print('  %-18s %-5d %s   (at least %d of every species + form)' % ('species under min', len(sm), chk('species under minimum', len(sm)), _smin))
+# PATTERN MINIMUM (user 2026-11-07 "2 of each"): every Scatterbug pattern (its whole line) and every Unown letter keeps at
+# least caps.pattern_min copies, or all it has -- grouped by pattern_pools.min_group, like the engine
+import pattern_pools as _ppm
+_pmin = keep_config.cap('pattern_min')
+_pmk = lambda r: _ppm.min_group(r['pokemon_id'], r['species_name'], r.get('form') or 0)
+_cnt_g = collections.Counter(_pmk(r) for r in _crows if _pmk(r))
+_pp_g = collections.Counter(_pmk(rows[u]) for u in _ps_v if _pmk(rows[u]))
+pm = [g for g, n in _pp_g.items() if _cnt_g[g] - n < min(_pmin, _cnt_g[g])]
+print('  %-18s %-5d %s   (at least %d of every Scatterbug pattern / Unown letter)' % ('patterns under min', len(pm), chk('pattern under minimum', len(pm)), _pmin))
 fc = collections.Counter((r['pokemon_id'], cf(r)) for r in _crows)
 fp2 = collections.Counter((rows[u]['pokemon_id'], cf(rows[u])) for u in _ps_v)
 fw = [k for k, n in fp2.items() if fc[k] == n]

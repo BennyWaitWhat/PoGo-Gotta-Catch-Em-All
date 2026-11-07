@@ -688,6 +688,26 @@ def _species_min_uids(bag, pile):
     return out
 
 
+_PATTERN_MIN_KEPT = set()  # pattern minimum (user 2026-11-07 "2 of each"), populated in main() beside _SPECIES_MIN_KEPT
+
+
+def _pattern_min_uids(bag, pile):
+    """The pile copies keep_policy's pattern minimum must keep: per Scatterbug pattern (its whole line) and per Unown letter
+    (pattern_pools.min_group), the best by _ivkey until keep_config caps.pattern_min copies stay out of the pile."""
+    import pattern_pools as _pp
+    n = keep_config.cap('pattern_min')
+    by = defaultdict(list)
+    for r in bag:
+        g = _pp.min_group(r['pokemon_id'], r['species_name'], r['form'] or 0)
+        if g:
+            by[g].append(r)
+    out = set()
+    for lst in by.values():
+        short = n - sum(1 for r in lst if r['uid_hex'] not in pile)
+        out |= {r['uid_hex'] for r in sorted((r for r in lst if r['uid_hex'] in pile), key=_ivkey)[:max(0, short)]}
+    return out
+
+
 def _loc_card_kept_uids(bag, cf_norm):
     """Independently re-derive the location-card keepers: top-N per (pid, cf, card enum), trophies
     exempt from consuming a slot, unknown-enum holders never capped. Mirrors keep_policy rule 13b."""
@@ -874,6 +894,8 @@ def _keeper_reasons(r, BS, legacy_set, gm_ok, dex_counts, event_txt, legacy_txt,
         why.append('pvp_combup')
     if r['uid_hex'] in _SPECIES_MIN_KEPT:          # one of the last caps.species_min copies of its species (2026-11-03)
         why.append('species_min')
+    if r['uid_hex'] in _PATTERN_MIN_KEPT:          # one of the last caps.pattern_min of its pattern / letter (2026-11-07)
+        why.append('pattern_min')
     if pvp_best is not None:                       # Best GL / UL / ML copy of its PvP identity (rule 15d, usable-only GL/UL)
         why.extend('pvp_best_%s' % lg.lower() for lg in sorted(pvp_best.get(r['uid_hex'], ())))
 
@@ -1214,10 +1236,13 @@ def main():
         _f = rr['form'] or 0
         return _base_form.get(rr['pokemon_id'], _f) if _f == 0 else _f
     # Use the same canonical form pool as the engine and the other independent cap checks.
-    global _LOC_CARD_KEPT, _COMBUP_KEPT, _SPECIES_MIN_KEPT
+    global _LOC_CARD_KEPT, _COMBUP_KEPT, _SPECIES_MIN_KEPT, _PATTERN_MIN_KEPT
     _SPECIES_MIN_KEPT = _species_min_uids(bag, set(transfer_uids))
     print('  species minimum: %d pile copies would leave a species under %d' % (len(_SPECIES_MIN_KEPT),
                                                                             keep_config.cap('species_min')))
+    _PATTERN_MIN_KEPT = _pattern_min_uids(bag, set(transfer_uids))
+    print('  pattern minimum: %d pile copies would leave a Scatterbug pattern / Unown letter under %d'
+          % (len(_PATTERN_MIN_KEPT), keep_config.cap('pattern_min')))
     _LOC_CARD_KEPT = _loc_card_kept_uids(bag, _cf_norm)
     _cu = __import__('pvp_combup').pick_default(bag)
     _COMBUP_KEPT = set(_cu['gl']) | set(_cu['ul'])
