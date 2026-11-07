@@ -338,11 +338,14 @@ function pickLive(cands) {
 
 /* ---------------- LIMITS: is the account being refused? (user 2026-09-29: "detect in game if I'm rate limited, I can't spin") ----
    Spins: the server's own FortSearch result. OutOfRange (2) at a stop you are standing at is the refusal ("Try again
-   later"); 2+ in a row with no success = BLOCKED. ExceededDailyLimit (5) = the daily cap. Catches: fled on sure throws
+   later"); 6 in a row with no success = BLOCKED, probed every 30 s. (It was 2, probed every 10 min: on a moving route
+   the server's position trails the client's, so a stop at the edge of range is refused once or twice before the server
+   catches up -- 2026-11-07 03:46 and 04:02 that blacked out auto-spin with ready stops in range. A refused stop is
+   now retried 3 s later instead of being skipped for 330 s.) ExceededDailyLimit (5) = the daily cap. Catches: fled on sure throws
    (FLEESTREAK). Account: GetPlayerOutProto Banned / Warn / WarnExpireMs / WasSuspended, read from every GetPlayer reply;
    the game is asked for one at READY and hourly (2026-09-29 20:39 the server said banned 0, warn 0, suspended 0). */
 var LIM = {oorStreak: 0, oorSince: 0, lastOk: 0, lastSpin: 0, lastRes: -1, daily: 0, acct: null, acctT: 0, nextAcct: 0, sig: '', sigT: 0};
-function spinBlocked(now) { return LIM.oorStreak >= 2; }
+function spinBlocked(now) { return LIM.oorStreak >= 6; }
 function limitState(now) {
   var spin = LIM.lastSpin === 0 ? 'unknown' : (LIM.daily && now - LIM.daily < 86400000 && LIM.lastRes === 5) ? 'daily-limit'
            : spinBlocked(now) ? 'BLOCKED' : 'ok';
@@ -752,10 +755,11 @@ function onSpinOut(s) {
   var sig = res + '|' + s.add(0x70).readPointer();
   if (res !== 1 && !(sig === LIM.sig && now - LIM.sigT < 400)) {   /* a refusal: count it once (two parse passes) */
     LIM.sig = sig; LIM.sigT = now; LIM.lastSpin = now; LIM.lastRes = res;
-    if (res === 2) { if (!LIM.oorStreak) LIM.oorSince = now; LIM.oorStreak++; if (LIM.oorStreak === 2) log('LIMIT spins BLOCKED: the server answered OutOfRange twice in a row at stops in range'); }
+    if (res === 2) { if (!LIM.oorStreak) LIM.oorSince = now; LIM.oorStreak++; if (LIM.oorStreak === 6) log('LIMIT spins BLOCKED: the server answered OutOfRange 6 times in a row at stops in range'); }
     if (res === 5) { LIM.daily = now; log('LIMIT spins: daily limit reached (ExceededDailyLimit)'); }
   }
   var items = lootTotal(s.add(0x50).readPointer()) + lootTotal(s.add(0x58).readPointer());
+  if (res === 2 && SPIN.lastFid && SPUN[SPIN.lastFid]) SPUN[SPIN.lastFid] = now - 327000;   /* refused: try that stop again in 3 s */
   if (res === 1 && xp <= 0 && items <= 0) return;   /* empty second pass */
   if (res === 1) { SPIN.ok++; if (xp > 0 && xp < 100000) SPIN.xp += xp; SPIN.items += items;
     if (LIM.oorStreak >= 2) log('LIMIT spins OK again after ' + LIM.oorStreak + ' refusals'); LIM.oorStreak = 0; LIM.lastOk = now; LIM.lastSpin = now; LIM.lastRes = 1; }
@@ -798,7 +802,7 @@ function spinOne(ps) {
   return done('spun');
 }
 function spinTick(now) {
-  if (spinBlocked(now) && now - LIM.lastSpin < 600000) { SPIN.next = now + 60000; return; }   /* blocked: probe once per 10 min */
+  if (spinBlocked(now) && now - LIM.lastSpin < 30000) { SPIN.next = LIM.lastSpin + 30000; return; }   /* blocked: probe every 30 s */
   var coll = call(M.activeStops, S.msvc, []);
   var total = 0, inr = 0, cool = 0, did = false;
   each(coll, function (ps) {
@@ -808,7 +812,7 @@ function spinTick(now) {
     if (u8(call(method(ps, 'get_IsCoolingDown', 0), ps, [])) === 1) { cool++; return; }
     if (did || u8(call(method(ps, 'get_IsClosed', 0), ps, [])) === 1) return;
     var fid = fortId(ps); if (fid && SPUN[fid] && now - SPUN[fid] < 330000) return;
-    var r = spinOne(ps); if (fid) SPUN[fid] = now; did = true;
+    var r = spinOne(ps); if (fid) SPUN[fid] = now; SPIN.lastFid = fid; did = true;
     if (r !== 'spun') bump(SPIN.fail, r);
   });
   SPIN.total = total; SPIN.inRange = inr; SPIN.cooling = cool;

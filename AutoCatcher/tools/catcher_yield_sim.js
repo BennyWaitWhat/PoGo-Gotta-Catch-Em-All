@@ -95,4 +95,24 @@ function withFields(api) {
   api.set('POS', Object.assign(east(70), { t: NOW - 5000 }));
   check('stale avatar fix -> throw', api.call('closingIn', spawn({ d0: 75 }), NOW), false);
 }
+// 5. spins: a refused stop (OutOfRange) is retried 3 s later; BLOCKED only after 6 refusals in a row; a success clears it
+{
+  const api = load();
+  let k = 0;
+  const reply = (res) => { const tag = { isNull: () => true, toString: () => 'r' + (k++) };   // each reply its own object
+    return { add: (n) => ({ readS32: () => (n === 0x10 ? res : 0), readPointer: () => (n === 0x70 ? tag : NUL) }) }; };
+  api.set('SPUN', { f1: NOW - 1000 }); api.set('SPIN.lastFid', 'f1');
+  api.call('onSpinOut', reply(2));
+  check('refused stop: retry in 3 s', NOW - api.get('SPUN').f1, 327000);
+  for (let i = 0; i < 4; i++) api.call('onSpinOut', reply(2));
+  check('5 refusals: not blocked', [api.get('LIM.oorStreak'), api.call('spinBlocked', NOW)], [5, false]);
+  api.call('onSpinOut', reply(2));
+  check('6 refusals: blocked', [api.get('LIM.oorStreak'), api.call('spinBlocked', NOW)], [6, true]);
+  api.set('SPIN.next', 0); api.set('LIM.lastSpin', NOW - 10000);
+  api.call('spinTick', NOW);
+  check('blocked: next probe 30 s', api.get('SPIN.next'), NOW + 20000);
+  const ok = { add: (n) => ({ readS32: () => (n === 0x10 ? 1 : n === 0x30 ? 50 : 0), readPointer: () => NUL }) };
+  api.call('onSpinOut', ok);
+  check('success clears the block', [api.get('LIM.oorStreak'), api.call('spinBlocked', NOW)], [0, false]);
+}
 process.exit(failed ? 1 : 0);
