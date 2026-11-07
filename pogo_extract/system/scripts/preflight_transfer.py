@@ -692,8 +692,8 @@ _PATTERN_MIN_KEPT = set()  # pattern minimum (user 2026-11-07 "2 of each"), popu
 
 
 def _pattern_min_uids(bag, pile):
-    """The pile copies keep_policy's pattern minimum must keep: per Scatterbug pattern (its whole line) and per Unown letter
-    (pattern_pools.min_group), the best by _ivkey until keep_config caps.pattern_min copies stay out of the pile."""
+    """The pile copies keep_policy's pattern minimum must keep: per Scatterbug pattern (its whole line) and per lumped form
+    (Unown letter, Spinda pattern, color, season: pattern_pools.min_group), the best by _ivkey until keep_config caps.pattern_min copies stay out of the pile."""
     import pattern_pools as _pp
     n = keep_config.cap('pattern_min')
     by = defaultdict(list)
@@ -894,7 +894,7 @@ def _keeper_reasons(r, BS, legacy_set, gm_ok, dex_counts, event_txt, legacy_txt,
         why.append('pvp_combup')
     if r['uid_hex'] in _SPECIES_MIN_KEPT:          # one of the last caps.species_min copies of its species (2026-11-03)
         why.append('species_min')
-    if r['uid_hex'] in _PATTERN_MIN_KEPT:          # one of the last caps.pattern_min of its pattern / letter (2026-11-07)
+    if r['uid_hex'] in _PATTERN_MIN_KEPT:          # one of the last caps.pattern_min of its pattern / form (2026-11-07)
         why.append('pattern_min')
     if pvp_best is not None:                       # Best GL / UL / ML copy of its PvP identity (rule 15d, usable-only GL/UL)
         why.extend('pvp_best_%s' % lg.lower() for lg in sorted(pvp_best.get(r['uid_hex'], ())))
@@ -1241,7 +1241,7 @@ def main():
     print('  species minimum: %d pile copies would leave a species under %d' % (len(_SPECIES_MIN_KEPT),
                                                                             keep_config.cap('species_min')))
     _PATTERN_MIN_KEPT = _pattern_min_uids(bag, set(transfer_uids))
-    print('  pattern minimum: %d pile copies would leave a Scatterbug pattern / Unown letter under %d'
+    print('  pattern minimum: %d pile copies would leave a pattern / letter / color / season under %d'
           % (len(_PATTERN_MIN_KEPT), keep_config.cap('pattern_min')))
     _LOC_CARD_KEPT = _loc_card_kept_uids(bag, _cf_norm)
     _cu = __import__('pvp_combup').pick_default(bag)

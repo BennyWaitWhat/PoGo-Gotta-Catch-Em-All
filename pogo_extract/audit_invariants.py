@@ -337,7 +337,7 @@ AXES = {
     'dex_only':         dict(model='keep_all', cap_key=None, per_sp=False, reasons=['dex_only_copy']),
     # every species keeps at least caps.species_min copies: a top-up slice of the best left (user 2026-11-03 "3")
     'species_min':      dict(model='capped', cap_key='species_min', per_sp=False, reasons=['species_min']),
-    # every Scatterbug pattern / Unown letter keeps at least caps.pattern_min copies: the same top-up (user 2026-11-07 "2 of each")
+    # every Scatterbug pattern / lumped form keeps at least caps.pattern_min copies: the same top-up (user 2026-11-07 "2 of each")
     'pattern_min':      dict(model='capped', cap_key='pattern_min', per_sp=False, reasons=['pattern_min']),
     'pvp_iv':           dict(model='keep_all', cap_key=None, per_sp=False, reasons=['gl_iv', 'ul_iv']),
     'pvp_spread':       dict(model='keep_all', cap_key=None, per_sp=False, reasons=['pvp_spread']),
@@ -379,7 +379,7 @@ MARK_MODEL = {
     'rank_unknown': 'uncapped', 'data_incomplete': 'uncapped', 'evolve_<n>': 'uncapped',
     'fused': 'uncapped',          # every fusion component, never a slice (2026-09-26)
     'species_min': 'capped',      # the [:short] top-up slice per species (2026-11-03)
-    'pattern_min': 'capped',      # the [:short] top-up slice per pattern / letter (2026-11-07)
+    'pattern_min': 'capped',      # the [:short] top-up slice per pattern / form (2026-11-07)
 }
 
 ENGINE = 'system/scripts/keep_policy.py'
