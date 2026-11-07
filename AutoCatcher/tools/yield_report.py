@@ -297,7 +297,7 @@ def main():
             flips.append((hm_to_ms(m[1], ref), m[2] or "order", m[3] or m[4]))
     by_parity = {(k, int(t // 1000 // BLOCK_S) % 2): v for t, k, v in flips}
 
-    field = {"order": "ord", "openMs": "om", "nearWait": "nw"}   # the record field that carries each experiment's setting
+    field = {"order": "ord", "openMs": "om", "nearWait": "nw", "readyMs": "rm"}   # the record field that carries each experiment's setting
 
     def arm_of(rec):
         """The experiment of the last flip line before the record's first sight (a restart logs an "at start" line;
@@ -341,6 +341,11 @@ def main():
             a["reply"].append(first["tR"] - first["tO"])
         if first.get("rs") not in (None, 1):
             a["refused"].append(first["rs"])
+        thrown_rec = next((x for x in enc[e] if x.get("tT")), None)
+        if thrown_rec and thrown_rec.get("d0") is not None and thrown_rec["d0"] > 55:
+            a["far"].append(r["r"] == "fled")   # first seen beyond 55 m: what near-wait is for
+        if any((x.get("nwt") or 0) > 0 for x in enc[e]):
+            a["held"].append(r["r"] == "fled")
     print("\n5. A/B (5-minute blocks by first sight)  block  arm              spawns caught  yield  fled  lost-waiting  had-despawn-time")
     tot = defaultdict(Counter)
     for (b, arm), k in sorted(blocks.items()):
@@ -353,6 +358,9 @@ def main():
         print(f"         open gap while others wait p50 {fmt_ms(pct(a['gap'], 50))} (n{len(a['gap'])}) | queue wait p50 {fmt_ms(pct(a['wait'], 50))}"
               f" p90 {fmt_ms(pct(a['wait'], 90))} | arriving behind 3+: p50 {fmt_ms(pct(a['wave_wait'], 50))} p90 {fmt_ms(pct(a['wave_wait'], 90))}"
               f" (n{len(a['wave_wait'])}) | encounter reply p50 {fmt_ms(pct(a['reply'], 50))} p90 {fmt_ms(pct(a['reply'], 90))} | refused {len(a['refused'])}")
+        far, held = a["far"], a["held"]
+        print(f"         first seen beyond 55 m: {len(far)}, fled {sum(far)} ({100 * sum(far) / max(1, len(far)):.1f}%)"
+              f" | first throw held while closing in: {len(held)}, fled {sum(held)}")
 
     # 6. the catcher's count vs the server's
     # A minute with a catcher (re)start counts only the new run's catches: left out. The MINUTE lines are cut at the 10 s
@@ -379,5 +387,33 @@ def main():
               f"{s_enc - srv_e} (catcher log fled {fled_e})")
 
 
+def html_page(text, title):
+    """The printed report as one self-contained page (light/dark), for sharing."""
+    esc = text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+    return f"""<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{title}</title><style>
+:root{{--bg:#fbfbf9;--fg:#1d1d1b;--mut:#6b6b66;--line:#e2e1dc}}
+@media (prefers-color-scheme:dark){{:root{{--bg:#161615;--fg:#ecebe6;--mut:#a3a29c;--line:#2e2e2b}}}}
+body{{margin:0;background:var(--bg);color:var(--fg);font:14px/1.5 system-ui,sans-serif}}
+main{{max-width:1100px;margin:0 auto;padding:24px 16px}}h1{{font-size:20px;margin:0 0 4px}}p{{color:var(--mut);margin:0 0 16px}}
+pre{{font:12.5px/1.45 ui-monospace,Consolas,monospace;white-space:pre;overflow-x:auto;border:1px solid var(--line);border-radius:8px;padding:14px}}
+</style></head><body><main><h1>{title}</h1><p>Generated {time.strftime('%Y-%m-%d %H:%M')} by tools/yield_report.py from the phone's spawn_ledger.jsonl + catch_loop.log</p>
+<pre>{esc}</pre></main></body></html>"""
+
+
 if __name__ == "__main__":
-    main()
+    out = next((a.split("=", 1)[1] for a in sys.argv[1:] if a.startswith("html=")), None)
+    if out:   # html=<path>: print as usual and also write the page
+        import io
+        sys.argv = [a for a in sys.argv if not a.startswith("html=")]
+        buf, real = io.StringIO(), sys.stdout
+        sys.stdout = buf
+        try:
+            main()
+        finally:
+            sys.stdout = real
+        print(buf.getvalue(), end="")
+        open(out, "w", encoding="utf-8").write(html_page(buf.getvalue(), "Catcher yield"))
+        print(f"\nwrote {out}")
+    else:
+        main()

@@ -84,8 +84,13 @@ CFG = {
     # Done 03:01-03:20: "openMs" 300 vs 150 = 84.9% vs 88.9% yield (the gap is flees, which open spacing cannot cause);
     # the real spacing only went 553 -> 460 ms (the pump enters JS every 6th frame: one open per tick), queue wait p90
     # 2.4 -> 1.7 s, server replies unchanged, 0 refused, no spawn lost waiting in either arm. Not proven: 300 kept.
-    "abBlockS": 300, "abKey": "nearWait", "abArms": [0, 3000], "order": "fifo",
+    # Done 03:20-03:36: "nearWait" 0 vs 3000 = 89.0% vs 86.6% yield (429 / 216 spawns); spawns first seen beyond 55 m
+    # fled 7.9% vs 16.9%; 23 held throws, 4 fled. No help: off (0) kept.
+    # Running from 03:36: "readyMs" 150 vs 1000 -- first throws < 450 ms after the encounter reply fled 12.0% vs 7.7%
+    # for slower ones (1,029 throws 02:49-03:31, Snorlax left out, z 2.1).
+    "abBlockS": 300, "abKey": "readyMs", "abArms": [150, 1000], "order": "fifo",
     "nearWait": 0, "nearM": 55,   # NEAR-WAIT (JS closingIn): hold a first throw while still > nearM m away and closing in, <= nearWait ms
+    "readyMs": 150,               # encounter reply -> first throw (was the JS constant READY_MS)
 }
 
 JS = r"""
@@ -224,7 +229,7 @@ function encOf(o) { var r = call(method(o, 'get_EncounterId', 0), o, []); return
 
 /* ---------------- state ---------------- */
 var K = {}, M = {}, OFF = {}, PBT_VT = false;
-var CFG = {catch: false, spin: false, tap: false, perfect: false, apples: false, appleSpecies: {}, openMs: 667, maxOpen: 6, nearWait: 0, nearM: 55, thresh: 0.28,
+var CFG = {catch: false, spin: false, tap: false, perfect: false, apples: false, appleSpecies: {}, openMs: 667, maxOpen: 6, nearWait: 0, nearM: 55, readyMs: 150, thresh: 0.28,
            ballOrder: [2, 1, 3], floors: {1: 5, 2: 5, 3: 5}, pinap: true, pinapFloor: 20, razz: true, razzFloor: 5, razzThresh: 0.45,
            legendary: {}, priority: {}, order: 'fifo'};
 var S = {ready: false, stale: 'first attach', nextLookup: 0, tries: 0, msvc: NULL, ib: NULL, avatar: NULL, ps: NULL};
@@ -241,7 +246,7 @@ var ST = {caught: 0, fled: 0, esc: 0, miss: 0, err: 0, manual: 0, opened: 0, thr
           fedPinap: 0, fedRazz: 0, holds: 0, skip: {}, errs: 0};
 var SPIN = {next: 0, total: 0, inRange: 0, cooling: 0, spins: 0, ok: 0, xp: 0, items: 0, fail: {}}, SPUN = {}, SPINNER_OFF = -1, SPINM = {};
 var OUT = {log: [], done: [], tap: [], revealed: [], led: [], pos: []};
-var WALK_MS = 400, READY_MS = 150, BERRY_MS = 800, RETHROW_MS = 900;
+var WALK_MS = 400, BERRY_MS = 800, RETHROW_MS = 900;   /* reply -> first throw = CFG.readyMs */
 var WILD = 'WildMapPokemon', DISK = 'TroyDiskMapPlacePokemon', INCENSE = 'IncenseMapPokemon';
 var POLL_IDS = [1, 2, 3, 701, 705];
 function log(s) { OUT.log.push(s); if (OUT.log.length > 200) OUT.log.shift(); }
@@ -437,7 +442,7 @@ function ledgerEnd(e, enc, why, now) {
                 lat: (e.lat !== null && e.lat !== undefined) ? +e.lat.toFixed(6) : null, lng: (e.lng !== null && e.lng !== undefined) ? +e.lng.toFixed(6) : null,
                 exp: e.exp || null, tx: e.tx || null, tth: e.tth, d0: e.d0, dT: e.dT === undefined ? null : e.dT, d1: (me && e.lat !== null) ? Math.round(meters(me.lat, me.lng, e.lat, e.lng)) : null,
                 tO: e.tO || null, tR: e.tR || null, rs: e.rs, tT: e.tT || null, tC: e.tC || null, n: e.att, opens: e.opens,
-                b: e.ball || null, pr: p, ord: CFG.order, om: CFG.openMs, nw: CFG.nearWait, nwt: e.nwait || 0, r: why, t1: now});
+                b: e.ball || null, pr: p, ord: CFG.order, om: CFG.openMs, nw: CFG.nearWait, nwt: e.nwait || 0, rm: CFG.readyMs, r: why, t1: now});
   } catch (x) { ST.errs++; }
 }
 /* DESPAWN-FIRST (an A/B arm, Benny 2026-11-07): open the queue soonest-to-despawn first. Under 1.5 s left (the median
@@ -459,7 +464,9 @@ function despawnFirst(now) {
 }
 function onPlayerStats(s) {   /* any thread: memory reads only. The server's total, from every inventory update */
   var c = s.add(OFF.nCap).readS32(), n = OFF.nEnc >= 0 ? s.add(OFF.nEnc).readS32() : -1;
-  if (c > 0 && c < 100000000 && c >= SRV.caught && (SRV.caught < 0 || c - SRV.caught < 5000)) { SRV.caught = c; SRV.enc = n; SRV.t = Date.now(); }
+  /* the running maximum: the lifetime total only grows. (A "within 5000 of the last value" guard latched onto a wrong
+     first value after Pokemod relaunched the game at 03:42 and then refused the real ~398k total.) */
+  if (c > 0 && c < 100000000 && c >= SRV.caught) { SRV.caught = c; SRV.enc = Math.max(SRV.enc, n); SRV.t = Date.now(); }
 }
 /* CENSUS: per class, from the last walk -- [on map, tracked, no encounter id, hidden flag, skipped type/legendary,
    already handled (caught/fled, or cooling down before a retry)].
@@ -623,7 +630,7 @@ function catchTick(now) {
       if (r) {
         delete RESP[enc]; e.tR = e.tR || r.t; e.rs = r.st;
         if (e.apple) log('APPLEOPEN #' + e.pid + ' enc=' + enc + ' reply status=' + r.st);
-        if (r.st === 1) { e.probs = r.p; e.st = 'ready'; e.due = now + READY_MS; }
+        if (r.st === 1) { e.probs = r.p; e.st = 'ready'; e.due = now + CFG.readyMs; }
         else if (notInRange(e, r.st) && e.opens < 3) { e.st = 'new'; e.retryAt = now + 4000; PEND.push(enc); }
         else if (bagFull(e, r.st)) { HOLD = now + 60000; HOLDWHY = 'Pokemon storage is full'; ST.holds++; log('HOLD 60s: ' + HOLDWHY); e.st = 'new'; e.retryAt = now + 60000; PEND.push(enc); }
         else if (notInRange(e, r.st) || r.st === 0) { log('ENCRETRY ' + e.cls + ' #' + e.pid + ' status=' + r.st + ' (retry in 20 s)'); finish(enc, r.st ? 'notinrange' : 'srverror'); }
@@ -633,7 +640,7 @@ function catchTick(now) {
            sends nothing (traced 2026-09-29: bfni -> SendEncounterRequest, no EncounterProto), so no reply will come.
            Throw with the reveal's catch probabilities. (Waiting gave 26 NORESP in 3 min.) */
         log('APPLEOPEN #' + e.pid + ' enc=' + enc + ' no reply in 1.5 s -- throwing');
-        e.probs = AP.probs[enc] || null; e.st = 'ready'; e.due = now + READY_MS;
+        e.probs = AP.probs[enc] || null; e.st = 'ready'; e.due = now + CFG.readyMs;
       } else if (now - e.tOpen > 8000) {
         if (e.opens < 2) { e.st = 'new'; PEND.push(enc); } else { log('NORESP ' + e.cls + ' #' + e.pid + ' (retry in 20 s)'); finish(enc, 'noresp'); }
       }
@@ -1065,7 +1072,7 @@ function pump(self) {
 
 function applyCfg(c) {
   if (!c) return;
-  ['catch', 'spin', 'tap', 'perfect', 'apples', 'openMs', 'maxOpen', 'nearWait', 'nearM', 'thresh', 'ballOrder', 'pinap', 'pinapFloor', 'razz', 'razzFloor', 'razzThresh', 'order'].forEach(function (k) { if (c[k] !== undefined) CFG[k] = c[k]; });
+  ['catch', 'spin', 'tap', 'perfect', 'apples', 'openMs', 'maxOpen', 'nearWait', 'nearM', 'readyMs', 'thresh', 'ballOrder', 'pinap', 'pinapFloor', 'razz', 'razzFloor', 'razzThresh', 'order'].forEach(function (k) { if (c[k] !== undefined) CFG[k] = c[k]; });
   if (c.floors) CFG.floors = {1: c.floors['1'], 2: c.floors['2'], 3: c.floors['3']};
   if (c.legendary) { CFG.legendary = {}; c.legendary.forEach(function (d) { CFG.legendary[d] = 1; }); }
   if (c.priority) { CFG.priority = {}; c.priority.forEach(function (d) { CFG.priority[d] = 1; }); }
