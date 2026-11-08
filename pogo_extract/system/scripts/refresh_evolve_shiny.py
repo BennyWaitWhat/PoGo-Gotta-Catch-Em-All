@@ -23,7 +23,7 @@ from keep_policy import build_evo_graph, ITEM_GATED_TARGETS as SPECIAL   # ONE i
 from keep_policy import pvp_later_stages                # the later stages a specimen can become (Best GL/UL, 2026-09-23)
 import keep_config
 import evolvable_forms                                  # a costume form the game master cannot evolve is never tagged (Psyduck Swim 2025, 2026-09-16)
-from pvp_iv_rule import pvid, usable_best, GL_CAP, UL_CAP
+from pvp_iv_rule import pvid, usable_best, GL_CAP, UL_CAP, maxcp, READY_RANK, VIABILITY_MARGIN
 import costume_names as cn
 # pogo_il2cpp / tag_ops / reconcile_tags are imported inside main(): compute_target() must stay a light, device-free
 # import -- keep_policy calls it, including inside sandboxed engine runs whose stdout is redirected (2026-09-17).
@@ -76,8 +76,14 @@ def compute_target(why=None, spent=None, detail=None, gated=None, items_spent=No
 
     def _best_at_own_stage(u, rs, own):
         """A Best GL / Best UL copy (keep_policy's _own_pvp): never advised to evolve. Since 2026-10-29 rule 15d ranks
-        every Best as itself, so every one is an own-stage asset (a later stage is reached through Evolve for GL / UL)."""
-        return 'pvp_best_gl' in rs or 'pvp_best_ul' in rs
+        every Best as itself, so every one is an own-stage asset (a later stage is reached through Evolve for GL / UL).
+        ALSO a copy ranked top-READY_RANK at its OWN stage in a league that stage can reach (2026-11-08): the same test as
+        keep_policy's _own_pvp and audit_labels -- without it a GL #2 shiny Ivysaur was advised to evolve and the gate stopped."""
+        fr = _full.get(u)
+        own_rank = fr is not None and any(
+            fr[st] == own and fr[rk] is not None and fr[rk] <= READY_RANK and own in _BSx and maxcp(own, _BSx) > cap + VIABILITY_MARGIN
+            for st, rk, cap in (('gl_stage', 'gl_rank', GL_CAP), ('ul_stage', 'ul_rank', UL_CAP)))
+        return own_rank or 'pvp_best_gl' in rs or 'pvp_best_ul' in rs
 
     # can_evolve_estimated is species-level -- it doesn't know a *costume* variant is Noevolve.
     # A costume whose raw enum name carries 'Noevolve' has its evolve button greyed out in-game
