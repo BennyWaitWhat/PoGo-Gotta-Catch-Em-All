@@ -43,16 +43,14 @@ def _forget_rt_stamp(why):
 
 
 def _hundo_buckets(pg, sess, bag, svc):
-    """The four hundo power-up buckets (Benny 2026-11-08: "these tag groups are ongoing task buckets"), kept equal to hb =
-    game_opportunities.hundo_buckets() of THIS walk: a hundo with no room left under its cap leaves its bucket, a new one joins.
+    """The four hundo power-up buckets (Benny 2026-11-08: "these tag groups are ongoing task buckets"), kept equal to
+    game_opportunities.hundo_buckets(the tags the phone holds) on THIS walk: a hundo with no room left under its cap leaves its
+    bucket, a new one joins.
     Plain labels, never the pile: every add AND removal in one SetPokemonTags per batch, then the four tags are read back.
     A name two tags carry, or a tag whose members could not be read, is left alone. -> rc (0 = the phone holds the plan)."""
     import sqlite3, game_opportunities as go, reconcile_tags, tag_ops
     nrm = lambda u: format(int(u, 16), 'x')
-    hb = go.hundo_buckets()
-    if hb[1]:
-        print('! %d hundo(s) whose CP does not match their walked level are left out of the buckets' % hb[1])
-    want = {n: {nrm(u) for u in us} for n, us in hb[0].items()}
+    names = [n for n, _ in go.HUNDO_TAGS.values()]
     short = lambda n: n[len('Hundo '):]
 
     def read():
@@ -63,7 +61,7 @@ def _hundo_buckets(pg, sess, bag, svc):
             en.unload()
         out = {}
         for t in tl:
-            if t.get('name') in want:
+            if t.get('name') in names:
                 out.setdefault(t['name'], []).append(
                     (t['tagProto'], {format(int(d), 'x') for d in (t.get('memberUids') or []) if d}, t.get('unreadable')))
         return out
@@ -74,6 +72,11 @@ def _hundo_buckets(pg, sess, bag, svc):
             print('! %s: %s -- left as it is' % (n, '%d tags carry this name (delete the extra one by hand)' % len(v)
                                                  if len(v) > 1 else 'its members could not be read (%s)' % v[0][2]))
     live = {n: v[0] for n, v in have.items() if len(v) == 1 and not v[0][2]}
+    # the plan reads what the phone holds now: twins at the same CP keep the tag they have (hundo_roles' last tie-break)
+    hb = go.hundo_buckets({u: n for n, v in live.items() for u in v[1]})
+    if hb[1]:
+        print('! %d hundo(s) whose CP does not match their walked level are left out of the buckets' % hb[1])
+    want = {n: {nrm(u) for u in us} for n, us in hb[0].items()}
     todo = [n for n in want if n in live or (n not in have and want[n])]
     cur = {n: live[n][1] if n in live else set() for n in todo}
     add, rem = {n: want[n] - cur[n] for n in todo}, {n: cur[n] - want[n] for n in todo}

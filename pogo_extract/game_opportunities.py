@@ -454,23 +454,24 @@ def power_up_plan(items, rows, dust=_READ, candy=_READ, xl=_READ, player_level=_
 HUNDO_TAGS = {'LC': ('Hundo Under 500', 2), 'GL': ('Hundo 501-1500', 3), 'UL': ('Hundo 1501-2500', 4), 'ML': ('Hundo Max Out', 5)}
 
 
-def hundo_roles(copies, cp_at, top, price=None):
+def hundo_roles(copies, cp_at, top, price=None, held=None):
     """One final-stage species' 15/15/15s -> {uid: role} for the copies to power up next. copies: [(uid, cp, level index, ...)] (the
     rest of a copy goes to price); cp_at(i): a hundo's CP at level index i; top: the last index (L50); price(copy, i, j): what powering
-    it from index i to j costs, a tuple compared in order (default: the number of steps).
+    it from index i to j costs, a tuple compared in order (default: the number of steps); held: {uid: role} the phone's tags now.
       * The leagues FILL FROM THE BOTTOM (Benny 2026-11-09: "fill from the bottom lower cp leagues first"): as many of LC (500), GL
         (1500), UL (2500) and ML as the copies can fill, the lowest league first. ML takes only a copy already past 2500 when the
         species gets there (2026-11-08: "if its over, for ML/max out"); a cap the species never reaches is its max, so that league is ML.
       * The CHEAPEST way (2026-11-09: "put the cheapest ones first ... like the furret"): of the ways to fill those leagues, the one
         that costs the least to power up -- the copies already highest are the ones used, a lucky copy takes the longest climb -- and
-        at an equal price the lower copy takes the lower league (Furret 24 + 343: 24 to Under 500, 343 to GL). A CP tie puts the
-        higher uid first, so the twin that holds a tag today keeps it.
+        at an equal price the lower copy takes the lower league (Furret 24 + 343: 24 to Under 500, 343 to GL).
+      * Twins (the same CP) still tie: then the way that leaves more copies on the tag they hold now wins, so a tag never hops to an
+        identical copy (2026-11-09: two Quagsire 479s swapped their 501-1500 tag); last, the higher uid first.
       * Only a copy with room joins: at least one more power-up still fits under its cap (ML: below L50) -- at its cap it is done."""
     import itertools
     mx = cp_at(top)
     cap = {'LC': min(500, mx), 'GL': min(GL_CAP, mx), 'UL': min(UL_CAP, mx), 'ML': mx}
     roles = [r for r in ('LC', 'GL', 'UL') if cap[r] < mx] + ['ML']
-    price = price or (lambda c, i, j: (j - i,))
+    price, held = price or (lambda c, i, j: (j - i,)), held or {}
 
     def goal(c, r):                                     # the level index this copy climbs to for league r; None = it cannot enter r
         if r == 'ML':
@@ -491,16 +492,20 @@ def hundo_roles(copies, cp_at, top, price=None):
         if len(set(used)) < len(used) or any(c and G[c, r] is None for c, r in zip(pick, roles)):
             continue
         cost = [sum(x) for x in zip(*(P[c, r] for c, r in zip(pick, roles) if c))]
-        key = ([c is not None for c in pick], [-x for x in cost], sum(k * c[1] for k, c in enumerate(pick) if c))
+        key = ([c is not None for c in pick], [-x for x in cost], sum(k * c[1] for k, c in enumerate(pick) if c),
+               sum(1 for c, r in zip(pick, roles) if c and held.get(c[0]) == r))
         if best is None or key > best[0]:
             best = (key, pick)
     return {c[0]: r for c, r in zip(best[1], roles) if c and G[c, r] > c[2]}
 
 
-def hundo_buckets():
+def hundo_buckets(held=None):
     """-> ({tag name: {uid_hex}}, n_unread) for the four buckets, from this walk's bag (pokemon.db) and the pvpoke game master's base
     stats and evolution graph (keep_policy's: a stage that can still evolve is not final). A copy whose computed CP is not the walk's
-    CP (level not read) is left out and counted."""
+    CP (level not read) is left out and counted. held: {uid (hex, any spelling): tag name} -- the buckets on the phone now (the
+    twins' tie-break in hundo_roles)."""
+    role_of = {n: r for r, (n, _) in HUNDO_TAGS.items()}
+    held = {format(int(u, 16), 'x'): role_of[n] for u, n in (held or {}).items() if n in role_of}
     import contextlib, io
     sys.path.insert(0, os.path.join(HERE, 'system', 'scripts'))
     import rank_cache as rc
@@ -533,7 +538,8 @@ def hundo_buckets():
         return (p['xl'], p['dust'], p['candy']) if p else (0, j - i, 0)     # no game master: the number of steps
     out = {name: set() for name, _ in HUNDO_TAGS.values()}
     for s, copies in by.items():
-        for uid, role in hundo_roles(copies, lambda i, s=s: cp_at(s, i), rc.MAX_LEVEL_IDX, price).items():
+        now = {c[0]: held[k] for c in copies for k in [format(int(c[0], 16), 'x')] if k in held}
+        for uid, role in hundo_roles(copies, lambda i, s=s: cp_at(s, i), rc.MAX_LEVEL_IDX, price, now).items():
             out[HUNDO_TAGS[role][0]].add(uid)
     return out, unread
 
@@ -760,6 +766,11 @@ def _selftest():
     luck = lambda c, i, j: ((j - i) * (0.5 if c[3] else 1),)
     ck(hundo_roles([('l', 300, 13, True), ('n', 460, 21, False)], mid, 98, luck) == {'n': 'LC', 'l': 'GL'},
        'hundo: a lucky copy (half the dust) takes the longer climb')
+    tw = [('q1', 500, 23), ('q2', 500, 23)]         # two Quagsire-like twins, both at their Under 500 max (mid: index 23 = CP 500)
+    ck(hundo_roles(tw, mid, 98, held={'q1': 'GL', 'q2': 'LC'}) == {'q1': 'GL'} and hundo_roles(tw, mid, 98, held={'q2': 'GL'}) == {'q2': 'GL'},
+       'hundo twins: the copy the phone tags keeps its tag, whichever uid it has')
+    ck(hundo_roles([('a', 300, 13), ('b', 460, 21)], mid, 98, held={'b': 'LC', 'a': 'GL'}) == {'a': 'LC', 'b': 'GL'},
+       'hundo: what the phone holds never beats lower copy -> lower league (it only breaks a twins tie)')
     ck(hr([('top', 5980, 98), ('lo', 400, 5)]) == {'lo': 'LC'}, 'hundo: a low copy beside a maxed one fills Under 500')
     ck(sorted(n for n, _ in HUNDO_TAGS.values()) == ['Hundo 1501-2500', 'Hundo 501-1500', 'Hundo Max Out', 'Hundo Under 500']
        and all(0 <= col <= 8 for _, col in HUNDO_TAGS.values()), 'hundo: the four tag names and colours on the phone')
