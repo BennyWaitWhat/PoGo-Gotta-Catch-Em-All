@@ -1,25 +1,48 @@
 {
- "ok": true,
- "line": "SELFCHECK ok | since 06:02:29: 41 gyms 509 stops seen, raw==live 550/550, gym state fresh 41/41, raw<=10min 550/550, same-read 1/1, team events 21 | last reply 7s ago | legacy raw stale 9 | js full 554 fail 0, gym 779 fail 0",
- "fails": [],
+ "ok": false,
+ "line": "SELFCHECK FAIL raw_vs_live=2 [07b0c169deee48a891254bccfd437dfd.16, a85b5dc6261b407a967e2e67c0ebc760.16]; raw_age=27 [07b0c169deee48a891254bccfd437dfd.16, 1b95ae0108de3519a30b26127ae32b00.16, 26efc36e19524c889b973e032a1a99ba.16, 2e420176d1074b5fb2a1856475f31aaa.16, 3e83347395c73f80836996c4a1aeb897.16, 3eac968efdae37409a85c14ff5cc60c0.16, 4c84750efe1539a7a1540cc1315e53ed.16, 4f55aaf409283e6db89359d192e4e7a4.16 +19] | since 03:42:34: 39 gyms 253 stops seen, raw==live 290/292, gym state fresh 39/39, raw<=10min 265/292, same-read 3/3, team events 4 | last reply 83s ago | legacy raw stale 44 | js full 356 fail 0, gym 8250 fail 0",
+ "fails": [
+  {
+   "check": "raw_vs_live",
+   "n": 2,
+   "ids": [
+    "07b0c169deee48a891254bccfd437dfd.16",
+    "a85b5dc6261b407a967e2e67c0ebc760.16"
+   ]
+  },
+  {
+   "check": "raw_age",
+   "n": 27,
+   "ids": [
+    "07b0c169deee48a891254bccfd437dfd.16",
+    "1b95ae0108de3519a30b26127ae32b00.16",
+    "26efc36e19524c889b973e032a1a99ba.16",
+    "2e420176d1074b5fb2a1856475f31aaa.16",
+    "3e83347395c73f80836996c4a1aeb897.16",
+    "3eac968efdae37409a85c14ff5cc60c0.16",
+    "4c84750efe1539a7a1540cc1315e53ed.16",
+    "4f55aaf409283e6db89359d192e4e7a4.16"
+   ]
+  }
+ ],
  "warns": [],
  "info": {
-  "last_reply": "2026-09-25 06:12:29",
-  "last_reply_age_s": 7,
-  "since": "2026-09-25 06:02:29",
+  "last_reply": "2026-11-07 03:52:34",
+  "last_reply_age_s": 83,
+  "since": "2026-11-07 03:42:34",
   "raw_pending": 0,
-  "canary": "45ff68a59fed487a96433cc566bed0b4.16",
+  "canary": "b5bdfb7b5b0f4460abd1e81251b055e2.16",
   "js": {
-   "fulls": 554,
+   "fulls": 356,
    "full_fail": 0,
-   "gyms": 779,
+   "gyms": 8250,
    "gym_fail": 0,
    "gym_nogd": 0
   },
-  "legacy_raw_stale": 9,
+  "legacy_raw_stale": 44,
   "seed_only": 1216,
-  "older_60min": 1721,
-  "lure_older_30min": 27,
+  "older_60min": 11338,
+  "lure_older_30min": 113,
   "not_collected": {
    "spawns": "2026-09-25 03:36:27",
    "weather": "2026-09-25 03:36",
@@ -27,13 +50,13 @@
    "raid": 0,
    "displays": 0
   },
-  "gyms_state_2min": 41,
-  "window_forts": 550,
-  "window_gyms": 41,
-  "window_stops": 509,
-  "window_raw": 550,
-  "same_read_rows": 1,
-  "team_events": 21
+  "gyms_state_2min": 22,
+  "window_forts": 292,
+  "window_gyms": 39,
+  "window_stops": 253,
+  "window_raw": 292,
+  "same_read_rows": 3,
+  "team_events": 4
  },
- "checked_at": "2026-09-25 06:12:36"
+ "checked_at": "2026-11-07 03:53:56"
 }
