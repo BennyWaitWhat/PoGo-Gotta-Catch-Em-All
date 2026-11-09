@@ -117,7 +117,7 @@ def _hundo_buckets(pg, sess, bag, svc):
         if not miss and not extra:
             break
     moves = lambda d, word: ('; %s: %s' % (word, ', '.join(
-        '%s (%s)' % (who.get(u, u), short(n)) for n in todo for u in sorted(d[n])[:6]))) if any(d.values()) else ''
+        '%s (%s)' % (who.get(u, u), short(n)) for n in todo for u in sorted(d[n], key=lambda u: who.get(u, u))))) if any(d.values()) else ''
     if miss or extra:
         print('Hundo buckets NOT confirmed: %d missing, %d extra after %d of %d change(s) were sent -- the next cull sends them '
               'again%s%s' % (miss, extra, sent, len(chg), moves(add, 'to join'), moves(rem, 'to leave')))
