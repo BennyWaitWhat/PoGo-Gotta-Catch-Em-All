@@ -22,7 +22,8 @@ For each league (GL, UL) and each TARGET (a PvP stage, shadow or not -- a shadow
     there may evolve, 2026-10-29), an own-stage top-5 spread, a copy with a legacy move (moves reroll on evolution), a
     copy of a stage with NO SPARE -- you hold no more of its species and form than its plain ladder keeps
     (plain_line, or plain_line_preevo for a middle stage; user 2026-10-29: "i only have 2 mime jrs and you want me to
-    evolve it?"), the only shiny of its form ("do not cull my only shinies"), a protected species. The next-best
+    evolve it?"), the only shiny of its form ("do not cull my only shinies"), a protected species, a hundo or nundo (a
+    trophy; 2026-11-09 a 100% Nidoran F, GL #1 as a Nidorina, failed the label law). The next-best
     candidate is considered instead;
   * ONE copy, ONE target: targets are filled best-rank first and a copy already promised to another stage is skipped
     (an Eevee can become one eeveelution), so every opportunity has its own copy.
@@ -122,6 +123,8 @@ def pick(rows, later_fn, BS, floor, rare_pids, legacy_uids=(), protected_pids=()
         u, pid = r['uid_hex'], _g(r, 'pokemon_id')
         if u in legacy_uids or pid in protected_pids:
             return True
+        if _g(r, 'iv_total') in (0, 45):
+            return True                                  # a hundo / nundo is a trophy where it stands (audit_labels)
         if u in own_rank and (own_rank[u] <= floor or pid in rare_pids):
             return True                                  # a Best as itself stays itself
         if form_count[(pid, cf(r))] <= spare_of(u):
@@ -239,6 +242,8 @@ if __name__ == '__main__':
                 dict(mk('own_b2', 'b:400(90%)'), species_name='B', pokemon_id=2)]
         res = pick(rows, lambda r: {'b', 'c'}, BS, 614, set(), legacy_uids={'x3'})
         assert res['gl'] == {'x2': ('b', 20, 300)}, res            # x3 (legacy) blocked; x2 beats x1; c only via x2 -> taken
+        res = pick([dict(r, iv_total=45) if r['uid_hex'] == 'x3' else r for r in rows], lambda r: {'b', 'c'}, BS, 614, set())
+        assert res['gl'] == {'x2': ('b', 20, 300)}, res            # x3 a hundo: a trophy, never a candidate (2026-11-09)
         res = pick(rows, lambda r: {'b', 'c'}, BS, 614, set())
         assert res['gl']['x3'] == ('b', 10, 300) and res['gl']['x2'] == ('c', 30, None), res   # x3 -> b, x2 freed for c
         res = pick(rows, lambda r: {'b', 'c'}, BS, 15, set())
