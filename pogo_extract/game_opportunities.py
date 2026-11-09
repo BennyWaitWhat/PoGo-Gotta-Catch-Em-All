@@ -454,24 +454,47 @@ def power_up_plan(items, rows, dust=_READ, candy=_READ, xl=_READ, player_level=_
 HUNDO_TAGS = {'LC': ('Hundo Under 500', 2), 'GL': ('Hundo 501-1500', 3), 'UL': ('Hundo 1501-2500', 4), 'ML': ('Hundo Max Out', 5)}
 
 
-def hundo_roles(copies, cp_at, top):
-    """One final-stage species' 15/15/15s -> {uid: role} for the copies to power up next. copies: [(uid, cp, level index)]; cp_at(i): a
-    hundo's CP at level index i; top: the last index (L50). The leagues FILL FROM THE BOTTOM (Benny 2026-11-09: "fill from the bottom
-    lower cp leagues first"): LC (500), then GL (1500), UL (2500), ML, each taking the strongest copy left still under its cap (ML: a
-    copy already past 2500, when the species gets there -- 2026-11-08 "if its over, for ML/max out"); the rest are spare. So a lone
-    copy lands in the band it sits in, and a copy already at a cap fills that league as done. A cap the species never reaches is its
-    max, so that league is ML. Only a copy with room joins: one more power-up still fits under its cap (ML: below L50) -- a hundo at
-    its cap leaves the bucket."""
+def hundo_roles(copies, cp_at, top, price=None):
+    """One final-stage species' 15/15/15s -> {uid: role} for the copies to power up next. copies: [(uid, cp, level index, ...)] (the
+    rest of a copy goes to price); cp_at(i): a hundo's CP at level index i; top: the last index (L50); price(copy, i, j): what powering
+    it from index i to j costs, a tuple compared in order (default: the number of steps).
+      * The leagues FILL FROM THE BOTTOM (Benny 2026-11-09: "fill from the bottom lower cp leagues first"): as many of LC (500), GL
+        (1500), UL (2500) and ML as the copies can fill, the lowest league first. ML takes only a copy already past 2500 when the
+        species gets there (2026-11-08: "if its over, for ML/max out"); a cap the species never reaches is its max, so that league is ML.
+      * The CHEAPEST way (2026-11-09: "put the cheapest ones first ... like the furret"): of the ways to fill those leagues, the one
+        that costs the least to power up -- the copies already highest are the ones used, a lucky copy takes the longest climb -- and
+        at an equal price the lower copy takes the lower league (Furret 24 + 343: 24 to Under 500, 343 to GL). A CP tie puts the
+        higher uid first, so the twin that holds a tag today keeps it.
+      * Only a copy with room joins: at least one more power-up still fits under its cap (ML: below L50) -- at its cap it is done."""
+    import itertools
     mx = cp_at(top)
     cap = {'LC': min(500, mx), 'GL': min(GL_CAP, mx), 'UL': min(UL_CAP, mx), 'ML': mx}
-    # a CP tie goes to the higher uid first: the twin that holds a tag today keeps it (0 swaps at the 11-09 switch, 7 the other way)
-    left, picks = sorted(copies, key=lambda c: (c[1], c[0]), reverse=True), {}
-    for role in [r for r in ('LC', 'GL', 'UL') if cap[r] < mx] + ['ML']:
-        fit = [c for c in left if (c[1] > UL_CAP if role == 'ML' and mx > UL_CAP else c[1] <= cap[role])]
-        if fit:
-            picks[fit[0]] = role
-            left.remove(fit[0])
-    return {c[0]: role for c, role in picks.items() if c[2] < top and (role == 'ML' or cp_at(c[2] + 1) <= cap[role])}
+    roles = [r for r in ('LC', 'GL', 'UL') if cap[r] < mx] + ['ML']
+    price = price or (lambda c, i, j: (j - i,))
+
+    def goal(c, r):                                     # the level index this copy climbs to for league r; None = it cannot enter r
+        if r == 'ML':
+            return top if c[1] > UL_CAP or mx <= UL_CAP else None
+        if c[1] > cap[r]:
+            return None
+        j = c[2]
+        while j < top and cp_at(j + 1) <= cap[r]:
+            j += 1
+        return j
+    pool = sorted(sorted(copies, key=lambda c: c[0], reverse=True), key=lambda c: c[1])
+    G = {(c, r): goal(c, r) for c in pool for r in roles}
+    P = {k: price(k[0], k[0][2], g) for k, g in G.items() if g is not None}
+    best = None
+    # shortcut: every way is tried -- (copies + 1) ** 4 at most, 1,296 for the biggest group today (5); a group past ~12 would be slow
+    for pick in itertools.product([None] + pool, repeat=len(roles)):
+        used = [c for c in pick if c]
+        if len(set(used)) < len(used) or any(c and G[c, r] is None for c, r in zip(pick, roles)):
+            continue
+        cost = [sum(x) for x in zip(*(P[c, r] for c, r in zip(pick, roles) if c))]
+        key = ([c is not None for c in pick], [-x for x in cost], sum(k * c[1] for k, c in enumerate(pick) if c))
+        if best is None or key > best[0]:
+            best = (key, pick)
+    return {c[0]: r for c, r in zip(best[1], roles) if c and G[c, r] > c[2]}
 
 
 def hundo_buckets():
@@ -490,12 +513,12 @@ def hundo_buckets():
     cp_at = lambda s, i: rc.compute_cp(bs[s]['atk'], bs[s]['def'], bs[s]['hp'], 15, 15, 15, rc.CPM[i], False)
     c = sqlite3.connect('file:%s?mode=ro' % os.path.join(HERE, 'pokemon.db').replace('\\', '/'), uri=True)
     try:
-        rows = c.execute('SELECT uid_hex, species_name, form, cp, level FROM pokemon '
+        rows = c.execute('SELECT uid_hex, species_name, form, cp, level, fresh_alignment, is_lucky, pokemon_id FROM pokemon '
                          'WHERE in_bag=1 AND iv_atk=15 AND iv_def=15 AND iv_sta=15').fetchall()
     finally:
         c.close()
     by, unread = {}, 0
-    for uid, name, form, cp, level in rows:
+    for uid, name, form, cp, level, al, lucky, dex in rows:
         s = pvid(name, form or 0)
         if is_pre.get(s) or s not in bs:
             continue
@@ -503,10 +526,14 @@ def hundo_buckets():
         if not 0 <= i <= rc.MAX_LEVEL_IDX or cp_at(s, i) != cp:
             unread += 1
             continue
-        by.setdefault(s, []).append((uid, cp, i))
+        by.setdefault(s, []).append((uid, cp, i, al or 0, bool(lucky), dex, form or 0))
+
+    def price(c, i, j):                                 # THE price (XL candy, dust, candy): shadow / purified / lucky and the species' tables
+        p = power_up_cost(i / 2 + 1, j / 2 + 1, shadow=c[3] == 1, purified=c[3] == 2, lucky=c[4], dex=c[5], form=c[6])
+        return (p['xl'], p['dust'], p['candy']) if p else (0, j - i, 0)     # no game master: the number of steps
     out = {name: set() for name, _ in HUNDO_TAGS.values()}
     for s, copies in by.items():
-        for uid, role in hundo_roles(copies, lambda i, s=s: cp_at(s, i), rc.MAX_LEVEL_IDX).items():
+        for uid, role in hundo_roles(copies, lambda i, s=s: cp_at(s, i), rc.MAX_LEVEL_IDX, price).items():
             out[HUNDO_TAGS[role][0]].add(uid)
     return out, unread
 
@@ -727,8 +754,12 @@ def _selftest():
        'hundo dupes, species max under 2500: ML then GL, a copy past 1500 is spare')
     ck(hr([('lo', 460, 21), ('hi', 1700, 83)], mid) == {'lo': 'LC', 'hi': 'ML'},
        'hundo dupes fill from the bottom: the copy under 500 is the Under 500 copy, not a GL one (the Hypno 471 + 1702 case)')
-    ck(hr([('a', 460, 21), ('b', 300, 13)], mid) == {'a': 'LC', 'b': 'GL'}, 'hundo: the strongest copy under 500 takes Under 500, the next fills GL')
-    ck(hr([('g', 1480, 23), ('n', 880, 13)]) == {'n': 'UL'}, 'hundo: a copy already at its GL max fills GL as done; the next copy takes UL')
+    ck(hr([('a', 460, 21), ('b', 300, 13)], mid) == {'b': 'LC', 'a': 'GL'}, 'hundo: same price either way -> the lower copy takes Under 500 (Furret 24 + 343)')
+    ck(hr([('g', 1480, 23), ('n', 880, 13)]) == {'n': 'GL', 'g': 'UL'}, 'hundo: same price either way -> the lower copy fills GL, the higher climbs on')
+    ck(hr([('x', 580, 8), ('y', 880, 13), ('z', 2380, 38)]) == {'y': 'GL', 'z': 'UL'}, 'hundo: the cheapest set -- the copies already highest, the lowest spare')
+    luck = lambda c, i, j: ((j - i) * (0.5 if c[3] else 1),)
+    ck(hundo_roles([('l', 300, 13, True), ('n', 460, 21, False)], mid, 98, luck) == {'n': 'LC', 'l': 'GL'},
+       'hundo: a lucky copy (half the dust) takes the longer climb')
     ck(hr([('top', 5980, 98), ('lo', 400, 5)]) == {'lo': 'LC'}, 'hundo: a low copy beside a maxed one fills Under 500')
     ck(sorted(n for n, _ in HUNDO_TAGS.values()) == ['Hundo 1501-2500', 'Hundo 501-1500', 'Hundo Max Out', 'Hundo Under 500']
        and all(0 <= col <= 8 for _, col in HUNDO_TAGS.values()), 'hundo: the four tag names and colours on the phone')
