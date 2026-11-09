@@ -455,28 +455,23 @@ HUNDO_TAGS = {'LC': ('Hundo Under 500', 2), 'GL': ('Hundo 501-1500', 3), 'UL': (
 
 
 def hundo_roles(copies, cp_at, top):
-    """One final-stage species' 15/15/15s -> {uid: role} for the copies to power up next (Benny 2026-11-08). copies: [(uid, cp, level
-    index)]; cp_at(i): a hundo's CP at level index i; top: the last index (L50). A lone copy works toward the cap of the band it sits in
-    (<=500 LC, <=1500 GL, <=2500 UL, else ML). Dupes split, strongest first: the copy already past 2500 is ML (when the species gets
-    there), then UL, then GL; the rest are spare. A cap the species never reaches is its max, so that role is ML. Only a copy with room
-    joins: one more power-up still fits under its cap (ML: below L50) -- a hundo at its cap leaves the bucket."""
+    """One final-stage species' 15/15/15s -> {uid: role} for the copies to power up next. copies: [(uid, cp, level index)]; cp_at(i): a
+    hundo's CP at level index i; top: the last index (L50). The leagues FILL FROM THE BOTTOM (Benny 2026-11-09: "fill from the bottom
+    lower cp leagues first"): LC (500), then GL (1500), UL (2500), ML, each taking the strongest copy left still under its cap (ML: a
+    copy already past 2500, when the species gets there -- 2026-11-08 "if its over, for ML/max out"); the rest are spare. So a lone
+    copy lands in the band it sits in, and a copy already at a cap fills that league as done. A cap the species never reaches is its
+    max, so that league is ML. Only a copy with room joins: one more power-up still fits under its cap (ML: below L50) -- a hundo at
+    its cap leaves the bucket."""
     mx = cp_at(top)
     cap = {'LC': min(500, mx), 'GL': min(GL_CAP, mx), 'UL': min(UL_CAP, mx), 'ML': mx}
-    as_ml = lambda role: 'ML' if cap[role] == mx else role
-    rows = sorted(copies, key=lambda c: (-c[1], c[0]))
-    if len(rows) == 1:
-        cp = rows[0][1]
-        picks = [(rows[0], as_ml('LC' if cp <= 500 else 'GL' if cp <= GL_CAP else 'UL' if cp <= UL_CAP else 'ML'))]
-    else:
-        picks, free = [], [r for r in ('ML', 'UL', 'GL') if as_ml(r) == r]
-        for c in rows:
-            for role in free:
-                if role == 'ML' and mx > UL_CAP and c[1] <= UL_CAP:
-                    continue                        # Max Out is the copy already past 2500
-                if role == 'ML' or c[1] <= cap[role]:
-                    picks.append((c, role)); free.remove(role)
-                    break
-    return {c[0]: role for c, role in picks if c[2] < top and (role == 'ML' or cp_at(c[2] + 1) <= cap[role])}
+    # a CP tie goes to the higher uid first: the twin that holds a tag today keeps it (0 swaps at the 11-09 switch, 7 the other way)
+    left, picks = sorted(copies, key=lambda c: (c[1], c[0]), reverse=True), {}
+    for role in [r for r in ('LC', 'GL', 'UL') if cap[r] < mx] + ['ML']:
+        fit = [c for c in left if (c[1] > UL_CAP if role == 'ML' and mx > UL_CAP else c[1] <= cap[role])]
+        if fit:
+            picks[fit[0]] = role
+            left.remove(fit[0])
+    return {c[0]: role for c, role in picks.items() if c[2] < top and (role == 'ML' or cp_at(c[2] + 1) <= cap[role])}
 
 
 def hundo_buckets():
@@ -717,9 +712,9 @@ def _selftest():
     cur = lambda i: 100 + 60 * i
     hr = lambda copies, f=cur: hundo_roles(copies, f, 98)
     ck(hr([('a', 3700, 60), ('b', 2440, 39), ('c', 1420, 22), ('d', 1300, 20)]) == {'a': 'ML', 'b': 'UL', 'c': 'GL'},
-       'hundo dupes: strongest past 2500 = ML, then UL, then GL, the rest spare')
+       'hundo dupes: GL, then UL, then ML (only a copy past 2500), each the strongest that fits; the rest spare')
     ck(hr([('a', 5980, 98), ('b', 2440, 39)]) == {'b': 'UL'}, 'hundo dupes: the maxed L50 copy holds ML and leaves the bucket')
-    ck(hr([('b2', 2440, 39), ('b1', 2440, 39)]) == {'b1': 'UL'}, 'hundo dupes: no copy past 2500 = no ML; a CP tie goes by uid')
+    ck(hr([('b2', 2440, 39), ('b1', 2440, 39)]) == {'b2': 'UL'}, 'hundo dupes: no copy past 2500 = no ML; a CP tie goes to the higher uid')
     ck(hr([('c', 1480, 23)]) == {} and hr([('c', 1420, 22)]) == {'c': 'GL'} and hr([('u', 2500, 40)]) == {},
        'hundo single: at its cap (one more power-up crosses it) = out of the bucket')
     ck(hr([('e', 460, 6)]) == {} and hr([('e', 400, 5)]) == {'e': 'LC'} and hr([('m', 2560, 41)]) == {'m': 'ML'},
@@ -730,6 +725,11 @@ def _selftest():
     mid = lambda i: 40 + 20 * i                     # tops out at 2000: UL is its max (ML), GL stays
     ck(hr([('p', 1900, 93), ('q', 1700, 83), ('r', 1200, 58)], mid) == {'p': 'ML', 'r': 'GL'},
        'hundo dupes, species max under 2500: ML then GL, a copy past 1500 is spare')
+    ck(hr([('lo', 460, 21), ('hi', 1700, 83)], mid) == {'lo': 'LC', 'hi': 'ML'},
+       'hundo dupes fill from the bottom: the copy under 500 is the Under 500 copy, not a GL one (the Hypno 471 + 1702 case)')
+    ck(hr([('a', 460, 21), ('b', 300, 13)], mid) == {'a': 'LC', 'b': 'GL'}, 'hundo: the strongest copy under 500 takes Under 500, the next fills GL')
+    ck(hr([('g', 1480, 23), ('n', 880, 13)]) == {'n': 'UL'}, 'hundo: a copy already at its GL max fills GL as done; the next copy takes UL')
+    ck(hr([('top', 5980, 98), ('lo', 400, 5)]) == {'lo': 'LC'}, 'hundo: a low copy beside a maxed one fills Under 500')
     ck(sorted(n for n, _ in HUNDO_TAGS.values()) == ['Hundo 1501-2500', 'Hundo 501-1500', 'Hundo Max Out', 'Hundo Under 500']
        and all(0 <= col <= 8 for _, col in HUNDO_TAGS.values()), 'hundo: the four tag names and colours on the phone')
 
