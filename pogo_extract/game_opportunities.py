@@ -1,5 +1,5 @@
 """Collection opportunities the GAME MASTER makes visible (user 2026-09-17: "Learn more about what the game has for info
-and be comprehensive. There's way to improve."). Advice only -- nothing here tags, keeps or culls a mon.
+and be comprehensive. There's way to improve."). Advice only -- nothing here keeps or culls a mon; its one label is hundo_buckets().
 
   purify_to_hundo()   a SURPLUS shadow with every IV >= 13 purifies into 15/15/15 (+2 per IV, capped at 15), at a
                       stage with no hundo of any kind yet. Never a shadow the collection keeps for its own sake (best
@@ -13,6 +13,9 @@ and be comprehensive. There's way to improve."). Advice only -- nothing here tag
   power_up_plan()     the same prices for the mons the Power Up tags hold, against this walk's stardust / candy / XL candy: 'doable now',
                       'doable after exchanging N candy into XL' or 'short X' (Benny 2026-09-30: "yes" to exact Power Up costs).
                       REPORT ONLY: no keep reason, no tag and no pile decision reads it.
+  hundo_buckets()     the four hundo power-up buckets (Benny 2026-11-08: "these tag groups are ongoing task buckets"): every final-stage
+                      15/15/15 that can still power up toward its cap, by role (hundo_roles). sync_post_tags.py keeps the four tags
+                      equal to it every cull. A LABEL: no keep reason and no pile decision reads it.
 
 All read the bag DB read-only, the client game master, and the walk's candy/stardust (candy.json / inventory.json).
   python game_opportunities.py             print what is on offer today
@@ -447,6 +450,72 @@ def power_up_plan(items, rows, dust=_READ, candy=_READ, xl=_READ, player_level=_
     return sorted(out, key=lambda e: (_STATUS_ORDER[e['status']], (e['need'] or {}).get('dust', 0), e['uid']))
 
 
+# ----------------------------------------------------------------------------------------------------------- hundo buckets
+HUNDO_TAGS = {'LC': ('Hundo Under 500', 2), 'GL': ('Hundo 501-1500', 3), 'UL': ('Hundo 1501-2500', 4), 'ML': ('Hundo Max Out', 5)}
+
+
+def hundo_roles(copies, cp_at, top):
+    """One final-stage species' 15/15/15s -> {uid: role} for the copies to power up next (Benny 2026-11-08). copies: [(uid, cp, level
+    index)]; cp_at(i): a hundo's CP at level index i; top: the last index (L50). A lone copy works toward the cap of the band it sits in
+    (<=500 LC, <=1500 GL, <=2500 UL, else ML). Dupes split, strongest first: the copy already past 2500 is ML (when the species gets
+    there), then UL, then GL; the rest are spare. A cap the species never reaches is its max, so that role is ML. Only a copy with room
+    joins: one more power-up still fits under its cap (ML: below L50) -- a hundo at its cap leaves the bucket."""
+    mx = cp_at(top)
+    cap = {'LC': min(500, mx), 'GL': min(GL_CAP, mx), 'UL': min(UL_CAP, mx), 'ML': mx}
+    as_ml = lambda role: 'ML' if cap[role] == mx else role
+    rows = sorted(copies, key=lambda c: (-c[1], c[0]))
+    if len(rows) == 1:
+        cp = rows[0][1]
+        picks = [(rows[0], as_ml('LC' if cp <= 500 else 'GL' if cp <= GL_CAP else 'UL' if cp <= UL_CAP else 'ML'))]
+    else:
+        picks, free = [], [r for r in ('ML', 'UL', 'GL') if as_ml(r) == r]
+        for c in rows:
+            for role in free:
+                if role == 'ML' and mx > UL_CAP and c[1] <= UL_CAP:
+                    continue                        # Max Out is the copy already past 2500
+                if role == 'ML' or c[1] <= cap[role]:
+                    picks.append((c, role)); free.remove(role)
+                    break
+    return {c[0]: role for c, role in picks if c[2] < top and (role == 'ML' or cp_at(c[2] + 1) <= cap[role])}
+
+
+def hundo_buckets():
+    """-> ({tag name: {uid_hex}}, n_unread) for the four buckets, from this walk's bag (pokemon.db) and the pvpoke game master's base
+    stats and evolution graph (keep_policy's: a stage that can still evolve is not final). A copy whose computed CP is not the walk's
+    CP (level not read) is left out and counted."""
+    import contextlib, io
+    sys.path.insert(0, os.path.join(HERE, 'system', 'scripts'))
+    import rank_cache as rc
+    with contextlib.redirect_stdout(io.StringIO()):     # keep_policy prints on import
+        from keep_policy import build_evo_graph
+    gm = json.load(open(os.path.join(HERE, 'pvpoke_gamemaster.json'), encoding='utf-8'))
+    bs = {p['speciesId']: p['baseStats'] for p in gm['pokemon']}
+    seen = {e['pid'] for e in json.load(open(os.path.join(HERE, 'pokedex_hundos_live.json'), encoding='utf-8'))['entries']}
+    is_pre = build_evo_graph(gm, seen, with_all=True)[0]
+    cp_at = lambda s, i: rc.compute_cp(bs[s]['atk'], bs[s]['def'], bs[s]['hp'], 15, 15, 15, rc.CPM[i], False)
+    c = sqlite3.connect('file:%s?mode=ro' % os.path.join(HERE, 'pokemon.db').replace('\\', '/'), uri=True)
+    try:
+        rows = c.execute('SELECT uid_hex, species_name, form, cp, level FROM pokemon '
+                         'WHERE in_bag=1 AND iv_atk=15 AND iv_def=15 AND iv_sta=15').fetchall()
+    finally:
+        c.close()
+    by, unread = {}, 0
+    for uid, name, form, cp, level in rows:
+        s = pvid(name, form or 0)
+        if is_pre.get(s) or s not in bs:
+            continue
+        i = int(round((level - 1) * 2)) if level else -1
+        if not 0 <= i <= rc.MAX_LEVEL_IDX or cp_at(s, i) != cp:
+            unread += 1
+            continue
+        by.setdefault(s, []).append((uid, cp, i))
+    out = {name: set() for name, _ in HUNDO_TAGS.values()}
+    for s, copies in by.items():
+        for uid, role in hundo_roles(copies, lambda i, s=s: cp_at(s, i), rc.MAX_LEVEL_IDX).items():
+            out[HUNDO_TAGS[role][0]].add(uid)
+    return out, unread
+
+
 # ----------------------------------------------------------------------------------------------------------------- self-test
 def _selftest():
     """Offline -- CI has no game master, no bag DB and no data store: the parser on a miniature game master shaped like the real
@@ -643,6 +712,26 @@ def _selftest():
             ck(P['status'] == 'unread' and P['have']['dust'] is None, 'balances: stale files make the plan unread, never short: %s' % P)
         finally:
             HERE, evolvable_forms.candy_now = _saved, _candy_now
+
+    # ---- hundo buckets: a straight-line CP curve, index 98 = L50 (CP 100 + 60 i: 1480 -> 1540 crosses 1500, 2500 -> 2560 crosses 2500)
+    cur = lambda i: 100 + 60 * i
+    hr = lambda copies, f=cur: hundo_roles(copies, f, 98)
+    ck(hr([('a', 3700, 60), ('b', 2440, 39), ('c', 1420, 22), ('d', 1300, 20)]) == {'a': 'ML', 'b': 'UL', 'c': 'GL'},
+       'hundo dupes: strongest past 2500 = ML, then UL, then GL, the rest spare')
+    ck(hr([('a', 5980, 98), ('b', 2440, 39)]) == {'b': 'UL'}, 'hundo dupes: the maxed L50 copy holds ML and leaves the bucket')
+    ck(hr([('b2', 2440, 39), ('b1', 2440, 39)]) == {'b1': 'UL'}, 'hundo dupes: no copy past 2500 = no ML; a CP tie goes by uid')
+    ck(hr([('c', 1480, 23)]) == {} and hr([('c', 1420, 22)]) == {'c': 'GL'} and hr([('u', 2500, 40)]) == {},
+       'hundo single: at its cap (one more power-up crosses it) = out of the bucket')
+    ck(hr([('e', 460, 6)]) == {} and hr([('e', 400, 5)]) == {'e': 'LC'} and hr([('m', 2560, 41)]) == {'m': 'ML'},
+       'hundo single: tagged by the band it sits in')
+    low = lambda i: 100 + 10 * i                    # tops out at 1080: GL and UL ARE its max, so both are ML
+    ck(hr([('f', 900, 80), ('g', 600, 50)], low) == {'f': 'ML'} and hr([('g', 600, 50)], low) == {'g': 'ML'}
+       and hr([('h', 300, 20)], low) == {'h': 'LC'}, 'hundo: a cap the species never reaches collapses to Max Out')
+    mid = lambda i: 40 + 20 * i                     # tops out at 2000: UL is its max (ML), GL stays
+    ck(hr([('p', 1900, 93), ('q', 1700, 83), ('r', 1200, 58)], mid) == {'p': 'ML', 'r': 'GL'},
+       'hundo dupes, species max under 2500: ML then GL, a copy past 1500 is spare')
+    ck(sorted(n for n, _ in HUNDO_TAGS.values()) == ['Hundo 1501-2500', 'Hundo 501-1500', 'Hundo Max Out', 'Hundo Under 500']
+       and all(0 <= col <= 8 for _, col in HUNDO_TAGS.values()), 'hundo: the four tag names and colours on the phone')
 
     # ---- wiring: the 2nd-move price is chosen by alignment, and the CLI runs nothing on a guessed flag
     src = inspect.getsource(second_moves)
