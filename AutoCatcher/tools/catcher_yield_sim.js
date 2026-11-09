@@ -115,4 +115,20 @@ function withFields(api) {
   api.call('onSpinOut', ok);
   check('success clears the block', [api.get('LIM.oorStreak'), api.call('spinBlocked', NOW)], [0, false]);
 }
+// 6. berries: Razz on a hard throw while above its floor; else a Pinap only while the bag has one (Benny 11-08, floor 0)
+{
+  const api = load();
+  api.set('M.useItem', {}); api.set('call', () => NUL); api.set('i32arg', () => NUL);
+  api.set('CFG.pinap', true); api.set('CFG.pinapFloor', 0);
+  const easy = { probs: { 1: 0.9, 2: 0.95, 3: 0.99 } }, hard = { probs: { 1: 0.1, 2: 0.2, 3: 0.3 } };
+  api.set('ITEMC', { 1: 100, 2: 100, 3: 100, 701: 10, 705: 1 });
+  check('easy throw -> Pinap', api.call('berryFor', easy), 705);
+  check('hard throw -> Razz', api.call('berryFor', hard), 701);
+  api.set('ITEMC[701]', 5);
+  check('Razz at floor -> Pinap', api.call('berryFor', hard), 705);
+  api.call('feed', {}, NUL, 705);
+  check('last Pinap fed -> none', [api.get('ITEMC[705]'), api.call('berryFor', easy)], [0, 0]);
+  api.set('ITEMC', { 1: 100, 2: 100, 3: 100 });
+  check('count unknown -> none', api.call('berryFor', easy), 0);
+}
 process.exit(failed ? 1 : 0);

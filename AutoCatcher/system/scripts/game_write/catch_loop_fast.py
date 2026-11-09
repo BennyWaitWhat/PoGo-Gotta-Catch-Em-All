@@ -56,8 +56,9 @@ CFG = {
     "ballOrder": [2, 1, 3], # Great, then Poke, then Ultra (Benny 2026-10-25). Was cheapest first: 1, 2, 3. A hard catch
                             # (Great under thresh) still gets the Ultra; Poke Balls go out when Great Balls hit their floor.
     "floors": {"1": 5, "2": 5, "3": 5},   # keep a few Poke/Great/Ultra
-    "pinap": False, "pinapFloor": 5,      # OFF (user 2026-09-30: "pause autocatcher use for it now"): Pokemod's Pinap
-                                          # Master feeds Pinaps too and kept our stock at 0-6. Was: every throw with no Razz
+    "pinap": True, "pinapFloor": 0,       # ON (Benny 2026-11-08: "pinap on and only when it has it"): every throw that gets
+                                          # no Razz, while the bag has one (floor 0). Off 09-30 -> 11-08 ("pause autocatcher use
+                                          # for it now": Pokemod's Pinap Master fed them too, stock 0-6; on 11-08 nothing else did)
     "razz": True, "razzFloor": 5, "razzThresh": 0.45,   # Razz (701) only when the throw is hard
     # 706 Golden Razz / 708 Silver Pinap: never touched (standing instruction) -- not even in the item list.
     # SKIP LIST (walk() runs finish(enc, 'legendary') BEFORE priority and before any catch): every species the client game master
@@ -86,9 +87,10 @@ CFG = {
     # 2.4 -> 1.7 s, server replies unchanged, 0 refused, no spawn lost waiting in either arm. Not proven: 300 kept.
     # Done 03:20-03:36: "nearWait" 0 vs 3000 = 89.0% vs 86.6% yield (429 / 216 spawns); spawns first seen beyond 55 m
     # fled 7.9% vs 16.9%; 23 held throws, 4 fled. No help: off (0) kept.
-    # Running from 03:36: "readyMs" 150 vs 1000 -- first throws < 450 ms after the encounter reply fled 12.0% vs 7.7%
-    # for slower ones (1,029 throws 02:49-03:31, Snorlax left out, z 2.1).
-    "abBlockS": 300, "abKey": "readyMs", "abArms": [150, 1000], "order": "fifo",
+    # Done 11-07 03:36 -> 11-08 22:20: "readyMs" 150 vs 1000 = 93.2% vs 92.7% yield (1,025 / 914 spawns; the 16:45 start-up
+    # block left out), fled 5.1% vs 6.7%. Waiting longer before the first throw gains nothing: 150 kept, A/B off (abKey "").
+    # So a Pinap's 0.8 s wait (BERRY_MS) costs about no catches.
+    "abBlockS": 300, "abKey": "", "abArms": [150, 1000], "order": "fifo",
     "nearWait": 0, "nearM": 55,   # NEAR-WAIT (JS closingIn): hold a first throw while still > nearM m away and closing in, <= nearWait ms
     "readyMs": 150,               # encounter reply -> first throw (was the JS constant READY_MS)
 }
