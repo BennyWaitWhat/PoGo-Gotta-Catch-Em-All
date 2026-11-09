@@ -658,7 +658,7 @@ def post_tags_run(extra=(), pp=None):
         _te = _t.stderr.decode('utf-8', 'replace') if isinstance(_t.stderr, bytes) else (_t.stderr or '')
         _p = subprocess.CompletedProcess(_t.cmd, -9, _o + '\nREMOTE TRADE / EVOLVE FOR SIZE TIMED OUT after 900 s -- '
                                          'a push above may already have landed\n', _te)
-    sec, cur = {'RECONCILE': [], 'RETIRE': [], 'REMOTE TRADE': [], 'TAG ORDER': []}, None
+    sec, cur = {'RECONCILE': [], 'RETIRE': [], 'REMOTE TRADE': [], 'HUNDO BUCKETS': [], 'TAG ORDER': []}, None
     for _l in (_p.stdout or '').splitlines():
         _m = _l.strip()
         if _m.startswith('=== ') and _m.endswith(' ===') and _m[4:-4] in sec:
@@ -689,18 +689,21 @@ def post_tags_say(_p, sec):
         _to = [l for l in (_p.stdout or '').splitlines() if 'TIMED OUT' in l]
         _rt = [l for l in (_p.stdout or '').splitlines() if l.startswith('Remote Trade: same')] + \
               [l for l in sec['REMOTE TRADE'] if l.startswith(('Remote Trade', 'apply_changes', 'already up to date', 'REMOTE TRADE'))][-2:] + _to
-        _es = []
         say('remote trade: %s' % (' | '.join(_rt) if _rt else 'no output'))
+        # the four hundo power-up buckets, rebuilt from this walk (Benny 2026-11-08: "ongoing task buckets")
+        _es = [l for l in sec.get('HUNDO BUCKETS', []) if l.startswith(('Hundo buckets:', 'Hundo buckets NOT', 'HUNDO BUCKETS'))]
+        if _es:
+            say('hundo buckets: %s' % ' | '.join(l[len('Hundo buckets'):].lstrip(': ') if l.startswith('Hundo buckets') else l for l in _es))
         _or = [l for l in sec['TAG ORDER'] if l.startswith('TAG ORDER')]
         if _or:
             say('tag order: %s' % ' | '.join(l[len('TAG ORDER '):] for l in _or))
         _pl = os.path.join('system', 'analysis', 'last_job_post_tags.log')
         _plog = (_p.stdout or '') + (('\n--- stderr ---\n' + _p.stderr) if (_p.stderr or '').strip() else '')
-        echo_job_warnings('post-push session (retire / remote trade / tag order)'
+        echo_job_warnings('post-push session (retire / remote trade / hundo buckets / tag order)'
                           if (sec.get('RECONCILE') or sec.get('RETIRE')) else 'remote trade / tag order', _plog, _pl)
         # A CRASH AFTER A PUSH MUST NOT READ LIKE A CLEAN PUSH (2026-09-23) -- same rc line the old steps printed.
         if _p.returncode and not any(' rc=' in l or 'TIMED OUT' in l or ' stopped' in l or ' failed' in l or ' skipped' in l
-                                     or 'read-back' in l for l in _rt + _es + _or):
+                                     or 'read-back' in l or 'NOT confirmed' in l for l in _rt + _es + _or):
             _err = [l for l in (_p.stderr or '').splitlines() if l.strip()]
             say('remote trade / evolve for size: rc=%d -- %s' % (_p.returncode, (_err[-1] if _err else 'no stderr')[:200]))
     except Exception as _e:
@@ -1174,7 +1177,7 @@ def _main():
         _post = post_tags_run(POST_PUSH_ARGS, pp=_pp)
     except Exception as _pe:
         _post = (subprocess.CompletedProcess(['sync_post_tags.py'], 1, '', 'not run: %s' % _pe),
-                 {'RECONCILE': [], 'RETIRE': [], 'REMOTE TRADE': [], 'TAG ORDER': []})
+                 {'RECONCILE': [], 'RETIRE': [], 'REMOTE TRADE': [], 'HUNDO BUCKETS': [], 'TAG ORDER': []})
     catcher_pause(wait=False)                  # re-arm (90 s) for verify
 
     # RETIRED tag shells (2026-09-09): prune has just stripped their members; retire_tags deletes the empty shells one

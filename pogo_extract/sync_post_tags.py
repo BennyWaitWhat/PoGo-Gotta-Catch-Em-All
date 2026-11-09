@@ -11,6 +11,9 @@ pile tag (tag_ops.is_pile_tag) before any walk or write.
   python sync_post_tags.py            # both, one session
   python sync_post_tags.py --dry-run  # compute both deltas' inputs, no phone contact
 
+The four hundo power-up buckets (game_opportunities.hundo_buckets, Benny 2026-11-08) are rebuilt from this walk right after
+Remote Trade: adds and removals in one write, then a read-back. Labels only, fail-soft like the rest.
+
 The tag order (system/scripts/order_tags.py ORDER) is read last, after any tag this pass created: a pure read when it
 already matches, else every tag's SortIndex is sent again, each confirmed by the server. It never touches members.
 
@@ -37,6 +40,91 @@ def _forget_rt_stamp(why):
         print('Remote Trade: not verified (%s) -- no skip stamp written; the next cull re-verifies' % why)
     except OSError as e:
         print('!! Remote Trade: not verified (%s) and %s could NOT be removed (%s) -- delete it by hand' % (why, RT_STAMP, e))
+
+
+def _hundo_buckets(pg, sess, bag, svc):
+    """The four hundo power-up buckets (Benny 2026-11-08: "these tag groups are ongoing task buckets"), kept equal to hb =
+    game_opportunities.hundo_buckets() of THIS walk: a hundo with no room left under its cap leaves its bucket, a new one joins.
+    Plain labels, never the pile: every add AND removal in one SetPokemonTags per batch, then the four tags are read back.
+    A name two tags carry, or a tag whose members could not be read, is left alone. -> rc (0 = the phone holds the plan)."""
+    import sqlite3, game_opportunities as go, reconcile_tags, tag_ops
+    nrm = lambda u: format(int(u, 16), 'x')
+    hb = go.hundo_buckets()
+    if hb[1]:
+        print('! %d hundo(s) whose CP does not match their walked level are left out of the buckets' % hb[1])
+    want = {n: {nrm(u) for u in us} for n, us in hb[0].items()}
+    short = lambda n: n[len('Hundo '):]
+
+    def read():
+        en = pg.get_script_with_helpers(sess, reconcile_tags.ENUM_MEMBERS_JS)
+        try:
+            tl = en.exports_sync.enumerate_all_tag_members(svc)
+        finally:
+            en.unload()
+        out = {}
+        for t in tl:
+            if t.get('name') in want:
+                out.setdefault(t['name'], []).append(
+                    (t['tagProto'], {format(int(d), 'x') for d in (t.get('memberUids') or []) if d}, t.get('unreadable')))
+        return out
+
+    have = read()
+    for n, v in sorted(have.items()):
+        if len(v) > 1 or v[0][2]:
+            print('! %s: %s -- left as it is' % (n, '%d tags carry this name (delete the extra one by hand)' % len(v)
+                                                 if len(v) > 1 else 'its members could not be read (%s)' % v[0][2]))
+    live = {n: v[0] for n, v in have.items() if len(v) == 1 and not v[0][2]}
+    todo = [n for n in want if n in live or (n not in have and want[n])]
+    cur = {n: live[n][1] if n in live else set() for n in todo}
+    add, rem = {n: want[n] - cur[n] for n in todo}, {n: cur[n] - want[n] for n in todo}
+    if not any(add.values()) and not any(rem.values()):
+        print('Hundo buckets: up to date -- %s' % ', '.join('%s %d' % (short(n), len(cur[n])) for n in todo))
+        return 0
+    c = sqlite3.connect('file:pokemon.db?mode=ro', uri=True)
+    try:
+        who = {nrm(u): '%s %s' % (s, cp) for u, s, cp in c.execute('SELECT uid_hex, species_name, cp FROM pokemon WHERE in_bag=1')}
+    finally:
+        c.close()
+    h2p = {format(int(d), 'x'): pp for d, pp in pg.walk_bag_protos(sess, bag).items()}
+    color = dict(go.HUNDO_TAGS.values())
+    bt = tag_ops._load_bulk_tag_script(sess)
+    try:
+        tag_ops.ensure_ready(sess, svc, bt)
+        tp = {n: live[n][0] if n in live else tag_ops.create_tag(bt, svc, n, color[n]) for n in todo}
+        chg = {}
+        for n in todo:
+            for u in add[n]:
+                chg.setdefault(u, ([], []))[0].append(tp[n])
+            for u in rem[n]:
+                chg.setdefault(u, ([], []))[1].append(tp[n])
+        changes = [{'proto': h2p[u], 'add': a, 'remove': r} for u, (a, r) in sorted(chg.items()) if u in h2p]
+        try:
+            bt.exports_sync.bulk_apply_changes(svc, [])
+        except Exception as e:
+            print('  (warm-up threw, ignored: %s)' % e)
+        time.sleep(0.5)
+        sent = tag_ops.apply_changes(bt, svc, changes, batch=150) if changes else 0
+    finally:
+        bt.unload()
+    inbag = set(h2p)                                  # a mon released or evolved since the walk is judged by nobody
+    for k in range(3):                                # check first, then wait (0 / 4 / 10 s), like Remote Trade's verify
+        if k:
+            time.sleep(4 if k == 1 else 6)
+        got = read()
+        held = {n: got[n][0][1] if n in got else set() for n in todo}
+        miss = sum(len((want[n] - held[n]) & inbag) for n in todo)
+        extra = sum(len((held[n] - want[n]) & inbag) for n in todo)
+        if not miss and not extra:
+            break
+    moves = lambda d, word: ('; %s: %s' % (word, ', '.join(
+        '%s (%s)' % (who.get(u, u), short(n)) for n in todo for u in sorted(d[n])[:6]))) if any(d.values()) else ''
+    if miss or extra:
+        print('Hundo buckets NOT confirmed: %d missing, %d extra after %d of %d change(s) were sent -- the next cull sends them '
+              'again%s%s' % (miss, extra, sent, len(chg), moves(add, 'to join'), moves(rem, 'to leave')))
+        return 1
+    print('Hundo buckets: %d change(s) pushed and read back -- %s%s%s' % (sent, ', '.join(
+        '%s %d' % (short(n), len(held[n])) for n in todo), moves(add, 'joined'), moves(rem, 'left')))
+    return 0
 
 
 def _signal(path, want, timeout_s=900):
@@ -193,6 +281,11 @@ def _main(early=None):
                 except OSError:
                     pass
             rc |= r
+        print('=== HUNDO BUCKETS ===', flush=True)    # before the tag order, so a bucket created here is ordered this pass
+        try:
+            rc |= _hundo_buckets(pg, sess, bag, svc)
+        except Exception as e:                   # a label: report it, never fail the cull over it
+            print('HUNDO BUCKETS failed: %s: %s' % (type(e).__name__, e)); rc |= 1
         print('=== TAG ORDER ===', flush=True)
         try:
             import order_tags
