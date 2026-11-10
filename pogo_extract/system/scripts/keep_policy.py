@@ -1629,7 +1629,7 @@ def main():
     # rode on luck. For every GL / UL target stage, the copy whose evolved self would be your new Best there (it beats
     # your best copy AS that stage, 15d's as-itself rank; 2026-10-29: "we evolve with intention. no one sits.") and still
     # fit the league is kept -- one copy per target, never a copy evolving would destroy (a Best as itself, top-5
-    # spread, legacy move, a stage with no spare copy -- "i only have 2 mime jrs" -- only shiny of its form, protected).
+    # spread, legacy move, a stage with no spare copy -- "i only have 2 mime jrs" -- best shiny of its look, hundo / nundo, protected).
     # ONE definition: pvp_combup.pick,
     # called with this engine's own graph; preflight_transfer, audit_cull, _lawcheck, audit_tags_membership and
     # audit_tag_truth call it on the same files. Tags 'Evolve for GL' / 'Evolve for UL' (2026-09-30).
@@ -2147,12 +2147,17 @@ def main():
             (base stats, evolution edges, viability) decide the pile as surely as the code does (added 2026-09-23);
             so do costume_forms.py, form_enum.json and gamemaster_pokeminers.json, which decide what a COSTUME is (added
             2026-09-30: a classifier, enum or game-master change moves the costume ladders, yet an old pile still read as
-            fresh to `full_audit.py --audits-only`); audit_cull.py recomputes this exact list and order."""
+            fresh to `full_audit.py --audits-only`); and so does every other module this file imports to decide a keep
+            (added 2026-11-10: pvp_combup, trophy_pick, pattern_pools, keep_config, references, ae_moves,
+            refresh_evolve_shiny -- PR #108 changed pvp_combup.py and the stamp could not tell); audit_cull.py
+            recomputes this exact list and order."""
             _h = _hl.sha256()
             for _rel in ('system/scripts/keep_policy.py', 'system/scripts/build_tagsets.py',
                          'pvp_iv_rule.py', 'evolvable_forms.py', 'system/scripts/rank_cache.py',
                          'cpm_table.py', 'form_overrides_complete.py', 'pvpoke_gamemaster.json', 'size_line.py',
-                         'costume_forms.py', 'form_enum.json', 'gamemaster_pokeminers.json'):
+                         'costume_forms.py', 'form_enum.json', 'gamemaster_pokeminers.json',
+                         'pvp_combup.py', 'trophy_pick.py', 'pattern_pools.py', 'keep_config.py', 'references.py', 'ae_moves.py',
+                         'system/scripts/refresh_evolve_shiny.py'):
                 try:
                     _h.update(open(os.path.join(ROOT, _rel), 'rb').read())
                 except OSError:

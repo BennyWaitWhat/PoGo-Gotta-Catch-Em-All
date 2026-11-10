@@ -22,8 +22,11 @@ For each league (GL, UL) and each TARGET (a PvP stage, shadow or not -- a shadow
     there may evolve, 2026-10-29), an own-stage top-5 spread, a copy with a legacy move (moves reroll on evolution), a
     copy of a stage with NO SPARE -- you hold no more of its species and form than its plain ladder keeps
     (plain_line, or plain_line_preevo for a middle stage; user 2026-10-29: "i only have 2 mime jrs and you want me to
-    evolve it?"), the only shiny of its form ("do not cull my only shinies"), a protected species, a hundo or nundo (a
-    trophy; 2026-11-09 a 100% Nidoran F, GL #1 as a Nidorina, failed the label law). The next-best
+    evolve it?"), the best shiny of its look (species + form + costume + the gender where the game draws the two
+    differently -- LAW 2026-09-30, the test audit_labels makes; "only shiny of its form" until 2026-11-10, when a 64%
+    shiny Gligar, GL #5 as a Gliscor and the best of three shiny Gligars, waited one Sinnoh Stone from failing the gate),
+    a protected species, a hundo or nundo (a trophy; 2026-11-09 a 100% Nidoran F, GL #1 as a Nidorina, failed the label
+    law). The next-best
     candidate is considered instead;
   * ONE copy, ONE target: targets are filled best-rank first and a copy already promised to another stage is skipped
     (an Eevee can become one eeveelution), so every opportunity has its own copy.
@@ -53,6 +56,29 @@ def middle_sids(graph):
     return frozenset(t for ts in allreach.values() for t in ts if is_pre.get(t))
 
 
+def shiny_trophies(rows):
+    """uid_hex of the BEST in-bag shiny of every look: species + form (form 0 folded into the species' single form) +
+    costume + the gender where the game draws the two differently; IV, then uid. LAW 2026-09-30 ("you dont keep my only
+    anything when evolving shinies"): it never evolves, whatever the producer. The same key audit_labels re-derives."""
+    import evolvable_forms
+    forms = defaultdict(set)
+    for r in rows:
+        if (_g(r, 'form') or 0) != 0:
+            forms[_g(r, 'pokemon_id')].add(_g(r, 'form'))
+    best = {}
+    for r in rows:
+        if not _g(r, 'fresh_shiny'):
+            continue
+        pid, f = _g(r, 'pokemon_id'), _g(r, 'form') or 0
+        if f == 0 and len(forms.get(pid, ())) == 1:
+            f = next(iter(forms[pid]))
+        k = (pid, f, _g(r, 'fresh_costume') or 0, evolvable_forms.gender_key(pid, _g(r, 'gender')))
+        v = ((_g(r, 'iv_total') or 0), r['uid_hex'])
+        if k not in best or v > best[k]:
+            best[k] = v
+    return {u for _iv, u in best.values()}
+
+
 def pick(rows, later_fn, BS, floor, rare_pids, legacy_uids=(), protected_pids=(), middle=frozenset()):
     """{'gl': {uid: (target_stage, rank_there, your_best_rank_there_or_None)}, 'ul': {...}} -- see the module doc.
     `rows` may be sqlite3.Row or dict; the form grouping is computed HERE (granular_tags._base_form_map, keep_policy's
@@ -73,11 +99,9 @@ def pick(rows, later_fn, BS, floor, rare_pids, legacy_uids=(), protected_pids=()
             reach_cap[k] = maxcp(st, BS) > cap + VIABILITY_MARGIN
         return reach_cap[k]
 
-    form_count, shiny_count = defaultdict(int), defaultdict(int)
+    form_count, trophies = defaultdict(int), shiny_trophies(rows)
     for r in rows:
         form_count[(_g(r, 'pokemon_id'), cf(r))] += 1
-        if _g(r, 'fresh_shiny'):
-            shiny_count[(_g(r, 'pokemon_id'), cf(r))] += 1
     own_of = {r['uid_hex']: pvid(_g(r, 'species_name'), _g(r, 'form') or 0) for r in rows}
     sh_of = {r['uid_hex']: 1 if _g(r, 'fresh_alignment') == 1 else 0 for r in rows}
     chains = {lg: {r['uid_hex']: chain_stage_ranks(r, lg) for r in rows} for lg in LEAGUES}
@@ -129,8 +153,8 @@ def pick(rows, later_fn, BS, floor, rare_pids, legacy_uids=(), protected_pids=()
             return True                                  # a Best as itself stays itself
         if form_count[(pid, cf(r))] <= spare_of(u):
             return True                                  # no spare: its ladder needs every copy you hold
-        if _g(r, 'fresh_shiny') and shiny_count[(pid, cf(r))] == 1:
-            return True                                  # the only shiny of its form stays where it is
+        if u in trophies:
+            return True                                  # the best shiny of its look stays where it is (audit_labels)
         for lg in LEAGUES:                               # an own-stage top-5 spread is an asset where it stands
             for st, rk in chains[lg][u]:
                 if st == own_of[u] and rk <= 5 and viable(st, caps[lg]) and fits(r, st, caps[lg], BS):
@@ -244,6 +268,9 @@ if __name__ == '__main__':
         assert res['gl'] == {'x2': ('b', 20, 300)}, res            # x3 (legacy) blocked; x2 beats x1; c only via x2 -> taken
         res = pick([dict(r, iv_total=45) if r['uid_hex'] == 'x3' else r for r in rows], lambda r: {'b', 'c'}, BS, 614, set())
         assert res['gl'] == {'x2': ('b', 20, 300)}, res            # x3 a hundo: a trophy, never a candidate (2026-11-09)
+        sh = [dict(r, fresh_shiny=1, iv_total=30 if r['uid_hex'] == 'x3' else 20) if r['uid_hex'] in ('x2', 'x3') else r for r in rows]
+        res = pick(sh, lambda r: {'b', 'c'}, BS, 614, set())
+        assert res['gl'] == {'x2': ('b', 20, 300)}, res            # x3 the best shiny of its look stays; the other shiny may go
         res = pick(rows, lambda r: {'b', 'c'}, BS, 614, set())
         assert res['gl']['x3'] == ('b', 10, 300) and res['gl']['x2'] == ('c', 30, None), res   # x3 -> b, x2 freed for c
         res = pick(rows, lambda r: {'b', 'c'}, BS, 15, set())

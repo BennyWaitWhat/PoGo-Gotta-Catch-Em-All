@@ -776,14 +776,22 @@ def art_note(art, pile_rows, tiles=0, blank=0):
     return ' '.join(bits)
 
 
-def pile_card_html(art, pile_rows, names, gender_key=None, max_axis=None, unknown=0):
+def pile_card_html(art, pile_rows, names, gender_key=None, max_axis=None, unknown=0, waiting=()):
     """The 'In the Transfer tag now (N)' card: one tile per look (label + icon + card), one row per copy. Tiles are sorted,
     so the page is deterministic. A row with no picture keeps its tile, its label and its numbers: the picture is the only
-    thing art can add, never a reason to drop a mon from the list."""
+    thing art can add, never a reason to drop a mon from the list. `waiting`: uid_hex of pile members the game has not
+    tagged yet (a fresh hatch it still counts as an egg, a buddy / gym / showcase mon) -- named in a note, never counted
+    as in the tag (2026-11-10: the card said 14 with a Tepig the tag did not hold)."""
+    wait = [r for r in pile_rows if r['uid_hex'] in waiting]
+    pile_rows = [r for r in pile_rows if r['uid_hex'] not in waiting]
+    late = ('<p class="note">%d more in the pile, not in the tag yet: %s. The game ignores a tag on a fresh hatch it still counts as an '
+            'egg and on a buddy, gym or showcase mon; a later cull tags %s.</p>'
+            % (len(wait), ', '.join('%s %d%%' % (E(names.label(r)), round((r['iv_total'] or 0) * 100 / 45)) for r in wait),
+               'it' if len(wait) == 1 else 'them')) if wait else ''
     n = len(pile_rows) + unknown
     head = '<div class="card wide" id="pile_card"><div class="eyebrow">Transfer tag</div><h2>In the Transfer tag now (%d)</h2>' % n
     if not n:
-        return head + '<p class="note">Nothing is tagged for Transfer right now.</p></div>'
+        return head + '<p class="note">Nothing is tagged for Transfer right now.</p>' + late + '</div>'
     tiles = {}
     for r in pile_rows:
         m = art.match.get(r['uid_hex']) or pd.Match(None, ())
@@ -815,7 +823,7 @@ def pile_card_html(art, pile_rows, names, gender_key=None, max_axis=None, unknow
             ''.join(_copy_row(r, names, gender_key, max_axis) for r in copies)))
     extra = ('<p class="note">%d more in the tag were not in the last walk.</p>' % unknown) if unknown else ''
     return (head + '<p class="note">Release these by hand in the game; the tool only tags. A tile is one look (form, costume, shiny, '
-            'background); each row is one copy: IV %, CP and whatever sets it apart.</p><div class="tiles">' + ''.join(out) + '</div>' + extra
+            'background); each row is one copy: IV %, CP and whatever sets it apart.</p><div class="tiles">' + ''.join(out) + '</div>' + extra + late
             + '<p class="note">' + art_note(art, pile_rows, len(out), sum(1 for t in out if 'class="spr none"' in t)) + '</p></div>')
 
 
