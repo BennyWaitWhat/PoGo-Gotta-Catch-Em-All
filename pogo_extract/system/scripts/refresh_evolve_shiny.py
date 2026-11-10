@@ -197,6 +197,26 @@ def compute_target(why=None, spent=None, detail=None, gated=None, items_spent=No
             sh_ivs[_k].append(r['iv'] or 0); sh_ivs[_k].sort(reverse=True)
             if _plain_sh(r):
                 sh_ivs_pl[_k].append(r['iv'] or 0); sh_ivs_pl[_k].sort(reverse=True)
+    _arr = defaultdict(list)                     # stage -> the spares this pass sends there (they arrive before the next cull)
+
+    def _goes_on(r, sid, n, gated_sid, need):
+        """WHERE IT ENDS (2026-11-10): the stage after n when this same rule would send the evolved copy on from n, else
+        None. n has exactly one branch this specimen can take, a plain candy tap with a shiny spot for it, and a better
+        shiny of the copy's LOOK (form, costume, drawn gender -- the stage_best rule) is at n or arrives there, so the
+        copy would be a spare again instead of n's trophy."""
+        fr = _full.get(r['u'])
+        nb = [x for x in nxt.get(n, []) if sid_to_pid.get(x) and sid_to_pid.get(x) != sid_to_pid.get(n)
+              and x in _later_sh.get(r['u'], ())
+              and (fr is None or evolvable_forms.can_reach(fr['fresh_form'] or fr['form'], x, sid, fr['gender']) is not False)]
+        if len(nb) != 1 or gated_sid(nb[0]) or not need(nb[0]):
+            return None
+        pid_n, k, me = sid_to_pid.get(n), _skey(n, r), ((r['iv'] or 0), r['u'])
+        gk = evolvable_forms.gender_key(pid_n, r['g'])
+        better = lambda x: ((x['fc'] or 0) == (r['fc'] or 0) and evolvable_forms.gender_key(pid_n, x['g']) == gk
+                            and ((x['iv'] or 0), x['u']) > me)
+        if any(x['sh'] and pvid(x['s'], x['form'] or 0) == n and (not k[1] or _fname(x) == k[1]) and better(x) for x in rows)                 or any(_skey(n, x)[1] == k[1] and better(x) for x in _arr[n]):
+            return nb[0]
+        return None
     by_stage = defaultdict(list)                 # (pid, form) -> surplus shiny candidates
     for r in rows:
         # EVOLVABILITY FROM THE ONE GRAPH, NOT A STALE COLUMN (H08, 2026-09-29): can_evolve_estimated has no writer since
@@ -306,6 +326,16 @@ def compute_target(why=None, spent=None, detail=None, gated=None, items_spent=No
             if ok and all(need(n) for n in ok):  # an open shiny spot OR beats the weakest; a SPLIT needs it on every branch
                 fam = evolvable_forms.family(sid)    # (random tap / task choice the label cannot name, 2026-09-17)
                 cost = max((evolvable_forms.step_cost(sid, n) or 0) for n in ok)
+                # WHERE IT ENDS (2026-11-10). This rule sends a spare ONE stage up; where that stage already holds a better
+                # shiny of its look the evolved copy is a spare again, and the next cull sent it on -- "then STOP" flipped
+                # (a 22% shiny Alolan Geodude: "Graveler, then STOP" at 14:21, "Golem" at 14:40; 22 such flips 10-23..11-04).
+                # Name the stage it ends at NOW when both steps are plain candy taps the family can pay for today; every
+                # other case keeps the one step, which evolve_targets words as one step and never as a stop.
+                _on = _goes_on(r, sid, ok[0], _gated_sid, need) if len(ok) == 1 and not _gated_sid(ok[0]) else None
+                if _on is not None:
+                    _c2 = cost + (evolvable_forms.step_cost(ok[0], _on) or 0)
+                    if fam is None or (_candy is not None and _candy.get(fam, 0) >= _c2):
+                        ok, cost = [_on], _c2
                 # UNREAD CANDY IS NOT "CAN PAY" (LAW 2026-09-29: "an unread count HOLDS (no Evolve label)"; keep_policy._afford
                 # already reads it so for every plain promise) -- the spare is HELD, never labelled on a count nobody read.
                 if (_candy is None and fam is not None and cost) or \
@@ -332,6 +362,7 @@ def compute_target(why=None, spent=None, detail=None, gated=None, items_spent=No
                     detail[r['u']] = list(ok)             # the next stage(s) this shiny is promised (audit_promises)
                 for n in ok:                          # the evolved shiny takes its spot: the next spare competes with it
                     _take(n, r)
+                    _arr[n].append(r)
     return target
 
 

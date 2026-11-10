@@ -1073,8 +1073,8 @@ def main():
         if _flip:
             if not ('ww' in dir() and ww):
                 out.extend(['', '**Which way to evolve**'])
-            out.append('- STOP FLIPPED (%d): the last report said stop at this stage, this one says evolve again -- it '
-                       'evolved as told, only the advice changed: %s' % (len(_flip), '; '.join(_flip)))
+            out.append('- STOP FLIPPED (%d): it evolved into the stage the last report named, and this one says evolve again '
+                       '-- it evolved as told, only the advice changed: %s' % (len(_flip), '; '.join(_flip)))
     except Exception as e:
         out.append('(stop check: not computed -- %s)' % e)
     # POWER UP COSTS (2026-09-30, Benny: "yes" to the game master's exact prices). REPORT ONLY: it reads the tag files and the walk's

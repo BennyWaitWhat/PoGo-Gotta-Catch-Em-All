@@ -116,7 +116,7 @@ def _targets(members=None, pile=None):
     for u, e in adv.items():
         tg = list(e.get('targets') or [])
         out[norm_uid(u)] = {'tags': set(e.get('tags') or []), 'fixed': tg if len(tg) == 1 else [],
-                            'split': tuple(tg) if len(tg) > 1 else None}
+                            'split': tuple(tg) if len(tg) > 1 else None, 'source': e.get('source')}
     return out
 
 def advice(members=None, pile=None):
@@ -178,7 +178,7 @@ def advice(members=None, pile=None):
         base = {'uid': u, 'species': r['species_name'], 'iv': round((r['iv_total'] or 0) * 100 / 45),
                 'ivs': '/'.join('?' if r[k] is None else str(r[k]) for k in ('iv_atk', 'iv_def', 'iv_sta')), 'cp': r['cp'],
                 'gender': r['gender'], 'tags': sorted(e['tags']), 'src': sid, 'key': key,
-                'own': sorted(_own) if tf is not tform else None, 'stop': stop, 'luck': luck,
+                'own': sorted(_own) if tf is not tform else None, 'stop': stop, 'luck': luck, 'source': e.get('source'),
                 'ivpick': tyrogue_outcomes(r['iv_atk'], r['iv_def'], r['iv_sta']) if sid == 'tyrogue' else None}
         if e['fixed']:
             for t in e['fixed']:
@@ -255,7 +255,7 @@ def lines(adv=None):
             if a['src'] == 'eevee':
                 what = _nice(a['target']) + " -- don't press the plain Evolve button (random Vaporeon/Jolteon/Flareon)"
             if a.get('stop'):
-                what += ', then STOP -- do not evolve it on to %s' % ' / '.join(a['stop'])
+                what += _stop_text(a.get('source'), a['stop'])
         g = {1: ' ♂', 2: ' ♀'}.get(a['gender'], '') if a['src'] in ('charcadet', 'kirlia', 'snorunt') else ''
         # WHICH COPY (2026-09-30): two 76% Smolivs printed the same line, so the second read as "standing, unchanged" --
         # the IVs and CP name the copy he can find in the game (and a Dolliv still wearing the tag reads as done)
@@ -264,7 +264,16 @@ def lines(adv=None):
     return out
 
 
+def _stop_text(source, stops):
+    """What to say when the target evolves again. A shiny upgrade climbs one stage per cull (refresh_evolve_shiny names
+    the last stage itself when it can), so the next cull may send it on: never call that a STOP (2026-11-10)."""
+    return (', then leave it there -- the next cull says if it goes on to %s' if source == 'shiny'
+            else ', then STOP -- do not evolve it on to %s') % ' / '.join(stops)
+
+
 def _selfcheck():
+    assert _stop_text('promise', ['Golem']) == ', then STOP -- do not evolve it on to Golem'
+    assert 'STOP' not in _stop_text('shiny', ['Golem']) and _stop_text('shiny', ['Golem']).startswith(', then leave it')
     tf = {'GLOOMNORMAL': {'vileplume': [['VILEPLUMENORMAL', '']], 'bellossom': [['BELLOSSOMNORMAL', '']]},
           'ODDISHNORMAL': {'gloom': [['GLOOMNORMAL', '']]},
           'KIRLIANORMAL': {'gallade': [['GALLADENORMAL', 'MALE']], 'gardevoir': [['GARDEVOIRNORMAL', '']]},

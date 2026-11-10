@@ -322,7 +322,25 @@ def evo_can(r, graph):
     return bool(evo_reach(r, graph)) and evolvable_forms.row_can_evolve(r) is not False
 
 
+def _game_reach(r, t):
+    """False only when the client game master gives THIS specimen's form no branch to stage t (None = cannot say = yes)."""
+    try:
+        ff = r['fresh_form']
+    except (KeyError, IndexError):
+        ff = None
+    return evolvable_forms.can_reach(ff or r['form'], t, pvid(r['species_name'], r['form'] or 0), r['gender']) is not False
+
+
 def evo_gender_split(r, targets, graph):
+    """_gender_split, then THE GAME'S OWN BRANCHES ONLY (2026-11-10, user "C1"): pvpoke's graph hands every Scyther a
+    Kleavor (raid-only in GO) and a plain Rockruff a Dusk Lycanroc, so two Scyther were promised a "Kleavor / Scizor"
+    slot and each promise also had to find room at Kleavor. The shiny, showcase and PvP producers already ask can_reach
+    per specimen. Filtered AFTER the gender split: the gender-blocked set (and its keep-as-stock rescue) is unchanged."""
+    tg, blocked = _gender_split(r, targets, graph)
+    return {t for t in tg if _game_reach(r, t)}, blocked
+
+
+def _gender_split(r, targets, graph):
     """Split a later-stage target set into (reachable-by-THIS-specimen, blocked-by-gender) -- see main()'s
     _gender_split_targets for the history. Only targets PROVABLY on the other gender's branch are blocked."""
     term_sp, sp_to_dex = graph[1], graph[3]
