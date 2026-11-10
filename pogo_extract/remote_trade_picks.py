@@ -26,8 +26,10 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 KEEP_BEST = 2          # the best 2 of each variant are never offered
 SPECIES_CAP = 3        # ... and at most this many offers per species (user 2026-09-19: "make it 3")
 LOCKOUT_DAYS = 30      # remote-trade catch lockout
-NEVER_TAGS = ('Variant #1', 'Shiny - Only One')   # 'Last Copy' chip retired 2026-09-23; a last copy carries
-#                                                   dex_only_copy, so SOLE_REASON already refuses to offer it
+NEVER_TAGS = ('Variant #1', 'Shiny - Only One', 'Legacy Moves')   # 'Last Copy' chip retired 2026-09-23; a last copy carries
+#                                                   dex_only_copy, so SOLE_REASON already refuses to offer it.
+#                  'Legacy Moves' (2026-11-10): the rule above says never a legacy mover, and a mover past the legacy cap
+#                  carries the fact tag without the 'legacy' reason (a Psystrike Mewtwo, a Thunder Cage Regieleki were offered)
 SOLE_REASON = ({'shiny'}, {'variant_floor'}, {'rarity'})   # a spare copy and nothing more -- 'rarity' is the
 #                  legendary/mythical/UB/paradox cap, added 2026-09-19 ("in the remote trade stuff can you list
 #                  legendaries and stuff"): a spare legendary inside its cap is stock like any other spare copy.

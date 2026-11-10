@@ -117,7 +117,9 @@ try:
         for _rel in ('system/scripts/keep_policy.py', 'system/scripts/build_tagsets.py',
                      'pvp_iv_rule.py', 'evolvable_forms.py', 'system/scripts/rank_cache.py',
                      'cpm_table.py', 'form_overrides_complete.py', 'pvpoke_gamemaster.json', 'size_line.py',
-                     'costume_forms.py', 'form_enum.json', 'gamemaster_pokeminers.json'):   # = keep_policy._engine_sha (same list, same order)
+                     'costume_forms.py', 'form_enum.json', 'gamemaster_pokeminers.json',
+                     'pvp_combup.py', 'trophy_pick.py', 'pattern_pools.py', 'keep_config.py', 'references.py', 'ae_moves.py',
+                     'system/scripts/refresh_evolve_shiny.py'):   # = keep_policy._engine_sha (same list, same order)
             try:
                 _eh.update(open(_rel, 'rb').read())
             except OSError:
@@ -126,7 +128,7 @@ try:
         if not _emiss and _eh.hexdigest() != _esig:
             _STALE.append('the ENGINE changed since this pile was built (keep_policy/build_tagsets/pvp_iv_rule/'
                           'evolvable_forms/rank_cache/cpm_table/form_overrides/pvpoke_gamemaster/size_line/'
-                          'costume_forms/form_enum/gamemaster_pokeminers hash %s != the '
+                          'costume_forms/form_enum/gamemaster_pokeminers and the modules keep_policy imports: hash %s != the '
                           'pile stamp %s) -- re-run keep_policy.py + '
                           'build_tagsets.py before trusting these audits'
                           % (_eh.hexdigest()[:12], str(_esig)[:12]))

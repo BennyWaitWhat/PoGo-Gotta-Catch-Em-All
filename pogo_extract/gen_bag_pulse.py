@@ -103,7 +103,8 @@ REASON_NAMES = {'variant_floor': 'Plain ladder slot', 'shiny': 'Shiny', 'pvp_bes
                 'shadow_best': 'Best shadow', 'pvp_rank': 'GL/UL rank 1-5', 'gl_iv': 'GL spread', 'ul_iv': 'UL spread', 'evolve_1': 'Evolve next',
                 'evolve_2': 'Evolve twice', 'nundo': 'Nundo', 'adventure_effect': 'Adventure Effect', 'origin': 'Traded by E+F', 'protected': 'Protected species',
                 'pvp_spread': '0-15-15 spread', 'shiny_ladder': 'Evolve shiny', 'mighty': 'Mighty', 'favorite': 'Favorite',
-                'pvp_combup_gl': 'GL comb-up (evolve)', 'pvp_combup_ul': 'UL comb-up (evolve)'}
+                'pvp_combup_gl': 'GL comb-up (evolve)', 'pvp_combup_ul': 'UL comb-up (evolve)',
+                'species_min': 'One of your last %d of a kind' % keep_config.cap('species_min'), 'fused': 'Fused (inside a Kyurem)'}
 
 
 def trend(vals):
@@ -247,6 +248,17 @@ for i, p in enumerate(passes):                       # newest first: hist[-1-i];
 # Past passes whose mons left the bag keep text: 921 of the last 973 pile uids are gone from the DB, a picture cannot help find them.
 byuid = {r['uid_hex']: r for r in rows}
 pile_rows = [byuid[u] for u in sorted(pile) if u in byuid]
+# Pile members the game has not tagged yet (a fresh hatch still flagged as an egg, a locked buddy / gym / showcase mon): prune's
+# verify line names them. Trusted only when that line is about THIS pile (same size, every uid in it); else nobody waits.
+_waiting = set()
+try:
+    import cull_report as _cr
+    _rb = _cr._transfer_readback(open(os.path.join('system', 'analysis', 'last_job_api_sync.log'), encoding='utf-8', errors='replace').read())
+    _hx = lambda u: format(int(u, 16), 'x')
+    if _rb and _rb[2] and _rb[1] == len(pile) and {_hx(u) for u in _rb[2]} <= {_hx(u) for u in pile}:
+        _waiting = {r['uid_hex'] for r in pile_rows if _hx(r['uid_hex']) in {_hx(u) for u in _rb[2]}}
+except Exception:
+    _waiting = set()
 art, pile_html = None, ''
 if ART_ON:
     try:
@@ -258,7 +270,7 @@ if ART_ON:
                     _seen.add(_u)
                     _spr_uids.append(_u)
         art = bag_art.prepare(rows, _spr_uids, [r['uid_hex'] for r in pile_rows])
-        pile_html = bag_art.pile_card_html(art, pile_rows, NAMES, ef.gender_key, ef.max_axis, unknown=len(pile) - len(pile_rows))
+        pile_html = bag_art.pile_card_html(art, pile_rows, NAMES, ef.gender_key, ef.max_axis, unknown=len(pile) - len(pile_rows), waiting=_waiting)
         for p, (_ent, _more) in zip(passes, _ents):
             items = []
             for _u, _t in _ent:
@@ -284,7 +296,7 @@ DATA = {
             'hundos': len(hundo), 'hundos_today': S('new_hundos'), 'shinies': len(shiny), 'shiny_iv': round(mean([P(r) for r in shiny]), 1),
             'ladder_iv': cur, 'ladder_iv_delta': round(cur - first_iv, 1) if first_iv is not None else None,
             'nonpvp_iv': round(mean([P(r) for r in nonpvp]), 1), 'nonpvp_n': len(nonpvp),
-            'best_stage_iv': ceiling, 'xxl_winners': tags.get('XXL', 0), 'xxl_min': int(sw['min_points']),
+            'best_stage_iv': ceiling, 'xxl_winners': tags.get('XXL', 0), 'xxl_min': int(sw['min_points']), 'xxl_cap': keep_config.cap('xxl'),
             'shadows': len(shadow), 'nundos': len(nundo), 'lucky': len(lucky), 'legacy': tags.get('Legacy Moves', 0), 'ae': tags.get('Adventure Effect', 0),
             'gl5': hist[-1].get('pvp_gl_top5'), 'ul5': hist[-1].get('pvp_ul_top5'), 'gl1': hist[-1].get('pvp_gl_rank1'), 'ul1': hist[-1].get('pvp_ul_rank1')},
     'trend': {'labels': day_labels, 'ladder': res, 'best_stage': ser('best_per_stage_mean_iv'), 'shiny_iv': ser('shiny_mean_iv'),
@@ -450,7 +462,7 @@ el('rings').innerHTML = [
 el('kpis').innerHTML = [
   ['Hundos', '<span class="hu">' + num(k.hundos) + '</span>', (k.hundos_today ? '+' + k.hundos_today + ' today' : 'none new today'), ''],
   ['Shinies', '<span class="sh">' + num(k.shinies) + '</span>', 'average ' + pct(k.shiny_iv), ''],
-  ['XXL winners', num(k.xxl_winners), '≥ ' + k.xxl_min + ' pts, best 2 per species', ''],
+  ['XXL winners', num(k.xxl_winners), '≥ ' + k.xxl_min + ' pts, best ' + k.xxl_cap + ' per species', ''],
   ['PvP top-5 forms', '<span style="color:var(--pvp)">' + num(k.gl5) + '</span> · <span style="color:var(--warn)">' + num(k.ul5) + '</span>', 'GL · UL, at #1: ' + num(k.gl1) + ' · ' + num(k.ul1), ''],
   ['Transfer pile', num(k.pile), 'release by hand', ''],
   ['Species', num(k.species), num(k.identities) + ' battle forms', ''],

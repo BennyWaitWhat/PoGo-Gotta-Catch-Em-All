@@ -127,12 +127,13 @@ def main():
     _cf_csv = ','.join(str(f) for f in sorted(COSTUME_FORMS)) or '-1'   # form-ENCODED costumes (fresh_costume=0) from the live enum -- costume_forms.py
     _oo_sql = ','.join("'" + o.replace("'", "''") + "'" for o in sorted(keep_config.origin_owners())) or "''"   # origin owners from keep_config (was hardcoded E+F) so the tag matches the keep decision
     SQL_TAGS = [
-        ('Hundo', 'iv_total=45'),
-        ('Nundo', 'is_zero=1 AND pokemon_id!=0'),
+        # a fused component wears none of these (LAW: only the Legacy Moves fact tag; audit_tags_membership expects none) -- 2026-11-10
+        ('Hundo', 'iv_total=45 AND COALESCE(is_component,0)=0'),
+        ('Nundo', 'is_zero=1 AND pokemon_id!=0 AND COALESCE(is_component,0)=0'),
         # 'Event' RETIRED 2026-09-09: the native Event chip plus the two Background chips list every cosmetic.
         # 'Best Buddy' tag RETIRED 2026-06-07 (user: "nuke best buddy ... they're goats anyway") -- 0 sole-BB mons.
         ('Traded by E+F', "(is_traded=1 OR is_traded_flag_v2=1 OR is_lucky=1) "
-                          "AND lower(original_owner_name) IN (" + _oo_sql + ")"),
+                          "AND lower(original_owner_name) IN (" + _oo_sql + ") AND COALESCE(is_component,0)=0"),
     ]
     for tag, sql in SQL_TAGS:
         sets[tag] = sorted([(r['uid_hex'], r['species_name']) for r in

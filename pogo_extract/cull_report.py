@@ -204,8 +204,8 @@ def main():
         'caught' is what is left: wild, raid, research, rocket, gift ... the game has no single 'caught' flag."""
         if (r.get('traded_time_ms') or 0) > 0 or r.get('is_traded') == 1:
             return 'traded to you'                       # checked first: a traded mon keeps its first owner's hatch flag
-        if r.get('hatched_from_egg') or r.get('is_hatched_from_egg'):
-            return 'hatched'
+        if r.get('hatched_from_egg') or r.get('is_hatched_from_egg') or (r.get('is_egg') == 1 and r.get('cp')):
+            return 'hatched'                             # isEgg_ with a CP = a fresh hatch; hatchedFromEgg_ is set later (2026-11-10)
         return 'caught'
 
     sid = lambda r: pvid(r['species_name'], r['form'] or 0)
@@ -1207,6 +1207,10 @@ def power_up_lines(plan, name, tags):
         if e.get('need') and e.get('family') is not None and e['status'] in ('now', 'exchange'):
             byfam[e['family']].append(name(e['uid']))
     clash = [n for v in byfam.values() if len(v) > 1 for n in v]
+    # ... and they all draw on ONE stardust balance (2026-11-10: "2 doable now" needed 595,000 of the 355,249 held)
+    doable = [e['need']['dust'] for e in priced if e['status'] in ('now', 'exchange')]
+    if held is not None and len(doable) > 1 and sum(doable) > held:
+        said += '; the %d doable ones need %s dust together, so not all of them at once' % (len(doable), f(sum(doable)))
     out.append('Total for all %d: %s dust (%s), %s candy, %s XL -- %s%s' % (
         len(plan), f(tot['dust']), ('you hold %s' % f(held)) if held is not None else 'stardust not read this walk', f(tot['candy']), f(tot['xl']), said,
         ('; %s come from one family and share its candy, so they are not all doable together' % ', '.join(clash)) if clash else ''))
@@ -1310,7 +1314,8 @@ def _selftest():
     got = power_up_lines(many, nm.get, tg)
     assert len(got) == 1 + 12 + 1 + 1, got
     assert got[-2] == '- and the other 3, in short: 100% Mandibuzz -- doable now; 100% Mandibuzz -- doable now; 93% Lickilicky -- short 158 XL', got[-2]
-    assert got[-1] == 'Total for all 15: 3,642,000 dust (you hold 2,462,829), 0 candy, 4,316 XL -- 14 doable now, 1 short', got[-1]
+    assert got[-1] == ('Total for all 15: 3,642,000 dust (you hold 2,462,829), 0 candy, 4,316 XL -- 14 doable now, 1 short; '
+                       'the 14 doable ones need 3,500,000 dust together, so not all of them at once'), got[-1]
     got = power_up_lines([plan[0]] * 12 + [plan[1], plan[3], plan[4], plan[5], pe('m', 'ul', 40.0, 50.0, nd(250000, 0, 296), hv(0, 400), {}, 'level', cap=40.0)], nm.get, tg)
     assert got[-2] == ('- and the other 5, in short: 100% Dusknoir -- doable after exchanging 200 candy; 91% Mimikyu -- short 150,000 dust + 292 XL; '
                        '90% Seaking -- balance not read; 80% Nobody -- no price; 100% Mandibuzz -- above your trainer-level cap'), got[-2]
@@ -1323,6 +1328,10 @@ def _selftest():
     two = power_up_lines([pe('m', 'ul', 40.0, 50.0, nd(250000, 0, 296), hv(0, 400), z, 'now', family=355), pe('d', 'ul', 49.5, 50.0, nd(15000, 0, 20), hv(6488, 18), dict(z, xl=2), 'exchange', 200, 6488, family=108)],
                          nm.get, tg)
     assert 'share its candy' not in two[-1] and 'share its candy' not in power_up_lines(plan, nm.get, tg)[-1], 'distinct families carry no note'
+    pool = power_up_lines([pe('m', 'ul', 40.0, 50.0, nd(250000, 0, 296), hv(0, 400, 355249), z, 'now', family=355),
+                           pe('d', 'ul', 40.0, 50.0, nd(250000, 0, 296), hv(0, 400, 355249), z, 'now', family=108)], nm.get, tg)
+    assert pool[-1].endswith('2 doable now; the 2 doable ones need 500,000 dust together, so not all of them at once'), pool[-1]
+    assert 'dust together' not in power_up_lines(plan, nm.get, tg)[-1] and 'dust together' not in two[-1], 'no note while the balance covers them'
     nodust = power_up_lines([pe('m', 'ul', 40.0, 50.0, nd(250000, 0, 296), hv(0, 400, None), z, 'unread')], nm.get, tg)
     assert '(stardust not read this walk)' in nodust[-1], nodust
     lv = power_up_lines([pe('m', 'ul', 40.0, 50.0, nd(250000, 0, 296), hv(0, 400), {}, 'level', cap=40.0)], nm.get, tg)

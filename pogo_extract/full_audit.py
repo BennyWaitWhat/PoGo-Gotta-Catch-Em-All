@@ -206,6 +206,21 @@ def echo_job_warnings(name, log, logfile, limit=100):
     return w
 
 
+def _done_text(pile, sync_log):
+    """'N tagged for Transfer' with N = what the GAME read back after the push (prune's verify line in this pass's sync log),
+    not the pile file's length: a fresh hatch still flagged isEgg_ or a locked buddy / gym / showcase mon is in the file and
+    not in the tag (2026-11-10: file 14, tag 13, and the phone's CULL NOW status said 14). cull_button.parse_cull reads
+    'DONE -- N tagged for Transfer': that shape stays."""
+    try:
+        import cull_report as _cr
+        _rb = _cr._transfer_readback(sync_log or '')
+    except Exception:
+        _rb = None
+    if _rb and _rb[2]:
+        return '%d tagged for Transfer (+%d in the pile the game has not tagged yet)' % (_rb[0], len(_rb[2]))
+    return '%s tagged for Transfer' % pile
+
+
 def state():
     """Bag/pile counters for the progress line. Storage cap is best-effort.
 
@@ -880,19 +895,35 @@ def preflight_finish(p):
     return True
 
 
+_AUDIT_WARN = re.compile(r'\*\*\* WARN|\bWARNING\b|LOCAL FALLBACK|STALE CACHE')
+
+
 def run_audits():
     """All of them concurrently -- read-only sqlite, no shared state, no phone contact."""
-    procs = [(nm, need, subprocess.Popen([PY, sc], stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                                         text=True, encoding='utf-8', errors='replace'))
+    procs = [(nm, sc, need, subprocess.Popen([PY, sc], stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                                             text=True, encoding='utf-8', errors='replace'))
              for nm, sc, need in AUDITS]
     out = []
-    for nm, need, p in procs:
+    for nm, sc, need, p in procs:
         log = p.communicate()[0] or ''
         # BOTH conditions: exit 0 AND the script's own verdict line. Exit code alone has false-passed
         # before (a crashed subprocess printing nothing is not a pass).
         ok = (p.returncode == 0) and (need in log)
+        try:        # the full log, pass or fail (2026-11-10: "1 WARN -- see above" had no "above" to read)
+            with open(os.path.join('system', 'analysis', 'last_audit_%s.log' % os.path.basename(sc)[:-3].lstrip('_')),
+                      'w', encoding='utf-8', errors='replace') as f:
+                f.write(log)
+        except OSError:
+            pass
         out.append((nm, ok, log))
     return out
+
+
+def audit_warnings(res):
+    """(audit, line) for every warning line of an audit that PASSED, once each: a WARN beside a PASS verdict is printed,
+    never only counted (2026-11-10)."""
+    return [(nm, t) for nm, ok, log in res if ok
+            for t in dict.fromkeys(l.strip() for l in log.splitlines() if _AUDIT_WARN.search(l))]
 
 def audits_only():
     """Run just the audits IN PARALLEL and exit nonzero if any fails.
@@ -904,6 +935,8 @@ def audits_only():
     for nm, ok, log in res:
         verdict = ([l for l in log.splitlines() if 'VERDICT' in l or 'UNEXPLAINED' in l] or ['(no verdict line)'])[-1]
         print('%-15s %s  %s' % (nm, 'PASS' if ok else '*** FAIL ***', verdict.strip()[:88]), flush=True)
+    for nm, w in audit_warnings(res):
+        print('  ! %-15s %s' % (nm, w[:300]), flush=True)
     bad = [(nm, log) for nm, ok, log in res if not ok]
     for nm, log in bad:
         print('----- %s: failing lines -----' % nm)
@@ -1125,6 +1158,8 @@ def _main():
     for nm, ok, log in res:
         verdict = ([l for l in log.splitlines() if 'VERDICT' in l or 'UNEXPLAINED' in l] or ['(no verdict line)'])[-1]
         say('%-15s %s  %s' % (nm, 'PASS' if ok else '*** FAIL ***', verdict.strip()[:88]))
+    for nm, w in audit_warnings(res):
+        say('  ! %-15s %s' % (nm, w[:300]))
     bad = [(nm, log) for nm, ok, log in res if not ok]
     if bad:
         for nm, log in bad:
@@ -1226,7 +1261,7 @@ def _main():
         say("VERIFY OK (prune's fresh read-back after the push is clean; %s) -- %s"
             % ('user playing -> no second cache read' if _playing else 'no tag written -> no second cache read',
                _unproven_note(log)))
-        say('DONE -- %s tagged for Transfer' % state()['pile'])
+        say('DONE -- %s' % _done_text(state()['pile'], log))
         post_tags_say(*_post)                  # Remote Trade + the tag order ran in the post-push session above
         catcher_resume()                       # last phone step done -- the reports are offline
         ladder_finish(_lr)
@@ -1253,7 +1288,7 @@ def _main():
             print('    ' + l.rstrip()[:110])
     say('VERIFY %s' % (('OK (a second client-cache reconcile, fresh attach: clean) -- %s' % _unproven_note(log))
                         if v.returncode == 0 else '*** FAILED ***'))
-    say('DONE -- %s tagged for Transfer%s' % (state()['pile'], '' if v.returncode == 0 else ' (VERIFY FAILED)'))
+    say('DONE -- %s%s' % (_done_text(state()['pile'], log), '' if v.returncode == 0 else ' (VERIFY FAILED)'))
     # THE FOREVER-FRIENDS TRADE WINDOW, REFRESHED EVERY CULL (user 2026-09-19: "make this a part of your cull every
     # time to update it"). Same session shape as the tag sync; never creates a tag, and a failure here never fails the
     # cull -- the pile is the irreversible output, a trade label is not.

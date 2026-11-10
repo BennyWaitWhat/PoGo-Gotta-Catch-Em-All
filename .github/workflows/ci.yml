@@ -42,6 +42,9 @@ jobs:
           python pogo_extract/bag_art.py --selftest
           python pogo_extract/game_opportunities.py --selftest
           python pogo_extract/independent_law.py
+          python pogo_extract/pvp_combup.py
+          python pogo_extract/evolve_targets.py --selfcheck
+          python pogo_extract/sync_evolve_size.py --selfcheck
           python pogo_extract/system/scripts/check_constant_drift.py
           python pogo_extract/system/scripts/refresh_gamemaster.py --selftest
           python AutoCatcher/tools/test_gym_stab.py
