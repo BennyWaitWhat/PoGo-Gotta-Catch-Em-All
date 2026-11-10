@@ -346,6 +346,7 @@ function pickLive(cands) {
    now retried 3 s later instead of being skipped for 330 s.) ExceededDailyLimit (5) = the daily cap. Catches: fled on sure throws
    (FLEESTREAK). Account: GetPlayerOutProto Banned / Warn / WarnExpireMs / WasSuspended, read from every GetPlayer reply;
    the game is asked for one at READY and hourly (2026-09-29 20:39 the server said banned 0, warn 0, suspended 0). */
+var SPINSIG = {k: '', t: 0};
 var LIM = {oorStreak: 0, oorSince: 0, lastOk: 0, lastSpin: 0, lastRes: -1, daily: 0, acct: null, acctT: 0, nextAcct: 0, sig: '', sigT: 0};
 function spinBlocked(now) { return LIM.oorStreak >= 6; }
 function limitState(now) {
@@ -697,7 +698,9 @@ var LASTNW = {t: 0, sig: ''}, LASTREQ = {enc: '', t: 0}, LASTRES = {sig: '', t: 
 function onEncounterOut(s) {   /* EncounterOutProto: status @0x1c, WildPokemon @0x10 -> encounterId @0x10, probs @0x20 */
   var pk = s.add(0x10).readPointer(); if (pk.isNull()) return;
   var ev = pk.add(0x10).readU64(); if (ev.compare(uint64(0)) === 0) return;
-  RESP[ev.toString()] = {st: s.add(0x1c).readS32(), p: readProbs(s.add(0x20).readPointer()), t: Date.now()};
+  var est = s.add(0x1c).readS32(); if (est === 0) return;   /* status not set yet: a half-filled object */
+  RESP[ev.toString()] = {st: est, p: readProbs(s.add(0x20).readPointer()), t: Date.now()};
+  return true;
   /* (a non-wild class answered through the standard proto: its queued entry is dropped at the next non-wild reply) */
 }
 /* Non-wild replies (incense, lure, DayNight / PowerUp / NaturalArt POIs, PokeStop incidents, daily, station...) carry no
@@ -716,6 +719,7 @@ function onOtherEncounterOut(s, pn) {
   for (i = 0; i < NWQ.length && best < 0; i++) if (sp > 0 && E[NWQ[i].enc].pid === sp) best = i;
   if (best < 0 && NWQ.length) best = 0;
   if (best >= 0) { RESP[NWQ[best].enc] = {st: st, p: p, t: now}; NWQ.splice(best, 1); }
+  return true;
 }
 function onCatchReq(s) {   /* CatchPokemonProto: encounterId @0x10 (ours and manual throws, in send order) */
   var enc = s.add(0x10).readU64().toString(), now = Date.now();
@@ -751,6 +755,7 @@ function onCatchOut(s) {
   var q = REQQ.shift(); if (!q) return;
   if (E[q.enc] && E[q.enc].st === 'thrown') RES[q.enc] = r;
   else { ST.manual++; if (st === 1) { ST.dust += r.dust; ST.candy += r.candy; ST.xp += r.xp; } }
+  return true;
 }
 function onSpinOut(s) {
   var res = s.add(0x10).readS32(), xp = s.add(0x30).readS32(), now = Date.now();
@@ -763,9 +768,33 @@ function onSpinOut(s) {
   var items = lootTotal(s.add(0x50).readPointer()) + lootTotal(s.add(0x58).readPointer());
   if (res === 2 && SPIN.lastFid && SPUN[SPIN.lastFid]) SPUN[SPIN.lastFid] = now - 327000;   /* refused: try that stop again in 3 s */
   if (res === 1 && xp <= 0 && items <= 0) return;   /* empty second pass */
+  if (res === 1) { var sk = s.toString() + '|' + xp + '|' + items; if (sk === SPINSIG.k && now - SPINSIG.t < 400) return; SPINSIG = {k: sk, t: now}; }
   if (res === 1) { SPIN.ok++; if (xp > 0 && xp < 100000) SPIN.xp += xp; SPIN.items += items;
     if (LIM.oorStreak >= 2) log('LIMIT spins OK again after ' + LIM.oorStreak + ' refusals'); LIM.oorStreak = 0; LIM.lastOk = now; LIM.lastSpin = now; LIM.lastRes = 1; }
   else bump(SPIN.fail, 'res' + res);
+  return true;
+}
+/* REPLY HOOKS. The game parses a reply through MergeFrom OR through an obfuscated 1-argument method (Google.Protobuf's
+   InternalMergeFrom, renamed), and which one it uses changes between game launches and even mid-session. With MergeFrom
+   alone hooked the catcher opened encounters and never heard an answer: NORESP, 0 catches while switched on -- 10
+   stretches 2026-10-29..11-10 (one of 126 min); on 11-10 13:37-13:50 the server counted the encounters the catcher never
+   saw answered. So every 1-argument method but these is hooked, the same as the apple reply and PlayerStatsProto.
+   VIA counts which method delivered each kind of reply (the MINUTE line prints it). cb returns true for a reply it used. */
+var VIA = {};
+function hookParse(klass, tag, cb) {
+  var h = il(), it = Memory.alloc(PS); it.writePointer(NULL); var m, n = 0;
+  while ((m = h.methods(klass, it)) && !m.isNull()) {
+    if (h.paramCount(m) !== 1) continue;
+    var nm = cstr(h.methodName(m));
+    if (['WriteTo', 'Equals', '.ctor', 'CalculateSize'].indexOf(nm) >= 0 || nm.indexOf('set_') === 0) continue;
+    var code = m.readPointer(); if (code.isNull()) continue;
+    (function (name) {
+      Interceptor.attach(code, {onEnter: function (a) { this.s = a[0]; },
+        onLeave: function () { try { if (this.s && !this.s.isNull() && cb(this.s) === true) bump(VIA, tag + ':' + name); } catch (e) { ST.errs++; } }});
+    })(nm);
+    n++;
+  }
+  return n;
 }
 function hookAll(klass, names, argc, onEnter, onLeave) {
   var h = il(), it = Memory.alloc(PS); it.writePointer(NULL); var m, n = 0;
@@ -1144,11 +1173,11 @@ rpc.exports = {
     Interceptor.attach(lu.readPointer(), CM);   /* the C gate; it enters pump() ~9x/s */
     st.pump = true;
     st.hooks = {
-      enc: hookAll(K.EncounterOutProto, ['MergeFrom'], 1, null, onEncounterOut),
+      enc: hookParse(K.EncounterOutProto, 'enc', onEncounterOut),
       other: 0,
       req: hookAll(K.CatchPokemonProto, ['WriteTo', '_InternalSerialize'], -1, onCatchReq, null),
-      res: hookAll(K.CatchPokemonOutProto, ['MergeFrom'], 1, null, onCatchOut),
-      spin: K.FortSearchOutProto ? hookAll(K.FortSearchOutProto, ['MergeFrom'], 1, null, onSpinOut) : 0
+      res: hookParse(K.CatchPokemonOutProto, 'res', onCatchOut),
+      spin: K.FortSearchOutProto ? hookParse(K.FortSearchOutProto, 'spin', onSpinOut) : 0
     };
     /* not map encounters: the wild proto (hooked above), berries, quests, PvP/Rocket rewards, battle flee, debug, queries */
     var skipOut = /^(EncounterOutProto|UseItemEncounterOutProto|QuestEncounterOutProto|LoadedQuestEncounterOutProto|VsSeekerRewardEncounterOutProto|InvasionEncounterOutProto|FleeBattleEncounterOutProto|DebugPokemonEncounterOutProto|Get.*)$/;
@@ -1167,7 +1196,7 @@ rpc.exports = {
                    cp: off1(kl, ['CaptureProbability', 'captureProbability_'])};
       if (NWOFF[nm].res < 0) NWOFF[nm].res = 0x10;
       if (NWOFF[nm].cp < 0) NWOFF[nm].cp = 0x20;
-      var n = hookAll(kl, ['MergeFrom'], 1, null, function (sp) { onOtherEncounterOut(sp, nm); });
+      var n = hookParse(kl, 'other', function (sp) { return onOtherEncounterOut(sp, nm); });
       st.hooks.other += n; st.otherTypes.push(nm.replace('EncounterOutProto', '') + (NWOFF[nm].pk < 0 ? '(no pokemon field)' : ''));
     });
     st.award = OFF.cAward >= 0 && OFF.aDust >= 0;
@@ -1216,7 +1245,7 @@ rpc.exports = {
     return {frame: GATE ? GATE.readS64().toNumber() : 0, ready: S.ready, stale: S.stale, st: ST, census: CENSUS, hidden: HIDLAST, hidNear: HIDNEARLAST, items: ITEMC, vis: VIS, tracked: NE, pend: PEND.length,
             hold: Math.max(0, Math.round((HOLD - Date.now()) / 1000)), holdWhy: HOLDWHY, lastCatchMs: LASTCATCHMS,
             spin: {total: SPIN.total, inRange: SPIN.inRange, cooling: SPIN.cooling, spins: SPIN.spins, ok: SPIN.ok, xp: SPIN.xp, items: SPIN.items, fail: SPIN.fail},
-            limit: limitState(Date.now()), srv: SRV, order: CFG.order, openMs: CFG.openMs,
+            limit: limitState(Date.now()), srv: SRV, via: VIA, order: CFG.order, openMs: CFG.openMs,
             apples: AP.inst ? {on: !!CFG.apples, st: AP.st, cand: Object.keys(AP.cand).length, ids: APPLE_IDS, range: AP.maxDist, okD: AP.okD, failD: AP.failD < 9999 ? AP.failD : null} : null};
   },
   drain: function () { var o = OUT; OUT = {log: [], done: [], tap: [], revealed: [], led: [], pos: []}; return o; }
@@ -1471,6 +1500,36 @@ def state(why="", counters=None):
         pass
 
 
+def why_idle(hist, stt, catch_on, spin_on):
+    """Why nothing is being caught, in plain words, from the last minute of counters ('' = nothing to say). The app shows
+    it under the switches. hist = [(time, frame, opened, thrown, caught, replies heard)], oldest first.
+    Benny 2026-11-10: "why is the autocatcher not working if its toggled on in the phone? this is a recurring problem" --
+    the switch read ON through three different causes (10-30 no balls, 11-07 spins refused, 11-10 replies not heard) and
+    the app could name only the first."""
+    if len(hist) < 3:
+        return ""
+    now = hist[-1]
+    old = next(h for h in hist if now[0] - h[0] <= 60)   # the oldest sample of the last minute
+    span = now[0] - old[0]
+    if span < 28:
+        return ""
+    if now[1] == old[1]:   # the game's frame counter stood still: its map is not running, so neither is the catcher
+        return f"paused: Pokemon GO is not showing its map ({int(span)} s) -- it only catches while the map is on screen"
+    parts = []
+    if catch_on:
+        opened, thrown, caught, heard = (now[i] - old[i] for i in (2, 3, 4, 5))
+        if opened >= 6 and heard == 0 and thrown == 0 and caught == 0:
+            parts.append(f"the game is not answering: {opened} encounters opened, 0 answered in the last minute")
+        elif not stt.get("vis") and opened == 0 and caught == 0 and span >= 50:
+            parts.append("no Pokemon in range right now")
+    lim = stt.get("limit") or {}
+    if spin_on and lim.get("spin") == "BLOCKED":
+        parts.append(f"spins are being refused by the server ({lim.get('oorStreak')} in a row, retrying every 30 s)")
+    elif spin_on and lim.get("spin") == "daily-limit":
+        parts.append("the daily spin limit is reached")
+    return "; ".join(parts)
+
+
 def report(w, stt, t0, base):
     st, it, sp = stt["st"], stt["items"], stt["spin"]
     mins = max((time.time() - t0) / 60.0, 1e-6)
@@ -1503,12 +1562,21 @@ def report(w, stt, t0, base):
     if base.get("minute") != minute:
         srv = (stt.get("srv") or {}).get("caught", -1)
         sen = (stt.get("srv") or {}).get("enc", -1)   # the server's NumPokemonEncountered: encountered - caught = its flees
+        via0 = stt.get("via") or {}
         if base.get("minute"):
             sd = srv - base["ms"] if srv >= 0 and base.get("ms", -1) >= 0 else "?"
             se = sen - base["mse"] if sen >= 0 and base.get("mse", -1) >= 0 else "?"
             w(f"MINUTE {base['minute']} caught={c - base.get('mc', 0)} fled={st['fled'] - base.get('mf', 0)} "
               f"dust=+{st['dust'] - base.get('md', 0)} | server caught=+{sd} encountered=+{se} opens=+{st['opened'] - base.get('mo', 0)} "
-              f"throws=+{st['thrown'] - base.get('mt', 0)} order={stt.get('order')} openMs={stt.get('openMs')}")
+              f"throws=+{st['thrown'] - base.get('mt', 0)} order={stt.get('order')} openMs={stt.get('openMs')}"
+              f" replies via {stt.get('via') or {}}")
+            enc_all = sum(v for k, v in via0.items() if k.startswith("enc:") and not k.endswith(":MergeFrom"))
+            enc_mf = via0.get("enc:MergeFrom", 0)
+            d_all, d_mf = enc_all - base.get("mva", 0), enc_mf - base.get("mvm", 0)
+            if d_all >= 3 and d_mf == 0:
+                w(f"REPLY PATH: {d_all} encounter replies came without MergeFrom this minute -- heard through the other "
+                  f"parse method (the build before 2026-11-10 13:52 caught nothing in this state)")
+            base.update(mva=enc_all, mvm=enc_mf)
         base.update(minute=minute, mc=c, mf=st["fled"], md=st["dust"], mo=st["opened"], mt=st["thrown"], ms=srv, mse=sen)
     fl = CFG["floors"]
     balls = [it.get(k, -1) for k in ("1", "2", "3")]
@@ -1517,6 +1585,19 @@ def report(w, stt, t0, base):
                f"(it saves the last {fl['1']}/{fl['2']}/{fl['3']} for you)")
     else:
         why = stt["holdWhy"] if stt["hold"] else ""
+    via = stt.get("via") or {}
+    hist = base.setdefault("hist", deque(maxlen=12))
+    hist.append((time.time(), stt["frame"], st["opened"], st["thrown"], c,
+                 sum(v for k, v in via.items() if k.startswith(("enc:", "other:")))))
+    if not why:
+        why = why_idle(list(hist), stt, flag("catch"), flag("spin"))
+        kind = why.split(":")[0].split(" (")[0]   # log each kind once when it starts, not every 10 s
+        if kind != base.get("whykind"):
+            base["whykind"] = kind
+            if why and not why.startswith("no Pokemon"):
+                w(f"NOT CATCHING: {why}")
+    else:
+        base["whykind"] = ""
     state(why, f"caught={c} fled={st['fled']} spins={sp['ok']} xp={sp['xp']} items={sp['items']} "
                f"ready={max(0, sp['inRange'] - sp['cooling'])} cooling={sp['cooling']}")
 
@@ -1570,6 +1651,8 @@ def session_loop(w, done_ids, base):
         return
     base["ifails"] = 0
     base["attached_at"] = time.time()
+    base.pop("hist", None)
+    base.update(mva=0, mvm=0, whykind="")
     w(f"reply types hooked: {', '.join(st.get('otherTypes') or [])}")
     w(f"attached pid={pid} age={age and int(age)}s in {time.time() - t_att:.1f}s | hooks={st.get('hooks')} "
       f"award={st.get('award')} bag={st.get('bag', 'ItemBag')} berries={st.get('berries')} tap={st.get('tap')} apples={st.get('apples')}")

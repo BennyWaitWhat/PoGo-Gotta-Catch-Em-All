@@ -131,4 +131,28 @@ function withFields(api) {
   api.set('ITEMC', { 1: 100, 2: 100, 3: 100 });
   check('count unknown -> none', api.call('berryFor', easy), 0);
 }
+// 7. reply hooks: every 1-argument method is hooked (the game also parses through an obfuscated one), not just MergeFrom
+{
+  const api = load();
+  const ms = [['MergeFrom', 1], ['MergeFrom', 1], ['WriteTo', 1], ['Equals', 1], ['.ctor', 1], ['CalculateSize', 0], ['set_Status', 1], ['puj', 1], ['Clone', 0]];
+  const pos = new WeakMap(), hooks = [];
+  api.set('il', () => ({ methods: (k, it) => { const i = pos.get(it) || 0; pos.set(it, i + 1); return i < ms.length ? { i, isNull: () => false, readPointer: () => ({ isNull: () => false }) } : NUL; },
+                         paramCount: (m) => ms[m.i][1], methodName: (m) => ms[m.i][0] }));
+  api.set('cstr', (x) => x);
+  api.set('Interceptor', { attach: (code, cbs) => hooks.push(cbs) });
+  const seen = [];
+  check('hooks: 2 MergeFrom + the obfuscated one', api.call('hookParse', {}, 'enc', (s) => { seen.push(s.id); return s.id !== 'empty'; }), 3);
+  const fire = (k, obj) => { const ctx = {}; hooks[k].onEnter.call(ctx, [obj]); hooks[k].onLeave.call(ctx); };
+  fire(2, { id: 'viaPuj', isNull: () => false }); fire(0, { id: 'viaMerge', isNull: () => false }); fire(1, { id: 'empty', isNull: () => false });
+  check('a reply through the obfuscated method is heard', [seen, api.get('VIA')], [['viaPuj', 'viaMerge', 'empty'], { 'enc:puj': 1, 'enc:MergeFrom': 1 }]);
+  // an encounter reply: used once its status is set, ignored while half-filled (status 0)
+  const encReply = (st) => ({ add: (n) => ({ readPointer: () => (n === 0x10 ? { isNull: () => false, add: () => ({ readU64: () => ({ compare: () => 1, toString: () => '777' }) }) } : NUL), readS32: () => (n === 0x1c ? st : 0) }) });
+  api.set('readProbs', () => ({ 1: 0.5 })); api.set('uint64', (x) => x);
+  check('half-filled reply ignored', [api.call('onEncounterOut', encReply(0)), api.get('RESP')['777']], [undefined, undefined]);
+  check('complete reply used', [api.call('onEncounterOut', encReply(1)), api.get('RESP')['777'].st], [true, 1]);
+  // a spin success seen by two hooks on the same object counts once
+  const spinOk = { add: (n) => ({ readS32: () => (n === 0x10 ? 1 : n === 0x30 ? 50 : 0), readPointer: () => NUL }), toString: () => 'obj1' };
+  api.call('onSpinOut', spinOk); api.call('onSpinOut', spinOk);
+  check('one spin reply, two hooks -> 1 spin', api.get('SPIN.ok'), 1);
+}
 process.exit(failed ? 1 : 0);

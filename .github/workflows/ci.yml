@@ -45,6 +45,9 @@ jobs:
           python pogo_extract/system/scripts/check_constant_drift.py
           python pogo_extract/system/scripts/refresh_gamemaster.py --selftest
           python AutoCatcher/tools/test_gym_stab.py
+          python AutoCatcher/tools/catcher_yield_sim.py
+          python AutoCatcher/tools/catcher_apple_sim.py
+          python AutoCatcher/tools/catcher_why_sim.py
 
       - name: Safety guards hold
         working-directory: pogo_extract
