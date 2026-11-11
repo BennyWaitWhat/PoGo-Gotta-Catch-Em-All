@@ -209,9 +209,21 @@ def main():
             _k = _look(_r)
             if _k not in _look_best or ((_r['iv_total'] or 0), _u) > _look_best[_k]:
                 _look_best[_k] = ((_r['iv_total'] or 0), _u)
+    # ... EXCEPT toward a shiny he has NEVER registered (LAW bucket 4, user 2026-11-11 "D2"; keep_config
+    # rules.shiny_dex_evolve): every stage the advice names is a species whose shiny is not in the lifetime Pokedex. The
+    # Pokedex is read HERE, on its own; unread or empty = no exception.
+    try:
+        _shdex2 = {e['pid'] for e in json.load(open('pokedex_hundos_live.json', encoding='utf-8'))['entries'] if e.get('shiny')}
+    except (OSError, ValueError, KeyError, TypeError):
+        _shdex2 = set()
+
+    def _dex_new(u):
+        tg = ((adv or {}).get(u) or {}).get('targets') or []
+        return bool(keep_config.rule_enabled('shiny_dex_evolve') and _shdex2 and tg) and all(
+            DEX.get(t) is not None and DEX.get(t) not in _shdex2 for t in tg)
     for u in sorted(worn):
         r = rows.get(u)
-        if r is not None and r['fresh_shiny'] and _look_best.get(_look(r), (None, None))[1] == u:
+        if r is not None and r['fresh_shiny'] and _look_best.get(_look(r), (None, None))[1] == u and not _dex_new(u):
             bad.append('%s %d%% [%s]: the best shiny of its look (form %s, costume %s, gender %s) advised to evolve'
                        % (r['species_name'], (r['iv_total'] or 0) * 100 // 45, ', '.join(sorted(worn[u])), r['form'],
                           r['fresh_costume'] or 0, r['gender']))
