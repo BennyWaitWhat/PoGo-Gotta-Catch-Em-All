@@ -566,6 +566,11 @@ def main(argv):
     if bad:     # an unknown flag -- even --help -- must never fall through to a real download + install (full_audit.py's rule)
         print('flags: %s\nunknown: %s -- NOTHING was run' % (' '.join(FLAGS), ' '.join(bad)))
         return 2
+    if '--scheduled' in argv:                  # no console there (a hidden scheduled task): this run's lines go to a file
+        _log = open(os.path.join(ROOT, 'system', 'analysis', 'last_gm_scheduled.log'), 'w', encoding='utf-8')
+        print(time.strftime('%Y-%m-%d %H:%M:%S'), 'scheduled run', file=_log, flush=True)
+        os.dup2(_log.fileno(), 1)
+        os.dup2(_log.fileno(), 2)
     if '--selftest' in argv:                   # offline, synthetic fixtures, temp dir only -- BEFORE anything reads or downloads
         if ROOT not in sys.path:
             sys.path.insert(0, ROOT)

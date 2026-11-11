@@ -27,8 +27,11 @@ w = [x.strip(".,!;:").lstrip("/").lower() for x in p.split()]
 sys.exit(0 if "?" not in p and 0 < len(w) <= 6 and GO & set(w) and all(x in GO or x in FILL for x in w) else 1)'
 }
 
-running() { [ -d "$LOCK" ] && kill -0 "$(cat "$LOCK/pid" 2>/dev/null)" 2>/dev/null; }
+# a lock is live while its owner is alive -- and for two hours at most, so a recycled pid can never hold it forever
+running() { [ -d "$LOCK" ] && kill -0 "$(cat "$LOCK/pid" 2>/dev/null)" 2>/dev/null && [ $(( $(date +%s) - $(stat -c %Y "$LOCK") )) -lt 7200 ]; }
 
+# shortcut: two starters racing over a DEAD owner's lock in the same few milliseconds could both win; use an OS lock if
+# passes are ever started by more than the hook plus one foreground call
 take() {    # the lock is a directory: mkdir is atomic, so two starters can never both win. A dead owner's lock is cleared once
   mkdir "$LOCK" 2>/dev/null || { running && return 1; rm -rf "$LOCK"; mkdir "$LOCK" 2>/dev/null || return 1; }
   echo $$ > "$LOCK/pid"
@@ -103,9 +106,10 @@ case "${1:-}" in
     export CULL_NOW_STATE=pogo_extract/system/analysis/.cull_now_selfcheck.$$ CULL_NOW_DRY=2; mkdir -p "$CULL_NOW_STATE"
     bad() { echo "selfcheck FAILED: $1"; rm -rf "$CULL_NOW_STATE"; exit 1; }
     H=$(printf '{"prompt": "cull"}' | bash tools/cull_now.sh --hook); case "$H" in *"started ONE cull pass"*) ;; *) bad "the hook did not start a pass: $H" ;; esac
-    H=$(printf '{"prompt": "cull"}' | bash tools/cull_now.sh --hook); case "$H" in *"already running"*) ;; *) bad "a second go started a second pass: $H" ;; esac
+    H=$(printf '{"prompt": "cull"}' | bash tools/cull_now.sh --hook); case "$H" in *"ALREADY running"*) ;; *) bad "a second go started a second pass: $H" ;; esac
     O=$(bash tools/cull_now.sh); case "$O" in *attached*"start dry"*"rc=0"*) ;; *) bad "the foreground call did not attach: $O" ;; esac
     [ -e "$CULL_NOW_STATE/cull_now.lock" ] || [ -e "$CULL_NOW_STATE/cull_now.unread" ] && bad "state left behind after the pass"
+    O=$(bash tools/cull_now.sh --pass 1); case "$O" in *"NOTHING was run"*) ;; *) bad "--pass ran without its hook's lock: $O" ;; esac
     O=$(bash tools/cull_now.sh); case "$O" in "start dry"*"rc=0"*) ;; *) bad "a plain foreground pass: $O" ;; esac
     printf '{"prompt": "cull"}' | bash tools/cull_now.sh --hook > /dev/null; sleep 4
     O=$(bash tools/cull_now.sh); case "$O" in *"hook already ran"*"rc=0"*) ;; *) bad "a finished hook pass was not picked up: $O" ;; esac
@@ -117,20 +121,21 @@ case "${1:-}" in
     printf '%s' "$IN" | is_go || exit 0
     if take; then
       date +%s > "$UNREAD"; : > "$OUT"
-      BASH_EXE=$(cygpath -w "$BASH" 2>/dev/null || echo "$BASH") python -c "import os, subprocess, sys; subprocess.Popen([os.environ['BASH_EXE'], 'tools/cull_now.sh', '--pass'], stdout=open(r'$OUT', 'w'), stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL, close_fds=True, **({'creationflags': 0x08000200} if sys.platform == 'win32' else {'start_new_session': True}))" \
+      BASH_EXE=$(cygpath -w "$BASH" 2>/dev/null || echo "$BASH") python -c "import os, subprocess, sys; subprocess.Popen([os.environ['BASH_EXE'], 'tools/cull_now.sh', '--pass', '$$'], stdout=open(r'$OUT', 'w'), stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL, close_fds=True, **({'creationflags': 0x08000200} if sys.platform == 'win32' else {'start_new_session': True}))" \
         || { rm -rf "$LOCK" "$UNREAD"; exit 0; }
       for i in $(seq 1 50); do [ "$(cat "$LOCK/pid" 2>/dev/null)" != "$$" ] && break; sleep 0.1; done   # the pass owns the lock now
       echo "cull_now: the hook started ONE cull pass at $(date +%H:%M:%S) for this message. Do not start another: run \`bash tools/cull_now.sh\` (background) -- it attaches to this pass and prints its output."
     elif running; then
-      echo "cull_now: a cull pass is already running. Do not start another: run \`bash tools/cull_now.sh\` (background) -- it attaches and prints its output."
+      echo "cull_now: this go is covered by the cull pass that is ALREADY running ($(head -1 "$OUT" 2>/dev/null)). Do not start another pass for this message: if that pass's output was already read in this conversation, report from it; else run \`bash tools/cull_now.sh\` once (background) to attach."
     fi
     exit 0 ;;
-  --pass)       # the detached pass the hook started: it takes over the lock the hook made
-    [ -d "$LOCK" ] || { echo "--pass is the hook's own entry -- NOTHING was run"; exit 2; }
+  --pass)       # the detached pass a hook started: it takes over THAT hook's lock ($2 = the hook's pid), or it does nothing
+    [ -n "${2:-}" ] && [ "$(cat "$LOCK/pid" 2>/dev/null)" = "$2" ] || { echo "--pass is the hook's own entry (its lock is gone or taken) -- NOTHING was run"; exit 2; }
     echo $$ > "$LOCK/pid"; pass; RC=$?; grep -q '^rc=' "$OUT" || echo "rc=$RC"; rm -rf "$LOCK"; exit $RC ;;
   '')
     if running; then echo "(attached to the pass that is already running)"; show; exit $?; fi
-    if [ -f "$UNREAD" ] && [ $(( $(date +%s) - $(cat "$UNREAD") )) -lt 900 ]; then
+    U=$(grep -m1 -E '^[0-9]+$' "$UNREAD" 2>/dev/null)
+    if [ -n "$U" ] && [ $(( $(date +%s) - U )) -lt 900 ]; then
       if grep -qE '^--- full_audit starting|^rc=' "$OUT"; then echo "(the hook already ran this pass)"; show; exit $?; fi
       echo "(the hook's pass never got going -- starting it here)"; cat "$OUT"
     fi
