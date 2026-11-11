@@ -169,7 +169,7 @@ def refresh_rankings(top_n=None):
     if top_n is None:
         sys.path.insert(0, ROOT)
         import keep_config as _kc
-        top_n = max(_kc.pvp('power_up_meta_top'), _kc.pvp('unlock_meta_top')) or 200
+        top_n = max(_kc.pvp('power_up_meta_top'), _kc.pvp('unlock_meta_top'), _kc.pvp('best_meta_top')) or 200   # + the Best keep's N (2026-11-11)
     for cap in RANK_CAPS:
         dst = os.path.join(RANK_DIR, 'rankings-%d.json' % cap)
         tmp = dst + '.download'

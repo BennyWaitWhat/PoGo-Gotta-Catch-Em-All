@@ -298,12 +298,28 @@ for r in rows:
 _BRF = keep_config.pvp('best_rank_floor')                   # rule 15d best rank floor (2026-09-24): top 20% only
 from references import LEGENDARY_IDS as _LI, MYTHICAL_IDS as _MI, ULTRA_BEAST_IDS as _UI, PARADOX_IDS as _PI
 _SD_RARE = _LI | _MI | _UI | _PI                             # legendaries: no rank floor (user 2026-09-24)
+# BEST NEEDS A META SPECIES (LAW 2b, user 2026-11-11 "P2"): past pvp.ready_rank a Best GL / UL is kept only when its stage is
+# in pvpoke's top pvp.best_meta_top of that league. The ranking files are read HERE, by score, on their own; an unreadable,
+# short or scoreless list = no gate (an unknown list is never an empty one).
+_SD_BMT, _SD_RDY = keep_config.pvp('best_meta_top'), keep_config.pvp('ready_rank')
+_SD_META = {}
+if _SD_BMT:
+    for _mlg, _mcap in (('gl', GL_CAP), ('ul', UL_CAP)):
+        try:
+            _mraw = json.load(open(os.path.join('system', 'analysis', 'pvpoke_rankings', 'rankings-%d.json' % _mcap), encoding='utf-8'))
+            _msc = [x for x in _mraw if isinstance(x.get('score'), (int, float)) and not isinstance(x.get('score'), bool)]
+            _SD_META[_mlg] = ({x['speciesId'] for x in sorted(_msc, key=lambda x: -x['score'])[:_SD_BMT]}
+                              if len(_mraw) >= 300 and len(_msc) >= 0.9 * len(_mraw) else None)
+        except (OSError, ValueError, KeyError, TypeError, AttributeError):
+            _SD_META[_mlg] = None
 for _l in _pbg.values():
     for _lg, _cap in (('gl', GL_CAP), ('ul', UL_CAP)):
         _c = [(k, x) for x in _l for k in (_pb_usable(x, _lg, _cap),) if k is not None]
         if _c:
             _bk, _bx = min(_c, key=lambda y: (y[0][0], y[0][1], y[1]['uid_hex']))
-            if _bk[1] <= _BRF or _bx['pokemon_id'] in _SD_RARE:
+            if _bx['pokemon_id'] in _SD_RARE or (_bk[1] <= _BRF and (
+                    not _SD_BMT or _bk[1] <= _SD_RDY or _SD_META.get(_lg) is None
+                    or _pb_pvid(_bx['species_name'], _bx.get('form') or 0) in _SD_META[_lg])):
                 pvp_best[_bx['uid_hex']].add(_lg.upper())
     _c = [x for x in _l if x.get('ml_rank') is not None and (x['ml_rank'] <= _BRF or x['pokemon_id'] in _SD_RARE)]
     if _c:
