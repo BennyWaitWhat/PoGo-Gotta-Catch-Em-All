@@ -542,6 +542,7 @@ def catcher_resume():
 
 
 REPORT_STATE = os.path.join('system', 'analysis', 'last_report.json')
+REPORT_MD = os.path.join('system', 'analysis', 'last_report.txt')   # this pass's report, for the Bag Pulse page (2026-11-10, "A1")
 
 
 def report_start():
@@ -591,6 +592,8 @@ def report_step(verify_failed=False, bg=None):
         report_cancel(bg)
         bg = None
     try:
+        if os.path.exists(REPORT_MD):
+            os.remove(REPORT_MD)                 # a pass whose report fails shows no report on the page, never the last one
         _env = dict(os.environ)
         _env.pop('CULL_VERIFY', None)
         if verify_failed:
@@ -605,8 +608,12 @@ def report_step(verify_failed=False, bg=None):
         else:
             _p = subprocess.run([PY, 'cull_report.py'], capture_output=True, text=True, encoding='utf-8',
                                 errors='replace', timeout=300, env=_env)
+        _txt = '\n'.join(l for l in (_p.stdout or '').splitlines() if not l.startswith('[adventure_effect]'))
         print('=== REPORT ===')
-        print('\n'.join(l for l in (_p.stdout or '').splitlines() if not l.startswith('[adventure_effect]')), flush=True)
+        print(_txt, flush=True)
+        if _p.returncode == 0 and _txt.strip():
+            with open(REPORT_MD, 'w', encoding='utf-8') as _f:
+                _f.write(_txt)
         if _p.returncode:
             _err = [l for l in (_p.stderr or '').splitlines() if l.strip()]
             say('report: rc=%d %s' % (_p.returncode, (_err[-1] if _err else '')[:200]))

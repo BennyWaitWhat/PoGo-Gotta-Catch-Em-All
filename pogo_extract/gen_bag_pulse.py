@@ -289,6 +289,68 @@ if ART_ON:
             p.pop('pile_items', None)
             p.pop('pile_more', None)
         print('art step skipped (%s: %s) -- text-only page' % (type(_e).__name__, _e))
+# THIS CULL'S REPORT ON THE PAGE (2026-11-10, user pick "A1": the chat reply carries the release line and the warnings, the
+# page carries the rest). full_audit.report_step saves the printed report; a pass without one leaves no file and no card.
+def report_card(md):
+    """cull_report's markdown subset as one card: **bold**, '- ' and 'N. ' lists, a pipe table, plain lines. Escaped."""
+    import html as _h
+    import re as _re
+    b = lambda s: _re.sub(r'\*{2,3}(.+?)\*{2,3}', r'<b>\1</b>',
+                          _h.escape(s, quote=False).replace(' -- ', ' — ').replace('-&gt;', '→'))
+    out, st = [], {'m': None, 'lead': True}
+    ends = {'ul': '</ul>', 'ol': '</ol>', 'tb': '</tbody></table></div>'}
+
+    def to(m, tag=''):
+        if st['m'] != m:
+            if st['m']:
+                out.append(ends[st['m']])
+            out.append(tag)
+            st['m'] = m
+    for l in md.splitlines():
+        s = l.strip()
+        if not s:
+            to(None)
+        elif s.startswith('|'):
+            cells = [c.strip() for c in s.strip('|').split('|')]
+            if all(c and set(c) <= set('-: ') for c in cells):
+                continue                                              # the |---|---| rule under the header
+            if st['m'] != 'tb':
+                to('tb', '<div class="tbl"><table><thead><tr>%s</tr></thead><tbody>' % ''.join('<th>%s</th>' % b(c) for c in cells))
+            else:
+                out.append('<tr>%s</tr>' % ''.join('<td>%s</td>' % b(c) for c in cells))
+        elif s.startswith('- '):
+            to('ul', '<ul>')
+            head, sep, tail = s[2:].partition('): ')
+            if sep and tail.count('; ') >= 2:                         # 'standing, unchanged (9): a; b; c' -> one line each
+                out.append('<li>%s<ul>%s</ul></li>' % (b(head + ')'), ''.join('<li>%s</li>' % b(x) for x in tail.split('; '))))
+            else:
+                out.append('<li>%s</li>' % b(s[2:]))
+        elif _re.match(r'\d+\. ', s):
+            to('ol', '<ol>')
+            out.append('<li>%s</li>' % b(s.split('. ', 1)[1]))
+        elif s.startswith('**'):
+            to(None)
+            m = _re.match(r'\*{2,3}(.+?)\*{2,3}(.*)$', s)
+            head, rest = (m.group(1), m.group(2).strip()) if m else (s.strip('*'), '')
+            out.append(('<p class="lead">%s</p>' if st['lead'] else '<h3 class="warn">%s</h3>' if 'CHECK' in head or 'Do not release' in head
+                        else '<h3>%s</h3>') % _h.escape(head, quote=False) + ('<p class="note">%s</p>' % b(rest) if rest else ''))
+        else:
+            to(None)
+            out.append('<p>%s</p>' % b(s))
+        st['lead'] = False
+    to(None)
+    return '<div class="card wide rep"><div class="eyebrow">This cull</div>%s</div>' % ''.join(out)
+
+
+report_html = ''
+try:
+    import re as _re2
+    _md = open(os.path.join('system', 'analysis', 'last_report.txt'), encoding='utf-8').read()
+    _m = _re2.search(r'Release the (\d+) in the Transfer tag', _md)
+    if _md.strip() and (_m is None or int(_m.group(1)) == len(pile)):   # a report about another pile is not this cull's
+        report_html = report_card(_md) + '\n    '
+except OSError:
+    pass
 DATA = {
     'window': WINDOW,
     'generated': time.strftime('%Y-%m-%d %H:%M', time.localtime(os.path.getmtime('pokemon.db'))), 'history_from': days[0], 'history_to': days[-1],
@@ -382,6 +444,9 @@ td.num,th.num{text-align:right}.tbl{overflow-x:auto}
 .legend{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--mut);margin-bottom:6px}.legend i{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:5px;vertical-align:-1px}
 a{color:var(--shiny)}
 :focus-visible{outline:2px solid var(--shiny);outline-offset:2px}
+.rep p{margin:6px 0;max-width:86ch}.rep .lead{font-family:var(--font-num);font-size:18px;font-weight:700;margin:6px 0 2px}
+.rep h3{font-family:var(--font-num);font-size:14px;font-weight:700;margin:16px 0 4px;color:var(--shiny)}.rep h3.warn{color:var(--accent)}
+.rep ul,.rep ol{margin:4px 0;padding-left:22px;max-width:86ch}.rep li{margin:4px 0}.rep .note{margin:2px 0 6px}.rep .tbl{margin:8px 0;max-width:640px}
 @media (max-width:480px){.eta{grid-template-columns:1fr}.kpi .v{font-size:22px}h1{font-size:28px}.ball{width:38px;height:38px}}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 __ART_CSS__</style>
@@ -390,7 +455,7 @@ __ART_CSS__</style>
   <div class="rings" id="rings"></div>
   <div class="kpis" id="kpis"></div>
   <div class="grid">
-    __PILE_CARD__<div class="card wide">
+    __PILE_CARD____REPORT_CARD__<div class="card wide">
       <div class="eyebrow">Cull by cull</div><h2 id="win_h2"></h2>
       <p class="note" id="win_note" style="margin:0 0 10px"></p>
       <div class="kpis" id="win_kpis" style="margin-bottom:12px"></div>
@@ -600,6 +665,7 @@ if bag_art is not None:
 else:                                                        # bag_art would not import: the page as it was before pictures
     doc = (TEMPLATE.replace('__ART_CSS__', '').replace('__PILE_CARD__', '').replace('__ART_JS__', '')
            .replace('__PILE_CELL__', 'p.pile_list').replace('__DATA__', json.dumps(DATA, ensure_ascii=False)))
+doc = doc.replace('__REPORT_CARD__', report_html, 1)          # after assemble: one pass, the report text is never rescanned
 out = os.path.join('system', 'analysis', 'collection_stats.html')
 open(out, 'w', encoding='utf-8').write(doc)
 print('wrote', out, '%d KB' % (len(doc) // 1024))
