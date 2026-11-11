@@ -1068,12 +1068,12 @@ def main():
             _meant = prev_targets.get(norm(_src['uid_hex'])) if _src else None
             _nt = _now_t.get(norm(_u))
             if _meant and _nt and any(sid(C[_u]).startswith(t.split('_')[0]) for t in _meant):
-                _flip.append('%s (stop at %s -> now %s)' % (desc(C[_u], False), ' / '.join(stg(t) for t in _meant),
+                _flip.append('%s (last report: %s -> now %s)' % (desc(C[_u], False), ' / '.join(stg(t) for t in _meant),
                                                             ' / '.join(stg(t) for t in _nt)))
         if _flip:
             if not ('ww' in dir() and ww):
                 out.extend(['', '**Which way to evolve**'])
-            out.append('- STOP FLIPPED (%d): it evolved into the stage the last report named, and this one says evolve again '
+            out.append('- EVOLVE AGAIN (%d): it evolved into the stage the last report named, and this one says evolve again '
                        '-- it evolved as told, only the advice changed: %s' % (len(_flip), '; '.join(_flip)))
     except Exception as e:
         out.append('(stop check: not computed -- %s)' % e)

@@ -240,8 +240,11 @@ def compute_target(why=None, spent=None, detail=None, gated=None, items_spent=No
             continue
         by_stage[(r['pid'], _nf(r))].append(r)
     target = set()
-    for (pid, form), cands in by_stage.items():
-        cands.sort(key=lambda r: (-(r['iv'] or 0), r['u']))
+    # ONE best-first order across every stage, not one stage group after another (2026-11-11): a spare sent on to the END
+    # stage (_goes_on) takes a spot there at once, and a better spare of the middle stage, handled later, bumped it with
+    # nothing to take its advice back -- the copy would be culled after evolving (audit_promises)
+    _order = sorted(((k, c) for k, cs in by_stage.items() for c in cs), key=lambda kc: (-(kc[1]['iv'] or 0), kc[1]['u']))
+    for (pid, form), cands in [(k, [c]) for k, c in _order]:
         for r in cands:                          # best spare first; EVERY spare that earns a shiny spot (2026-09-17)
             sid = pvid(r['s'], form)
             tagged = False

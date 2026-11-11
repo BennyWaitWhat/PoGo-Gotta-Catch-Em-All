@@ -14,7 +14,8 @@ STATE = ['pokemon.db', 'keep_config.json', 'system/analysis/ladder_history.json'
 # missing candy = unknown (the engine holds), a missing Pokedex stops keep_policy until the next walk writes it.
 WALK_FILES = ['pokedex_hundos_live.json', 'pokedex_hundos_live.prev.json', 'dex_caught.json', 'dex_caught_forms.json',
               'player_state.json', 'system/analysis/candy.json', 'system/analysis/inventory.json',
-              'system/analysis/bag_count.json']
+              'system/analysis/bag_count.json',
+              'system/analysis/last_report.txt']        # the Bag Pulse report card: never the other trainer's (2026-11-11)
 STATE += WALK_FILES
 
 

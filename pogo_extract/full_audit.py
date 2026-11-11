@@ -594,6 +594,9 @@ def report_step(verify_failed=False, bg=None):
     try:
         if os.path.exists(REPORT_MD):
             os.remove(REPORT_MD)                 # a pass whose report fails shows no report on the page, never the last one
+    except OSError as _e:                        # held open by another program: the report below must still print
+        say('report: the old %s could not be removed (%s)' % (os.path.basename(REPORT_MD), _e))
+    try:
         _env = dict(os.environ)
         _env.pop('CULL_VERIFY', None)
         if verify_failed:
@@ -612,8 +615,11 @@ def report_step(verify_failed=False, bg=None):
         print('=== REPORT ===')
         print(_txt, flush=True)
         if _p.returncode == 0 and _txt.strip():
-            with open(REPORT_MD, 'w', encoding='utf-8') as _f:
-                _f.write(_txt)
+            try:
+                with open(REPORT_MD, 'w', encoding='utf-8') as _f:
+                    _f.write(_txt)
+            except OSError as _e:
+                say('report: not saved for the Bag Pulse page (%s)' % _e)
         if _p.returncode:
             _err = [l for l in (_p.stderr or '').splitlines() if l.strip()]
             say('report: rc=%d %s' % (_p.returncode, (_err[-1] if _err else '')[:200]))
@@ -1023,6 +1029,17 @@ def main():
         print('pokemon.db is missing or empty here -- run `python tools/pogo_data.py pull` from the repo root first. '
               'NOTHING was run.')
         return 2
+    # ONE pass at a time, held to the end of this process (2026-11-11, "A3"): the scheduled game-master check steps aside while
+    # it is held. Taken before anything is touched. Behind another pass this one does not run -- and does not wait for it either:
+    # two walks on one game, or one straight after another, froze it before. --audits-only only reads: no lock, no wait
+    _pass_lock = None
+    if '--audits-only' not in sys.argv[1:]:
+        sys.path.append(os.path.join(ROOT, 'system', 'scripts'))
+        from refresh_gamemaster import hold_lock, PASS_LOCK
+        _pass_lock = hold_lock(PASS_LOCK, 2)   # 2 s: the scheduled check takes it for an instant to look
+        if _pass_lock is None:
+            say('STOPPED: another full_audit.py pass is running (it holds pass.lock) -- NOTHING was run here: one pass at a time')
+            return 2
     if not xxl_trim_end():                     # a killed trim run never leaves the trim on -- or a conflict stops here
         return 9
     if '--xxl-trim' in sys.argv[1:]:
