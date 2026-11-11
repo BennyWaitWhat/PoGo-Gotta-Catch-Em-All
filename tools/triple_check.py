@@ -28,7 +28,7 @@ SELFTESTS = [['tools/pogo_data.py', 'selftest'], ['pogo_extract/walk_tripwires.p
              ['pogo_extract/system/scripts/refresh_gamemaster.py', '--selftest'],
              ['pogo_extract/game_opportunities.py', '--selftest'], ['AutoCatcher/tools/test_gym_stab.py'],
              ['pogo_extract/pvp_combup.py'], ['pogo_extract/evolve_targets.py', '--selfcheck'],
-             ['pogo_extract/sync_evolve_size.py', '--selfcheck']]
+             ['pogo_extract/sync_evolve_size.py', '--selfcheck'], ['pogo_extract/remote_trade_picks.py', '--selfcheck']]
 results = []
 
 

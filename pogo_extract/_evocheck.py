@@ -152,6 +152,8 @@ def targets(r):
     this audit report FEWER missed comb-ups than the engine can actually miss."""
     ts = _allreach.get(sid_of(r), set()) if can_evo(r) else set()
     src = sid_of(r)
+    # THE GAME'S OWN BRANCHES ONLY (2026-11-10, C1), as keep_policy.evo_gender_split: pvpoke hands a Scyther a Kleavor
+    ts = {t for t in ts if evolvable_forms.can_reach(r['fresh_form'] or r['form'], t, src, r['gender']) is not False}
     def _kids(p):
         ch = _allreach.get(p, set())
         return {c for c in ch if not any(c in _allreach.get(s, ()) for s in ch if s != c)}

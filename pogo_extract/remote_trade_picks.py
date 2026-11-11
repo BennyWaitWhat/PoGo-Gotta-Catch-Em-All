@@ -9,7 +9,9 @@ THE RULE
   * Group by COSMETIC VARIANT -- species, form, costume, art background, Dynamax/Gigantamax and shiny -- not by
     species alone. A group holding 2 or fewer offers nothing, so a costume you own twice is never touched. (Grouping
     by species+form offered 64 Pikachu, including copies that were the BEST of their own costume.)
-  * Keep the best 2 by IV of each variant; every other copy is a candidate.
+  * Keep the best 2 ORDINARY copies by IV of each variant; every other ordinary copy is a candidate. A hundo or nundo
+    is a trophy: never counted as one of the 2 and never offered (user 2026-11-10, "C2": counting the hundo offered the
+    only ordinary backup of 176 variants -- the 2 he keeps are "a back up" and "one for me").
   * A candidate is offered only when being a SPARE COPY is the only thing keeping it: reasons exactly {shiny} for a
     shiny, exactly {variant_floor} for a non-shiny. That is what his rules hold as trade stock -- never a PvP asset,
     a legacy mover, a background, an XXL, an Adventure-Effect form, a trophy or anything else with a job.
@@ -20,7 +22,7 @@ THE RULE
 
 Read-only: the bag DB, policy_reasons.json, the release pile, the client game master, form_enum.json.
 """
-import collections, json, os, re, sqlite3, time
+import collections, json, os, re, sqlite3, sys, time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 KEEP_BEST = 2          # the best 2 of each variant are never offered
@@ -78,6 +80,13 @@ def variant_key(r):
             bool(r['fresh_shiny']))
 
 
+def spares(lst):
+    """One variant's copies past its best KEEP_BEST ordinary ones, best first. Trophies (hundo / nundo) and a copy whose
+    IV was never read are left out: not counted, never offered."""
+    ordinary = sorted((r for r in lst if (r['iv_total'] or 0) not in (0, 45)), key=lambda r: (-r['iv_total'], -(r['cp'] or 0)))
+    return ordinary[KEEP_BEST:]
+
+
 def compute(rows=None, now=None):
     """-> (uids, stats). `rows` = in-bag dict rows; read from pokemon.db when omitted."""
     if rows is None:
@@ -111,11 +120,12 @@ def compute(rows=None, now=None):
         g[variant_key(r)].append(r)
     picks, stats = [], collections.Counter()
     for lst in g.values():
-        if len(lst) <= KEEP_BEST:
+        _sp = spares(lst)
+        if not _sp:
             stats['variant groups of 2 or fewer (untouched)'] += 1
             continue
         stats['variant groups over 2'] += 1
-        for r in sorted(lst, key=lambda r: (-(r['iv_total'] or 0), -(r['cp'] or 0)))[KEEP_BEST:]:
+        for r in _sp:
             stats['spare copies'] += 1
             if r['uid_hex'] in pile:
                 stats['in the release pile'] += 1
@@ -147,6 +157,13 @@ def compute(rows=None, now=None):
 
 
 if __name__ == '__main__':
+    if '--selfcheck' in sys.argv[1:]:
+        _r = lambda iv, cp=10: {'iv_total': iv, 'cp': cp}
+        assert spares([_r(45), _r(44), _r(43)]) == [], 'a hundo counted as one of the best 2'
+        assert [x['iv_total'] for x in spares([_r(45), _r(44), _r(43), _r(42), _r(0), _r(None)])] == [42], 'trophy or unread IV offered'
+        assert [x['cp'] for x in spares([_r(40, 5), _r(40, 9), _r(40, 7)])] == [5], 'CP must break an IV tie'
+        print('remote_trade_picks self-check OK')
+        raise SystemExit(0)
     uids, st = compute()
     print('Remote Trade offers: %d (cap %d per species, best 2 of each variant kept)' % (len(uids), SPECIES_CAP))
     for k, v in sorted(st.items()):
