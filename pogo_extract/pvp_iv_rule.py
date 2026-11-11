@@ -56,6 +56,45 @@ def pvid(species_name, form):
         .replace('.', '').replace('-', '_').replace('é', 'e')
 
 
+_META_LISTS = {}
+
+
+def meta_list(lg):
+    """pvpoke's overall META ranking of a league ('gl' / 'ul') as speciesIds, best score first -- read from
+    system/analysis/pvpoke_rankings/rankings-<cap>.json (refresh_gamemaster.refresh_rankings downloads it). None when the
+    file is missing, unreadable, shorter than 300 entries or mostly without a score (pvpoke's master has carried such a
+    file): an unknown list is never an empty one."""
+    if lg not in _META_LISTS:
+        try:
+            import json
+            import os
+            lst = json.load(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'system', 'analysis', 'pvpoke_rankings',
+                                              'rankings-%d.json' % {'gl': GL_CAP, 'ul': UL_CAP}[lg]), encoding='utf-8'))
+            ok = [x for x in lst if isinstance(x.get('score'), (int, float)) and not isinstance(x.get('score'), bool)]
+            _META_LISTS[lg] = ([x['speciesId'] for x in sorted(ok, key=lambda x: -x['score'])]
+                               if len(lst) >= 300 and len(ok) >= 0.9 * len(lst) else None)
+        except (OSError, ValueError, KeyError, TypeError, AttributeError):
+            _META_LISTS[lg] = None
+    return _META_LISTS[lg]
+
+
+def meta_top(lg, n):
+    """The speciesIds inside pvpoke's top-N of a league, or None = NO GATE (n is 0, or the list is unknown). ONE reader
+    for the Power Up / Unlock 2nd Move advice (granular_tags.meta_top) and the Best GL/UL keep gate (keep_config
+    pvp.best_meta_top, user 2026-11-11 "P2"); the audits that re-derive those read the file themselves."""
+    lst = meta_list(lg) if n else None
+    return None if lst is None else frozenset(lst[:n])
+
+
+def meta_pos(lg, sid):
+    """sid's place in the league's list (1 = best), or None when it is not listed / the list is unknown. For texts."""
+    lst = meta_list(lg)
+    try:
+        return None if lst is None else lst.index(sid) + 1
+    except ValueError:
+        return None
+
+
 # Sentinel returned when we CANNOT compute a species' L50-hundo CP (speciesId absent from the
 # gamemaster, or the gamemaster failed to load at all). Every caller uses maxcp only in a
 # `maxcp(stage, BS) > cap + margin` VIABILITY test, so a huge sentinel makes an unjudgeable stage

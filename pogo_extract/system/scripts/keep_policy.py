@@ -16,6 +16,7 @@ ROOT = os.path.dirname(os.path.dirname(HERE))
 sys.path.insert(0, ROOT)
 import keep_config   # single source of truth for every tunable cap/roster (dashboard-editable)
 from pvp_iv_rule import plays
+from pvp_iv_rule import meta_top as pvp_meta_top     # pvpoke's top-N of a league: the Best GL/UL meta gate (2026-11-11)
 from pvp_iv_rule import (qualifies as pvp_iv_qualifies, pvid, GL_CAP, UL_CAP, ML_CAP, maxcp as pvp_maxcp,
                          READY_RANK, VIABILITY_MARGIN, usable_best)
 import costume_forms
@@ -1272,7 +1273,7 @@ def main():
         # SHINY FLOOR (user 2026-09-24 "only the absolute shitty ones"): a plain shiny under keep_config.shiny_floor_iv
         # takes no plain slot -- unless it is the group's best shiny, which always stays (a form never loses its last
         # shiny). Specials are untouched. Mirrored in audit_cull, _lawcheck, preflight_transfer, refresh_evolve_shiny.
-        _sfl = keep_config.shiny_floor_iv()
+        _sfl = keep_config.shiny_floor_iv(key[0])     # the roster's own floor since 2026-11-11 ("S1": 87%, legendaries keep 60%)
         _first = _ranked[0]['uid_hex'] if _ranked else None
         _ffree = {x['uid_hex'] for x in _ranked[:keep_config.shiny_floor_keep()]}   # its N best stay, floor or not (2026-10-25)
         _plains = [x for x in _ranked if not _scollect(x)]
@@ -1289,7 +1290,22 @@ def main():
         _plain_ok = {x['uid_hex'] for x in ([x for x in _plains if x['uid_hex'] in _lt]
                                             + [x for x in _plains if x['uid_hex'] not in _lt
                                                and ((x['iv_total'] or 0) >= _sfl or x['uid_hex'] in _ffree or x['uid_hex'] == _first_pl)])[:_pl]}
-        _elig = [x for x in _ranked if _scollect(x) or x['uid_hex'] in _plain_ok]
+        # THE FLOOR ALSO FOR COSTUME SHINIES (user 2026-11-11, pick "S2"; keep_config rules.shiny_floor_costume): a shiny
+        # whose ONLY special-collect sets are costumes ('cos' / 'cosf') must reach the floor too -- unless it is one of
+        # the best shiny_floor_keep of its own costume shiny set (same costume: a backup, one to trade, one for him), one
+        # of the form's N best (_ffree) or the best of its look (_lt). A background, card, Max or shadow shiny stays
+        # exempt. Mirrored in audit_cull, _lawcheck, preflight_transfer.
+        _cos_low = set()
+        if keep_config.rule_enabled('shiny_floor_costume'):
+            _setn = {}
+            for x in _ranked:
+                _sg = _scollect(x)
+                if _sg and all(_t[0] in ('cos', 'cosf') for _t in _sg):
+                    _setn[_sg] = _setn.get(_sg, 0) + 1
+                    if (_setn[_sg] > keep_config.shiny_floor_keep() and (x['iv_total'] or 0) < _sfl
+                            and x['uid_hex'] not in _ffree and x['uid_hex'] not in _lt):
+                        _cos_low.add(x['uid_hex'])
+        _elig = [x for x in _ranked if (_scollect(x) and x['uid_hex'] not in _cos_low) or x['uid_hex'] in _plain_ok]
         for r in ([x for x in _elig if x['uid_hex'] in _lt] + [x for x in _elig if x['uid_hex'] not in _lt])[:_tot]:
             mark(r['uid_hex'], 'shiny')
 
@@ -1622,10 +1638,24 @@ def main():
         # keep_config pvp.best_rank_floor (a place of the 4,096 spreads); a species whose best copy ranks below it keeps
         # no Best GL/UL/ML. Mirrored in audit_cull, _lawcheck, preflight_transfer, audit_tags_membership, _spotdata.
         _BRF = keep_config.pvp('best_rank_floor')
+        # BEST NEEDS A META SPECIES (user 2026-11-11, pick "P2": "is this list updated? it changes often." -> top 300, the
+        # wider line of the three backtested): a Best GL / UL copy whose own spread rank is past pvp.ready_rank keeps the
+        # reason only when its stage is inside pvpoke's top pvp.best_meta_top of that league (pvp_iv_rule.meta_top; 0 =
+        # off; an unknown list = no gate). A rank 1-5 spread, the legendary roster and Master League are never gated;
+        # shadows have their own rule. The identity's best copy decides: when it fails, no other copy takes the reason.
+        # Mirrored in audit_cull, _lawcheck, preflight_transfer, audit_tags_membership, _spotdata; pvp_combup.pick asks
+        # the same of a comb-up's target.
+        _BMT, _RDY = keep_config.pvp('best_meta_top'), keep_config.pvp('ready_rank')
+        def _meta_best(b, lg):
+            ub = _pvp_own(b, lg)
+            if not _BMT or ub[1] <= _RDY or b['pokemon_id'] in RARE_PIDS:
+                return True
+            _top = pvp_meta_top(lg, _BMT)
+            return _top is None or ub[2] in _top
         for lst in groups.values():
             for lg in ('gl', 'ul'):
                 b = _pvp_own_winner(lst, lg)
-                if b is not None and (_pvp_own(b, lg)[1] <= _BRF or b['pokemon_id'] in RARE_PIDS):   # legendaries: no rank floor (user 2026-09-24)
+                if b is not None and (_pvp_own(b, lg)[1] <= _BRF or b['pokemon_id'] in RARE_PIDS) and _meta_best(b, lg):   # legendaries: no rank floor (user 2026-09-24)
                     won[b['uid_hex']].add(lg.upper())
             cand = [r for r in lst if _v(r, 'ml_rank') is not None and (r['ml_rank'] <= _BRF or r['pokemon_id'] in RARE_PIDS)]
             if cand:
@@ -2180,6 +2210,13 @@ def main():
                     _h.update(open(os.path.join(ROOT, _rel), 'rb').read())
                 except OSError:
                     return None
+            # pvpoke's GL / UL ranking lists decide a Best GL/UL keep once pvp.best_meta_top is on (2026-11-11). OPTIONAL:
+            # a missing list is "no gate" for the engine, so it is a fixed marker here, never 'cannot say'.
+            for _rel in ('system/analysis/pvpoke_rankings/rankings-1500.json', 'system/analysis/pvpoke_rankings/rankings-2500.json'):
+                try:
+                    _h.update(open(os.path.join(ROOT, _rel), 'rb').read())
+                except OSError:
+                    _h.update(b'<no list>')
             return _h.hexdigest()
 
         _pile_bytes = open(_pile_path, 'rb').read()

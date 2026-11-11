@@ -70,6 +70,9 @@ DEFAULTS = {
         "action_rank": 5,     # dust advice (Power Up to 1500/2500, Unlock 2nd Move) only on an own-stage rank <= this (user 2026-09-29: "only Rank 1-5")
         "power_up_meta_top": 100,   # ...and Power Up only when the species is in pvpoke's top-N META ranking for that league (user 2026-09-29: "top 100 of pvpoke"); 0 = no meta gate
         "unlock_meta_top": 0,       # the same META gate for Unlock 2nd Move; 0 = off. LIVE VALUES are in keep_config.json (200 / 200 since 2026-09-29 02:10: "top 200")
+        "best_meta_top": 0,         # rule 15d -- a Best GL/UL copy whose own spread rank is past ready_rank is kept only when its stage is in pvpoke's
+        #                             top-N ranking of that league (user 2026-11-11, pick "P2": 300 in keep_config.json); 0 = off. The legendary
+        #                             roster and Master League are never gated; an unreadable list = no gate (pvp_iv_rule.meta_top)
     },
     "legacy_species_caps": {},                  # Absol -> 10; every other legacy species = legacy_default_cap (below)
     "legacy_default_cap": None,                          # rule 6 -- cap for legacy species NOT individually listed above; None = keep-all
@@ -84,6 +87,8 @@ DEFAULTS = {
     "collection_floor_iv": 0,                            # EVERY capped collection ladder (plain / costume / Max / legendary / legacy / cards): a copy below this
     #                                                      IV total takes no slot unless it is the ladder's best (0 = off; 12 = under 25%, user 2026-09-24)
     "shiny_floor_iv": 0,                                 # rule 3 -- a PLAIN shiny below this IV total takes no plain-shiny slot unless it is its form's best
+    "shiny_floor_iv_roster": None,                       # rule 3 -- the shiny floor for the LEGENDARY / mythical / UB / paradox roster (None = shiny_floor_iv;
+    #                                                      user 2026-11-11 "S1": the rest went 60% -> 87%, a roster shiny keeps 60% = 27) -- shiny_floor_iv(pid)
     "shiny_floor_keep": 3,                               # ... the floor never takes a species+form below its best N shinies (user 2026-10-25:
     #                                                      "at least keep 2 of a shiny", then "wait, i actually want to have at least 3"; 1 before)
     #                                                      shiny (0 = off; 18 = under 40%, user 2026-09-24: "only the absolute shitty ones")
@@ -93,6 +98,10 @@ DEFAULTS = {
     "origin_owners": ["ethanmateovz", "florandez"],      # traded/lucky from these = keep
     "showcase_weights": {"height": 0.80, "weight": 0.15, "iv": 0.05,   # rule 7 -- the game's 800/150/50, /1000
                          "xxl_bonus": 178, "xxl_upper_factor": 2.0,
+                         "cutoff_points": 0, "cutoff_keep_per_type": 5,   # rule 7 -- THE EVERYDAY CUT-OFF (user 2026-11-11, pick "X3": 1050 in
+                         #   keep_config.json): a showcase keeper under cutoff_points stays only as one of the best cutoff_keep_per_type XXLs
+                         #   kept for one of its element types ("make sure the cutoff doesn't remove at 5 of each pokemon element type");
+                         #   0 = off. min_points stays the hard floor: under it an XXL is never a showcase keeper.
                          "min_points": 1000},   # rule 7 -- only a showcase WINNER is kept: points >= this (user 2026-09-23: 1000, 945, 955; 2026-09-24: 999, then 1050, then "Make the cut off exactly 1000." at 13:47)  # flat XXL bonus; upper-bound FALLBACK only -- the real per-species bound comes from the EXTENDED_ templates (2026-09-23)
     "pvp_spread_keep": [[0, 15, 15]],                    # rule 15 -- IV spreads always kept as PvP trophies (extend the list to keep others)
     "rules": {                    # keep-all axes you can switch OFF (default all ON = current behavior)
@@ -102,6 +111,11 @@ DEFAULTS = {
         "location_card": True,    # rule 13 -- keep every location-card mon
         "dex_only": True,         # rule 14 -- keep the sole copy of a (species,form)
         "xxs": False,             # rule 7b -- XXS smallest-trophy axis (2026 size badges); OFF = no behavior change
+        "shiny_floor_costume": False,   # rule 3 -- the shiny floor also for a COSTUME shiny beyond its costume shiny set's best
+        #                                 shiny_floor_keep (user 2026-11-11, pick "S2"); OFF = a costume shiny is exempt, as before
+        "xxl_later_stage_wins": False,  # rule 7 -- an XXL pre-evolution is no showcase keeper when a kept XXL of a LATER stage of its
+        #                                 line already scores at least its best possible points (user 2026-11-11, pick "X1"); a species
+        #                                 with its own per_species_caps.xxl (Pumpkaboo / Gourgeist) is exempt; OFF = as before
     },
     "per_species_caps": {},       # Curation Studio per-species overrides {category:{pid:cap}}; empty = use the global cap (behavior-neutral)
     # PATTERN-POOLED LINES (user 2026-09-08 "top 3 of each region type only for its whole evo line"): lines whose
@@ -432,10 +446,21 @@ def shiny_floor_keep():
     return max(1, _int(CFG.get("shiny_floor_keep", d), d))
 
 
-def shiny_floor_iv():
+def shiny_floor_iv(pid=None):
     """IV total BELOW which a PLAIN shiny (no bg / card / costume / Max / shadow) is not eligible for a plain-shiny
-    slot -- unless it is the best shiny of its species+form, which always stays. 0 = off. user 2026-09-24."""
+    slot -- unless it is the best shiny of its species+form, which always stays. 0 = off. user 2026-09-24.
+    `pid` (dex number): a legendary / mythical / UB / paradox species uses shiny_floor_iv_roster when that is set
+    (user 2026-11-11 "S1": 87% for the rest, the roster keeps 60%). No pid = the general floor. One answer for the
+    engine and every mirror, like floor_iv_for."""
     d = DEFAULTS["shiny_floor_iv"]
+    rf = CFG.get("shiny_floor_iv_roster", DEFAULTS["shiny_floor_iv_roster"])
+    if pid and rf is not None and isinstance(rf, int) and not isinstance(rf, bool):
+        global _ROSTER
+        if _ROSTER is None:
+            from references import LEGENDARY_IDS, MYTHICAL_IDS, ULTRA_BEAST_IDS, PARADOX_IDS
+            _ROSTER = frozenset(LEGENDARY_IDS | MYTHICAL_IDS | ULTRA_BEAST_IDS | PARADOX_IDS)
+        if pid in _ROSTER:
+            return rf
     return _int(CFG.get("shiny_floor_iv", d), d)
 
 
@@ -466,7 +491,7 @@ def showcase_weights():
     if not isinstance(w, dict):
         w = DEFAULTS["showcase_weights"]
     out = {}
-    for k in ("height", "weight", "iv", "xxl_bonus", "xxl_upper_factor", "min_points"):
+    for k in ("height", "weight", "iv", "xxl_bonus", "xxl_upper_factor", "min_points", "cutoff_points", "cutoff_keep_per_type"):
         try:
             out[k] = float(w.get(k, DEFAULTS["showcase_weights"][k]))
         except (TypeError, ValueError):
@@ -554,7 +579,7 @@ _CAP_BOUNDS = {  # (min, max) sanity bounds the dashboard enforces -- a fat-fing
     "plain_line": (0, 50), "plain_line_preevo": (0, 50), "plain_line_gender": (1, 50), "cosmetic_middle": (1, 50), "cosmetic": (0, 50), "dynamax": (0, 50), "gigantamax": (0, 50),
     "shiny": (0, 200), "shiny_plain": (0, 200), "rarity": (0, 200), "rarity_shadow": (0, 200), "xxl": (0, 50), "xxl_per_type": (0, 50), "xxs": (0, 50), "shadow": (0, 50), "nundo": (1, 50),
 }   # xxs entry REQUIRED: every merged config carries caps.xxs, so a missing bound KeyError'd validate() and killed all dashboard saves (workflow verifier 2026-06-09)
-_PVP_BOUNDS = {"ready_rank": (1, 100), "viability_margin": (-500, 1000), "action_rank": (1, 100), "power_up_meta_top": (0, 5000), "unlock_meta_top": (0, 5000), "shadow_rank_floor": (1, 4096), "best_rank_floor": (1, 4096),
+_PVP_BOUNDS = {"ready_rank": (1, 100), "viability_margin": (-500, 1000), "action_rank": (1, 100), "power_up_meta_top": (0, 5000), "unlock_meta_top": (0, 5000), "best_meta_top": (0, 5000), "shadow_rank_floor": (1, 4096), "best_rank_floor": (1, 4096),
                "gl_floor": (0, 5000), "ul_floor": (0, 5000)}
 
 
@@ -619,6 +644,10 @@ def validate(cfg):
                 v = sw.get(k)
                 if not isinstance(v, (int, float)) or isinstance(v, bool) or not (0 <= v <= 1):
                     probs.append("showcase_weights.%s must be a number 0..1" % k)
+            for k, hi in (("cutoff_points", 5000), ("cutoff_keep_per_type", 50)):
+                v = sw.get(k, DEFAULTS["showcase_weights"][k])
+                if not isinstance(v, (int, float)) or isinstance(v, bool) or not (0 <= v <= hi):
+                    probs.append("showcase_weights.%s must be a number 0..%d (cutoff_points 0 = off)" % (k, hi))
     ps = cfg.get("pvp_spread_keep")
     if ps is not None:
         if not isinstance(ps, list):
@@ -642,6 +671,9 @@ def validate(cfg):
     sf = cfg.get("shiny_floor_iv", DEFAULTS["shiny_floor_iv"])
     if isinstance(sf, bool) or not isinstance(sf, int) or not (0 <= sf <= 45):
         probs.append("'shiny_floor_iv' must be an integer 0..45 (0 = floor off)")
+    sfr = cfg.get("shiny_floor_iv_roster", DEFAULTS["shiny_floor_iv_roster"])
+    if sfr is not None and (isinstance(sfr, bool) or not isinstance(sfr, int) or not (0 <= sfr <= 45)):
+        probs.append("'shiny_floor_iv_roster' must be null or an integer 0..45 (null = same as shiny_floor_iv)")
     sk = cfg.get("shiny_floor_keep", DEFAULTS["shiny_floor_keep"])
     if isinstance(sk, bool) or not isinstance(sk, int) or not (1 <= sk <= 20):
         probs.append("'shiny_floor_keep' must be an integer 1..20")
@@ -691,7 +723,7 @@ def validate(cfg):
                 if dup:
                     probs.append("pattern_line_pools: pid(s) %s listed in more than one line" % sorted(dup))
                 _seen_pids |= set(pids)
-    _allowed = {"line_pool_all", "caps", "pvp", "legacy_species_caps", "legacy_default_cap", "rarity_keep_all_pids", "rarity_ladders", "shadow_best_leagues", "rarity_floor_iv", "shiny_floor_iv", "shiny_floor_keep", "collection_floor_iv", "roster_floor_iv", "look_keep",
+    _allowed = {"line_pool_all", "caps", "pvp", "legacy_species_caps", "legacy_default_cap", "rarity_keep_all_pids", "rarity_ladders", "shadow_best_leagues", "rarity_floor_iv", "shiny_floor_iv", "shiny_floor_iv_roster", "shiny_floor_keep", "collection_floor_iv", "roster_floor_iv", "look_keep",
                 "protected_keep_all_pids", "adventure_effect_pids", "origin_owners",
                 "showcase_weights", "pvp_spread_keep", "rules", "per_species_caps", "pattern_line_pools", "_note"}
     for k in cfg:

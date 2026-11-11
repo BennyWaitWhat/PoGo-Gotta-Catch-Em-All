@@ -338,6 +338,18 @@ def _shiny_is_special(r):
                 or r['fresh_alignment'] == 1)
 
 
+def _shiny_costume_set(r):
+    """The costume a shiny wears when a costume is ALL that makes it collectible -- no background, location card, Max mode
+    or shadow -- else None (keep_policy._scollect made only of 'cos' / 'cosf' entries; LAW bucket 4, 2026-11-11 "S2")."""
+    if ((r['fresh_natural_art_bg'] or 0) or (r['fresh_has_location_card'] and (r['fresh_loc_card_enum'] or 0))
+            or evolvable_forms.max_axis(r['fresh_bread_mode']) or r['fresh_alignment'] == 1):
+        return None
+    if (r['fresh_costume'] or 0):
+        return ('cos', r['fresh_costume'])
+    _f = r['fresh_form'] if is_costume_form(r['fresh_form']) else r['form'] if is_costume_form(r['form']) else 0
+    return ('cosf', _f) if _f else None
+
+
 def _xxl_cap(pid):
     return keep_config.species_cap('xxl', pid, XXL_CAP)
 
@@ -736,6 +748,29 @@ def _loc_card_kept_uids(bag, cf_norm):
     return keep
 
 
+_META_SETS = {}
+
+
+def _meta_ok(lg, stage, rank):
+    """BEST NEEDS A META SPECIES (LAW 2b, user 2026-11-11 "P2"): past pvp.ready_rank a non-legendary Best GL / UL is a
+    keeper only when its stage is in pvpoke's top pvp.best_meta_top of that league. The ranking file is read HERE, by
+    score, on its own (not through pvp_iv_rule.meta_top, the engine's reader). 0 = the rule is off. An unreadable, short
+    or scoreless list = NO gate: every Best stays a keeper, which can only alarm."""
+    n = keep_config.pvp('best_meta_top')
+    if not n or rank <= keep_config.pvp('ready_rank'):
+        return True
+    if lg not in _META_SETS:
+        try:
+            raw = json.load(open(os.path.join(ROOT, 'system', 'analysis', 'pvpoke_rankings',
+                                              'rankings-%d.json' % {'gl': GL_CAP, 'ul': UL_CAP}[lg]), encoding='utf-8'))
+            sc = [x for x in raw if isinstance(x.get('score'), (int, float)) and not isinstance(x.get('score'), bool)]
+            _META_SETS[lg] = ({x['speciesId'] for x in sorted(sc, key=lambda x: -x['score'])[:n]}
+                              if len(raw) >= 300 and len(sc) >= 0.9 * len(raw) else None)
+        except (OSError, ValueError, KeyError, TypeError, AttributeError):
+            _META_SETS[lg] = None
+    return _META_SETS[lg] is None or stage in _META_SETS[lg]
+
+
 def _pvp_best_uids(bag, cf_norm, BS, gm_ok):
     """Independently re-derive keep_policy rule 15d (LAW bucket 2b, user 2026-09-23): the best GL copy and the best
     UL copy of every PvP IDENTITY (species + battle form) among NON-shadow copies (fresh_alignment != 1).
@@ -790,7 +825,8 @@ def _pvp_best_uids(bag, cf_norm, BS, gm_ok):
             cand = [(k, r) for r in lst for k in (_usable(r, lg, cap),) if k is not None]
             if cand:
                 bk, b = min(cand, key=lambda x: (x[0][0], x[0][1], x[1]['uid_hex']))
-                if bk[1] <= _BRF or _g(b, 'pokemon_id') in _RARE:
+                if _g(b, 'pokemon_id') in _RARE or (bk[1] <= _BRF and _meta_ok(   # legendaries: no rank floor, no meta gate
+                        lg, _pv(b['species_name'], _g(b, 'form') or 0), bk[1])):
                     won.setdefault(b['uid_hex'], set()).add(lg.upper())
         cand = [r for r in lst if _g(r, 'ml_rank') is not None and (_g(r, 'ml_rank') <= _BRF or _g(r, 'pokemon_id') in _RARE)]
         if cand:
@@ -1081,7 +1117,8 @@ def _gate_sha256():
     for rel in ('system/scripts/preflight_transfer.py', 'independent_law.py', 'trophy_pick.py', 'pvp_combup.py',
                 'system/scripts/refresh_evolve_shiny.py', 'size_line.py', 'keep_config.py', 'system/scripts/keep_policy.py',
                 'pvp_iv_rule.py', 'cpm_table.py', 'evolvable_forms.py', 'costume_forms.py', 'references.py', 'granular_tags.py',
-                'form_overrides_complete.py', 'legacy_accurate.json', 'pvpoke_gamemaster.json', 'pokedex_hundos_live.json'):
+                'form_overrides_complete.py', 'legacy_accurate.json', 'pvpoke_gamemaster.json', 'pokedex_hundos_live.json',
+                'system/analysis/pvpoke_rankings/rankings-1500.json', 'system/analysis/pvpoke_rankings/rankings-2500.json'):
         try:
             h.update(open(os.path.join(ROOT, rel), 'rb').read())
         except OSError:
@@ -1325,12 +1362,13 @@ def main():
                 caps={'gl': GL_CAP, 'ul': UL_CAP}, floor=keep_config.pvp('best_rank_floor'), rare_pids=_L1 | _L2 | _L3 | _L4,
                 legacy_uids=legacy_set, protected_pids=keep_config.protected_pids(), cf=_cf_norm,
                 shadow_floor=keep_config.pvp('shadow_rank_floor'), shadow_leagues=keep_config.shadow_leagues(),
-                ladder_cap=lambda s: keep_config.cap('plain_line_preevo' if s in _mid_l else 'plain_line')):
+                ladder_cap=lambda s: keep_config.cap('plain_line_preevo' if s in _mid_l else 'plain_line'),
+                meta_ok=_meta_ok):
             _found.append((_u, 'pvp_combup(law: %s)' % _why))
         for _u, _why in _il.shiny_ladder_violations(
                 bag, _pile_set, own_of=_own_l, next_of=_next_l, can_evolve=lambda r: bool(_later_l(r)),
                 cap_of=lambda t: _shiny_cap(_dexl.get(t)), plain_cap_of=lambda t: _shiny_plain_cap(_dexl.get(t)),
-                floor_iv=keep_config.shiny_floor_iv(), floor_keep=keep_config.shiny_floor_keep(), is_collectible=lambda r: _shiny_is_special(r) and r['fresh_alignment'] != 1,
+                floor_iv=lambda t: keep_config.shiny_floor_iv(_dexl.get(t)), floor_keep=keep_config.shiny_floor_keep(), is_collectible=lambda r: _shiny_is_special(r) and r['fresh_alignment'] != 1,
                 protected_pids=keep_config.protected_pids()):
             _found.append((_u, 'shiny_ladder(law: %s)' % _why))
         for _u, _why in _found:
@@ -1350,7 +1388,7 @@ def main():
     shiny_kept = set()              # uids inside the per-species cap (within cap)
     for key, lst in shiny_groups.items():
         _rk = sorted(lst, key=_ivkey)
-        _sfl = keep_config.shiny_floor_iv(); _first = _rk[0]['uid_hex'] if _rk else None      # shiny floor, best of the form stays (2026-09-24)
+        _sfl = keep_config.shiny_floor_iv(key[0]); _first = _rk[0]['uid_hex'] if _rk else None      # shiny floor, best of the form stays (2026-09-24); the legendary roster's own floor (2026-11-11)
         _ffree = {z['uid_hex'] for z in _rk[:keep_config.shiny_floor_keep()]}   # ... its N best stay (2026-10-25: "at least keep 2")
         _plsh = [x for x in _rk if not _shiny_is_special(x)]; _first_pl = _plsh[0]['uid_hex'] if _plsh else None   # ...and the best PLAIN one
         _lk = {}                              # every look first, comb up, cap stays (user 2026-09-30, LAW bucket 4)
@@ -1360,7 +1398,17 @@ def main():
         _pok = {x['uid_hex'] for x in ([x for x in _plsh if x['uid_hex'] in _lt]
                                        + [x for x in _plsh if x['uid_hex'] not in _lt
                                           and ((x['iv_total'] or 0) >= _sfl or x['uid_hex'] in _ffree or x['uid_hex'] == _first_pl)])[:_shiny_plain_cap(key[0])]}
-        _el = [x for x in _rk if _shiny_is_special(x) or x['uid_hex'] in _pok]
+        _clow = set()                         # a costume-only shiny past its costume set's best N needs the floor too (2026-11-11, "S2")
+        if keep_config.rule_enabled('shiny_floor_costume'):
+            _sn = {}
+            for x in _rk:
+                _sg = _shiny_costume_set(x)
+                if _sg:
+                    _sn[_sg] = _sn.get(_sg, 0) + 1
+                    if (_sn[_sg] > keep_config.shiny_floor_keep() and (x['iv_total'] or 0) < _sfl
+                            and x['uid_hex'] not in _ffree and x['uid_hex'] not in _lt):
+                        _clow.add(x['uid_hex'])
+        _el = [x for x in _rk if (_shiny_is_special(x) and x['uid_hex'] not in _clow) or x['uid_hex'] in _pok]
         for r in ([x for x in _el if x['uid_hex'] in _lt] + [x for x in _el if x['uid_hex'] not in _lt])[:_shiny_cap(key[0])]:
             shiny_kept.add(r['uid_hex'])
 
@@ -1489,7 +1537,7 @@ def main():
         elif is_xxl:        # XXL but not in the showcase set => cap-excess (rule 7 keeps top-N by showcase score)
             grp = xxl_groups.get(__import__('pvp_iv_rule').pvid(r['species_name'], r['form'] or 0), [])
             buckets['XXL_EXCESS'].append(
-                (u, '%s XXL h=%.2f w=%.2f (%d XXL of this form -> not in the showcase top-%d)%s'
+                (u, '%s XXL h=%.2f w=%.2f (%d XXL of this form -> no showcase keeper: past the top-%d, under the cut-off, or a later stage of yours already scores it)%s'
                  % (sp, r['height_m'] or 0, r['weight_kg'] or 0, len(grp),
                     _xxl_cap(r['pokemon_id']), _capnote(xxl_within_cap))))
         elif (r['uid_hex'] in legacy_set or r['uid_hex'] in legacy_txt)                 and r['pokemon_id'] in legacy_capped_pids:

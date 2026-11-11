@@ -360,7 +360,7 @@ DATA = {
             'hundos': len(hundo), 'hundos_today': S('new_hundos'), 'shinies': len(shiny), 'shiny_iv': round(mean([P(r) for r in shiny]), 1),
             'ladder_iv': cur, 'ladder_iv_delta': round(cur - first_iv, 1) if first_iv is not None else None,
             'nonpvp_iv': round(mean([P(r) for r in nonpvp]), 1), 'nonpvp_n': len(nonpvp),
-            'best_stage_iv': ceiling, 'xxl_winners': tags.get('XXL', 0), 'xxl_min': int(sw['min_points']), 'xxl_cap': keep_config.cap('xxl'),
+            'best_stage_iv': ceiling, 'xxl_winners': tags.get('XXL', 0), 'xxl_min': int(max(sw['min_points'], sw['cutoff_points'])), 'xxl_cap': keep_config.cap('xxl'),
             'shadows': len(shadow), 'nundos': len(nundo), 'lucky': len(lucky), 'legacy': tags.get('Legacy Moves', 0), 'ae': tags.get('Adventure Effect', 0),
             'gl5': hist[-1].get('pvp_gl_top5'), 'ul5': hist[-1].get('pvp_ul_top5'), 'gl1': hist[-1].get('pvp_gl_rank1'), 'ul1': hist[-1].get('pvp_ul_rank1')},
     'trend': {'labels': day_labels, 'ladder': res, 'best_stage': ser('best_per_stage_mean_iv'), 'shiny_iv': ser('shiny_mean_iv'),

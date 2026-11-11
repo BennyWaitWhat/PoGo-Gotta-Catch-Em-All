@@ -521,18 +521,8 @@ def meta_top(lg, n=None):
     """speciesIds in pvpoke's top-N META ranking for the league (system/analysis/pvpoke_rankings/rankings-<cap>.json,
     sorted by score; refreshed with the game master). N defaults to keep_config pvp.power_up_meta_top; 0 = every species."""
     n = keep_config.pvp('power_up_meta_top') if n is None else n
-    if lg not in _META:
-        try:
-            lst = json.load(open(os.path.join(HERE, 'system', 'analysis', 'pvpoke_rankings',
-                                              'rankings-%d.json' % {'gl': GL_CAP, 'ul': UL_CAP}[lg]), encoding='utf-8'))
-            _META[lg] = [x['speciesId'] for x in sorted(lst, key=lambda x: -(x.get('score') or 0))]
-            if len(_META[lg]) < 300:                      # an empty / truncated list would silently block every tag
-                _META[lg] = None
-        except (OSError, ValueError, KeyError, TypeError):
-            _META[lg] = None
-    if _META[lg] is None or not n:
-        return None                                        # unknown list: no meta gate (never silently empty)
-    return frozenset(_META[lg][:n])
+    from pvp_iv_rule import meta_top as _one_reader        # ONE reader (2026-11-11): the Best GL/UL keep gate uses it too
+    return _one_reader(lg, n)                              # None = unknown list or n 0: no meta gate (never silently empty)
 
 
 def meta_ok(r, own, lg, n=None):

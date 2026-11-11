@@ -352,7 +352,7 @@ def main():
             return True
         hp = sorted(_shp_at.get(_sh_key(t, r), []), reverse=True)
         _K = keep_config.shiny_floor_keep()           # ... unless it is one of the stage's N best (2026-10-25: "at least keep 2")
-        if iv < keep_config.shiny_floor_iv() and hp and len(h) >= _K and iv <= h[_K - 1]:
+        if iv < keep_config.shiny_floor_iv(dex) and hp and len(h) >= _K and iv <= h[_K - 1]:
             return False
         pcap = cap if keep_config.species_cap('shiny', dex, None) is not None else min(cap, keep_config.cap('shiny_plain'))
         return pcap > 0 and (len(hp) < pcap or iv > hp[pcap - 1])

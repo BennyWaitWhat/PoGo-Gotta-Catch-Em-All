@@ -108,7 +108,8 @@ def picks(pile=None):
     # ("beats your best entry there") told him to evolve a 1030 Exeggcute and a 1008 Cubone the same cull had tagged
     # for release, and a 1113 Dusclops into a 1014 Dusknoir the next cull would drop.
     import keep_config
-    _min = keep_config.showcase_weights()['min_points']
+    _sw = keep_config.showcase_weights()
+    _min = max(_sw['min_points'], _sw['cutoff_points'])   # the bar the XXL keep uses: the everyday cut-off once it is on (2026-11-11, "X3")
     try:                                       # `pile`: the pile THIS build is making (build_tagsets, 2026-09-26) --
         _pile = ({norm(u) for u in pile} if pile is not None   # the file on disk is still the previous build's there
                  else {norm(u) for u in open(os.path.join('system', 'analysis', 'tagsets', 'Transfer.txt')).read().split()})
@@ -135,7 +136,37 @@ def picks(pile=None):
     _bs = {k: showcase_plan.score(v[0]) for k, v in showcase_plan.best_entries(rows).items()}
     big = [to_the_end(e, _by[norm(e['uid'])], _nxt, _bs,
                       lambda t, s, _u=norm(e['uid']): s >= _min and t not in _blk.get(_u, ())) for e in big]
+    # KEPT AFTER EVOLVING, ALSO UNDER "A LATER STAGE WINS" (2026-11-11, "X1"; keep_config rules.xxl_later_stage_wins): a pick
+    # that stops at a middle stage is no pick when an entry you own at a stage after it already scores at least what this
+    # copy could reach from there -- size_line.xxl_keepers would drop the evolved copy the same cull.
+    if keep_config.rule_enabled('xxl_later_stage_wins'):
+        big = [e for e in big if not yields_later(e, _by[norm(e['uid'])], _nxt, _bs)]
     return {norm(e['uid']) for e in big}, big
+
+
+def yields_later(e, r, nxt, bestscore, projected=None, own_cap=None):
+    """True when the pick's evolved copy (at e['target'], scoring e['score_after']) would be no XXL keeper under "a later
+    stage wins": some stage after the target holds an entry of yours scoring at least this copy's best from the target on.
+    A species with its own XXL cap (Pumpkaboo / Gourgeist) never yields; an unknown projection counts as not reaching."""
+    import keep_config
+    if projected is None:
+        projected = showcase_plan.projected_score
+    if own_cap is None:
+        own_cap = lambda row: keep_config.species_cap('xxl', row['pokemon_id'], None) is not None
+    if own_cap(r):
+        return False
+    later, todo = [], list(nxt.get(e['target'], ()))
+    while todo:
+        t = todo.pop()
+        if t not in later:
+            later.append(t)
+            todo += list(nxt.get(t, ()))
+    best = e['score_after'] or 0
+    for t in later:
+        ps = projected(r, t)
+        if ps and ps[0] is not None and ps[0] > best:
+            best = ps[0]
+    return any(bestscore.get(t) is not None and bestscore[t] >= best for t in later)
 
 
 def to_the_end(e, r, nxt, bestscore, ok, projected=None, can_reach=None):
@@ -173,6 +204,13 @@ def _selfcheck():
     assert to_the_end(dict(e), r, nxt, {'b': 900}, lambda t, s: False, proj, reach)['target'] == 'b'  # under min / promised slot
     assert to_the_end(dict(e), r, nxt, {'b': 900}, ok, proj, lambda *a: False)['target'] == 'b'       # the game denies the branch
     assert to_the_end(dict(e), r, nxt, {'b': 900}, ok, lambda r, t: None, reach)['target'] == 'b'     # unknown template
+    # "a later stage wins" (2026-11-11): stopped at b (1050 there, 1100 as c) while your c entry scores 1100 -> no pick
+    rr = dict(r, pokemon_id=1)
+    no_cap = lambda row: False
+    assert yields_later(dict(e), rr, nxt, {'b': 900, 'c': 1100}, proj, no_cap), 'your c already scores what it could reach'
+    assert not yields_later(dict(e), rr, nxt, {'b': 900, 'c': 1099}, proj, no_cap), 'it would still beat your c'
+    assert not yields_later(dict(e, target='c', score_after=1100), rr, nxt, {'b': 900, 'c': 700}, proj, no_cap), 'the last stage yields to nobody'
+    assert not yields_later(dict(e), rr, nxt, {'b': 900, 'c': 1100}, proj, lambda row: True), 'a species with its own XXL cap is exempt'
     print('sync_evolve_size self-check OK')
 
 

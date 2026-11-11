@@ -425,7 +425,7 @@ def types_for_sid(sid):
     return (T.get(_norm(_gm_form_of_sid(sid))) or T.get(_norm(sid)) or T.get(_norm(str(sid).split('_')[0])) or ())
 
 
-def xxl_keepers(rows, later_fn=None):
+def xxl_keepers(rows, later_fn=None, dropped=None):
     """THE XXL SHOWCASE KEEP -- ONE selection for keep_policy rule 7 and its mirrors (build_tagsets, preflight_transfer,
     audit_tags_membership, audit_tag_truth, _spotdata). audit_cull re-derives it on its own. Returns {uid_hex: why}.
 
@@ -437,6 +437,14 @@ def xxl_keepers(rows, later_fn=None):
           that can enter that type's showcase as themselves or as a later stage they can become, scored at that stage,
           that stage's points >= min_points. The game's own showcase data: 5 entries at once (ContestSettingsProto
           PlayerContestMaxEntries), one Pokemon per showcase, 2026 Showcase Tuesdays feature types + Good/Great Buddy.
+    Between (a) and (b), on the (a) keepers only (user 2026-11-11, picks "X1" and "X3"; both OFF in keep_config's defaults):
+      (x1) rules.xxl_later_stage_wins: a pre-evolution is no keeper when a kept XXL of a LATER stage it can become already
+           scores, AS ITSELF, at least this copy's best_points -- it could never beat that entry. A species with its own
+           per_species_caps.xxl (Pumpkaboo / Gourgeist: "the 4 best showcases") is exempt; an unknown template never yields.
+      (x3) showcase_weights.cutoff_points > min_points: a keeper whose best_points are under the cut-off stays only as one
+           of the best cutoff_keep_per_type keepers of one of its element types ("make sure the cutoff doesn't remove at 5
+           of each pokemon element type") -- the type showcase it could enter as itself or as a later stage, scored at that
+           stage, exactly as (b) counts a type. min_points stays the hard floor.
     """
     import keep_config
     from collections import defaultdict
@@ -466,6 +474,55 @@ def xxl_keepers(rows, later_fn=None):
         n = keep_config.species_cap('xxl', _g(lst[0][0], 'pokemon_id'), keep_config.cap('xxl'))
         for r, _ in sorted(lst, key=lambda rp: (-_score(rp), _g(rp[0], 'uid_hex')))[:n]:
             out[_g(r, 'uid_hex')] = 'species'
+    def _type_points(r):
+        """{type: this copy's best points at a stage of that type} -- its own stage or a later one, each >= min_points."""
+        tp = {}
+        stages = [(pvid(_g(r, 'species_name'), _g(r, 'form') or 0), showcase_points(r))]
+        stages += [(t, projected_points(r, t)) for t in later_stages(r, later_fn)]
+        for sid, pts in stages:
+            if pts is None or pts < mn:
+                continue
+            for ty in types_for_sid(sid):
+                if pts > tp.get(ty, -1):
+                    tp[ty] = pts
+        return tp
+
+    if keep_config.rule_enabled('xxl_later_stage_wins'):                                    # (x1)
+        own_top = {}                                     # identity -> the best OWN-stage points among its (a) keepers
+        for r, p in cand:
+            if _g(r, 'uid_hex') in out:
+                o = showcase_points(r)
+                if o is not None:
+                    k = pvid(_g(r, 'species_name'), _g(r, 'form') or 0)
+                    own_top[k] = max(own_top.get(k, o), o)
+        beaten = set()
+        for r, p in cand:
+            u = _g(r, 'uid_hex')
+            if u not in out or p is None or keep_config.species_cap('xxl', _g(r, 'pokemon_id'), None) is not None:
+                continue
+            tops = [(own_top[t], t) for t in later_stages(r, later_fn) if t in own_top]
+            if tops and max(tops)[0] >= p:
+                beaten.add(u)
+                if dropped is not None:                  # for the report's words only: (rule, the stage that wins, its points)
+                    dropped[u] = ('later', max(tops)[1], max(tops)[0])
+        for u in beaten:
+            del out[u]
+    cut = w['cutoff_points']
+    if cut > mn:                                                                            # (x3)
+        low = {_g(r, 'uid_hex') for r, p in cand if _g(r, 'uid_hex') in out and p is not None and p < cut}
+        keep_n = int(w['cutoff_keep_per_type'])
+        if low and keep_n > 0:
+            ranked = defaultdict(dict)
+            for r, p in cand:
+                if _g(r, 'uid_hex') in out and p is not None:
+                    for ty, pts in _type_points(r).items():
+                        ranked[ty][_g(r, 'uid_hex')] = pts
+            for ty, d in ranked.items():
+                low -= {u for u, _ in sorted(d.items(), key=lambda kv: (-kv[1], kv[0]))[:keep_n]}
+        for u in low:
+            del out[u]
+            if dropped is not None:
+                dropped[u] = ('cutoff', cut, keep_n)
     per_type = keep_config.cap('xxl_per_type')
     if per_type:
         bytype = defaultdict(dict)
@@ -473,14 +530,8 @@ def xxl_keepers(rows, later_fn=None):
             if p is None:
                 continue
             u = _g(r, 'uid_hex')
-            stages = [(pvid(_g(r, 'species_name'), _g(r, 'form') or 0), showcase_points(r))]
-            stages += [(t, projected_points(r, t)) for t in later_stages(r, later_fn)]
-            for sid, pts in stages:
-                if pts is None or pts < mn:
-                    continue
-                for ty in types_for_sid(sid):
-                    if pts > bytype[ty].get(u, -1):
-                        bytype[ty][u] = pts
+            for ty, pts in _type_points(r).items():
+                bytype[ty][u] = pts
         for ty, d in bytype.items():
             for u, _ in sorted(d.items(), key=lambda kv: (-kv[1], kv[0]))[:per_type]:
                 out[u] = (out[u] + '+' if u in out else '') + 'type:' + ty.replace('POKEMON_TYPE_', '').lower()

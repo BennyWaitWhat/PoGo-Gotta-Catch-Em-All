@@ -121,7 +121,7 @@ parts.append(sect('Trophies and specials', table(['Kind', 'Count', 'Cap / rule']
     row('Item-boosted IVs', len(bonus), ', '.join('%s +%d/+%d/+%d' % (r['species_name'], r['fresh_bonus_atk'] or 0, r['fresh_bonus_def'] or 0, r['fresh_bonus_sta'] or 0) for r in bonus))])))
 parts.append(sect('Size and showcases', table(['', 'Count'], [
     row('XXS / XS / M / XL / XXL', '%d / %d / %d / %d / %d' % (sizes[1], sizes[2], sizes[3], sizes[4], sizes[5])),
-    row('XXL tagged as showcase winners', '%d (XXL, >= %d pts, best %d per species)' % (tags.get('XXL', 0), int(sw['min_points']), caps['xxl'])),
+    row('XXL tagged as showcase winners', '%d (XXL, >= %d pts, best %d per species)' % (tags.get('XXL', 0), int(max(sw['min_points'], sw['cutoff_points'])), caps['xxl'])),
     row('XXL points: min / median / max', '%d / %d / %d' % (min(p for p, _ in xxl_pts), xxl_pts[len(xxl_pts) // 2][0], max(p for p, _ in xxl_pts)) if xxl_pts else '-'),
     row('Max-move levels 1 / 2 / 3', '%d / %d / %d' % (bread_lvls.get(1, 0), bread_lvls.get(2, 0), bread_lvls.get(3, 0)))]))
     + '<p class="mut">Top 10 showcase entries you own</p>' + table(['Species', 'IV', 'Height', 'Weight', 'Points'],

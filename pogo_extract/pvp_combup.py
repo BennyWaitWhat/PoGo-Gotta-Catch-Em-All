@@ -103,6 +103,7 @@ def pick(rows, later_fn, BS, floor, rare_pids, legacy_uids=(), protected_pids=()
     for r in rows:
         form_count[(_g(r, 'pokemon_id'), cf(r))] += 1
     own_of = {r['uid_hex']: pvid(_g(r, 'species_name'), _g(r, 'form') or 0) for r in rows}
+    pid_of = {r['uid_hex']: _g(r, 'pokemon_id') for r in rows}
     sh_of = {r['uid_hex']: 1 if _g(r, 'fresh_alignment') == 1 else 0 for r in rows}
     chains = {lg: {r['uid_hex']: chain_stage_ranks(r, lg) for r in rows} for lg in LEAGUES}
 
@@ -118,10 +119,23 @@ def pick(rows, later_fn, BS, floor, rare_pids, legacy_uids=(), protected_pids=()
                 k = (st, sh_of[u])
                 if k not in owned[lg] or (rk, u) < owned[lg][k]:
                     owned[lg][k] = (rk, u)
+    # BEST NEEDS A META SPECIES (keep_policy 15d, user 2026-11-11 "P2"): past pvp.ready_rank a non-shadow Best GL / UL is
+    # kept only for a stage inside pvpoke's top pvp.best_meta_top of that league -- so a copy that fails it is no "Best as
+    # itself" (it may evolve), and an evolve whose target fails it would make a Best nobody keeps (no comb-up).
+    from pvp_iv_rule import meta_top
+    _bmt, _rdy = keep_config.pvp('best_meta_top'), keep_config.pvp('ready_rank')
+
+    def meta_best(lg, st, rk):
+        if not _bmt or rk <= _rdy:
+            return True
+        top = meta_top(lg, _bmt)
+        return top is None or st in top
+
     own_rank = {}                                        # uid -> its rank where it is your best AS its stage
     for lg in LEAGUES:
-        for rk, u in owned[lg].values():
-            own_rank[u] = min(rk, own_rank.get(u, rk))
+        for (st, sh), (rk, u) in owned[lg].items():
+            if sh or meta_best(lg, st, rk) or pid_of[u] in rare_pids:
+                own_rank[u] = min(rk, own_rank.get(u, rk))
     later_memo = {}
 
     def later_of(r):
@@ -205,6 +219,8 @@ def pick(rows, later_fn, BS, floor, rare_pids, legacy_uids=(), protected_pids=()
                 break                                    # it would not be your new Best there
             if rk > (sh_floor if sh else floor) and _g(r, 'pokemon_id') not in rare_pids:
                 break                                    # outside the Best floor (candidates are rank-sorted)
+            if not sh and not meta_best(lg, st, rk) and _g(r, 'pokemon_id') not in rare_pids:
+                break                                    # the evolved copy would be a Best nobody keeps (2026-11-11)
             if promised.get(u, st) != st:
                 continue                                 # already promised to another stage -- next-best copy
             k = (_g(r, 'pokemon_id'), cf(r))
@@ -254,6 +270,8 @@ if __name__ == '__main__':
     import keep_config as K
     BS = {'a': {'atk': 100, 'def': 100, 'hp': 100}, 'b': {'atk': 200, 'def': 200, 'hp': 200}, 'c': {'atk': 190, 'def': 190, 'hp': 190}}
     real = (P.fits, P.maxcp, K.cap)
+    K.CFG = dict(K.CFG, pvp=dict(K.CFG.get('pvp') or {}, best_meta_top=0))   # the toy stages are in no ranking list: the meta gate
+    #                                                                          (2026-11-11) is off here; independent_law's self-check covers it
     P.fits = lambda r, st, cap, bs: True
     P.maxcp = lambda st, bs: 9999
     K.cap = lambda name, *a, **k: {'plain_line': 2, 'plain_line_preevo': 1}[name] if name in ('plain_line', 'plain_line_preevo') else real[2](name, *a, **k)

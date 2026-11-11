@@ -314,7 +314,7 @@ for _k, _l in _shyg.items():
     # 2026-09-23: at most cap('shiny_plain') PLAIN shinies; a per-species exception covers plains too
     _np = _n if keep_config.species_cap('shiny', _k[0], None) is not None else min(_n, keep_config.cap('shiny_plain'))
     _rk = sorted(_l, key=lambda y: (-iv(y), -len(_scoll(y)), -_cp(y), y['uid_hex']))
-    _sfl = keep_config.shiny_floor_iv(); _first = _rk[0]['uid_hex'] if _rk else None      # shiny floor, best of the form stays (2026-09-24)
+    _sfl = keep_config.shiny_floor_iv(_k[0]); _first = _rk[0]['uid_hex'] if _rk else None      # shiny floor, best of the form stays (2026-09-24); the legendary roster's own floor (2026-11-11)
     _ffree = {z['uid_hex'] for z in _rk[:keep_config.shiny_floor_keep()]}   # ... its N best stay (2026-10-25: "at least keep 2")
     _plsh = [y for y in _rk if not _scoll(y)]; _first_pl = _plsh[0]['uid_hex'] if _plsh else None   # ...and the best PLAIN one
     _lk = {}                                  # every look first, comb up, cap stays (user 2026-09-30, LAW bucket 4)
@@ -324,7 +324,17 @@ for _k, _l in _shyg.items():
     _pok = {y['uid_hex'] for y in ([y for y in _plsh if y['uid_hex'] in _lt]
                                    + [y for y in _plsh if y['uid_hex'] not in _lt
                                       and (iv(y) >= _sfl or y['uid_hex'] in _ffree or y['uid_hex'] == _first_pl)])[:_np]}
-    _el = [y for y in _rk if _scoll(y) or y['uid_hex'] in _pok]
+    _clow = set()                             # LAW bucket 4, 2026-11-11 ("S2"): a costume-only shiny beyond its costume set's
+    if keep_config.rule_enabled('shiny_floor_costume'):   # best N must reach the floor (the form's N best and each look's best stay)
+        _sn = {}
+        for y in _rk:
+            _sg = frozenset(_scoll(y))
+            if _sg and all(_t[0] in ('cos', 'cosf') for _t in _sg):
+                _sn[_sg] = _sn.get(_sg, 0) + 1
+                if (_sn[_sg] > keep_config.shiny_floor_keep() and iv(y) < _sfl
+                        and y['uid_hex'] not in _ffree and y['uid_hex'] not in _lt):
+                    _clow.add(y['uid_hex'])
+    _el = [y for y in _rk if (_scoll(y) and y['uid_hex'] not in _clow) or y['uid_hex'] in _pok]
     for x in ([y for y in _el if y['uid_hex'] in _lt] + [y for y in _el if y['uid_hex'] not in _lt])[:_n]:
         _shiny_keep.add(x['uid_hex'])
 
@@ -350,10 +360,26 @@ _BRF = keep_config.pvp('best_rank_floor')                   # rule 15d best rank
 from references import LEGENDARY_IDS as _LI, MYTHICAL_IDS as _MI, ULTRA_BEAST_IDS as _UI, PARADOX_IDS as _PI
 _LAW_RARE = _LI | _MI | _UI | _PI                            # legendaries: no rank floor (user 2026-09-24)
 _pid_of = {r['uid_hex']: r['pokemon_id'] for r in rows}
+_sid_of = {r['uid_hex']: _pb_pvid(r['species_name'], r['form'] or 0) for r in rows}
+# BEST NEEDS A META SPECIES (LAW 2b, user 2026-11-11 "P2"): past pvp.ready_rank a Best GL / UL is kept only when its stage is
+# in pvpoke's top pvp.best_meta_top of that league. The ranking files are read HERE, by score, on their own; an
+# unreadable / scoreless list = no gate (the engine's rule: an unknown list is never an empty one).
+_BMT, _RDY = keep_config.pvp('best_meta_top'), keep_config.pvp('ready_rank')
+_PB_META = {}
+if _BMT:
+    for _mlg, _mcap in (('gl', _PB_GL), ('ul', _PB_UL)):
+        try:
+            _mraw = json.load(open(os.path.join('system', 'analysis', 'pvpoke_rankings', 'rankings-%d.json' % _mcap), encoding='utf-8'))
+            _msc = [x for x in _mraw if isinstance(x.get('score'), (int, float)) and not isinstance(x.get('score'), bool)]
+            _PB_META[_mlg] = ({x['speciesId'] for x in sorted(_msc, key=lambda x: -x['score'])[:_BMT]}
+                           if len(_mraw) >= 300 and len(_msc) >= 0.9 * len(_mraw) else None)
+        except (OSError, ValueError, KeyError, TypeError, AttributeError):
+            _PB_META[_mlg] = None
 for _l in _pbg.values():
     for _lg, _cap in (('gl', _PB_GL), ('ul', _PB_UL)):
         _w, _wr = _usable_winner_rk(_l, _lg, _cap, own_only=True)
-        if _w and (_wr <= _BRF or _pid_of.get(_w) in _LAW_RARE):
+        if _w and (_wr <= _BRF or _pid_of.get(_w) in _LAW_RARE) and (
+                not _BMT or _wr <= _RDY or _pid_of.get(_w) in _LAW_RARE or _PB_META.get(_lg) is None or _sid_of[_w] in _PB_META[_lg]):
             _pvp_best_keep.add(_w)
     _c = [x for x in _l if (x['ml_rank'] if 'ml_rank' in x.keys() else None) is not None and (x['ml_rank'] <= _BRF or x['pokemon_id'] in _LAW_RARE)]
     if _c:
