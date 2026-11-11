@@ -151,9 +151,20 @@ def review_gate(argv):
     return 2
 
 
+def _rank_doubt(new):
+    """Why a downloaded ranking file must NOT replace the local one, or None. pvpoke's master has carried a file whose every
+    score was null (2024-11-30 and 2025-08-18, 2-8 h each): sorted by score, that is the alphabet, not the meta."""
+    if not isinstance(new, list) or len(new) < 300:
+        return 'unexpected shape (%s entries)' % (len(new) if isinstance(new, list) else '?')
+    scored = sum(1 for x in new if isinstance(x, dict) and x.get('speciesId') and isinstance(x.get('score'), (int, float)))
+    if scored < 0.9 * len(new):
+        return 'only %d of %d entries carry a score' % (scored, len(new))
+    return None
+
+
 def refresh_rankings(top_n=None):
-    """Download the three ranking files; keep the old one on any doubt (fewer than 300 entries, no 'score'). Prints what
-    moved in and out of the top-N -- the exact set the dust advice reads."""
+    """Download the three ranking files; keep the old one on any doubt (_rank_doubt). Prints what moved in and out of the
+    top-N -- the exact set the dust advice reads."""
     os.makedirs(RANK_DIR, exist_ok=True)
     if top_n is None:
         sys.path.insert(0, ROOT)
@@ -166,8 +177,9 @@ def refresh_rankings(top_n=None):
             with urllib.request.urlopen(RANK_URL % cap, timeout=60) as r, open(tmp, 'wb') as f:
                 f.write(r.read())
             new = json.load(open(tmp, encoding='utf-8'))
-            if not isinstance(new, list) or len(new) < 300 or 'score' not in new[0] or 'speciesId' not in new[0]:
-                raise ValueError('unexpected shape (%s entries)' % (len(new) if isinstance(new, list) else '?'))
+            _why = _rank_doubt(new)
+            if _why:
+                raise ValueError(_why)
             top = lambda d: {x['speciesId'] for x in sorted(d, key=lambda x: -(x.get('score') or 0))[:top_n]}
             old = json.load(open(dst, encoding='utf-8')) if os.path.exists(dst) else []
             a, b = top(old), top(new)
@@ -579,6 +591,10 @@ def main(argv):
         _b = hold_lock(_t)
         assert _b is not None, 'hold_lock: a released lock stayed held'
         _b.close()
+        _good = [{'speciesId': 's%d' % _i, 'score': 90 - _i / 10.0} for _i in range(400)]
+        assert _rank_doubt(_good) is None, 'rankings: a good list was refused'
+        assert _rank_doubt(_good[:200]) and _rank_doubt([dict(_x, score=None) for _x in _good]) and _rank_doubt({}), \
+            'rankings: a short, scoreless or malformed list would be installed'
         return gm_guard.selftest(sys.modules[__name__])
     age = age_days(GM)
     print('pvpoke_gamemaster.json age: %.1f days (limit %d)' % (age, MAX_AGE_DAYS))
