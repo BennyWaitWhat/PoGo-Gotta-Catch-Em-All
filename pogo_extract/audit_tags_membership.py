@@ -286,6 +286,20 @@ try:
         if r.get('fresh_alignment') == 1 or keep_config.is_fused_component(r):
             continue                        # a fusion component holds no ladder slot (2026-09-26)
         _grp[_pv2(r['species_name'], r.get('form') or 0)].append(r)   # PvP identity (2026-09-23)
+    # BEST NEEDS A META SPECIES (LAW 2b, user 2026-11-11 "P2"): past pvp.ready_rank a Best GL / UL is kept only when its stage is
+    # in pvpoke's top pvp.best_meta_top of that league. The ranking files are read HERE, by score, on their own; an
+    # unreadable / scoreless list = no gate (the engine's rule: an unknown list is never an empty one).
+    _BMT2, _RDY2 = keep_config.pvp('best_meta_top'), keep_config.pvp('ready_rank')
+    _META2 = {}
+    if _BMT2:
+        for _mlg, _mcap in (('gl', _G2), ('ul', _U2)):
+            try:
+                _mraw = json.load(open(os.path.join('system', 'analysis', 'pvpoke_rankings', 'rankings-%d.json' % _mcap), encoding='utf-8'))
+                _msc = [x for x in _mraw if isinstance(x.get('score'), (int, float)) and not isinstance(x.get('score'), bool)]
+                _META2[_mlg] = ({x['speciesId'] for x in sorted(_msc, key=lambda x: -x['score'])[:_BMT2]}
+                               if len(_mraw) >= 300 and len(_msc) >= 0.9 * len(_mraw) else None)
+            except (OSError, ValueError, KeyError, TypeError, AttributeError):
+                _META2[_mlg] = None
     for _lg, _rk, _st, _cap in (('GL', 'gl_rank', 'gl_stage', _G2), ('UL', 'ul_rank', 'ul_stage', _U2),
                                 ('ML', 'ml_rank', 'ml_stage', _M2)):
         q = set()
@@ -297,7 +311,9 @@ try:
                 _c = [(k, x) for x in _l for k in (_usable2(x, _lg.lower(), _cap),) if k is not None]
                 if _c:
                     _bk, _bx = min(_c, key=lambda y: (y[0][0], y[0][1], y[1]['uid_hex']))
-                    if _bk[1] <= _BRF or _bx['pokemon_id'] in _RARE_M:
+                    if (_bk[1] <= _BRF or _bx['pokemon_id'] in _RARE_M) and (
+                            not _BMT2 or _bk[1] <= _RDY2 or _bx['pokemon_id'] in _RARE_M or _META2.get(_lg.lower()) is None
+                            or _pv2(_bx['species_name'], _bx.get('form') or 0) in _META2[_lg.lower()]):
                         q.add(_bx['uid_hex'])
                 continue
             _c = [x for x in _l if x.get(_rk) is not None and (x.get(_rk) <= _BRF or x['pokemon_id'] in _RARE_M)]

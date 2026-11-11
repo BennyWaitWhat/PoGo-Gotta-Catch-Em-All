@@ -215,6 +215,31 @@ def main():
     import trophy_pick
     from references import LEGENDARY_IDS, MYTHICAL_IDS, ULTRA_BEAST_IDS, PARADOX_IDS
     ROSTER = LEGENDARY_IDS | MYTHICAL_IDS | ULTRA_BEAST_IDS | PARADOX_IDS   # their Best is kept at ANY rank (LAW 2b, rule 15d)
+    _BMT = keep_config.pvp('best_meta_top')
+
+    def meta_out(lg, st, rk, pid):
+        """LAW 2b since 2026-11-11 ("P2"): past pvp.ready_rank a non-legendary Best GL / UL needs a stage inside pvpoke's
+        top pvp.best_meta_top of that league. True = that rule lets this (league, stage, rank) go. Unknown list = no gate."""
+        if not _BMT or lg not in ('gl', 'ul') or rk is None or rk <= pv.READY_RANK or pid in ROSTER:
+            return False
+        _top = pv.meta_top(lg, _BMT)
+        return _top is not None and st not in _top
+
+    def meta_txt(lg, st):
+        _mp = pv.meta_pos(lg, st)
+        return ("%s is #%d in pvpoke's %s list" % (stg(st), _mp, lg.upper())) if _mp else (
+            "%s is not in pvpoke's %s list" % (stg(st), lg.upper()))
+    _xdc = []
+
+    def xxl_dropped():
+        """{uid: ('later', stage, points) | ('cutoff', points, n)} -- why size_line.xxl_keepers dropped a showcase keeper
+        (2026-11-11: a later stage wins / the everyday cut-off). Computed once, from the selection itself."""
+        if not _xdc:
+            import size_line as _sl
+            _d = {}
+            _sl.xxl_keepers([x for x in C.values() if not keep_config.is_fused_component(x)], dropped=_d)
+            _xdc.append(_d)
+        return _xdc[0]
 
     def group(r, reason):
         """keep_policy's OWN group for `reason` -- see SPECIES_WIDE / IDENTITY_WIDE at the top (H05-2)."""
@@ -294,6 +319,13 @@ def main():
         _p = _sl.best_points(r)
         if _p is not None and _p < _mn:
             return '%d points, under the %d-point cut-off%s' % (_p, _mn, ' (XXL trim)' if _trim else '')
+        _xd = xxl_dropped().get(r['uid_hex'])
+        if _xd and _xd[0] == 'later':                    # keep_config rules.xxl_later_stage_wins (2026-11-11)
+            return ('%s points at best, and your XXL %s already scores %d -- a later stage that scores at least as much '
+                    'holds the showcase spot' % (_p, stg(_xd[1]), _xd[2]))
+        if _xd and _xd[0] == 'cutoff':                   # showcase_weights.cutoff_points (2026-11-11)
+            return '%s points, under your %d-point cut-off and not one of your best %d XXL of any of its types' % (
+                _p, _xd[1], _xd[2])
         # an unknown template stays a candidate that sorts below every known score (xxl_keepers), never "None points"
         _pt = lambda x: ('%d' % _sl.best_points(x)) if _sl.best_points(x) is not None else 'unknown'
         _me = ('%d points' % _p) if _p is not None else 'showcase points unknown (no size template for it)'
@@ -329,12 +361,27 @@ def main():
         costume form, Max or shadow -- keep_policy _scollect) under keep_config.shiny_floor_iv takes no plain slot; else the
         cap of its species + form is full. "outside your top 1 shinies" for a 24% under the floor named the wrong rule."""
         from costume_forms import is_costume_form
-        _sfl = keep_config.shiny_floor_iv()
+        _sfl = keep_config.shiny_floor_iv(r['pokemon_id'])   # the legendary roster keeps its own floor (2026-11-11)
         _plain = not ((r['fresh_natural_art_bg'] or 0) or (r['fresh_has_location_card'] and (r['fresh_loc_card_enum'] or 0))
                       or (r['fresh_costume'] or 0) or is_costume_form(r['fresh_form'] or r['form'] or 0)
                       or ef.max_axis(r['fresh_bread_mode']) or r['fresh_alignment'] == 1)
         if _sfl and _plain and (r['iv_total'] or 0) < _sfl:
             return 'a plain shiny under your %d/45 shiny floor (you keep %s)' % (_sfl, ladder(r) or 'no other shiny of it')
+        # THE FLOOR ALSO FOR COSTUME SHINIES (2026-11-11, rules.shiny_floor_costume): a shiny that only a costume makes
+        # special, under the floor, with shiny_floor_keep better ones in the same costume
+        _cs = lambda x: (None if ((x['fresh_natural_art_bg'] or 0) or (x['fresh_has_location_card'] and (x['fresh_loc_card_enum'] or 0))
+                                  or ef.max_axis(x['fresh_bread_mode']) or x['fresh_alignment'] == 1)
+                         else ('cos', x['fresh_costume']) if (x['fresh_costume'] or 0)
+                         else ('cosf', x['fresh_form'] if is_costume_form(x['fresh_form']) else x['form'])
+                         if (is_costume_form(x['fresh_form']) or is_costume_form(x['form'])) else None)
+        if _sfl and keep_config.rule_enabled('shiny_floor_costume') and _cs(r) and (r['iv_total'] or 0) < _sfl:
+            _kn = keep_config.shiny_floor_keep()
+            _better = [x for x in C.values() if x['fresh_shiny'] and x['uid_hex'] != r['uid_hex'] and stage_ng(x) == stage_ng(r)
+                       and _cs(x) == _cs(r) and ((x['iv_total'] or 0), (x['cp'] or 0)) > ((r['iv_total'] or 0), (r['cp'] or 0))]
+            if len(_better) >= _kn:
+                return 'a costume shiny under your %d/45 shiny floor, past your best %d in that costume (you keep %s)' % (
+                    _sfl, _kn, ', '.join('%d%%' % pct(x) for x in sorted((x for x in _better if x['uid_hex'] not in pile_set),
+                                                                         key=lambda x: -(x['iv_total'] or 0))[:5]))
         return 'outside your top %d shinies (%s)' % (len(keepers(r, 'shiny')), ladder(r))
 
     def why_out(r):
@@ -464,6 +511,15 @@ def main():
                         and (reason == 'shadow_best' or r['pokemon_id'] not in ROSTER)):
                     parts.append('lost its %s: %s #%d is past the #%d cut-off' % (LABEL[reason], _lg[1], r[_lg[0] + '_rank'], _fl))
                     continue
+                # BEST NEEDS A META SPECIES (LAW 2b since 2026-11-11): its own-stage spread is past the top READY_RANK and
+                # its stage is outside pvpoke's top pvp.best_meta_top -- say the list place, not "no copy is kept"
+                if not new and reason in ('pvp_best_gl', 'pvp_best_ul'):
+                    _ms = pv.pvid(r['species_name'], r['form'] or 0)
+                    _mk = next((k for s, k in pv.chain_stage_ranks(r, _lg[0]) if s == _ms), None)
+                    if meta_out(_lg[0], _ms, _mk, r['pokemon_id']):
+                        parts.append('lost its %s: %s, outside your top %d, so its #%d spread is no keeper (a top-%d spread '
+                                     'still is)' % (LABEL[reason], meta_txt(_lg[0], _ms), _BMT, _mk, pv.READY_RANK))
+                        continue
                 # EVOLUTION COUNTS ONLY WHEN IT PAYS (user 2026-10-29: "both"): rule 15d ranks a Best as ITSELF, so a copy
                 # that was a Best only for what it could become lost it -- unless evolving pays, when rule 15e tags it
                 # Evolve for GL / UL instead. Say what it was kept for and why that evolve does not pay.
@@ -516,8 +572,19 @@ def main():
                 else:
                     # a slot decided by PvP rank, points or its own group (Best GL/UL/ML, best shadow, location card, legacy,
                     # legendary, nundo, comb-up): no new copy of THAT group holds it, so no arrival took it -- name who does
-                    parts.append('lost its %s (%s)' % (LABEL[reason], ('now kept for that: ' + ', '.join(desc(x, False) for x in ks[:3]))
-                                                       if ks else 'no copy is kept for that now'))
+                    _cl = {'pvp_combup_gl': 'gl', 'pvp_combup_ul': 'ul'}.get(reason)
+                    _ct = None
+                    if _cl and not ks:                   # a comb-up whose target would be a Best nobody keeps (2026-11-11)
+                        _co = pv.pvid(r['species_name'], r['form'] or 0)
+                        _ct = min(((k, s) for s, k in pv.chain_stage_ranks(r, _cl)
+                                   if s != _co and k <= keep_config.pvp('best_rank_floor') and meta_out(_cl, s, k, r['pokemon_id'])
+                                   and pv.fits(r, s, pv.GL_CAP if _cl == 'gl' else pv.UL_CAP, BS)), default=None)
+                    if _ct:
+                        parts.append('lost its %s: its target %s, outside your top %d, so a #%d spread there is no keeper' % (
+                            LABEL[reason], meta_txt(_cl, _ct[1]), _BMT, _ct[0]))
+                    else:
+                        parts.append('lost its %s (%s)' % (LABEL[reason], ('now kept for that: ' + ', '.join(desc(x, False) for x in ks[:3]))
+                                                           if ks else 'no copy is kept for that now'))
             parts = ['lost its %s to %s' % (' and '.join(v), k) for k, v in to.items()] + parts
             if any(('%d%% ' % pct(r)) in k for k in _iv_to):
                 parts.append('same IV -- the one you keep has more CP')          # an IV tie goes to the stronger copy
@@ -641,6 +708,7 @@ def main():
                     if k not in best_kept or rk < best_kept[k][0]:
                         best_kept[k] = (rk, x)
     close, checks, floor_notes, close_calls, species_notes, uncollected = None, [], [], [], [], []
+    meta_notes = []                                      # stage bests of a species outside pvpoke's top N (2026-11-11)
     over_cap = []                                        # top-N spreads this copy can never play (2026-09-30)
     unc_best = set()                                     # leagues whose uncollected shadows a close call says nothing kept beats
     _ubc = {}
@@ -703,6 +771,8 @@ def main():
                                                                       'shadow ' if cls(m) == 'shadow' else '')
                         elif cls(m) == 'plain' and _species_best_beats(m, lg):
                             _rule = 'your Best %s %s wins at another stage (one per species)' % (NAMES[lg], species_label(m))
+                        elif cls(m) == 'plain' and meta_out(lg, st, rk, m['pokemon_id']):
+                            _rule = '%s, outside your top %d' % (meta_txt(lg, st), _BMT)
                         else:
                             _rule = 'of nothing -- ***CHECK: no rule lets it go***'
                         close_calls.append(_txt + ' -- nothing you keep there is better (%s), so it goes only because %s.'
@@ -743,6 +813,9 @@ def main():
                         _sb = _species_best_beats(m, lg)          # cached via _ub: the repeat call is free
                         species_notes.append(note + ' -- but your Best %s %s is the %s (#%d as %s), one per species'
                                              % (NAMES[lg], species_label(m), _sb[0], _sb[1], stg(_sb[2])))
+                    elif cls(m) == 'plain' and meta_out(lg, st, rk, m['pokemon_id']):
+                        if (m['uid_hex'], desc(m, False)) not in meta_notes:      # lawful since 2026-11-11: a note, not a CHECK
+                            meta_notes.append((m['uid_hex'], desc(m, False)))
                     else:
                         checks.append(note)
 
@@ -1021,6 +1094,7 @@ def main():
             # not say "none" above lines that say it is your best (H05-4)
             _exc = (["stage bests that lose to their species' Best at another stage"] if species_notes else []) + \
                    (['stage bests past your cut-off'] if floor_notes else []) + \
+                   (["stage bests of a species outside pvpoke's top %d" % _BMT] if meta_notes else []) + \
                    (['shadow stage bests in a league you no longer collect (%s)' % ', '.join(sorted(unc_best))] if unc_best else [])
             out.append('- none beats every copy you keep at any stage it could still play' + (
                 ', except the %s (below)' % ' and the '.join(_exc) if _exc else ''))
@@ -1034,6 +1108,9 @@ def main():
             # longest part of the report; the near misses still get their own close-call lines below
             out.append('- past your #%d cut-off, so no Best is kept, though each is your best of its kind at some stage: %s'
                        % (floor, ', '.join(who for u, who in _fn)))
+        if meta_notes:
+            out.append("- outside pvpoke's top %d of that league, so a spread past #%d is no Best, though each is your best of "
+                       'its kind at some stage: %s' % (_BMT, pv.READY_RANK, ', '.join(who for u, who in meta_notes)))
         for n in over_cap:
             out.append('- %s' % n)
         for n in close_calls:

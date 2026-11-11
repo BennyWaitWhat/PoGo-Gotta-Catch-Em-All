@@ -113,7 +113,7 @@ def _stages(r, lg):
 
 
 def combup_uncovered(rows, pile, labels, *, own_of, later_fn, fits_fn, reaches_fn, caps, floor, rare_pids,
-                     legacy_uids, protected_pids, cf, shadow_floor, shadow_leagues, ladder_cap):
+                     legacy_uids, protected_pids, cf, shadow_floor, shadow_leagues, ladder_cap, meta_ok=None):
     """Pile members that are a LAW bucket 2c opportunity nobody kept. -> [(uid, league, target, rank, why)]
 
     LAW 2c: for every Great / Ultra League TARGET stage, the copy whose evolved self would BECOME YOUR BEST there
@@ -129,7 +129,11 @@ def combup_uncovered(rows, pile, labels, *, own_of, later_fn, fits_fn, reaches_f
     So a PILED copy that can do that for (league, target, shadow-or-not) is lawful only when a KEPT copy already covers
     that target: `labels` (the engine's pvp_combup_labels.json: uid -> {target, leagues}) names it, and ITS OWN rank
     there -- read from its own row, not from the label -- is at least as good. `rows`: the bag without fused components.
-    `reaches_fn(stage, cap)`: the stage reaches the league cap (LAW: a maxed hundo within 100 CP of it)."""
+    `reaches_fn(stage, cap)`: the stage reaches the league cap (LAW: a maxed hundo within 100 CP of it).
+    `meta_ok(league, stage, rank)` (LAW 2b since 2026-11-11, "Best needs a meta species"): False when a NON-shadow Best of
+    that stage at that rank is not kept (past rank 5, the stage outside pvpoke's top list) -- then a copy that is your best
+    there is no "Best as itself", and an evolve that would only make such a Best is no opportunity. None = no such rule.
+    The legendary roster is exempt, as from the floor."""
     by = {r['uid_hex']: r for r in rows}
     sh = lambda r: 1 if (_get(r, 'fresh_alignment') or 0) == 1 else 0
     forms, shinies = defaultdict(int), defaultdict(int)
@@ -149,8 +153,9 @@ def combup_uncovered(rows, pile, labels, *, own_of, later_fn, fits_fn, reaches_f
                     if k not in best or (rk, r['uid_hex']) < best[k]:
                         best[k] = (rk, r['uid_hex'])
         owned[lg] = best
-        for rk, u in best.values():
-            own_rank[u] = min(rk, own_rank.get(u, rk))
+        for (st, s), (rk, u) in best.items():
+            if s or meta_ok is None or meta_ok(lg, st, rk) or _get(by[u], 'pokemon_id') in rare_pids:
+                own_rank[u] = min(rk, own_rank.get(u, rk))
     # each shadow species' best shadow today (bucket 7): (reaches the cap first, rank) at the best stage a copy can reach,
     # among its copies that can enter the league at one of those stages
     best_of = {lg: {} for lg in caps}
@@ -202,6 +207,8 @@ def combup_uncovered(rows, pile, labels, *, own_of, later_fn, fits_fn, reaches_f
                     continue
                 if rk > (shadow_floor if sh(p) else floor) and _get(p, 'pokemon_id') not in rare_pids:
                     continue
+                if not sh(p) and meta_ok is not None and not meta_ok(lg, st, rk) and _get(p, 'pokemon_id') not in rare_pids:
+                    continue                             # the evolved copy would be a Best nobody keeps (2026-11-11)
                 if sh(p):
                     mine = best_of[lg].get((st, 1))
                     if mine is not None and (0, rk) >= mine:
@@ -235,7 +242,8 @@ def shiny_ladder_violations(rows, pile, *, own_of, next_of, can_evolve, cap_of, 
     never advised to evolve." -- and (Candy) "A copy that earns a slot at a later stage but cannot pay for it today is HELD
     ... never released". Candy, items and game gates therefore do NOT enter this test: they decide the LABEL, never
     whether the copy lives. Bucket 4: at most `plain_cap_of` PLAIN shinies, and a plain shiny under `floor_iv` takes no
-    plain spot unless the stage has no plain shiny yet.
+    plain spot unless the stage has no plain shiny yet. `floor_iv`: a number, or a function of the target stage (the
+    legendary roster keeps its own shiny floor since 2026-11-11).
 
     `rows`: the bag without fused components. `next_of(sid)`: the stages one evolution up. A split line must earn a spot
     on every branch this copy can land on (a random tap). KEPT spares at least as good -- of the same stage, or of any
@@ -278,7 +286,8 @@ def shiny_ladder_violations(rows, pile, *, own_of, next_of, can_evolve, cap_of, 
             if cap <= 0 or not (len(h) < cap or iv > h[cap - 1]):
                 return False
             hp = sorted(at_plain.get(t, []) + ahead, reverse=True)
-            if iv < floor_iv and hp and not (floor_keep and (len(h) < floor_keep or iv > h[floor_keep - 1])):
+            if iv < (floor_iv(t) if callable(floor_iv) else floor_iv) and hp \
+                    and not (floor_keep and (len(h) < floor_keep or iv > h[floor_keep - 1])):
                 return False                                   # under the shiny floor: only a stage's first plain shiny or one of its N best
             pcap = plain_cap_of(t)
             return pcap > 0 and (len(hp) < pcap or iv > hp[pcap - 1])
@@ -330,6 +339,15 @@ if __name__ == '__main__':
                                           'x3': {'target': 'umbreon', 'leagues': ['gl']}}, **kw), 'a piled pick covers nothing'
     assert combup_uncovered(bag, {'x2'}, {}, **dict(kw, legacy_uids={'x2'})) == [], 'a legacy mover is never a candidate'
     assert combup_uncovered(bag, {'x2'}, {}, **dict(kw, floor=5)) == [], 'outside the floor'
+    # 2026-11-11: past rank 5 a Best needs a meta species -- umbreon is one, espeon is not
+    _mo = lambda lg, st, rk: rk <= 5 or st == 'umbreon'
+    assert {m[2] for m in combup_uncovered(bag, {'x2'}, {}, **dict(kw, meta_ok=_mo))} == {'umbreon'}, 'an Espeon #8 nobody keeps'
+    assert {m[2] for m in combup_uncovered(bag, {'x2'}, {}, **dict(kw, meta_ok=_mo, rare_pids={133}))} == {'umbreon', 'espeon'}, \
+        'the legendary roster is never gated'
+    _eb = [mk('e1', 'eevee:9(99%);umbreon:3(99%)'), mk('e2', 'eevee:50(90%)'), mk('e3', 'eevee:60(90%)')]
+    assert combup_uncovered(_eb, {'e1'}, {}, **kw) == [], 'your best Eevee (#9, inside the floor) is a Best as itself'
+    assert {m[2] for m in combup_uncovered(_eb, {'e1'}, {}, **dict(kw, meta_ok=_mo))} == {'umbreon'}, \
+        'Eevee is no meta species: #9 keeps no Best, so piling it loses an Umbreon #3'
     assert combup_uncovered([dict(b, fresh_alignment=1) for b in bag], {'x2'}, {}, **kw) == [], 'no GL shadow is kept'
     # 2026-10-29: an Umbreon counts as itself (#60), whatever a later stage would make it -- an Eevee at #12 beats it
     nido = bag + [dict(mk('u1', 'umbreon:60(90%);umbreon_x:9(99%)'), pokemon_id=197, species_name='Umbreon')]
@@ -352,6 +370,8 @@ if __name__ == '__main__':
     assert shiny_ladder_violations(bag, {'t2'}, **kws)[0][0] == 't2', 'Gurdurr has 1 of 2 shinies: t2 is held'
     assert shiny_ladder_violations(bag, {'t1'}, **kws) == [], 't1 is the stage best shiny: never a spare'
     assert shiny_ladder_violations(bag + [sb('g2', 'gurdurr', 44)], {'t2'}, **kws) == [], 'full, and 23 beats no one'
+    assert shiny_ladder_violations(bag, {'t2'}, **dict(kws, floor_iv=lambda t: 39 if t == 'gurdurr' else 0)) == [], \
+        'a floor per target stage: 23 is under Gurdurr\'s 39 and Gurdurr has a plain shiny'
     assert shiny_ladder_violations(bag, {'t2'}, **dict(kws, is_collectible=lambda r: r['uid_hex'] == 't2')) == [],         'a collectible shiny never climbs'
     assert shiny_ladder_violations([sb('t1', 'timburr', 40), sb('t2', 'timburr', 10)], {'t2'}, **kws)[0][0] == 't2',         'no plain shiny at the next stage yet: the floor does not apply'
     # two OWN stages land on one target (Burmy cloaks -> Mothim): the better kept spare of the OTHER stage takes the open spot

@@ -95,7 +95,7 @@ out.append(('Legacy moves', '9 per species', cnt['legacy'], sole['legacy'],
             'cap 6: frees %d; cap 4: frees %d' % (ordinal_free(leg, lambda r: r['pokemon_id'], ivo, 6, S('legacy')), ordinal_free(leg, lambda r: r['pokemon_id'], ivo, 4, S('legacy')))))
 xx = [r for r in K if 'xxl' in rs[r['uid_hex']]]
 pts = {r['uid_hex']: (sl.best_points(r) or 0) for r in xx}   # the XXL keep's points: evolution counts (2026-09-24)
-out.append(('XXL showcase winners', '>= %d pts, best 2' % int(sw['min_points']), cnt['xxl'], sole['xxl'],
+out.append(('XXL showcase winners', '>= %d pts, best 2' % int(max(sw['min_points'], sw['cutoff_points'])), cnt['xxl'], sole['xxl'],
             '>= 1000: frees %d; >= 1050: frees %d; best 1: frees %d' % (sum(1 for r in xx if r['uid_hex'] in S('xxl') and pts[r['uid_hex']] < 1000),
                                                                         sum(1 for r in xx if r['uid_hex'] in S('xxl') and pts[r['uid_hex']] < 1050),
                                                                         ordinal_free(xx, lambda r: r['pokemon_id'], lambda r: (-pts[r['uid_hex']], r['uid_hex']), 1, S('xxl')))))
