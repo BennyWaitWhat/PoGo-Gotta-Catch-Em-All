@@ -42,6 +42,8 @@ of gm_guard.content_counts' 14 structural counts, is never installed. Ids a batc
 download (gm_guard.normalize_file), before it is judged, stamped or installed.
 The batch is stamped in gamemaster_pokeminers.json.meta (batch time, APK, sha256) for audit_invariants I2.7.
   --selftest     : offline proof of all of it on synthetic fixtures (touches nothing outside a temp dir)
+  --scheduled    : the run BETWEEN culls (2026-11-11, user "A3"): the same refresh, but it steps aside (exit 0, nothing run)
+                   while a cull or another refresh is running. A cull's own check then finds the installed files current
 An unknown flag stops the run with exit 2 and does NOTHING (like full_audit.py).
 """
 import sys, os, json, shutil, sqlite3, subprocess, time, urllib.request
@@ -532,7 +534,31 @@ def ranks(con):
         'SELECT uid_hex, gl_rank, ul_rank, ll_rank FROM pokemon WHERE in_bag=1')}
 
 
-FLAGS = ('--check-only', '--force', '--ack', '--reject', '--selftest', '--accept-smaller')
+FLAGS = ('--check-only', '--force', '--ack', '--reject', '--selftest', '--accept-smaller', '--scheduled')
+LOCK = os.path.join(ROOT, 'system', 'analysis', 'gm_refresh.lock')     # one refresh at a time: a cull's own, or the scheduled one
+PASS_LOCK = os.path.join(ROOT, 'system', 'analysis', 'pass.lock')      # full_audit.py holds it for the length of a pass
+
+
+def hold_lock(path, wait_s=0):
+    """An OS file lock: gone the moment its process is, however that ends (no stale lock, no pid to check).
+    -> the open file (keep it referenced; close() releases), or None when another holder is still there after wait_s."""
+    f = open(path, 'a+')
+    end = time.time() + wait_s
+    while True:
+        try:
+            f.seek(0)
+            if os.name == 'nt':
+                import msvcrt
+                msvcrt.locking(f.fileno(), msvcrt.LK_NBLCK, 1)
+            else:
+                import fcntl
+                fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            return f
+        except OSError:
+            if time.time() >= end:
+                f.close()
+                return None
+            time.sleep(0.5)
 
 
 def main(argv):
@@ -544,11 +570,33 @@ def main(argv):
         if ROOT not in sys.path:
             sys.path.insert(0, ROOT)
         import gm_guard
+        import tempfile
+        _t = os.path.join(tempfile.mkdtemp(), 'x.lock')
+        _a = hold_lock(_t)
+        assert _a is not None and hold_lock(_t) is None, 'hold_lock: a held lock was taken twice'
+        _a.close()
+        _b = hold_lock(_t)
+        assert _b is not None, 'hold_lock: a released lock stayed held'
+        _b.close()
         return gm_guard.selftest(sys.modules[__name__])
     age = age_days(GM)
     print('pvpoke_gamemaster.json age: %.1f days (limit %d)' % (age, MAX_AGE_DAYS))
     if '--check-only' in argv:
         return 3 if age > MAX_AGE_DAYS else 0
+    # ONE refresh at a time, and none in the middle of a cull (2026-11-11, user "A3"). A cull's own check WAITS for a scheduled
+    # run to finish (it then finds the files current); a scheduled run steps aside for a cull, and for another refresh.
+    _sched = '--scheduled' in argv
+    _lock = hold_lock(LOCK, 0 if _sched else 1700)
+    if _lock is None:
+        print('another game-master refresh is running -- skipped (scheduled run)' if _sched else
+              'another game-master refresh has held %s for 1700 s -- NOTHING was run here; find that process' % os.path.basename(LOCK))
+        return 0 if _sched else 2
+    if _sched:
+        _pass = hold_lock(PASS_LOCK)
+        if _pass is None:
+            print('a cull is running -- skipped (scheduled run)')
+            return 0
+        _pass.close()                          # only a look: the refresh lock above is what a cull's own check waits on
     _gate = review_gate(argv)                  # a pending review stops EVERY run until --ack, whatever the file's age
     if _gate is not None:
         return _gate

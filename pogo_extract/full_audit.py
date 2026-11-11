@@ -1025,6 +1025,10 @@ def main():
         return 2
     if not xxl_trim_end():                     # a killed trim run never leaves the trim on -- or a conflict stops here
         return 9
+    # held to the end of this process (2026-11-11, "A3"): the scheduled game-master check steps aside while a pass runs
+    sys.path.append(os.path.join(ROOT, 'system', 'scripts'))
+    from refresh_gamemaster import hold_lock, PASS_LOCK
+    _pass_lock = hold_lock(PASS_LOCK, 2)
     if '--xxl-trim' in sys.argv[1:]:
         xxl_trim_begin()
     try:
