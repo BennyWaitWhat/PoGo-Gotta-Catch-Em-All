@@ -45,6 +45,16 @@ def compute_target(why=None, spent=None, detail=None, gated=None, items_spent=No
         seen = {e['pid'] for e in json.load(open('pokedex_hundos_live.json'))['entries']}
     except Exception:
         seen = set()
+    # THE LIFETIME SHINY POKEDEX (user 2026-11-11, pick "D2": "yesterday i found a shiny i could evolve that i never had on
+    # my dex. i expect you to do better."): the species whose shiny was EVER registered (PokedexImpl, read by every walk).
+    # Unread, empty, or missing a species whose shiny is IN THE BAG (a partial read) = the rule is off for this run:
+    # unknown is never "missing".
+    try:
+        _shdex = {e['pid'] for e in json.load(open('pokedex_hundos_live.json'))['entries'] if e.get('shiny')}
+    except Exception:
+        _shdex = None
+    _dex_claimed = set()                         # target species a copy is already sent to (or held for) this pass
+    _dexonly = set()                             # a look's best shiny, let through ONLY toward a never-registered shiny
     is_pre, term, dist, sp_to_dex, allreach = build_evo_graph(gm, seen, with_all=True)   # the ONE evolution graph
     dex_to_sid = defaultdict(list)
     for p in gm['pokemon']:
@@ -59,6 +69,7 @@ def compute_target(why=None, spent=None, detail=None, gated=None, items_spent=No
     # true level, chain ranks, gender and form all matter -- so the narrow projection above cannot answer it.
     _full = {x['uid_hex']: x for x in c.execute("SELECT * FROM pokemon WHERE in_bag=1 AND COALESCE(is_component,0)=0").fetchall()}
     c.close()
+    _D2 = bool(keep_config.rule_enabled('shiny_dex_evolve') and _shdex and all(r['pid'] in _shdex for r in rows if r['sh']))
     if walk is None:
         # THE WALK, NOT THE CLOCK, FOR EVERY CALLER (2026-09-29, H04). Only keep_policy passed walk=. preflight_transfer's
         # Evolve Shiny keeper test, granular_tags (the Evolve tags), audit_tags_membership and _evocheck called this bare,
@@ -201,6 +212,7 @@ def compute_target(why=None, spent=None, detail=None, gated=None, items_spent=No
 
     def _take(n, r):
         """r takes its spot at stage n (a tag or a hold): the next spare must beat it -- filed bare + form, like the fill."""
+        _dex_claimed.add(sid_to_pid.get(n))
         for _k in {(n, ''), _skey(n, r)}:
             sh_ivs[_k].append(r['iv'] or 0); sh_ivs[_k].sort(reverse=True)
             _lk = _slook(sid_to_pid.get(n), r)
@@ -243,9 +255,16 @@ def compute_target(why=None, spent=None, detail=None, gated=None, items_spent=No
         _rs, _own = _why.get(r['u'], set()), pvid(r['s'], r['form'] or 0)
         if _best_at_own_stage(r['u'], _rs, _own):
             continue   # a Best GL/UL copy whose USABLE winning stage is its OWN stage never evolves (2026-09-23; audit_labels)
-        if stage_best.get(_look(r), (None, None))[1] == r['u']:
-            continue   # the BEST (or only) shiny of its look at this stage -- never consumed by evolution (2026-06-10, per look 2026-09-30)
         sid = pvid(r['s'], r['form'] or 0)
+        if stage_best.get(_look(r), (None, None))[1] == r['u']:
+            # the BEST (or only) shiny of its look at this stage -- never consumed by evolution (2026-06-10, per look
+            # 2026-09-30) ... EXCEPT toward a shiny he has NEVER registered (2026-11-11, "D2"; rules.shiny_dex_evolve): a new
+            # Pokedex entry beats holding the stage, and only when no spare fills it (the spares are handled first, below).
+            # shortcut: only the IMMEDIATE next stage counts, upgrade when a never-registered stage sits two steps up behind a registered one
+            if not (_D2 and any(sid_to_pid.get(x) and sid_to_pid.get(x) != r['pid'] and sid_to_pid.get(x) not in _shdex
+                                for x in nxt.get(sid, []))):
+                continue
+            _dexonly.add(r['u'])
         if not is_pre.get(sid):
             continue
         by_stage[(r['pid'], _nf(r))].append(r)
@@ -253,13 +272,16 @@ def compute_target(why=None, spent=None, detail=None, gated=None, items_spent=No
     # ONE best-first order across every stage, not one stage group after another (2026-11-11): a spare sent on to the END
     # stage (_goes_on) takes a spot there at once, and a better spare of the middle stage, handled later, bumped it with
     # nothing to take its advice back -- the copy would be culled after evolving (audit_promises)
-    _order = sorted(((k, c) for k, cs in by_stage.items() for c in cs), key=lambda kc: (-(kc[1]['iv'] or 0), kc[1]['u']))
+    _order = sorted(((k, c) for k, cs in by_stage.items() for c in cs),
+                    key=lambda kc: (kc[1]['u'] in _dexonly, bool(kc[1]['u'] in _dexonly and kc[1]['fc']),
+                                    -(kc[1]['iv'] or 0), kc[1]['u']))   # a look's best ("D2") after every spare, a costume one last
     for (pid, form), cands in [(k, [c]) for k, c in _order]:
         for r in cands:                          # best spare first; EVERY spare that earns a shiny spot (2026-09-17)
             sid = pvid(r['s'], form)
             tagged = False
             ok = []
             _pending = None                  # a gated branch, kept aside in case no branch is takeable
+            _pnew = None                     # ... and the gated branch into a never-registered shiny ("D2")
             _fr = _full.get(r['u'])
             _branches = [x for x in nxt.get(sid, []) if sid_to_pid.get(x) and sid_to_pid.get(x) != pid
                          and x in _later_sh.get(r['u'], ())         # only a stage THIS specimen can become (H08)
@@ -267,6 +289,11 @@ def compute_target(why=None, spent=None, detail=None, gated=None, items_spent=No
                          # Kleavor; PoGo does not, and audit_tag_truth (can_reach) called that 'Evolve Once' untrue
                          and (_fr is None or evolvable_forms.can_reach(_fr['fresh_form'] or _fr['form'], x, sid,
                                                                       _fr['gender']) is not False)]
+            _newdex = lambda x: bool(_D2) and sid_to_pid.get(x) not in _shdex and sid_to_pid.get(x) not in _dex_claimed
+            if r['u'] in _dexonly:
+                _branches = [x for x in _branches if _newdex(x)]   # ONLY a never-registered shiny nobody else fills
+                if not _branches:
+                    continue
             def _gated_sid(x):
                 # THE GAME'S OWN GATE FIRST (2026-09-29): the client game master answers for every stage (gate_reason), and
                 # audit_tag_truth judges 'Evolve Gated' by it. The hand list SPECIAL also held 8 stages the game does not
@@ -300,11 +327,15 @@ def compute_target(why=None, spent=None, detail=None, gated=None, items_spent=No
                 # A branch he cannot take is simply NOT ONE OF THE OUTCOMES of a plain tap, so it must not veto the
                 # others: an Eevee whose Espeon branch needs a buddy walk still taps into Vaporeon/Jolteon/Flareon.
                 # Remember it only in case NO branch is takeable, so the report can say what it needed.
-                if _pending is None:
+                if _pending is None or (_pnew is None and _newdex(nsid)):
                     _have = (_items or {}).get(_key, 0) if _key else None
-                    _pending = {'species': r['s'], 'iv': r['iv'], 'target': nsid, 'why': _why,
-                                'item': evolvable_forms.item_name(_it) if _it else None, 'have': _have,
-                                'need': evolvable_forms.gate_text(nsid, sid, have=_have)}   # the game's own words
+                    _pd = {'species': r['s'], 'iv': r['iv'], 'target': nsid, 'why': _why,
+                           'item': evolvable_forms.item_name(_it) if _it else None, 'have': _have,
+                           'need': evolvable_forms.gate_text(nsid, sid, have=_have)}   # the game's own words
+                    if _pnew is None and _newdex(nsid):
+                        _pnew = _pd
+                    if _pending is None:
+                        _pending = _pd
             def need(n, iv=(r['iv'] or 0), pl=_plain_sh(r), row=r):
                 pid = sid_to_pid.get(n)
                 cap = keep_config.species_cap('shiny', pid, keep_config.cap('shiny'))
@@ -333,8 +364,10 @@ def compute_target(why=None, spent=None, detail=None, gated=None, items_spent=No
                 pcap = cap if keep_config.species_cap('shiny', pid, None) is not None else min(cap, keep_config.cap('shiny_plain'))
                 hp = sh_ivs_pl.get(k, [])
                 return pcap > 0 and (len(hp) < pcap or iv > hp[pcap - 1])   # a plain spare must clear the PLAIN bar too
-            if not ok and gated is not None and _pending is not None and need(_pending['target']):
-                gated[r['u']] = _pending         # nothing takeable at all -> the report names what it needs -- only when
+            _pg = _pnew or _pending          # a never-registered shiny first ("D2")
+            _g_ok = bool(not ok and _pg is not None and need(_pg['target']))
+            if _g_ok and gated is not None:
+                gated[r['u']] = _pg              # nothing takeable at all -> the report names what it needs -- only when
                 #                                  that stage has a shiny spot for it (a gated upgrade that earns nothing
                 #                                  is no upgrade: a 62% shiny Qwilfish was told to go for a full Overqwil)
             # THE HOLD (H08, 2026-09-29). LAW: "A shiny past the shiny cap is held (reason shiny_ladder) when it earns such a
@@ -349,6 +382,24 @@ def compute_target(why=None, spent=None, detail=None, gated=None, items_spent=No
                 # and 76% holds ahead of it had already taken -- 'culled after evolving' in audit_promises.
                 for _n in _branches:             # a HOLD takes its spot like a promise: the next spare must beat it
                     _take(_n, r)
+            elif _g_ok and _pg is _pnew:
+                # "D2": the other branches have no room, the never-registered one does -- HELD for that entry alone (a spare
+                # that can still fill a Pokedex gap is never released), and it takes the entry in EVERY caller
+                if held is not None:
+                    held[r['u']] = [_pnew['target']]
+                _take(_pnew['target'], r)
+            # A NEVER-REGISTERED SHINY BEHIND A GATE, BESIDE A PLAIN TAP ("D2"): the gated branch into a shiny he never had
+            # outranks a plain tap into a stage he has (Eevee: the tap is random, Espeon is his to choose -- a buddy walk by
+            # day). Told what it needs and HELD for it; one copy per new entry, the next spare takes the tap. A plain tap that
+            # is itself a new entry goes the usual way below.
+            if (ok and _pnew is not None and not any(_newdex(n) for n in ok) and _newdex(_pnew['target'])
+                    and need(_pnew['target'])):
+                if gated is not None:
+                    gated[r['u']] = _pnew
+                if held is not None:
+                    held[r['u']] = [_pnew['target']]
+                _take(_pnew['target'], r)
+                continue
             if ok and all(need(n) for n in ok):  # an open shiny spot OR beats the weakest; a SPLIT needs it on every branch
                 fam = evolvable_forms.family(sid)    # (random tap / task choice the label cannot name, 2026-09-17)
                 cost = max((evolvable_forms.step_cost(sid, n) or 0) for n in ok)

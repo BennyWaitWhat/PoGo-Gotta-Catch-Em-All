@@ -222,6 +222,14 @@ def lines(adv=None):
     import evolvable_forms as ef
     ef._load()
     out = []
+    try:                                                 # the lifetime shiny Pokedex (2026-11-11, "D2"): display only
+        import json as _j
+        import os as _o
+        _h = _o.path.dirname(_o.path.abspath(__file__))
+        _dx = {p['speciesId']: p.get('dex') for p in _j.load(open(_o.path.join(_h, 'pvpoke_gamemaster.json'), encoding='utf-8'))['pokemon']}
+        _sh = {e['pid'] for e in _j.load(open(_o.path.join(_h, 'pokedex_hundos_live.json'), encoding='utf-8'))['entries'] if e.get('shiny')}
+    except Exception:
+        _dx, _sh = {}, set()
     for a in (advice() if adv is None else adv):
         # the alternatives at the step that actually BRANCHES (Oddish -> Gloom -> Vileplume/Bellossom: "not Bellossom",
         # never "not Gloom"), and the stage it passes through on the way
@@ -233,6 +241,14 @@ def lines(adv=None):
         br = next(((o_, v_) for o_, v_ in steps if len({f for _n, f in o_}) > 1), None)
         others = sorted({_disp(n, f) for n, f in (br[0] if br else [])} - {_disp(n, f) for n, f in (br[1] if br else [])})
         via = [_disp(*v_[0]) for _o, v_ in steps[:-1]] if len(steps) > 1 else []
+        # A SHINY HE NEVER REGISTERED (2026-11-11, "D2"): say so, and never print "not <the other branch>" when that branch
+        # is a missing entry too (one shiny Charcadet: Armarouge or Ceruledge, his pick)
+        _new = bool(a.get('source') == 'shiny' and _sh and all(_dx.get(t) is not None and _dx.get(t) not in _sh
+                                                               for t in str(a['target']).split('/')))
+        _alts = [o_ for o_ in (br[0] if br else []) if o_ not in (br[1] if br else [])]
+        _altnew = bool(_new and a['kind'] in ('choice', 'either') and a['src'] != 'eevee' and 0 < len(_alts) <= 2
+                       and all(_dx.get(n) is not None and _dx.get(n) not in _sh for n, _f in _alts))
+        how = a['how']
         if a['kind'] == 'ivs':
             what = 'the game picks by its IVs (every branch has room)'
         elif a['kind'] == 'random':
@@ -254,14 +270,81 @@ def lines(adv=None):
             what = _nice(a['target']) + (' (via %s)' % ', '.join(via) if via else '') +                 (', not ' + ' / '.join(others) if others and len(others) <= 2 else '')
             if a['src'] == 'eevee':
                 what = _nice(a['target']) + " -- don't press the plain Evolve button (random Vaporeon/Jolteon/Flareon)"
+            if _altnew:
+                what = '%s or %s -- one copy, your pick: neither shiny was ever registered' % (
+                    _nice(a['target']), ' / '.join(_disp(*o_) for o_ in _alts))
+                _src = None if any(x in a['key'] for x in REGIONS) else a['src']
+                how = '; '.join('%s: %s' % (n_, w_) for n_, w_ in [(_nice(a['target']), a['how'])] + [
+                    (_disp(*o_), ef.gate_text(o_[0], _src)) for o_ in _alts] if w_)
             if a.get('stop'):
                 what += _stop_text(a.get('source'), a['stop'])
         g = {1: ' ♂', 2: ' ♀'}.get(a['gender'], '') if a['src'] in ('charcadet', 'kirlia', 'snorunt') else ''
         # WHICH COPY (2026-09-30): two 76% Smolivs printed the same line, so the second read as "standing, unchanged" --
         # the IVs and CP name the copy he can find in the game (and a Dolliv still wearing the tag reads as done)
         who = '%s %d%%%s' % (a['species'], a['iv'], g) + (' %s CP %s' % (a['ivs'], a.get('cp') or '?') if a.get('ivs') else '')
-        out.append('%s (%s) -> %s%s' % (who, ', '.join(a['tags']), what, ('  [needs: %s]' % a['how']) if a['how'] else ''))
+        out.append('%s (%s) -> %s%s%s' % (who, ', '.join(a['tags']), what, ('  [needs: %s]' % how) if how else '',
+                                          '  [a shiny you have never registered]' if _new and not _altnew else ''))
     return out
+
+
+def dex_lines():
+    """NEW SHINY POKEDEX ENTRIES (user 2026-11-11, pick "D2": "yesterday i found a shiny i could evolve that i never had on my
+    dex. i expect you to do better."). Every shiny the rule sends -- or holds -- toward a shiny that was NEVER registered, the
+    one-way lines too (lines() only prints an evolution with a choice). Straight from the rule (compute_target); display only.
+    One line per new entry: the copy to evolve, what it costs or needs, how many other copies could do it instead."""
+    import sqlite3
+    import keep_config
+    if not keep_config.rule_enabled('shiny_dex_evolve'):
+        return []
+    import evolvable_forms as ef
+    import refresh_evolve_shiny as res
+    from pvp_iv_rule import pvid
+    gmj = json.load(open(os.path.join(ROOT, 'pvpoke_gamemaster.json'), encoding='utf-8'))['pokemon']
+    dx = {p['speciesId']: p.get('dex') for p in gmj}
+    nm = {}
+    for p in gmj:
+        nm.setdefault(p.get('dex'), str(p.get('speciesName') or p['speciesId']).split(' (')[0])
+    evo = {p['speciesId']: (p.get('family') or {}).get('evolutions') or [] for p in gmj}
+    sh = {e['pid'] for e in json.load(open(os.path.join(ROOT, 'pokedex_hundos_live.json'), encoding='utf-8'))['entries']
+          if e.get('shiny')}
+    new = lambda t: dx.get(t) is not None and dx[t] not in sh
+    g, h, d = {}, {}, {}
+    res.compute_target(gated=g, held=h, detail=d)
+    c = sqlite3.connect(os.path.join(ROOT, 'pokemon.db')); c.row_factory = sqlite3.Row
+    rows = {r['uid_hex']: r for r in c.execute('SELECT * FROM pokemon WHERE in_bag=1')}
+    c.close()
+    candy = ef.candy_now(walk=max((str(r['last_scanned']) for r in rows.values() if r['last_scanned']), default=None))
+    by = {}                                          # the new entry's dex number -> [(order, iv, line)]
+    for u in sorted(set(d) | set(g) | set(h)):
+        r = rows.get(u)
+        tg = d.get(u) or ([g[u]['target']] if u in g else h.get(u)) or []
+        if r is None or not tg or not all(new(t) for t in tg):
+            continue
+        src = pvid(r['species_name'], r['form'] or 0)
+        who = '%s %d%% %s CP %s' % (r['species_name'], round((r['iv_total'] or 0) * 100 / 45),
+                                    '/'.join('?' if r[k] is None else str(r[k]) for k in ('iv_atk', 'iv_def', 'iv_sta')), r['cp'] or '?')
+        cost = max((ef.step_cost(src, t) or 0) for t in tg)
+        fam = ef.family(src)
+        if u in d:
+            order, what = 0, 'ready now%s' % (' (%d candy)' % cost if cost else '')
+        elif u in g:
+            order, what = 1, 'needs %s' % (g[u].get('need') or 'more than candy')
+        else:
+            have = None if candy is None or fam is None else candy.get(fam, 0)
+            order, what = 2, ('short on candy -- %d needed, you hold %s' % (cost, have) if have is not None
+                              else 'its candy was not read this walk (%d needed)' % cost)
+        alts = sorted({nm.get(dx[t]) for t in (h.get(u) or []) if new(t) and dx[t] != dx[tg[0]]} - {None})
+        on = sorted({nm.get(dx[x]) for t in tg for x in evo.get(t, []) if new(x) and dx[x] != dx[t]} - {None})
+        by.setdefault(dx[tg[0]], []).append((order, -(r['iv_total'] or 0), '%s <- %s: %s%s%s' % (
+            nm.get(dx[tg[0]]) or tg[0], who, what,
+            (' (or %s, also new: one copy, your pick)' % ' / '.join(alts)) if alts else '',
+            ('; then on to %s, also new' % ' / '.join(on)) if on else '')))
+    out = []
+    for _dexno, lst in by.items():
+        lst.sort()
+        out.append((lst[0][0], lst[0][2] + (' (+%d more cop%s could instead)' % (len(lst) - 1, 'y' if len(lst) == 2 else 'ies')
+                                            if len(lst) > 1 else '')))
+    return [l for _o, l in sorted(out)]
 
 
 def _stop_text(source, stops):
@@ -306,3 +389,5 @@ if __name__ == '__main__':
     else:
         for l in lines():
             print(l)
+        for l in dex_lines():
+            print('new shiny dex entry: ' + l)

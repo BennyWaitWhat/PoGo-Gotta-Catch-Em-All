@@ -116,6 +116,8 @@ DEFAULTS = {
         "xxl_later_stage_wins": False,  # rule 7 -- an XXL pre-evolution is no showcase keeper when a kept XXL of a LATER stage of its
         #                                 line already scores at least its best possible points (user 2026-11-11, pick "X1"); a species
         #                                 with its own per_species_caps.xxl (Pumpkaboo / Gourgeist) is exempt; OFF = as before
+        "shiny_dex_evolve": False,      # bucket 4 advice -- a shiny is told to evolve into a shiny NEVER registered in the Pokedex even
+        #                                 as the best / only shiny of its look at its stage (user 2026-11-11, pick "D2"); OFF = as before
     },
     "per_species_caps": {},       # Curation Studio per-species overrides {category:{pid:cap}}; empty = use the global cap (behavior-neutral)
     # PATTERN-POOLED LINES (user 2026-09-08 "top 3 of each region type only for its whole evo line"): lines whose

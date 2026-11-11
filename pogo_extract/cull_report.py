@@ -1134,6 +1134,15 @@ def main():
     except Exception as e:
         out.append('(which way: not computed -- %s)' % e)
         targets = prev_targets
+    # NEW SHINY POKEDEX ENTRIES (2026-11-11, pick "D2"). REPORT ONLY: the tags and holds are the rule's (refresh_evolve_shiny);
+    # this lists them every cull while the entry is missing. Never fails the report.
+    try:
+        _dl = evolve_targets.dex_lines()
+        if _dl:
+            out.extend(['', '**New shiny Pokédex entries** (%d) -- each evolves into a shiny you have never registered' % len(_dl)])
+            out.extend('- ' + l for l in _dl)
+    except Exception as e:
+        out.append('(new shiny Pokedex entries: not computed -- %s)' % e)
     # A STOP STAYS A STOP (2026-11-04 review of the 11-03 ask). REPORT ONLY: no tag, keep reason or pile decision reads it, and
     # it never fails the report. A copy that evolved INTO the stage the last report named for it and is now advised to evolve
     # AGAIN. ladder_history cannot see it (engine promises only; an evolution gives the copy a new uid). 10-23..11-04: 22 such
