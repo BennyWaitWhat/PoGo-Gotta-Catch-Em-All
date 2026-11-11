@@ -171,12 +171,20 @@ def compute_target(why=None, spent=None, detail=None, gated=None, items_spent=No
     # bare + form like audit_promises; _skey() judges a spare on the form the game names for it at the next stage.
     _fname = lambda r: evolvable_forms.canon_form(pvid(r['s'], r['form'] or 0), evolvable_forms.form_name(r['form'] or r['ff']))
     form_names = defaultdict(list)                       # speciesId -> the form name of every held copy
+    # EVERY LOOK FIRST (keep_policy rule 3, user 2026-09-30): the best shiny of each look -- costume, and gender where the
+    # game draws the two differently -- takes a slot before the rest. Per stage bucket: {look: its best shiny IV}.
+    sh_look = defaultdict(dict)
+
+    def _slook(pid, r):
+        fr = _full.get(r['u'])
+        return ((r['fc'] or 0), evolvable_forms.gender_key(pid, fr['gender'] if fr is not None else None))
     for r in rows:
         form_names[pvid(r['s'], r['form'] or 0)].append(_fname(r))
         if r['sh']:
             shiny_count[r['pid']] += 1
             for _k in {(pvid(r['s'], r['form'] or 0), ''), (pvid(r['s'], r['form'] or 0), _fname(r))}:
                 sh_ivs[_k].append(r['iv'] or 0)
+                sh_look[_k][_slook(r['pid'], r)] = max(sh_look[_k].get(_slook(r['pid'], r), -1), r['iv'] or 0)
                 if _plain_sh(r):
                     sh_ivs_pl[_k].append(r['iv'] or 0)
     for _v in list(sh_ivs.values()) + list(sh_ivs_pl.values()):
@@ -195,6 +203,8 @@ def compute_target(why=None, spent=None, detail=None, gated=None, items_spent=No
         """r takes its spot at stage n (a tag or a hold): the next spare must beat it -- filed bare + form, like the fill."""
         for _k in {(n, ''), _skey(n, r)}:
             sh_ivs[_k].append(r['iv'] or 0); sh_ivs[_k].sort(reverse=True)
+            _lk = _slook(sid_to_pid.get(n), r)
+            sh_look[_k][_lk] = max(sh_look[_k].get(_lk, -1), r['iv'] or 0)
             if _plain_sh(r):
                 sh_ivs_pl[_k].append(r['iv'] or 0); sh_ivs_pl[_k].sort(reverse=True)
     _arr = defaultdict(list)                     # stage -> the spares this pass sends there (they arrive before the next cull)
@@ -300,7 +310,20 @@ def compute_target(why=None, spent=None, detail=None, gated=None, items_spent=No
                 cap = keep_config.species_cap('shiny', pid, keep_config.cap('shiny'))
                 k = _skey(n, row)
                 h = sh_ivs.get(k, [])
-                if cap <= 0 or not (len(h) < cap or iv > h[cap - 1]):
+                if cap <= 0:
+                    return False
+                lb, lk = sh_look.get(k, {}), _slook(pid, row)
+                if lk in lb and iv <= lb[lk]:
+                    # NOT THE BEST OF ITS LOOK THERE (2026-11-11): the look-bests hold their slots whatever their IV, so it
+                    # must fit in what they leave -- a 49% shiny Haunter was promised a Gengar spot "beating" a 20% costume
+                    rest = list(h)
+                    for _b in lb.values():
+                        if _b in rest:
+                            rest.remove(_b)
+                    slots = cap - len(lb)
+                    if slots <= 0 or not (len(rest) < slots or iv > rest[slots - 1]):
+                        return False
+                elif not (len(h) < cap or iv > h[cap - 1]):
                     return False
                 if not pl:
                     return True
