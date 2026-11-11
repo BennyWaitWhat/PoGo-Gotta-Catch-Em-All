@@ -537,7 +537,7 @@ def ranks(con):
 
 FLAGS = ('--check-only', '--force', '--ack', '--reject', '--selftest', '--accept-smaller', '--scheduled')
 LOCK = os.path.join(ROOT, 'system', 'analysis', 'gm_refresh.lock')     # one refresh at a time: a cull's own, or the scheduled one
-PASS_LOCK = os.path.join(ROOT, 'system', 'analysis', 'pass.lock')      # full_audit.py holds it for the length of a pass
+PASS_LOCK = os.path.join(ROOT, 'system', 'analysis', 'pass.lock')      # full_audit.py holds it for the length of a phone pass
 
 
 def hold_lock(path, wait_s=0):
@@ -599,8 +599,8 @@ def main(argv):
             print('a cull is running -- skipped (scheduled run)')
             return 0
         _pass.close()                          # only a look: the refresh lock above is what a cull's own check waits on
-        # shortcut: the dashboard's own /api/full_audit job (phone page /m) holds pass.lock only for its audits step; if that
-        # job is used again, have it hold the lock for its whole run
+        # shortcut: only a full_audit.py phone pass holds pass.lock -- not --audits-only, not the dashboard's own
+        # /api/full_audit job (phone page /m); if that job is used again, have it hold the lock for its whole run
         # no console there (a hidden scheduled task): from here this run's lines go to a file. Only a run that RUNS opens
         # it, so a run that stepped aside never wipes the lines of the last real one
         sys.stdout = sys.stderr = open(os.path.join(ROOT, 'system', 'analysis', 'last_gm_scheduled.log'), 'w',

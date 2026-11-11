@@ -18,21 +18,29 @@ is_go() {   # stdin: the hook JSON. True only when the WHOLE prompt is a cull go
 import json, sys
 try:
     p = json.load(sys.stdin).get("prompt") or ""
+    assert isinstance(p, str)
 except Exception:
     sys.exit(1)
 GO = {"cull", "recull"}
 FILL = {"ok", "okay", "please", "pls", "now", "go", "continue", "and", "then", "also", "again", "yes", "yep", "run", "do",
-        "the", "a", "it", "another", "one", "more", "time", "full", "quick"}
+        "the", "a", "full", "quick"}        # no "it" / "one" / "another": "cull it" can mean one Pokemon, not a pass
 w = [x.strip(".,!;:").lstrip("/").lower() for x in p.split()]
 sys.exit(0 if "?" not in p and 0 < len(w) <= 6 and GO & set(w) and all(x in GO or x in FILL for x in w) else 1)'
 }
 
-# a lock is live while its owner is alive -- and for two hours at most, so a recycled pid can never hold it forever
-running() { [ -d "$LOCK" ] && kill -0 "$(cat "$LOCK/pid" 2>/dev/null)" 2>/dev/null && [ $(( $(date +%s) - $(stat -c %Y "$LOCK") )) -lt 7200 ]; }
+# a lock is live while its owner is alive -- two hours at most, so a recycled pid can never hold it forever -- and for its
+# first 10 s before it is signed (its starter has made the directory and is about to write its pid)
+running() {
+  local m age p
+  m=$(stat -c %Y "$LOCK" 2>/dev/null) || return 1     # no lock; it can also vanish in the middle of this check
+  age=$(( $(date +%s) - m )); p=$(cat "$LOCK/pid" 2>/dev/null)
+  [ -n "$p" ] || { [ "$age" -lt 10 ]; return; }
+  kill -0 "$p" 2>/dev/null && [ "$age" -lt 7200 ]
+}
 
 # shortcut: two starters racing over a DEAD owner's lock in the same few milliseconds could both win; use an OS lock if
 # passes are ever started by more than the hook plus one foreground call
-take() {    # the lock is a directory: mkdir is atomic, so two starters can never both win. A dead owner's lock is cleared once
+take() {    # the lock is a directory: mkdir is atomic, so two starters of a FREE lock can never both win. A dead owner's lock is cleared once
   mkdir "$LOCK" 2>/dev/null || { running && return 1; rm -rf "$LOCK"; mkdir "$LOCK" 2>/dev/null || return 1; }
   echo $$ > "$LOCK/pid"
 }
@@ -53,9 +61,15 @@ pass() {
   P=$(echo "$R" | sed -n 's/^pid=//p'); L=$(echo "$R" | sed -n 's/^gadget=//p')
   ST=$(python tools/pogo_data.py status 2>&1 | grep '^inventory '); echo "$ST"
   PV=$(echo "$ST" | grep -oE 'phone v[0-9]+' | grep -oE '[0-9]+'); HV=$(echo "$ST" | grep -oE 'here v[0-9]+' | grep -oE '[0-9]+')
-  if [ -n "$PV" ] && [ -n "$HV" ] && [ "$PV" -gt "$HV" ]; then
-    echo "phone v$PV is newer than here v$HV -- pulling first"; python tools/pogo_data.py pull 2>&1 | tail -3
-    python tools/pogo_data.py status 2>&1 | grep '^inventory '
+  # the phone holds newer data (another session pushed, or this checkout is fresh: "here v-"): the pass runs on THAT data or
+  # not at all -- keep_config.json and the registries come with it, and the pile must never be judged on stale ones
+  if [ -n "$PV" ] && [ "$PV" -gt "${HV:-0}" ]; then
+    echo "phone v$PV is newer than here v${HV:--} -- pulling first"; python tools/pogo_data.py pull 2>&1 | tail -3
+    ST=$(python tools/pogo_data.py status 2>&1 | grep '^inventory '); echo "$ST"
+    HV=$(echo "$ST" | grep -oE 'here v[0-9]+' | grep -oE '[0-9]+')
+    if [ "$PV" -gt "${HV:-0}" ]; then
+      echo "NOT RUN (the phone's data v$PV did not land here: here v${HV:--} -- the pull lines above say why)"; return 4
+    fi
   fi
   [ -f "$LAST" ] && read -r LD LT LP < "$LAST"       # shortcut: MM-DD compares as text, wrong across New Year for one pass
   echo "game pid=$P age=$(echo "$R" | sed -n 's/^age=//p' | tr -d ' ') gadget=$L phone up $(echo "$R" | sed -n 's/^up=//p' | awk '{printf "%.1f h", $1/3600}') | last cull: ${LD:-none} ${LT:-} pid ${LP:-?} | now $(date +%H:%M:%S)"
@@ -75,8 +89,13 @@ pass() {
     | awk '{ if ($0 ~ /hundo buckets:/) print; else if ($0 ~ /remote trade:/) print substr($0, 1, 700); else print substr($0, 1, 260) }'
   grep -E "^\[ *[0-9.]+s\]   ! " system/analysis/last_cull.log | cut -c1-220
   sed -n '/=== REPORT ===/,$p' system/analysis/last_cull.log | grep -v '^\['
-  PYTHONIOENCODING=utf-8 python bag_art.py --text > system/analysis/cull_now.page 2>&1; echo "bag_art rc=$? ($(wc -c < system/analysis/cull_now.page) bytes)"
-  cat system/analysis/cull_now.page
+  if [ "$RC" -eq 0 ]; then
+    PYTHONIOENCODING=utf-8 python bag_art.py --text > system/analysis/cull_now.page 2>&1; echo "bag_art rc=$? ($(wc -c < system/analysis/cull_now.page) bytes)"
+    cat system/analysis/cull_now.page
+  else    # several stop lines match none of the greps above (rc 2, 6, 7, 8, 9), and only a clean pass rebuilds the pages
+    echo "--- the pass did not finish clean (rc=$RC); the end of last_cull.log:"; tail -n 12 system/analysis/last_cull.log | cut -c1-300
+    echo "--- no page text: Bag Pulse still shows the PREVIOUS pass -- do not publish or quote it as this one"
+  fi
   cd ..
   # ALWAYS push after a phone pass, even when the gate failed (the walk changed the data); detached, the next pass shows its result
   python -c "import subprocess, sys; subprocess.Popen([sys.executable, 'tools/pogo_data.py', 'push', '--group', 'inventory'], stdout=open(r'$A/push.log', 'w'), stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL, close_fds=True, **({'creationflags': 0x08000200} if sys.platform == 'win32' else {'start_new_session': True}))" \
@@ -100,10 +119,10 @@ case "${1:-}" in
       printf '{"prompt": "%s"}' "$s" | is_go || { echo "selfcheck FAILED: should start: $s"; exit 1; }
     done
     for s in 'cull?' 'dont cull' 'do not cull yet' 'why did the cull fail' 'A1 A2 cull' 'cull later' 'stop the cull' 'go' '' \
-             'fix X then cull' 'cull\nbut first read this' 'cull the Scyther'; do
+             'fix X then cull' 'cull\nbut first read this' 'cull the Scyther' 'cull it' 'cull another one'; do
       printf '{"prompt": "%s"}' "$s" | is_go && { echo "selfcheck FAILED: should NOT start: $s"; exit 1; }
     done
-    export CULL_NOW_STATE=pogo_extract/system/analysis/.cull_now_selfcheck.$$ CULL_NOW_DRY=2; mkdir -p "$CULL_NOW_STATE"
+    export CULL_NOW_STATE=pogo_extract/system/analysis/.cull_now_selfcheck.$$ CULL_NOW_DRY=3; mkdir -p "$CULL_NOW_STATE"
     bad() { echo "selfcheck FAILED: $1"; rm -rf "$CULL_NOW_STATE"; exit 1; }
     H=$(printf '{"prompt": "cull"}' | bash tools/cull_now.sh --hook); case "$H" in *"started ONE cull pass"*) ;; *) bad "the hook did not start a pass: $H" ;; esac
     H=$(printf '{"prompt": "cull"}' | bash tools/cull_now.sh --hook); case "$H" in *"ALREADY running"*) ;; *) bad "a second go started a second pass: $H" ;; esac
@@ -111,8 +130,8 @@ case "${1:-}" in
     [ -e "$CULL_NOW_STATE/cull_now.lock" ] || [ -e "$CULL_NOW_STATE/cull_now.unread" ] && bad "state left behind after the pass"
     O=$(bash tools/cull_now.sh --pass 1); case "$O" in *"NOTHING was run"*) ;; *) bad "--pass ran without its hook's lock: $O" ;; esac
     O=$(bash tools/cull_now.sh); case "$O" in "start dry"*"rc=0"*) ;; *) bad "a plain foreground pass: $O" ;; esac
-    printf '{"prompt": "cull"}' | bash tools/cull_now.sh --hook > /dev/null; sleep 4
-    O=$(bash tools/cull_now.sh); case "$O" in *"hook already ran"*"rc=0"*) ;; *) bad "a finished hook pass was not picked up: $O" ;; esac
+    printf '{"prompt": "cull"}' | bash tools/cull_now.sh --hook > /dev/null; sleep 6
+    O=$(bash tools/cull_now.sh); case "$O" in *"hook already ran"*"s ago"*"rc=0"*) ;; *) bad "a finished hook pass was not picked up: $O" ;; esac
     O=$(bash tools/cull_now.sh); case "$O" in "start dry"*) ;; *) bad "a read pass was shown twice: $O" ;; esac
     rm -rf "$CULL_NOW_STATE"
     echo "cull_now self-check OK"; exit 0 ;;
@@ -131,16 +150,19 @@ case "${1:-}" in
     exit 0 ;;
   --pass)       # the detached pass a hook started: it takes over THAT hook's lock ($2 = the hook's pid), or it does nothing
     [ -n "${2:-}" ] && [ "$(cat "$LOCK/pid" 2>/dev/null)" = "$2" ] || { echo "--pass is the hook's own entry (its lock is gone or taken) -- NOTHING was run"; exit 2; }
-    echo $$ > "$LOCK/pid"; pass; RC=$?; grep -q '^rc=' "$OUT" || echo "rc=$RC"; rm -rf "$LOCK"; exit $RC ;;
+    echo $$ > "$LOCK/pid"; pass; RC=$?; grep -q '^rc=' "$OUT" || echo "rc=$RC"
+    [ -f "$UNREAD" ] && date +%s > "$UNREAD"      # the 15 minutes to read this result start when the pass ENDS
+    rm -rf "$LOCK"; exit $RC ;;
   '')
     if running; then echo "(attached to the pass that is already running)"; show; exit $?; fi
     U=$(grep -m1 -E '^[0-9]+$' "$UNREAD" 2>/dev/null)
     if [ -n "$U" ] && [ $(( $(date +%s) - U )) -lt 900 ]; then
-      if grep -qE '^--- full_audit starting|^rc=' "$OUT"; then echo "(the hook already ran this pass)"; show; exit $?; fi
+      if grep -qE '^--- full_audit starting|^rc=' "$OUT"; then echo "(the hook already ran this pass; it ended $(( $(date +%s) - U )) s ago)"; show; exit $?; fi
       echo "(the hook's pass never got going -- starting it here)"; cat "$OUT"
     fi
     rm -f "$UNREAD"
-    take || { echo "(attached to the pass that just started)"; show; exit $?; }
+    take || { running || { echo "cull_now: could not take $LOCK and no pass owns it -- NOTHING was run"; exit 1; }
+              echo "(attached to the pass that just started)"; show; exit $?; }
     pass 2>&1 | tee "$OUT"; RC=${PIPESTATUS[0]}
     grep -q '^rc=' "$OUT" || echo "rc=$RC" | tee -a "$OUT"
     rm -rf "$LOCK"; exit "$RC" ;;

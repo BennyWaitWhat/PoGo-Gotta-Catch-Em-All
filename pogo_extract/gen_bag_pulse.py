@@ -347,7 +347,9 @@ try:
     import re as _re2
     _md = open(os.path.join('system', 'analysis', 'last_report.txt'), encoding='utf-8').read()
     _m = _re2.search(r'Release the (\d+) in the Transfer tag', _md)
-    if _md.strip() and (_m is None or int(_m.group(1)) == len(pile)):   # a report about another pile is not this cull's
+    # a report about another pile is not this cull's. Its N counts the TAGGED ones: pile members the game has not tagged
+    # yet (a fresh hatch, a locked mon) are in the pile and not in N
+    if _md.strip() and (_m is None or int(_m.group(1)) == len(pile) - len(_waiting)):
         report_html = report_card(_md) + '\n    '
 except OSError:
     pass
