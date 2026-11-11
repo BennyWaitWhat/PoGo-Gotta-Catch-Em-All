@@ -1866,8 +1866,9 @@ def _orchestrator_tests(rgm, td, put, rows, enum, ok):
 
         def _pvpoke_half(*a, **k):
             raise _Reached()
-        real_rr, real_age = rgm.refresh_rankings, rgm.age_days
+        real_rr, real_age, real_lock = rgm.refresh_rankings, rgm.age_days, rgm.LOCK
         rgm.refresh_rankings, rgm.age_days = _pvpoke_half, (lambda p: 3.0)
+        rgm.LOCK = os.path.join(td, 'gm_refresh.lock')         # main() takes the refresh lock: the self-test's own, never the live one
         rgm.REVIEW = os.path.join(td, 'main_review.json')
         asked = []
         try:
@@ -1903,7 +1904,7 @@ def _orchestrator_tests(rgm, td, put, rows, enum, ok):
             last = buf.getvalue().strip().splitlines()[-1]
             ok(rc_quiet == 0 and last == 'fresh enough (pvpoke 3 d old) | pokeminers test note', 'a quiet run ends with ONE line: %r' % last)
         finally:
-            rgm.pokeminers_phase, rgm.refresh_rankings, rgm.age_days = real_phase, real_rr, real_age
+            rgm.pokeminers_phase, rgm.refresh_rankings, rgm.age_days, rgm.LOCK = real_phase, real_rr, real_age, real_lock
     finally:
         rgm.REVIEW, rgm._pm_engine_inputs, rgm.PM, rgm.PM_META, rgm.GM, rgm.DB = saved
 

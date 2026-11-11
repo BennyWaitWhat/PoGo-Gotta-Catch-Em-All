@@ -1023,12 +1023,18 @@ def main():
         print('pokemon.db is missing or empty here -- run `python tools/pogo_data.py pull` from the repo root first. '
               'NOTHING was run.')
         return 2
-    if not xxl_trim_end():                     # a killed trim run never leaves the trim on -- or a conflict stops here
-        return 9
-    # held to the end of this process (2026-11-11, "A3"): the scheduled game-master check steps aside while a pass runs
+    # ONE pass at a time, held to the end of this process (2026-11-11, "A3"): the scheduled game-master check steps aside while
+    # it is held. Taken before anything is touched. A phone pass waits out a short --audits-only run; behind another PASS it
+    # does not run at all (two walks on one game froze it before). --audits-only only reads: it goes on without the lock
     sys.path.append(os.path.join(ROOT, 'system', 'scripts'))
     from refresh_gamemaster import hold_lock, PASS_LOCK
-    _pass_lock = hold_lock(PASS_LOCK, 2)
+    _audits = '--audits-only' in sys.argv[1:]
+    _pass_lock = hold_lock(PASS_LOCK, 2 if _audits else 60)
+    if _pass_lock is None and not _audits:
+        say('STOPPED: another full_audit.py has held pass.lock for 60 s -- NOTHING was run here (one pass at a time)')
+        return 2
+    if not xxl_trim_end():                     # a killed trim run never leaves the trim on -- or a conflict stops here
+        return 9
     if '--xxl-trim' in sys.argv[1:]:
         xxl_trim_begin()
     try:

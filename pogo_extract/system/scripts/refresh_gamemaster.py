@@ -43,7 +43,8 @@ download (gm_guard.normalize_file), before it is judged, stamped or installed.
 The batch is stamped in gamemaster_pokeminers.json.meta (batch time, APK, sha256) for audit_invariants I2.7.
   --selftest     : offline proof of all of it on synthetic fixtures (touches nothing outside a temp dir)
   --scheduled    : the run BETWEEN culls (2026-11-11, user "A3"): the same refresh, but it steps aside (exit 0, nothing run)
-                   while a cull or another refresh is running. A cull's own check then finds the installed files current
+                   while a cull or another refresh is running. A cull's own check then finds the installed files current.
+                   A run that runs writes its lines to system/analysis/last_gm_scheduled.log (a hidden task has no console)
 An unknown flag stops the run with exit 2 and does NOTHING (like full_audit.py).
 """
 import sys, os, json, shutil, sqlite3, subprocess, time, urllib.request
@@ -566,11 +567,6 @@ def main(argv):
     if bad:     # an unknown flag -- even --help -- must never fall through to a real download + install (full_audit.py's rule)
         print('flags: %s\nunknown: %s -- NOTHING was run' % (' '.join(FLAGS), ' '.join(bad)))
         return 2
-    if '--scheduled' in argv:                  # no console there (a hidden scheduled task): this run's lines go to a file
-        _log = open(os.path.join(ROOT, 'system', 'analysis', 'last_gm_scheduled.log'), 'w', encoding='utf-8')
-        print(time.strftime('%Y-%m-%d %H:%M:%S'), 'scheduled run', file=_log, flush=True)
-        os.dup2(_log.fileno(), 1)
-        os.dup2(_log.fileno(), 2)
     if '--selftest' in argv:                   # offline, synthetic fixtures, temp dir only -- BEFORE anything reads or downloads
         if ROOT not in sys.path:
             sys.path.insert(0, ROOT)
@@ -591,10 +587,11 @@ def main(argv):
     # ONE refresh at a time, and none in the middle of a cull (2026-11-11, user "A3"). A cull's own check WAITS for a scheduled
     # run to finish (it then finds the files current); a scheduled run steps aside for a cull, and for another refresh.
     _sched = '--scheduled' in argv
-    _lock = hold_lock(LOCK, 0 if _sched else 1700)
+    _lock = hold_lock(LOCK, 0 if _sched else 600)      # 600 s: far past any real refresh, well inside full_audit's 1800 s
     if _lock is None:
         print('another game-master refresh is running -- skipped (scheduled run)' if _sched else
-              'another game-master refresh has held %s for 1700 s -- NOTHING was run here; find that process' % os.path.basename(LOCK))
+              'another game-master refresh has held %s for 600 s -- NOTHING was checked or installed here; find that process '
+              '(python ... refresh_gamemaster.py) before the next cull' % os.path.basename(LOCK))
         return 0 if _sched else 2
     if _sched:
         _pass = hold_lock(PASS_LOCK)
@@ -602,6 +599,14 @@ def main(argv):
             print('a cull is running -- skipped (scheduled run)')
             return 0
         _pass.close()                          # only a look: the refresh lock above is what a cull's own check waits on
+        # shortcut: the dashboard's own /api/full_audit job (phone page /m) holds pass.lock only for its audits step; if that
+        # job is used again, have it hold the lock for its whole run
+        # no console there (a hidden scheduled task): from here this run's lines go to a file. Only a run that RUNS opens
+        # it, so a run that stepped aside never wipes the lines of the last real one
+        sys.stdout = sys.stderr = open(os.path.join(ROOT, 'system', 'analysis', 'last_gm_scheduled.log'), 'w',
+                                       encoding='utf-8', buffering=1)
+        print(time.strftime('%Y-%m-%d %H:%M:%S'), 'scheduled run')
+    age = age_days(GM)                         # again, AFTER the wait: the run this one waited for may just have refreshed the file
     _gate = review_gate(argv)                  # a pending review stops EVERY run until --ack, whatever the file's age
     if _gate is not None:
         return _gate
