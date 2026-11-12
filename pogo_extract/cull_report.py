@@ -1197,17 +1197,21 @@ def main():
     return 0
 
 
-def room_lines(st):
+def room_lines(st, gmax=None):
     """The room bar's lines for the report, from full_audit.room_bar_step's record of this pass: said only when the bar
     moved, or when it stands at its ceiling with the room still short (user 2026-11-12, pick "A")."""
     pc = lambda iv: round(iv * 100 / 45)
     out, a, b = [], st.get('from'), st.get('to')
+    if gmax is None:                           # Gigantamax is off limits for the bar (2026-11-12): the line must stay true for it
+        import keep_config
+        gmax = keep_config.rule_enabled('room_bar_skips_gigantamax')
+    _g = (' Gigantamax copies stay at %d%%.' % pc(st['lo'])) if gmax else ''
     if a is not None and b is not None and b > a:
         out.append('Room: spare copies now need %d%% (was %d%%) -- %d free once this pile is released. The bar rises by itself '
-                   'while that is under %d, and rests at %d%% when there is room.' % (pc(b), pc(a), st['free'], st['free_min'], pc(st['lo'])))
+                   'while that is under %d, and rests at %d%% when there is room.' % (pc(b), pc(a), st['free'], st['free_min'], pc(st['lo'])) + _g)
     elif a is not None and b is not None and b < a:
-        out.append('Room: spare copies now need %d%% (was %d%%) -- %d free once this pile is released, so the bar came down one step.'
-                   % (pc(b), pc(a), st['free']))
+        out.append('Room: spare copies now need %d%% (was %d%%) -- %d free once this pile is released, so the bar came down one step.%s'
+                   % (pc(b), pc(a), st['free'], _g))
     if st.get('short'):
         out.append('**ROOM SHORT:** the spare-copy bar is at its %d%% ceiling and only %d will be free once this pile is released '
                    '(under %d). Your pick: %s.' % (pc(st['hi']), st['free'], st['free_min'],
@@ -1358,10 +1362,23 @@ def _selftest():
     assert _nx(42, 10, _rb) == 42 and _nx(37, 900, _rb) == 37, 'never past the ceiling, never under the 3-star line'
     assert _nx(41, 400, _rb) == 40 and _nx(41, 399, _rb) == 41, 'down one point only at free_max or more'
     assert _nx(30, 0, _rb) == 37 and _nx(44, 0, _rb) == 44 and _nx(44, 400, _rb) == 43, 'under the range -> lo; over it -> only ever down'
-    assert room_lines(dict(_rb, **{'from': 39, 'to': 41, 'free': 229, 'short': False}))[0].startswith('Room: spare copies now need 91% (was 87%) -- 229 free')
-    assert room_lines(dict(_rb, **{'from': 41, 'to': 41, 'free': 229, 'short': False})) == [], 'a steady bar says nothing'
-    assert room_lines(dict(_rb, **{'from': 41, 'to': 40, 'free': 420, 'short': False}))[0].endswith('came down one step.')
-    assert 'ROOM SHORT' in room_lines(dict(_rb, **{'from': 42, 'to': 42, 'free': 150, 'short': True}))[0]
+    assert room_lines(dict(_rb, **{'from': 39, 'to': 41, 'free': 229, 'short': False}), gmax=False)[0].startswith('Room: spare copies now need 91% (was 87%) -- 229 free')
+    assert room_lines(dict(_rb, **{'from': 41, 'to': 41, 'free': 229, 'short': False}), gmax=False) == [], 'a steady bar says nothing'
+    assert room_lines(dict(_rb, **{'from': 41, 'to': 40, 'free': 420, 'short': False}), gmax=False)[0].endswith('came down one step.')
+    assert 'ROOM SHORT' in room_lines(dict(_rb, **{'from': 42, 'to': 42, 'free': 150, 'short': True}), gmax=False)[0]
+    assert room_lines(dict(_rb, **{'from': 39, 'to': 41, 'free': 229, 'short': False}), gmax=True)[0].endswith('when there is room. Gigantamax copies stay at 82%.')
+    assert 'Gigantamax' not in room_lines(dict(_rb, **{'from': 39, 'to': 41, 'free': 229, 'short': False}), gmax=False)[0]
+    _cfg0 = _kcs.CFG                               # ... and in the one shared floor: a Gigantamax copy is judged at the bar's lowest point
+    try:
+        _kcs.CFG = dict(_cfg0, room_bar=_rb, collection_floor_iv=41, roster_floor_iv=None, look_keep=3,
+                        rules=dict(_cfg0.get('rules') or {}, room_bar_skips_gigantamax=True))
+        _gm = [{'iv_total': v, 'fresh_bread_mode': 2, 'pokemon_id': 6} for v in (45, 44, 43, 39, 36)]
+        assert [r['iv_total'] for r in _kcs.floor_top(_gm)] == [45, 44, 43, 39], 'Gigantamax: the bar at 91% must not take an 87% copy'
+        assert [r['iv_total'] for r in _kcs.floor_top([{'iv_total': v, 'pokemon_id': 6} for v in (45, 39)])] == [45], 'a regular copy follows the bar'
+        _kcs.CFG['rules']['room_bar_skips_gigantamax'] = False
+        assert [r['iv_total'] for r in _kcs.floor_top(_gm)] == [45, 44, 43], 'switch off = the bar as before'
+    finally:
+        _kcs.CFG = _cfg0
     assert _ww_short('Smoliv 76% 5/14/15 CP 221 (Evolve Once, Evolve for GL) -> Dolliv, then STOP -- do not evolve it on to '
                      'Arboliva') == 'Smoliv 76% 5/14/15 CP 221 -> Dolliv'
     assert _ww_short('Gloom 91% 15/13/13 CP 800 (Evolve Once) -> Vileplume (via Gloom), not Bellossom  [needs: x]') == \

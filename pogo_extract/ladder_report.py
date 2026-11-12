@@ -67,6 +67,32 @@ def pvp_metrics(rows, kept_uids):
     return out
 
 
+CP_TAGS = (('gl', 'Best GL'), ('ul', 'Best UL'), ('ml', 'Best ML'))
+
+
+def cp_metrics(rows, from_files=True):
+    """AVERAGE CP per pass (2026-11-12, user: "start tracking the trend for all my BEST gl, BEST ul, best ml, and hundo avg
+    CP"): the mean CP of the copies in the Best GL / Best UL / Best ML tags and of every hundo, with each group's size. It
+    rises as he powers them up; a newly tagged low-CP copy pulls it down. from_files: this pass's own tag files; False =
+    each row's tag mirror (auth_tag_names), for a past walk's snapshot (--backfill-cp). An empty group has no mean (None)."""
+    mean = lambda rs: (lambda c: round(sum(c) / len(c)) if c else None)([r['cp'] for r in rs if r.get('cp')])
+    out = {}
+    for k, tag in CP_TAGS:
+        if from_files:
+            try:
+                us = set(open(os.path.join('system', 'analysis', 'tagsets', tag.replace(' ', '_') + '.txt')).read().split())
+            except OSError:
+                us = set()
+            grp = [rows[u] for u in us if u in rows]
+        else:
+            grp = [r for r in rows.values() if tag in (r.get('auth_tag_names') or '').split(';')]
+        out['cp_best_' + k], out['n_best_' + k] = mean(grp), len(grp)
+    hun = [r for r in rows.values() if (r['iv_total'] or 0) == 45]
+    out['cp_hundo'], out['n_hundo'] = mean(hun), len(hun)
+    return out
+
+
+
 def metrics(rows, reasons):
     kept = {u: set(v) for u, v in reasons.items() if u in rows}
     orc = json.load(open('system/analysis/fodder_oracle.json')); is_pre = orc['is_pre']
@@ -89,7 +115,7 @@ def metrics(rows, reasons):
         'best_per_stage_mean_iv': pct(best), 'shiny_mean_iv': pct([r['iv_total'] or 0 for r in shinies]),
         'shiny_stages_3star': sum(1 for v in shiny_stages.values() if v >= 37), 'shiny_stages': len(shiny_stages),
         'labels': len(labels), '_labels': labels,
-        **pvp_metrics(rows, set(kept)),
+        **pvp_metrics(rows, set(kept)), **cp_metrics(rows),
     }
 
 
@@ -146,9 +172,33 @@ def backfill_pvp():
     print('backfilled %d entr%s (%d without a snapshot)' % (n, 'y' if n == 1 else 'ies', sum(1 for e in hist if 'pvp_gl_top5' not in e)))
 
 
+def backfill_cp():
+    """Add the cp_* averages to every past entry whose walk snapshot still exists (the tags the phone held at that walk).
+    Re-runnable; entries already carrying cp_hundo are skipped unless --force."""
+    hist = json.load(open(HIST))
+    snaps = {re.search(r'(\d{4}-\d\d-\d\d_\d{6})', p).group(1): p
+             for p in glob.glob(os.path.join('.db_snapshots', 'pokemon.db.*.before_sync.*.gz'))}
+    tmp = os.path.join(tempfile.gettempdir(), 'ladder_backfill_cp.db')
+    n = 0
+    for e in hist:
+        if ('cp_hundo' in e and '--force' not in sys.argv) or e.get('walk') not in snaps:
+            continue
+        with gzip.open(snaps[e['walk']], 'rb') as fh, open(tmp, 'wb') as g:
+            shutil.copyfileobj(fh, g)
+        e.update(cp_metrics(load_rows(tmp), from_files=False))
+        n += 1
+        print('  %s  Best GL %s (%d) | Best UL %s (%d) | Best ML %s (%d) | hundos %s (%d)' % (
+            e['ts'], e['cp_best_gl'], e['n_best_gl'], e['cp_best_ul'], e['n_best_ul'], e['cp_best_ml'], e['n_best_ml'], e['cp_hundo'], e['n_hundo']))
+    json.dump(hist, open(HIST, 'w'), indent=0)
+    print('backfilled %d entr%s (%d without a snapshot)' % (n, 'y' if n == 1 else 'ies', sum(1 for e in hist if 'cp_hundo' not in e)))
+
+
+
 def main():
     if '--backfill-pvp' in sys.argv:
         return backfill_pvp()
+    if '--backfill-cp' in sys.argv:
+        return backfill_cp()
     rows = load_rows('pokemon.db')
     reasons = {u: v for u, v in json.load(open('system/analysis/policy_reasons.json')).items() if not u.startswith('_')}
     pile = set(open('system/analysis/tagsets/6_Transfer.txt').read().split())
