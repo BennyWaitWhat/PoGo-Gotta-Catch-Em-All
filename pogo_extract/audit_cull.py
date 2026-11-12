@@ -907,6 +907,20 @@ _cnt_g = collections.Counter(_pmk(r) for r in _crows if _pmk(r))
 _pp_g = collections.Counter(_pmk(rows[u]) for u in _ps_v if _pmk(rows[u]))
 pm = [g for g, n in _pp_g.items() if _cnt_g[g] - n < min(_pmin, _cnt_g[g])]
 print('  %-18s %-5d %s   (at least %d of every pattern / letter / color / season)' % ('patterns under min', len(pm), chk('pattern under minimum', len(pm)), _pmin))
+# REGULAR MINIMUM (user 2026-11-12, room bar "A"): with the bar on, every species + form keeps at least caps.regular_min REGULAR
+# copies (keep_config.is_regular_copy), or every regular copy it has that reaches the bar's lowest point -- like the engine
+_rmin, _rlo = keep_config.regular_min()
+_reg = keep_config.is_regular_copy
+_rg_all = collections.Counter(_smk(r) for r in _crows if r['pokemon_id'] and _reg(r))
+_rg_pile = collections.Counter(_smk(rows[u]) for u in _ps_v if rows[u]['pokemon_id'] and _reg(rows[u]))
+_rg_hit = {_smk(rows[u]) for u in _ps_v if rows[u]['pokemon_id'] and _reg(rows[u]) and (rows[u].get('iv_total') or 0) >= _rlo}
+rm = [k for k in _rg_hit if _rmin and _rg_all[k] - _rg_pile[k] < _rmin]
+print('  %-18s %-5d %s   (at least %d regular copies of every species + form the room bar could take)' % ('regular under min', len(rm), chk('regular under minimum', len(rm)), _rmin))
+# INVESTED (user 2026-11-12, room bar): with the bar on, no copy he powered up, gave a second move, walked as his buddy or
+# mega-evolved, and no lucky one, that reaches the bar's lowest point is in the pile
+_ilo = keep_config.invested_floor()
+inv_p = [u for u in _ps_v if _ilo is not None and (rows[u].get('iv_total') or 0) >= _ilo and keep_config.is_invested(rows[u])]
+print('  %-18s %-5d %s   (powered up / second move / buddy / mega / lucky, from the lowest point of the room bar up)' % ('invested in pile', len(inv_p), chk('invested in the pile', len(inv_p))))
 fc = collections.Counter((r['pokemon_id'], cf(r)) for r in _crows)
 fp2 = collections.Counter((rows[u]['pokemon_id'], cf(rows[u])) for u in _ps_v)
 fw = [k for k, n in fp2.items() if fc[k] == n]

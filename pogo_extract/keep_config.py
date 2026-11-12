@@ -59,6 +59,9 @@ DEFAULTS = {
         #                       floor (user 2026-11-03: "3"); 0 = off (the account's keep_config.json sets it)
         "pattern_min": 0,     # pattern minimum -- every Scatterbug pattern (its whole line) and every lumped form (Unown letter,
         #                       Spinda pattern, Flabebe color, season ...) keeps N copies under any floor (user 2026-11-07); 0 = off
+        "regular_min": 0,     # regular minimum -- with a room_bar, a species + form keeps at least N REGULAR copies (not shiny /
+        #                       shadow / Max / costume / background / card) that reach room_bar.lo, whatever the bar says
+        #                       (user 2026-11-12, pick "A"); 0 = off -- regular_min() / is_regular_copy()
     },
     "pvp": {
         "ready_rank": 5,      # gl/ul_rank <= this is a keeper (top-5 of 4096 spreads)
@@ -86,6 +89,11 @@ DEFAULTS = {
     #                                                      keeps its first N whatever the floor (None = off; user 2026-11-05 "This." -> 3) -- floor_top
     "collection_floor_iv": 0,                            # EVERY capped collection ladder (plain / costume / Max / legendary / legacy / cards): a copy below this
     #                                                      IV total takes no slot unless it is the ladder's best (0 = off; 12 = under 25%, user 2026-09-24)
+    "room_bar": None,                                    # THE ROOM BAR (user 2026-11-12, pick "A": "Do A, but instead of 87%, do 82%. 3 star min."): None = off.
+    #                                                      {"lo": 37, "hi": 42, "free_min": 200, "free_max": 400} = full_audit.room_bar_step moves
+    #                                                      collection_floor_iv by itself, one IV point at a time, between lo (82%, the in-game 3-star
+    #                                                      line) and hi: up while the free room after a release is under free_min, down one point at
+    #                                                      free_max or more -- room_bar() / room_bar_next()
     "shiny_floor_iv": 0,                                 # rule 3 -- a PLAIN shiny below this IV total takes no plain-shiny slot unless it is its form's best
     "shiny_floor_iv_roster": None,                       # rule 3 -- the shiny floor for the LEGENDARY / mythical / UB / paradox roster (None = shiny_floor_iv;
     #                                                      user 2026-11-11 "S1": the rest went 60% -> 87%, a roster shiny keeps 60% = 27) -- shiny_floor_iv(pid)
@@ -279,6 +287,35 @@ def floor_iv_for(pid):
     return collection_floor_iv()
 
 
+def room_bar():
+    """THE ROOM BAR's settings {lo, hi, free_min, free_max}, or None = off (a missing or malformed value is off: the floor
+    then stays where keep_config.json has it). User 2026-11-12, pick "A"."""
+    v = CFG.get("room_bar", DEFAULTS["room_bar"])
+    if not isinstance(v, dict):
+        return None
+    try:
+        rb = {k: v[k] for k in ("lo", "hi", "free_min", "free_max")}
+    except KeyError:
+        return None
+    if any(isinstance(x, bool) or not isinstance(x, int) for x in rb.values()):
+        return None
+    return rb if 0 < rb["lo"] <= rb["hi"] <= 45 and 0 <= rb["free_min"] <= rb["free_max"] else None
+
+
+def room_bar_next(floor, free, rb):
+    """Where the bar goes for a bag that has `free` slots once its pile is released: one IV point up while free is under
+    free_min (never past hi), one point down at free_max or more (never under lo), else where it is. A floor under lo goes
+    to lo (the bar never rests under the 3-star line); a floor over hi was set by hand and only ever comes down. Pure."""
+    if floor < rb["lo"]:
+        return rb["lo"]
+    if free < rb["free_min"] and floor < rb["hi"]:
+        return floor + 1
+    if free >= rb["free_max"] and floor > rb["lo"]:
+        return floor - 1
+    return floor
+
+
+
 def look_keep():
     """How many copies a ladder of SPECIAL copies keeps whatever the floor, or None = off (only its best stays, like any
     ladder). User 2026-11-05 "This." (3): option A's 87% floor had left him one Gigantamax Pikachu -- "a back up and one
@@ -316,6 +353,41 @@ def is_fused_component(r):
         return bool(r['is_component'])
     except (KeyError, IndexError):
         return False
+
+
+def is_regular_copy(r):
+    """A plain copy of its species + form: not shiny, shadow, Max, costume, background, decoration or card (_special_copy),
+    and not held inside a fused Kyurem. ONE definition for the engine's regular minimum and every mirror."""
+    return not is_fused_component(r) and not _special_copy(r)
+
+
+def regular_min():
+    """(n, lo). With a room bar on, a species + form keeps at least n REGULAR copies that reach lo (the bar's lowest point)
+    whatever the bar says -- "a back up and one to trade and one for me" (user 2026-11-04), so the moving bar never leaves
+    him one. (0, 0) = off: no cap, or no room bar (a floor he set by hand is his own pick)."""
+    n, rb = cap("regular_min"), room_bar()
+    return (n, rb["lo"]) if n > 0 and rb else (0, 0)
+
+
+
+def is_invested(r):
+    """A copy he has put something into, by the game's own record of that Pokemon: powered up (numUpgrades), a second
+    charged move (move3), walked as his buddy (buddyKmWalked), mega-evolved (a mega level), or lucky. ONE definition for
+    the engine and every mirror. Rows without these fields read as not invested."""
+    def g(k):
+        try:
+            return r[k]
+        except (KeyError, IndexError, TypeError):
+            return None
+    return bool(g("is_powered_up") or g("move3") or (g("buddy_km_walked") or 0) > 0 or g("fresh_has_mega_level") or g("is_lucky"))
+
+
+def invested_floor():
+    """The IV total from which the room bar spares an invested copy (the bar's lowest point), or None = off (no room bar).
+    User 2026-11-12, his proof line for the bar: "nothing released that I later powered up, battled with, evolved"."""
+    rb = room_bar()
+    return rb["lo"] if rb else None
+
 
 
 def row_dict(r):
@@ -670,6 +742,12 @@ def validate(cfg):
     cfl = cfg.get("collection_floor_iv", DEFAULTS["collection_floor_iv"])
     if isinstance(cfl, bool) or not isinstance(cfl, int) or not (0 <= cfl <= 45):
         probs.append("'collection_floor_iv' must be an integer 0..45 (0 = floor off)")
+    rbv = cfg.get("room_bar", DEFAULTS["room_bar"])
+    if rbv is not None:
+        _rk = ("lo", "hi", "free_min", "free_max")
+        if not (isinstance(rbv, dict) and set(rbv) == set(_rk) and all(isinstance(rbv[k], int) and not isinstance(rbv[k], bool) for k in _rk)
+                and 0 < rbv["lo"] <= rbv["hi"] <= 45 and 0 <= rbv["free_min"] <= rbv["free_max"] <= 20000):
+            probs.append("'room_bar' must be null or {lo, hi, free_min, free_max}: integers, 0 < lo <= hi <= 45, 0 <= free_min <= free_max")
     sf = cfg.get("shiny_floor_iv", DEFAULTS["shiny_floor_iv"])
     if isinstance(sf, bool) or not isinstance(sf, int) or not (0 <= sf <= 45):
         probs.append("'shiny_floor_iv' must be an integer 0..45 (0 = floor off)")
@@ -725,7 +803,7 @@ def validate(cfg):
                 if dup:
                     probs.append("pattern_line_pools: pid(s) %s listed in more than one line" % sorted(dup))
                 _seen_pids |= set(pids)
-    _allowed = {"line_pool_all", "caps", "pvp", "legacy_species_caps", "legacy_default_cap", "rarity_keep_all_pids", "rarity_ladders", "shadow_best_leagues", "rarity_floor_iv", "shiny_floor_iv", "shiny_floor_iv_roster", "shiny_floor_keep", "collection_floor_iv", "roster_floor_iv", "look_keep",
+    _allowed = {"line_pool_all", "caps", "pvp", "legacy_species_caps", "legacy_default_cap", "rarity_keep_all_pids", "rarity_ladders", "shadow_best_leagues", "rarity_floor_iv", "shiny_floor_iv", "shiny_floor_iv_roster", "shiny_floor_keep", "collection_floor_iv", "roster_floor_iv", "look_keep", "room_bar",
                 "protected_keep_all_pids", "adventure_effect_pids", "origin_owners",
                 "showcase_weights", "pvp_spread_keep", "rules", "per_species_caps", "pattern_line_pools", "_note"}
     for k in cfg:
@@ -747,3 +825,11 @@ def write(new_cfg):
     os.replace(tmp, PATH)
     reload()
     return merged
+
+
+def set_collection_floor(n):
+    """Write collection_floor_iv = n to keep_config.json (validated, atomic, reloaded): the room bar's one write."""
+    with open(PATH, encoding='utf-8') as fh:
+        cfg = json.load(fh)
+    cfg["collection_floor_iv"] = n
+    return write(cfg)

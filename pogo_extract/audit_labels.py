@@ -14,7 +14,7 @@ import evolvable_forms
 import granular_tags
 from pvp_iv_rule import pvid, maxcp, GL_CAP, UL_CAP, READY_RANK, VIABILITY_MARGIN, fits
 
-CONSUMED = {'protected', 'legacy', 'location_card', 'xxl', 'mighty', 'dex_only_copy', 'species_min', 'pattern_min', 'rarity', 'adventure_effect',
+CONSUMED = {'protected', 'legacy', 'location_card', 'xxl', 'mighty', 'dex_only_copy', 'species_min', 'pattern_min', 'regular_min', 'rarity', 'adventure_effect',
             'shadow_best', 'hundo', 'nundo',        # keep axes that evolving would destroy or that never evolve
             'fused'}     # (2026-09-26) fused components hold no ladder slot: held inside a Kyurem, never advised to evolve
 # EACH PRODUCER UNDER ITS OWN BUCKET'S LAW (2026-09-29, the fold) -- LAW.md: a copy belongs to the FIRST bucket that applies.
