@@ -714,6 +714,7 @@ for nm, p in [('hundo', lambda r: (r['iv_total'] or 0) == 45),
               ('rarity (top-N)', lambda r: r['uid_hex'] in _rarity_keep),
               ('legacy (kept)', lambda r: r['uid_hex'] in _legacy_keep),
               ('protected pid', lambda r: r['pokemon_id'] in _PROT),
+              ('kept by hand', lambda r: r['uid_hex'] in keep_config.hand_kept()),   # he took it out of the Transfer tag (2026-11-12)
               ('pvp spread', lambda r: (r.get('iv_atk'), r.get('iv_def'), r.get('iv_sta')) in _SPREAD),
               ('best gl/ul', lambda r: r['uid_hex'] in _pvp_best_keep),
               # (2026-09-26) fused components hold no ladder slot -- and are NEVER pile candidates: the game holds
@@ -742,7 +743,7 @@ _il_cu = _il.combup_uncovered(
     _crows, ps, _il_labels or {}, own_of=lambda r: _sh_pvid(r['species_name'], r.get('form') or 0), later_fn=_pu_later,
     fits_fn=lambda r, s, c: _pu_fits(r, s, c, _SH_BS), reaches_fn=_sh_via, caps={'gl': _SH_GL, 'ul': _SH_UL},
     floor=keep_config.pvp('best_rank_floor'), rare_pids=_RARE_PIDS, legacy_uids=_legrec,
-    protected_pids=keep_config.protected_pids(), cf=cf, shadow_floor=keep_config.pvp('shadow_rank_floor'),
+    protected_pids=keep_config.protected_pids(), protected_uids=keep_config.hand_kept(), cf=cf, shadow_floor=keep_config.pvp('shadow_rank_floor'),
     shadow_leagues=keep_config.shadow_leagues(),
     ladder_cap=lambda s: keep_config.cap('plain_line_preevo' if s in _IL_MID else 'plain_line'), meta_ok=_pb_meta)
 print('  %-18s %-5d %s   (LAW bucket 2c re-derived: a piled copy whose evolved self would take its species\' Best)'
@@ -766,7 +767,7 @@ def _il_shpcap(t):
 _il_sh = _il.shiny_ladder_violations(
     _crows, ps, own_of=lambda r: _sh_pvid(r['species_name'], r.get('form') or 0), next_of=_il_next,
     can_evolve=lambda r: bool(_pu_later(r)), cap_of=_il_shcap, plain_cap_of=_il_shpcap, floor_iv=lambda t: keep_config.shiny_floor_iv(_il_dex.get(t)), floor_keep=keep_config.shiny_floor_keep(),
-    is_collectible=lambda r: bool(_scoll(r) - {('shadow', 1)}), protected_pids=keep_config.protected_pids())
+    is_collectible=lambda r: bool(_scoll(r) - {('shadow', 1)}), protected_pids=keep_config.protected_pids(), protected_uids=keep_config.hand_kept())
 print('  %-18s %-5d %s   (LAW shiny ladder re-derived: a spare shiny that earns a spot one stage up is held)'
       % ('shiny ladder (law)', len(_il_sh), chk('shiny ladder (law)', len(_il_sh))))
 for _u, _why in _il_sh[:6]:
@@ -894,24 +895,25 @@ print('  %-18s %-5d %s' % ('species wiped', len(w), chk('species wiped', len(w))
 from pvp_iv_rule import pvid as _sm_pvid
 _smin = keep_config.cap('species_min')
 _smk = lambda r: _sm_pvid(r['species_name'], r['form'] or 0)
-_cnt_k = collections.Counter(_smk(r) for r in _crows if r['pokemon_id'])
+_HK = keep_config.hand_kept()                          # a copy kept by hand counts toward no minimum (2026-11-12)
+_cnt_k = collections.Counter(_smk(r) for r in _crows if r['pokemon_id'] and r['uid_hex'] not in _HK)
 _pp_k = collections.Counter(_smk(rows[u]) for u in _ps_v if rows[u]['pokemon_id'])
 sm = [p for p, n in _pp_k.items() if _cnt_k[p] - n < min(_smin, _cnt_k[p])]
 print('  %-18s %-5d %s   (at least %d of every species + form)' % ('species under min', len(sm), chk('species under minimum', len(sm)), _smin))
 # PATTERN MINIMUM (user 2026-11-07 "2 of each", "....yes."): every Scatterbug pattern (its whole line) and every lumped form keeps at
 # least caps.pattern_min copies, or all it has -- grouped by pattern_pools.min_group, like the engine
 import pattern_pools as _ppm
-_pmin = keep_config.cap('pattern_min')
+_pmin = _ppm.min_count(None)                           # the global number; a species' own (Unown: 3) per group below
 _pmk = lambda r: _ppm.min_group(r['pokemon_id'], r['species_name'], r.get('form') or 0)
-_cnt_g = collections.Counter(_pmk(r) for r in _crows if _pmk(r))
+_cnt_g = collections.Counter(_pmk(r) for r in _crows if _pmk(r) and r['uid_hex'] not in _HK)
 _pp_g = collections.Counter(_pmk(rows[u]) for u in _ps_v if _pmk(rows[u]))
-pm = [g for g, n in _pp_g.items() if _cnt_g[g] - n < min(_pmin, _cnt_g[g])]
+pm = [g for g, n in _pp_g.items() if _cnt_g[g] - n < min(_ppm.min_count(g), _cnt_g[g])]
 print('  %-18s %-5d %s   (at least %d of every pattern / letter / color / season)' % ('patterns under min', len(pm), chk('pattern under minimum', len(pm)), _pmin))
 # REGULAR MINIMUM (user 2026-11-12, room bar "A"): with the bar on, every species + form keeps at least caps.regular_min REGULAR
 # copies (keep_config.is_regular_copy), or every regular copy it has that reaches the bar's lowest point -- like the engine
 _rmin, _rlo = keep_config.regular_min()
 _reg = keep_config.is_regular_copy
-_rg_all = collections.Counter(_smk(r) for r in _crows if r['pokemon_id'] and _reg(r))
+_rg_all = collections.Counter(_smk(r) for r in _crows if r['pokemon_id'] and _reg(r) and r['uid_hex'] not in _HK)
 _rg_pile = collections.Counter(_smk(rows[u]) for u in _ps_v if rows[u]['pokemon_id'] and _reg(rows[u]))
 _rg_hit = {_smk(rows[u]) for u in _ps_v if rows[u]['pokemon_id'] and _reg(rows[u]) and (rows[u].get('iv_total') or 0) >= _rlo}
 rm = [k for k in _rg_hit if _rmin and _rg_all[k] - _rg_pile[k] < _rmin]

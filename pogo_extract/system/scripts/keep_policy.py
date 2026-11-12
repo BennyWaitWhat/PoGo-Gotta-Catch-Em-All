@@ -1471,7 +1471,7 @@ def main():
            (r['original_owner_name'] or '').strip().lower() in _OO: mark(r['uid_hex'], 'origin')
         if r['fresh_is_strong'] == 1 and _R['mighty']: mark(r['uid_hex'], 'mighty')
         # location_card is now CAPPED -- see the grouped pass right after this loop
-        if r['pokemon_id'] in PROTECTED_KEEP_ALL: mark(r['uid_hex'], 'protected')      # user "leave them alone" (Pichu) -- keep every copy, no cap
+        if r['pokemon_id'] in PROTECTED_KEEP_ALL or r['uid_hex'] in keep_config.hand_kept(): mark(r['uid_hex'], 'protected')      # user "leave them alone" (Pichu) -- keep every copy, no cap; and a copy he took out of the Transfer tag by hand (2026-11-12)
         if (r['is_favorite_v2'] or 0) == 1: mark(r['uid_hex'], 'favorite')   # user 2026-09-17 "keep em": a starred mon is never culled
 
     # 13b. LOCATION CARD -- CAPPED, top-N per (species, form, CARD TYPE) (user 2026-09-02 "top 6 per
@@ -1926,7 +1926,7 @@ def main():
                 _kr = keep.get(r['uid_hex'], set())
                 if 'variant_floor' not in _kr or any(x.startswith('evolve_') for x in _kr):
                     continue
-                if not _can_evo(r) or (r['iv_total'] or 0) in (0, 45) or r['pokemon_id'] in keep_config.protected_pids():
+                if not _can_evo(r) or (r['iv_total'] or 0) in (0, 45) or keep_config.is_protected(r):
                     continue
                 if ((_kr & {'location_card', 'xxl', 'legacy', 'mighty', 'protected', 'dex_only_copy'})
                         or (r['gl_stage'] == _sid(r) and (r['gl_rank'] or 99) <= READY_RANK and _viable(r['gl_stage'], GL_CAP))
@@ -2071,11 +2071,14 @@ def main():
     # 2nd spirittomb? ... i only have 2" -> "3"): every species + form (pvid: Alolan Vulpix and Vulpix are two kinds, every
     # look together -- per dex number until 2026-11-04 "a": "a back up and one to trade and one for me") keeps at least
     # caps.species_min copies, topped up with the best of the rest by IV, CP, uid -- no floor. Last, so it counts every keep.
+    # A COPY KEPT BY HAND COUNTS TOWARD NO MINIMUM (2026-11-12): he took it out of the Transfer tag as an extra, so it never
+    # fills a kind's last-copies quota -- else untagging one copy sent a better copy of its kind to the pile.
+    _HK = keep_config.hand_kept()
     _smin = keep_config.cap('species_min')
     if _smin:
         _spg = defaultdict(list)
         for r in rows:
-            if r['pokemon_id']:
+            if r['pokemon_id'] and r['uid_hex'] not in _HK:
                 _spg[pvid(r['species_name'], r['form'] or 0)].append(r)
         for _lst in _spg.values():
             _short = _smin - sum(1 for r in _lst if keep.get(r['uid_hex']))
@@ -2087,15 +2090,15 @@ def main():
     # then "....yes." for Spinda patterns, Flabebe colors, Furfrou trims, Deerling seasons): the species minimum counts all
     # such forms of a species as one kind, so one could fall to 1 copy. Every pattern of a pattern-pooled line (Scatterbug +
     # Spewpa + Vivillon together) and every lumped named form keeps caps.pattern_min copies. Groups: pattern_pools.min_group.
-    _pmin = keep_config.cap('pattern_min')
+    _pmin = pattern_pools.min_count(None)          # the global number; a species' own (Unown: 3) is asked per group below
     if _pmin:
         _pmg = defaultdict(list)
         for r in rows:
             _g = pattern_pools.min_group(r['pokemon_id'], r['species_name'], r['form'] or 0)
-            if _g:
+            if _g and r['uid_hex'] not in _HK:
                 _pmg[_g].append(r)
-        for _lst in _pmg.values():
-            _short = _pmin - sum(1 for r in _lst if keep.get(r['uid_hex']))
+        for _g, _lst in _pmg.items():
+            _short = pattern_pools.min_count(_g) - sum(1 for r in _lst if keep.get(r['uid_hex']))
             _rest = sorted((r for r in _lst if not keep.get(r['uid_hex'])),
                            key=lambda r: (-(r['iv_total'] or 0), -(r['cp'] or 0), r['uid_hex']))
             for r in _rest[:max(0, _short)]:
@@ -2107,7 +2110,7 @@ def main():
     if _rmin:
         _rgm = defaultdict(list)
         for r in rows:
-            if r['pokemon_id'] and keep_config.is_regular_copy(r):
+            if r['pokemon_id'] and keep_config.is_regular_copy(r) and r['uid_hex'] not in _HK:
                 _rgm[pvid(r['species_name'], r['form'] or 0)].append(r)
         for _lst in _rgm.values():
             _short = _rmin - sum(1 for r in _lst if keep.get(r['uid_hex']))

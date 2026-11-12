@@ -964,6 +964,12 @@ def main():
             out.extend(room_lines(_rs))
     except Exception:
         pass
+    try:                                       # WHAT HE UNTAGS STAYS (2026-11-12): said in the pass that noticed it
+        _hs = json.load(open(os.path.join(A, 'hand_kept_step.json'), encoding='utf-8'))
+        if _bc_ok and _hs.get('bag_ts') == _bc.get('ts'):
+            out.extend(hand_lines([desc(C[u], False) for u in _hs.get('new') or () if u in C], _hs.get('total') or 0))
+    except Exception:
+        pass
     # (2026-09-26) a fused component is kept as 'fused' and can never be released while held inside its Kyurem
     _fz = [C[u] for u in pile if keep_config.is_fused_component(C[u])]
     if _fz:
@@ -1033,11 +1039,22 @@ def main():
         _k = stage_ng(x)
         if _k not in _ab or ((x['iv_total'] or 0), (x['cp'] or 0)) > ((_ab[_k]['iv_total'] or 0), (_ab[_k]['cp'] or 0)):
             _ab[_k] = x
+    def _show(k, x):
+        """One keep reason in his words; two of them depend on the mon (2026-11-12): the pattern minimum is a species' own
+        number where it has one (Unown: 3), and 'protected' is also a copy he took out of the Transfer tag himself."""
+        if k == 'pattern_min':
+            import pattern_pools
+            return 'one of your last %d of its pattern, color, season or letter' % pattern_pools.min_count(
+                pattern_pools.min_group(x['pokemon_id'], x['species_name'], x['form'] or 0))
+        if k == 'protected' and x['uid_hex'] in keep_config.hand_kept():
+            return 'kept by hand (you took it out of the Transfer tag)'
+        return SHOW.get(k, k.replace('_', ' '))
+
     imp, undecided = [], []
     for x in arr:
         if x['uid_hex'] in pile_set:
             continue                                     # went straight to the pile: it is in the next section
-        rs = [SHOW.get(k, k.replace('_', ' ')) for k in (why.get(x['uid_hex']) or ())]   # EVERY reason it is kept for
+        rs = [_show(k, x) for k in (why.get(x['uid_hex']) or ())]   # EVERY reason it is kept for
         if not rs:
             # neither kept nor piled: the keep reasons are not from this walk (a manual run after an unsynced walk) --
             # never "no new keepers" over it (R-B review)
@@ -1220,6 +1237,14 @@ def room_lines(st, gmax=None):
 
 
 
+def hand_lines(names, total):
+    """The line for the copies he took out of the Transfer tag himself: said once, in the pass that noticed them."""
+    if not names:
+        return []
+    return ['You took %d out of the Transfer tag by hand: %s kept from now on (tag Never Cull; %d kept by hand in all) -- %s'
+            % (len(names), 'it stays' if len(names) == 1 else 'they stay', total, ', '.join(names))]
+
+
 def still_lines(still):
     """The mons still in the pile from the last report: one table row per kind with its IVs, never a comma wall (2026-09-29)."""
     g = collections.OrderedDict()
@@ -1368,6 +1393,8 @@ def _selftest():
     assert 'ROOM SHORT' in room_lines(dict(_rb, **{'from': 42, 'to': 42, 'free': 150, 'short': True}), gmax=False)[0]
     assert room_lines(dict(_rb, **{'from': 39, 'to': 41, 'free': 229, 'short': False}), gmax=True)[0].endswith('when there is room. Gigantamax copies stay at 82%.')
     assert 'Gigantamax' not in room_lines(dict(_rb, **{'from': 39, 'to': 41, 'free': 229, 'short': False}), gmax=False)[0]
+    assert hand_lines([], 3) == [] and hand_lines(['89% Unown', '87% Mr. Rime'], 5)[0].startswith(
+        'You took 2 out of the Transfer tag by hand: they stay kept from now on (tag Never Cull; 5 kept by hand in all) -- 89% Unown, ')
     _cfg0 = _kcs.CFG                               # ... and in the one shared floor: a Gigantamax copy is judged at the bar's lowest point
     try:
         _kcs.CFG = dict(_cfg0, room_bar=_rb, collection_floor_iv=41, roster_floor_iv=None, look_keep=3,
@@ -1377,6 +1404,14 @@ def _selftest():
         assert [r['iv_total'] for r in _kcs.floor_top([{'iv_total': v, 'pokemon_id': 6} for v in (45, 39)])] == [45], 'a regular copy follows the bar'
         _kcs.CFG['rules']['room_bar_skips_gigantamax'] = False
         assert [r['iv_total'] for r in _kcs.floor_top(_gm)] == [45, 44, 43], 'switch off = the bar as before'
+        import pattern_pools as _ppt           # the pattern minimum has a species' own number (2026-11-12, Unown: 3)
+        _kcs.CFG = dict(_cfg0, caps=dict(_cfg0.get('caps') or {}, pattern_min=2), per_species_caps={'pattern_min': {'201': 3}},
+                        rules=dict(_cfg0.get('rules') or {}, hand_kept=False))
+        assert _ppt.min_count(('form', 201, 4)) == 3 and _ppt.min_count(('form', 327, 12)) == 2 and _ppt.min_count(None) == 2
+        assert _ppt.min_count(('pattern', 'vivillon', 'Polar')) == 2, 'a pattern-pooled line uses the global number'
+        assert _kcs.hand_kept() == frozenset() and not _kcs.is_protected({'pokemon_id': 1, 'uid_hex': 'x'}), 'rule off = the list is not read'
+        _kcs.CFG['caps']['pattern_min'] = 0
+        assert _ppt.min_count(('form', 201, 4)) == 0, 'the minimum off = off for every species'
     finally:
         _kcs.CFG = _cfg0
     assert _ww_short('Smoliv 76% 5/14/15 CP 221 (Evolve Once, Evolve for GL) -> Dolliv, then STOP -- do not evolve it on to '

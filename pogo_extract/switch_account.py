@@ -15,6 +15,7 @@ STATE = ['pokemon.db', 'keep_config.json', 'system/analysis/ladder_history.json'
 WALK_FILES = ['pokedex_hundos_live.json', 'pokedex_hundos_live.prev.json', 'dex_caught.json', 'dex_caught_forms.json',
               'player_state.json', 'system/analysis/candy.json', 'system/analysis/inventory.json',
               'system/analysis/bag_count.json',
+              'system/analysis/hand_kept.json', 'system/analysis/pile_on_phone.json',   # what he untagged / the pile the phone holds (2026-11-12)
               'system/analysis/last_report.txt']        # the Bag Pulse report card: never the other trainer's (2026-11-11)
 STATE += WALK_FILES
 

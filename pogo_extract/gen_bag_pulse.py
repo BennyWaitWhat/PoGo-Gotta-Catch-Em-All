@@ -101,7 +101,7 @@ sole = collections.Counter(next(iter(v - {'dex_only_copy'})) for v in reasons.va
 REASON_NAMES = {'variant_floor': 'Plain ladder slot', 'shiny': 'Shiny', 'pvp_best_ml': 'Best ML', 'pvp_best_ul': 'Best UL', 'pvp_best_gl': 'Best GL',
                 'hundo': 'Hundo', 'rarity': 'Legendary / rare', 'legacy': 'Legacy move', 'location_card': 'Location card', 'xxl': 'XXL showcase winner',
                 'shadow_best': 'Best shadow', 'pvp_rank': 'GL/UL rank 1-5', 'gl_iv': 'GL spread', 'ul_iv': 'UL spread', 'evolve_1': 'Evolve next',
-                'evolve_2': 'Evolve twice', 'nundo': 'Nundo', 'adventure_effect': 'Adventure Effect', 'origin': 'Traded by E+F', 'protected': 'Protected species',
+                'evolve_2': 'Evolve twice', 'nundo': 'Nundo', 'adventure_effect': 'Adventure Effect', 'origin': 'Traded by E+F', 'protected': 'Never cull (your list, or kept by hand)',
                 'pvp_spread': '0-15-15 spread', 'shiny_ladder': 'Evolve shiny', 'mighty': 'Mighty', 'favorite': 'Favorite',
                 'pvp_combup_gl': 'GL comb-up (evolve)', 'pvp_combup_ul': 'UL comb-up (evolve)',
                 'species_min': 'One of your last %d of a kind' % keep_config.cap('species_min'), 'regular_min': 'One of your last %d regular copies' % keep_config.cap('regular_min'), 'fused': 'Fused (inside a Kyurem)'}

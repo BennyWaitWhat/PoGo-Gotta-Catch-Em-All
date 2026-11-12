@@ -137,8 +137,8 @@ _cp = lambda r: (r['cp'] or 0)
 _trophy = lambda r: iv(r) in (0, 45)
 
 def can_evo(r):
-    if r['pokemon_id'] in keep_config.protected_pids():
-        return False                                   # protected keep-all species: never an evolve candidate (2026-09-16)
+    if keep_config.is_protected(r):
+        return False                                   # protected keep-all species or a copy kept by hand: never an evolve candidate (2026-09-16)
     if evolvable_forms.row_can_evolve(r) is False:
         return False                                   # the form has no evolution branch in the game master (2026-09-16)
     gt = GENDER_TERMINALS.get(r['pokemon_id'])

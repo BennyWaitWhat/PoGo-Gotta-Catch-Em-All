@@ -190,3 +190,13 @@ def min_group(pid, species_name, form):
                           if f and costume_forms.form_name(f) and not costume_forms.is_costume_form(f))
     sid = pvid(species_name, form)
     return ('form', pid, int(form)) if sid == pvid(species_name, 0) or _SHARED[(species_name, sid)] > 1 else None
+
+
+def min_count(g):
+    """How many copies the pattern minimum keeps for a min_group: keep_config caps.pattern_min, or the species' own number
+    for a lumped form (per_species_caps.pattern_min {pid: n}; user 2026-11-12 of Unown: "i need at least 3 of each letter").
+    A pattern-pooled line spans several species and uses the global number, and so does g=None (the number to print).
+    0 when the minimum is off. ONE definition: keep_policy, preflight_transfer and audit_cull all count by it."""
+    import keep_config
+    n = keep_config.cap('pattern_min')
+    return keep_config.species_cap('pattern_min', g[1], n) if n and g and g[0] == 'form' else n
