@@ -15,7 +15,9 @@ THE RULE
   * A candidate is offered only when being a SPARE COPY is the only thing keeping it: reasons exactly {shiny} for a
     shiny, exactly {variant_floor} for a non-shiny. That is what his rules hold as trade stock -- never a PvP asset,
     a legacy mover, a background, an XXL, an Adventure-Effect form, a trophy or anything else with a job.
-  * Never a mon the in-game labels call irreplaceable: Variant #1, Shiny - Only One, Last Copy.
+  * Never a mon the in-game labels call irreplaceable: Variant #1, Shiny - Only One, Last Copy. (Since 2026-11-12 every
+    kept copy carries a reason tag, so Variant #1 also sits on the best shiny / legendary of an exact look -- its own
+    gender look, decoration or card -- that no other tag covered: the best of a look is never offered.)
   * Never a mon in the release pile, already traded or lucky (one trade per Pokemon), a shadow (cannot be traded), a
     species the game master marks untradable, or one caught in the last 30 days (remote trades have a catch lockout).
   * Finally, at most SPECIES_CAP offers per species, best IV first.

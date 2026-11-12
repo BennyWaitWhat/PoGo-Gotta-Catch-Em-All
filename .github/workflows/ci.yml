@@ -46,6 +46,7 @@ jobs:
           python pogo_extract/evolve_targets.py --selfcheck
           python pogo_extract/sync_evolve_size.py --selfcheck
           python pogo_extract/remote_trade_picks.py --selfcheck
+          python pogo_extract/granular_tags.py --selftest
           bash tools/cull_now.sh --selfcheck
           python pogo_extract/system/scripts/check_constant_drift.py
           python pogo_extract/system/scripts/refresh_gamemaster.py --selftest

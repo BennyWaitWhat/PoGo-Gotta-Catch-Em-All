@@ -187,41 +187,32 @@ def main():
         if _t in sets:
             sets[_t] = [(u, l) for (u, l) in sets[_t] if u not in _ev]
 
-    # COVERAGE ASSERTION -- the whole point of the block above. Every in-bag mon must end up either in the
-    # Transfer pile or carrying >=1 keep tag. A silent gap here is exactly the 56.9% hole this replaced.
+    # EVERY KEPT POKEMON CARRIES A REASON (user 2026-11-12: "Every pokemon needs to have a tag for the reason why theyre
+    # kept. we have extensive tags already, why arent they used?"). A kept copy no tag above covers -- kept as a shiny, a
+    # legendary, a shadow, a background copy or one of the last copies of its kind -- wears the Variant rank of its exact
+    # look (granular_tags.variant_fill). LAST, on the stripped sets that get pushed: it fills only what is still bare.
+    _vfill = granular_tags.variant_fill(rows, TRANSFER, sets)
+    for _tag, _uids in _vfill.items():
+        sets[_tag] = sorted(set(sets.get(_tag, [])) | {(u, _nm.get(u, '?')) for u in _uids}, key=lambda x: (x[1], x[0]))
+    print('=== variant fill: %d kept copies no other tag covered (%s) ===' % (
+        sum(len(v) for v in _vfill.values()), ', '.join('%s %d' % (t, len(_vfill[t])) for t in sorted(_vfill)) or 'none'))
+
+    # COVERAGE ASSERTION, STRICT since 2026-11-12: every Pokemon in the bag is in the Transfer pile or carries >= 1 keep
+    # tag. No exemption for a native chip, a last copy or a held comb-up any more (the fill above labels them); only a
+    # fused component is left out -- the game hides it inside its Kyurem. A gap here stops the sync. (The 2026-09-02
+    # original closed a 56.9% hole; the 2026-09-09 native-chip exemption had reopened 1,181 of it.)
     _pile_uids = set(TRANSFER)
     _tagged = set()
     for _t, _members in sets.items():
         if _t == 'Transfer':
             continue
         _tagged.update(u for u, _ in _members)
-    # NATIVE-CHIP COVERAGE (2026-09-09): a kept mon whose every reason the game already shows with a filter chip
-    # (rarity -> Legendary/Mythical, shiny -> Shiny, location_card -> Background, adventure_effect -> Adventure
-    # Effect) is explained in-game without a tag of ours. Everything else must still carry >=1 tag.
-    _nat = granular_tags.NATIVE_COVERED_REASONS
-    # 'Last Copy' chip retired 2026-09-23 (user). dex_only_copy is never a mon's ONLY reason (measured: 0), so the
-    # mon's other reason carries the label. If it ever is the only one, the set below is empty and the mon still
-    # fails coverage -- the safe direction.
-    _META = {'dex_only_copy'}
-    # 2026-09-24: dex_only_copy CAN now be a mon's only reason (the shadow rank floor left a lone shadow Vibrava kept
-    # as the last copy of its form) -- it is in NATIVE_COVERED_REASONS, so a mon whose reasons are all native/meta is
-    # covered; a mon with NO reason at all still fails.
-    # A PvP comb-up HELD for candy / a missing item carries no evolve tag on purpose (user 2026-09-24: split like the
-    # regular comb-ups -- "kept, labelled once he can"); if that is its only reason it is covered by that decision.
-    try:
-        _held = {u for u, v in json.load(open(os.path.join(os.path.dirname(OUTDIR), 'pvp_combup_labels.json'),
-                                             encoding='utf-8')).items() if v.get('status') == 'hold'}
-    except (OSError, ValueError):
-        _held = set()
-    _CU_R = {'pvp_combup_gl', 'pvp_combup_ul'}
     _uncovered = {r['uid_hex'] for r in rows
-                  if r['uid_hex'] not in _tagged and r['uid_hex'] not in _pile_uids
-                  and not (set(_reasons.get(r['uid_hex']) or [])
-                           and set(_reasons.get(r['uid_hex']) or []) <= (_nat | _META | (_CU_R if r['uid_hex'] in _held else set())))}
+                  if r['uid_hex'] not in _tagged and r['uid_hex'] not in _pile_uids and not keep_config.is_fused_component(r)}
     if _uncovered:
         _ex = sorted(_uncovered)[:5]
         raise SystemExit('build_tagsets: %d kept mon(s) carry NO tag -- coverage is not 100%%. '
-                         'A keep reason exists with no tag mapped to it. Examples: %s'
+                         'granular_tags.variant_fill left them bare. Examples: %s'
                          % (len(_uncovered), _ex))
     print('=== coverage: every one of the %d kept mons carries >=1 tag ==='
           % (len(rows) - len(_pile_uids)))
