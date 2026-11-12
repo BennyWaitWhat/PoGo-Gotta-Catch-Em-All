@@ -720,6 +720,28 @@ def _pattern_min_uids(bag, pile):
     return out
 
 
+_REGULAR_MIN_KEPT = set()  # regular minimum (user 2026-11-12, room bar "A"), populated in main() beside _SPECIES_MIN_KEPT
+
+
+def _regular_min_uids(bag, pile):
+    """The pile copies keep_policy's regular minimum must keep, from counts alone: per species + form (pvid), the best REGULAR
+    pile copies (keep_config.is_regular_copy) that reach the room bar's lowest point, by _ivkey, until keep_config.regular_min
+    regular copies stay out of the pile. Off (no cap or no room bar) = nothing."""
+    from pvp_iv_rule import pvid as _pv
+    n, lo = keep_config.regular_min()
+    by = defaultdict(list)
+    for r in bag:
+        if n and r['pokemon_id'] and keep_config.is_regular_copy(r):
+            by[_pv(r['species_name'], r['form'] or 0)].append(r)
+    out = set()
+    for lst in by.values():
+        short = n - sum(1 for r in lst if r['uid_hex'] not in pile)
+        out |= {r['uid_hex'] for r in sorted((r for r in lst if r['uid_hex'] in pile and (r['iv_total'] or 0) >= lo),
+                                             key=_ivkey)[:max(0, short)]}
+    return out
+
+
+
 def _loc_card_kept_uids(bag, cf_norm):
     """Independently re-derive the location-card keepers: top-N per (pid, cf, card enum), trophies
     exempt from consuming a slot, unknown-enum holders never capped. Mirrors keep_policy rule 13b."""
@@ -932,6 +954,11 @@ def _keeper_reasons(r, BS, legacy_set, gm_ok, dex_counts, event_txt, legacy_txt,
         why.append('species_min')
     if r['uid_hex'] in _PATTERN_MIN_KEPT:          # one of the last caps.pattern_min of its pattern / form (2026-11-07)
         why.append('pattern_min')
+    if r['uid_hex'] in _REGULAR_MIN_KEPT:          # one of the last regular copies the room bar may not take (2026-11-12)
+        why.append('regular_min')
+    _ilo = keep_config.invested_floor()            # a copy he built is no spare for the room bar (2026-11-12)
+    if _ilo is not None and (r['iv_total'] or 0) >= _ilo and keep_config.is_invested(r):
+        why.append('invested')
     if pvp_best is not None:                       # Best GL / UL / ML copy of its PvP identity (rule 15d, usable-only GL/UL)
         why.extend('pvp_best_%s' % lg.lower() for lg in sorted(pvp_best.get(r['uid_hex'], ())))
 
@@ -1273,13 +1300,16 @@ def main():
         _f = rr['form'] or 0
         return _base_form.get(rr['pokemon_id'], _f) if _f == 0 else _f
     # Use the same canonical form pool as the engine and the other independent cap checks.
-    global _LOC_CARD_KEPT, _COMBUP_KEPT, _SPECIES_MIN_KEPT, _PATTERN_MIN_KEPT
+    global _LOC_CARD_KEPT, _COMBUP_KEPT, _SPECIES_MIN_KEPT, _PATTERN_MIN_KEPT, _REGULAR_MIN_KEPT
     _SPECIES_MIN_KEPT = _species_min_uids(bag, set(transfer_uids))
     print('  species minimum: %d pile copies would leave a species under %d' % (len(_SPECIES_MIN_KEPT),
                                                                             keep_config.cap('species_min')))
     _PATTERN_MIN_KEPT = _pattern_min_uids(bag, set(transfer_uids))
     print('  pattern minimum: %d pile copies would leave a pattern / letter / color / season under %d'
           % (len(_PATTERN_MIN_KEPT), keep_config.cap('pattern_min')))
+    _REGULAR_MIN_KEPT = _regular_min_uids(bag, set(transfer_uids))
+    print('  regular minimum: %d pile copies would leave a species + form under %d regular copies (room bar)'
+          % (len(_REGULAR_MIN_KEPT), keep_config.regular_min()[0]))
     _LOC_CARD_KEPT = _loc_card_kept_uids(bag, _cf_norm)
     _cu = __import__('pvp_combup').pick_default(bag)
     _COMBUP_KEPT = set(_cu['gl']) | set(_cu['ul'])

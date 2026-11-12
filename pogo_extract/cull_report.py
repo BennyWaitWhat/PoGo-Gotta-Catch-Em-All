@@ -67,7 +67,9 @@ NO_LONGER = {'favorite': 'a favorite (starred)', 'protected': 'on the keep-every
              'dex_only_copy': 'kept as the last copy of its form', 'data_incomplete': 'held for incomplete data',
              'xxs': 'kept as an XXS',
              'species_min': 'kept as one of your last copies of its species and form',
-             'pattern_min': 'kept as one of your last copies of its pattern, color, season or letter'}
+             'pattern_min': 'kept as one of your last copies of its pattern, color, season or letter',
+             'regular_min': 'kept as one of your last regular copies of its species and form',
+             'invested': 'kept because you built it (powered up, second move, buddy, mega or lucky)'}
 
 pct = lambda r: round((r['iv_total'] or 0) * 100 / 45)
 norm = lambda u: format(int(u, 16), 'x')
@@ -957,6 +959,12 @@ def main():
                    'this walk, so eggs in incubators are not counted)%s' % (len(C), ('/%d' % cap) if cap else '',
                                                                             (' (%d free at most)' % (cap - len(C))) if cap else '',
                                                                             _cap_note))
+    try:                                       # THE ROOM BAR (2026-11-12): said only when it moved in this pass, or cannot hold the room
+        _rs = json.load(open(os.path.join(A, 'room_bar.json'), encoding='utf-8'))
+        if _bc_ok and _rs.get('bag_ts') == _bc.get('ts'):
+            out.extend(room_lines(_rs))
+    except Exception:
+        pass
     # (2026-09-26) a fused component is kept as 'fused' and can never be released while held inside its Kyurem
     _fz = [C[u] for u in pile if keep_config.is_fused_component(C[u])]
     if _fz:
@@ -1014,6 +1022,8 @@ def main():
                 dex_only_copy=('your last copy of its line' if keep_config.line_pool_all() else 'your last copy of its form'),
                 species_min='one of your last %d of its species and form' % keep_config.cap('species_min'),
                 pattern_min='one of your last %d of its pattern, color, season or letter' % keep_config.cap('pattern_min'),
+                regular_min='one of your last %d regular copies of its species and form' % keep_config.cap('regular_min'),
+                invested='one you built (powered up, second move, buddy, mega or lucky)',
                 protected='keep-every-copy list', gl_iv='GL IV keeper', ul_iv='UL IV keeper',
                 # 'not read yet' was false: the ranks are computed and can stay missing for good (keep_policy 1467-1470)
                 rank_unknown='missing its PvP ranks', data_incomplete='held for incomplete data',
@@ -1189,6 +1199,25 @@ def main():
     return 0
 
 
+def room_lines(st):
+    """The room bar's lines for the report, from full_audit.room_bar_step's record of this pass: said only when the bar
+    moved, or when it stands at its ceiling with the room still short (user 2026-11-12, pick "A")."""
+    pc = lambda iv: round(iv * 100 / 45)
+    out, a, b = [], st.get('from'), st.get('to')
+    if a is not None and b is not None and b > a:
+        out.append('Room: spare copies now need %d%% (was %d%%) -- %d free once this pile is released. The bar rises by itself '
+                   'while that is under %d, and rests at %d%% when there is room.' % (pc(b), pc(a), st['free'], st['free_min'], pc(st['lo'])))
+    elif a is not None and b is not None and b < a:
+        out.append('Room: spare copies now need %d%% (was %d%%) -- %d free once this pile is released, so the bar came down one step.'
+                   % (pc(b), pc(a), st['free']))
+    if st.get('short'):
+        out.append('**ROOM SHORT:** the spare-copy bar is at its %d%% ceiling and only %d will be free once this pile is released '
+                   '(under %d). Your pick: %s.' % (pc(st['hi']), st['free'], st['free_min'],
+                                                   'a higher ceiling, or a cut somewhere else' if st['hi'] < 45 else 'a cut somewhere else, or more storage'))
+    return out
+
+
+
 def still_lines(still):
     """The mons still in the pile from the last report: one table row per kind with its IVs, never a comma wall (2026-09-29)."""
     g = collections.OrderedDict()
@@ -1325,6 +1354,16 @@ def power_up_block(C, pile_set, why, name):
 
 
 def _selftest():
+    import keep_config as _kcs                 # THE ROOM BAR (2026-11-12): one IV point at a time, inside its range
+    _rb, _nx = {'lo': 37, 'hi': 42, 'free_min': 200, 'free_max': 400}, _kcs.room_bar_next
+    assert [_nx(39, 83, _rb), _nx(40, 147, _rb), _nx(41, 229, _rb)] == [40, 41, 41], 'up one point at a time, until the room is back'
+    assert _nx(42, 10, _rb) == 42 and _nx(37, 900, _rb) == 37, 'never past the ceiling, never under the 3-star line'
+    assert _nx(41, 400, _rb) == 40 and _nx(41, 399, _rb) == 41, 'down one point only at free_max or more'
+    assert _nx(30, 0, _rb) == 37 and _nx(44, 0, _rb) == 44 and _nx(44, 400, _rb) == 43, 'under the range -> lo; over it -> only ever down'
+    assert room_lines(dict(_rb, **{'from': 39, 'to': 41, 'free': 229, 'short': False}))[0].startswith('Room: spare copies now need 91% (was 87%) -- 229 free')
+    assert room_lines(dict(_rb, **{'from': 41, 'to': 41, 'free': 229, 'short': False})) == [], 'a steady bar says nothing'
+    assert room_lines(dict(_rb, **{'from': 41, 'to': 40, 'free': 420, 'short': False}))[0].endswith('came down one step.')
+    assert 'ROOM SHORT' in room_lines(dict(_rb, **{'from': 42, 'to': 42, 'free': 150, 'short': True}))[0]
     assert _ww_short('Smoliv 76% 5/14/15 CP 221 (Evolve Once, Evolve for GL) -> Dolliv, then STOP -- do not evolve it on to '
                      'Arboliva') == 'Smoliv 76% 5/14/15 CP 221 -> Dolliv'
     assert _ww_short('Gloom 91% 15/13/13 CP 800 (Evolve Once) -> Vileplume (via Gloom), not Bellossom  [needs: x]') == \

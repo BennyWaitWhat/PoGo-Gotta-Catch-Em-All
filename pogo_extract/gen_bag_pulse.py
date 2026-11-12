@@ -104,7 +104,7 @@ REASON_NAMES = {'variant_floor': 'Plain ladder slot', 'shiny': 'Shiny', 'pvp_bes
                 'evolve_2': 'Evolve twice', 'nundo': 'Nundo', 'adventure_effect': 'Adventure Effect', 'origin': 'Traded by E+F', 'protected': 'Protected species',
                 'pvp_spread': '0-15-15 spread', 'shiny_ladder': 'Evolve shiny', 'mighty': 'Mighty', 'favorite': 'Favorite',
                 'pvp_combup_gl': 'GL comb-up (evolve)', 'pvp_combup_ul': 'UL comb-up (evolve)',
-                'species_min': 'One of your last %d of a kind' % keep_config.cap('species_min'), 'fused': 'Fused (inside a Kyurem)'}
+                'species_min': 'One of your last %d of a kind' % keep_config.cap('species_min'), 'regular_min': 'One of your last %d regular copies' % keep_config.cap('regular_min'), 'invested': 'Built by you', 'fused': 'Fused (inside a Kyurem)'}
 
 
 def trend(vals):

@@ -432,7 +432,7 @@ try:
             _big[e['uid']] = e
     # a showcase pick never sits on a copy another bucket will not give up (the producer's rule since 2026-09-29, after
     # the label law caught an only-Floette-Orange XXL advised to Florges): the same block set, re-derived here
-    _SIZE_BLOCK = {'protected', 'legacy', 'location_card', 'mighty', 'dex_only_copy', 'species_min', 'pattern_min', 'rarity', 'adventure_effect',
+    _SIZE_BLOCK = {'protected', 'legacy', 'location_card', 'mighty', 'dex_only_copy', 'species_min', 'pattern_min', 'regular_min', 'rarity', 'adventure_effect',
                    'shadow_best', 'hundo', 'nundo', 'fused'}
     _polz = json.load(open(os.path.join('system', 'analysis', 'policy_reasons.json'), encoding='utf-8'))
     for u, e in _big.items():

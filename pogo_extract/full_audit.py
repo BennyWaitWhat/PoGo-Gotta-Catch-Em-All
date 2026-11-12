@@ -863,6 +863,104 @@ AUDITS = [('8-layer cull',    'audit_cull.py',            'ALL LAYERS PASS'),
           # alone would false-pass on half of them. Read-only, sandboxed, no device contact, ~4s.
           ('pvp keepers',    'system/scripts/regress_pvp_keepers.py', 'ALL PVP KEEPER FIXTURES KEPT')]
 
+ROOM_STATE = os.path.join('system', 'analysis', 'room_bar.json')
+
+
+def room_bar_step():
+    """THE ROOM BAR (user 2026-11-12, pick "A": "Do A, but instead of 87%, do 82%. 3 star min."): the spare-copy bar
+    (keep_config collection_floor_iv) follows the room. After the walk's engine run: the free room once this pile is
+    released = capacity - (the game's count - pile). Under room_bar.free_min the bar goes up one IV point and the engine
+    runs again (keep_policy + build_tagsets, ~5 s), until the room is back or the bar is at room_bar.hi; at free_max or
+    more it comes down one point, never under room_bar.lo. Everything after this -- the pre-flight, the 11 audits, the
+    sync -- judges the pile of the bar it ends on. UNKNOWN = NO MOVE: a capacity, game count or pile that is not this
+    walk's leaves the bar where it is. 0 = carry on; 2 = the engine did not run at a new bar (the bar is put back and the
+    pass stops before the audits and the sync)."""
+    import keep_config
+    keep_config.reload()
+    rb = keep_config.room_bar()
+    if not rb:
+        return 0
+    pc = lambda iv: round(iv * 100 / 45)
+    if '--xxl-trim' in sys.argv[1:]:
+        say('room bar: not moved in an XXL TRIM run (that run restores keep_config.json when it ends)')
+        return 0
+
+    def _free():
+        s = state()
+        try:
+            bc = json.load(open(os.path.join('system', 'analysis', 'bag_count.json'), encoding='utf-8'))
+        except Exception:
+            bc = {}
+        if (not isinstance(bc, dict) or _read_by_walk(bc.get('ts'), '%Y-%m-%d %H:%M:%S') is not True
+                or not isinstance(bc.get('game_count'), int) or not s['cap'] or s.get('cap_old') or s['pile'] is None):
+            return None, None
+        return s['cap'] - (bc['game_count'] - s['pile']), bc.get('ts')
+
+    def _engine():
+        for scr in ('keep_policy.py', 'build_tagsets.py'):
+            p = subprocess.run([PY, os.path.join('system', 'scripts', scr)], capture_output=True, text=True,
+                               encoding='utf-8', errors='replace', timeout=900)
+            if p.returncode:
+                say('room bar: %s rc=%d -- %s' % (scr, p.returncode, ' | '.join(
+                    ((p.stdout or '') + (p.stderr or '')).strip().splitlines()[-2:])[:300]))
+                return False
+        return True
+
+    start = floor = keep_config.collection_floor_iv()
+    free, ts = _free()
+    if free is None:
+        say("room bar: not moved -- the capacity, the game's count or the pile is not this walk's (the bar stays at %d%%)" % pc(floor))
+        return 0
+    trail = [(floor, free)]
+    try:
+        while len(trail) < 12:
+            new = keep_config.room_bar_next(floor, free, rb)
+            if new == floor or (new < floor and len(trail) > 1):
+                break                          # steady -- or it already rose in this pass: never up and down in one
+            keep_config.set_collection_floor(new)
+            nfree = _free()[0] if _engine() else None
+            if nfree is None:
+                keep_config.set_collection_floor(floor)
+                _engine()
+                say('ROOM BAR: the engine did not run at %d%% -- the bar is back at %d%%. STOPPED before the audits and the sync'
+                    % (pc(new), pc(floor)))
+                return 2
+            if new < floor and nfree < rb['free_min']:
+                # coming down brought copies he has not released yet back, and the room is short again: it stays up
+                keep_config.set_collection_floor(floor)
+                if not _engine():
+                    say('ROOM BAR: the engine did not run back at %d%%. STOPPED before the audits and the sync' % pc(floor))
+                    return 2
+                break
+            down = new < floor
+            floor, free = new, nfree
+            trail.append((floor, free))
+            if down:
+                break                          # one point down per pass: the next catches decide the rest
+    except Exception as e:
+        say('ROOM BAR: %s: %s -- STOPPED before the audits and the sync (the bar goes back to %d%%)' % (type(e).__name__, e, pc(trail[-1][0])))
+        try:
+            keep_config.set_collection_floor(trail[-1][0])
+            _engine()
+        except Exception:
+            pass
+        return 2
+    short = free < rb['free_min'] and floor >= rb['hi']
+    try:
+        with open(ROOM_STATE, 'w', encoding='utf-8') as fh:
+            json.dump(dict(rb, bag_ts=ts, **{'from': start, 'to': floor, 'free_before': trail[0][1], 'free': free, 'short': short}), fh)
+    except OSError as e:
+        say('room bar: its record for the report was not written (%s)' % e)
+    if floor != start:
+        say('room bar: %s -- free once the pile is released: %s (it keeps %d or more; range %d%%-%d%%)'
+            % (' -> '.join('%d%%' % pc(x) for x, _ in trail), ' -> '.join(str(n) for _, n in trail), rb['free_min'], pc(rb['lo']), pc(rb['hi'])))
+    if short:
+        say("ROOM SHORT: the spare-copy bar is at its %d%% ceiling and only %d will be free once the pile is released (under %d) -- Benny's pick"
+            % (pc(rb['hi']), free, rb['free_min']))
+    return 0
+
+
+
 def _pile_members():
     """sha256 of the pile's sorted, normalised uids -- preflight_transfer.pile_members_sha256's exact rule (X3)."""
     import hashlib
@@ -1107,6 +1205,9 @@ def _main():
                     'nothing was synced and the pile on disk is the last live pass\'s'); return 8
             say('RECRAWL FAILED rc=%s -- aborting' % rc); return 2
         say('recrawl ok')
+        _rbrc = room_bar_step()                # the spare-copy bar follows the room; a move re-runs the engine (2026-11-12, "A")
+        if _rbrc:
+            return _rbrc
         _pf = preflight_start()                # the walk's closing pre-flight, beside what follows (2026-10-29)
         echo_job_warnings('recrawl', log, _rlog)              # H06-2: every fail-soft step's WARN, in the cull output
         try:                                   # 2026-09-23: prove every mon was re-read THIS scan
