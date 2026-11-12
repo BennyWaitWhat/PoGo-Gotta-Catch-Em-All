@@ -338,7 +338,7 @@ AXES = {
     # every species keeps at least caps.species_min copies: a top-up slice of the best left (user 2026-11-03 "3")
     'species_min':      dict(model='capped', cap_key='species_min', per_sp=False, reasons=['species_min']),
     # every Scatterbug pattern / lumped form keeps at least caps.pattern_min copies: the same top-up (user 2026-11-07 "2 of each")
-    'pattern_min':      dict(model='capped', cap_key='pattern_min', per_sp=False, reasons=['pattern_min']),
+    'pattern_min':      dict(model='capped', cap_key='pattern_min', per_sp=True,  reasons=['pattern_min']),   # per species since 2026-11-12 (Unown: 3)
     # with a room bar, every species + form keeps caps.regular_min regular copies: the same top-up (user 2026-11-12, pick "A")
     'regular_min':      dict(model='capped', cap_key='regular_min', per_sp=False, reasons=['regular_min']),
     'pvp_iv':           dict(model='keep_all', cap_key=None, per_sp=False, reasons=['gl_iv', 'ul_iv']),

@@ -113,7 +113,8 @@ def _stages(r, lg):
 
 
 def combup_uncovered(rows, pile, labels, *, own_of, later_fn, fits_fn, reaches_fn, caps, floor, rare_pids,
-                     legacy_uids, protected_pids, cf, shadow_floor, shadow_leagues, ladder_cap, meta_ok=None):
+                     legacy_uids, protected_pids, cf, shadow_floor, shadow_leagues, ladder_cap, meta_ok=None,
+                     protected_uids=frozenset()):
     """Pile members that are a LAW bucket 2c opportunity nobody kept. -> [(uid, league, target, rank, why)]
 
     LAW 2c: for every Great / Ultra League TARGET stage, the copy whose evolved self would BECOME YOUR BEST there
@@ -172,7 +173,7 @@ def combup_uncovered(rows, pile, labels, *, own_of, later_fn, fits_fn, reaches_f
                 best_of[lg][k] = v
 
     def destroyed_by_evolving(r):
-        if r['uid_hex'] in legacy_uids or _get(r, 'pokemon_id') in protected_pids:
+        if r['uid_hex'] in legacy_uids or _get(r, 'pokemon_id') in protected_pids or r['uid_hex'] in protected_uids:
             return True
         if r['uid_hex'] in own_rank and (own_rank[r['uid_hex']] <= floor or _get(r, 'pokemon_id') in rare_pids):
             return True                                  # a Best as itself
@@ -233,7 +234,7 @@ def combup_uncovered(rows, pile, labels, *, own_of, later_fn, fits_fn, reaches_f
 
 
 def shiny_ladder_violations(rows, pile, *, own_of, next_of, can_evolve, cap_of, plain_cap_of, floor_iv, floor_keep=None,
-                            is_collectible, protected_pids):
+                            is_collectible, protected_pids, protected_uids=frozenset()):
     """Piled shinies LAW's shiny ladder HOLDS. -> [(uid, why)]
 
     LAW (Shiny ladder): "a spare shiny gets Evolve Shiny whenever evolving it earns a shiny spot at the next stage -- an
@@ -262,7 +263,7 @@ def shiny_ladder_violations(rows, pile, *, own_of, next_of, can_evolve, cap_of, 
         if k not in stage_best or ((_get(r, 'iv_total') or 0), r['uid_hex']) > stage_best[k]:
             stage_best[k] = ((_get(r, 'iv_total') or 0), r['uid_hex'])
     spare = lambda r: ((_get(r, 'fresh_alignment') or 0) != 1 and (_get(r, 'iv_total') or 0) not in (0, 45)
-                       and not is_collectible(r) and _get(r, 'pokemon_id') not in protected_pids and can_evolve(r)
+                       and not is_collectible(r) and _get(r, 'pokemon_id') not in protected_pids and r['uid_hex'] not in protected_uids and can_evolve(r)
                        and stage_best.get((_get(r, 'pokemon_id'), own_of(r)), (None, None))[1] != r['uid_hex'])
     out = []
     # every KEPT spare and the stages it can land on: a spare of ANOTHER own stage that lands on the same target (Burmy

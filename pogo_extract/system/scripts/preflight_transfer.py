@@ -691,7 +691,7 @@ def _species_min_uids(bag, pile):
     n = keep_config.cap('species_min')
     by = defaultdict(list)
     for r in bag:
-        if r['pokemon_id']:
+        if r['pokemon_id'] and r['uid_hex'] not in keep_config.hand_kept():   # a copy kept by hand counts toward no minimum
             by[_pv(r['species_name'], r['form'] or 0)].append(r)
     out = set()
     for lst in by.values():
@@ -707,15 +707,14 @@ def _pattern_min_uids(bag, pile):
     """The pile copies keep_policy's pattern minimum must keep: per Scatterbug pattern (its whole line) and per lumped form
     (Unown letter, Spinda pattern, color, season: pattern_pools.min_group), the best by _ivkey until keep_config caps.pattern_min copies stay out of the pile."""
     import pattern_pools as _pp
-    n = keep_config.cap('pattern_min')
     by = defaultdict(list)
     for r in bag:
         g = _pp.min_group(r['pokemon_id'], r['species_name'], r['form'] or 0)
-        if g:
+        if g and r['uid_hex'] not in keep_config.hand_kept():
             by[g].append(r)
     out = set()
-    for lst in by.values():
-        short = n - sum(1 for r in lst if r['uid_hex'] not in pile)
+    for g, lst in by.items():
+        short = _pp.min_count(g) - sum(1 for r in lst if r['uid_hex'] not in pile)   # a species' own number (Unown: 3)
         out |= {r['uid_hex'] for r in sorted((r for r in lst if r['uid_hex'] in pile), key=_ivkey)[:max(0, short)]}
     return out
 
@@ -731,7 +730,7 @@ def _regular_min_uids(bag, pile):
     n, lo = keep_config.regular_min()
     by = defaultdict(list)
     for r in bag:
-        if n and r['pokemon_id'] and keep_config.is_regular_copy(r):
+        if n and r['pokemon_id'] and keep_config.is_regular_copy(r) and r['uid_hex'] not in keep_config.hand_kept():
             by[_pv(r['species_name'], r['form'] or 0)].append(r)
     out = set()
     for lst in by.values():
@@ -942,7 +941,7 @@ def _keeper_reasons(r, BS, legacy_set, gm_ok, dex_counts, event_txt, legacy_txt,
         if dex_form_counts is not None and cf_norm is not None \
                 and dex_form_counts.get((r['pokemon_id'], cf_norm(r)), 99) <= 1:
             why.append('dex_only_form')   # per-(species,FORM) like keep_policy's dex_only_copy axis (audit F8)
-    if r['pokemon_id'] in keep_config.protected_pids():  # "leave them alone" keep-all species (Pichu) -- keep_policy reason 'protected'; gate had no protected axis (ultrareview 2026-06-08)
+    if keep_config.is_protected(r):  # he took THIS copy out of the Transfer tag by hand (2026-11-12), or: "leave them alone" keep-all species (Pichu) -- keep_policy reason 'protected'; gate had no protected axis (ultrareview 2026-06-08)
         why.append('protected')
     if (r['is_favorite_v2'] or 0) == 1:     # user 2026-09-17: favorites are never culled (keep_policy reason 'favorite')
         why.append('favorite')
@@ -1303,7 +1302,7 @@ def main():
                                                                             keep_config.cap('species_min')))
     _PATTERN_MIN_KEPT = _pattern_min_uids(bag, set(transfer_uids))
     print('  pattern minimum: %d pile copies would leave a pattern / letter / color / season under %d'
-          % (len(_PATTERN_MIN_KEPT), keep_config.cap('pattern_min')))
+          % (len(_PATTERN_MIN_KEPT), __import__('pattern_pools').min_count(None)))
     _REGULAR_MIN_KEPT = _regular_min_uids(bag, set(transfer_uids))
     print('  regular minimum: %d pile copies would leave a species + form under %d regular copies (room bar)'
           % (len(_REGULAR_MIN_KEPT), keep_config.regular_min()[0]))
@@ -1387,7 +1386,7 @@ def main():
                 bag, _pile_set, _labels_l, own_of=_own_l, later_fn=_later_l,
                 fits_fn=lambda r, st, cap: _fitl(r, st, cap, _BSl), reaches_fn=lambda st, cap: _viable(st, cap, _BSl),
                 caps={'gl': GL_CAP, 'ul': UL_CAP}, floor=keep_config.pvp('best_rank_floor'), rare_pids=_L1 | _L2 | _L3 | _L4,
-                legacy_uids=legacy_set, protected_pids=keep_config.protected_pids(), cf=_cf_norm,
+                legacy_uids=legacy_set, protected_pids=keep_config.protected_pids(), protected_uids=keep_config.hand_kept(), cf=_cf_norm,
                 shadow_floor=keep_config.pvp('shadow_rank_floor'), shadow_leagues=keep_config.shadow_leagues(),
                 ladder_cap=lambda s: keep_config.cap('plain_line_preevo' if s in _mid_l else 'plain_line'),
                 meta_ok=_meta_ok):
@@ -1396,7 +1395,7 @@ def main():
                 bag, _pile_set, own_of=_own_l, next_of=_next_l, can_evolve=lambda r: bool(_later_l(r)),
                 cap_of=lambda t: _shiny_cap(_dexl.get(t)), plain_cap_of=lambda t: _shiny_plain_cap(_dexl.get(t)),
                 floor_iv=lambda t: keep_config.shiny_floor_iv(_dexl.get(t)), floor_keep=keep_config.shiny_floor_keep(), is_collectible=lambda r: _shiny_is_special(r) and r['fresh_alignment'] != 1,
-                protected_pids=keep_config.protected_pids()):
+                protected_pids=keep_config.protected_pids(), protected_uids=keep_config.hand_kept()):
             _found.append((_u, 'shiny_ladder(law: %s)' % _why))
         for _u, _why in _found:
             _LAW_KEEPERS.setdefault(_u, []).append(_why)

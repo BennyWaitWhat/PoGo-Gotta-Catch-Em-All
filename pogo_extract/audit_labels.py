@@ -136,7 +136,7 @@ def main():
         n_src[src] += 1
         name = '%s %d%% [%s] (%s)' % (r['species_name'], (r['iv_total'] or 0) * 100 // 45,
                                       ', '.join(sorted(tags)) or ','.join(sorted(evo)), src)
-        if r['pokemon_id'] in prot:
+        if r['pokemon_id'] in prot or r['uid_hex'] in keep_config.hand_kept():
             bad.append(name + ': PROTECTED species advised to evolve')
         if (r['iv_total'] or 0) in (0, 45):
             bad.append(name + ': trophy (hundo/nundo) advised to evolve')

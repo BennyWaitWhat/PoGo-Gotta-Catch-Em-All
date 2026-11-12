@@ -206,7 +206,7 @@ check('Ultra Beast', 'species is an Ultra Beast', lambda r: r['pokemon_id'] in U
 check('Traded by E+F', 'traded/lucky AND original owner is E or F',
       lambda r: bool(r['is_traded'] or r['is_traded_flag_v2'] or r['is_lucky'])
       and (r['original_owner_name'] or '').strip().lower() in EF)
-check('Never Cull', 'protected species or Mighty', lambda r: r['pokemon_id'] in PROT or r['fresh_is_strong'] == 1)
+check('Never Cull', 'protected species, kept by hand, or Mighty', lambda r: r['pokemon_id'] in PROT or r['uid_hex'] in keep_config.hand_kept() or r['fresh_is_strong'] == 1)
 _shlook = lambda r: (r['pokemon_id'], _cf(r), r['fresh_costume'] or 0, _ef.gender_key(r['pokemon_id'], r['gender']))
 _shl = collections.Counter(_shlook(r) for _l in _shg.values() for r in _l)     # per LOOK since 2026-09-30
 check('Shiny - Only One', 'shiny, and the only shiny of its LOOK you are keeping (species + form + costume + gender where drawn differently)',

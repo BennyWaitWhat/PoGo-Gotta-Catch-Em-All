@@ -864,6 +864,106 @@ AUDITS = [('8-layer cull',    'audit_cull.py',            'ALL LAYERS PASS'),
           ('pvp keepers',    'system/scripts/regress_pvp_keepers.py', 'ALL PVP KEEPER FIXTURES KEPT')]
 
 ROOM_STATE = os.path.join('system', 'analysis', 'room_bar.json')
+HAND_KEPT = os.path.join('system', 'analysis', 'hand_kept.json')
+PILE_ON_PHONE = os.path.join('system', 'analysis', 'pile_on_phone.json')
+HAND_STATE = os.path.join('system', 'analysis', 'hand_kept_step.json')
+
+
+def pile_on_phone_set(on):
+    """Which copies the phone holds in the Transfer tag: written after a sync whose read-back was clean (on=True), removed
+    when a sync starts (on=False) -- a sync that dies half-way leaves no record, and the next pass then compares nothing."""
+    try:
+        if not on:
+            if os.path.exists(PILE_ON_PHONE):
+                os.remove(PILE_ON_PHONE)
+            return
+        uids = open(os.path.join('system', 'analysis', 'tagsets', 'Transfer.txt')).read().split()
+        with open(PILE_ON_PHONE + '.tmp', 'w', encoding='utf-8') as f:
+            json.dump({'ts': time.strftime('%Y-%m-%d %H:%M:%S'), 'uids': uids}, f)
+        os.replace(PILE_ON_PHONE + '.tmp', PILE_ON_PHONE)
+    except Exception as e:
+        say('pile record: not %s (%s: %s) -- the next pass may not notice copies you untag'
+            % ('written' if on else 'cleared', type(e).__name__, e))
+
+
+def hand_kept_step():
+    """WHAT HE UNTAGS STAYS (user 2026-11-12, after taking the same copies out of the Transfer tag twice in one night: "im
+    just unclear on why youre removing unown", "i like my mr rime, those are hard to get"). A copy the last clean sync left
+    in the Transfer tag (pile_on_phone.json) that this walk still finds in the bag WITHOUT that tag was taken out by him:
+    it joins system/analysis/hand_kept.json and the engine keeps it from now on (keep_config.is_protected: reason
+    'protected', tag Never Cull). New entries re-run the engine (keep_policy + build_tagsets, ~5 s) before the room bar,
+    the pre-flight and the audits. UNKNOWN = NOTHING RECORDED: no record of a clean sync, or a walk that read tags on
+    under half the bag. 0 = carry on; 2 = the list or the engine could not be used (the pass stops before the audits)."""
+    import sqlite3
+    import keep_config
+    keep_config.reload()
+    try:
+        os.remove(HAND_STATE)
+    except OSError:
+        pass
+    if not keep_config.rule_enabled('hand_kept'):
+        return 0
+    try:
+        with open(PILE_ON_PHONE, encoding='utf-8') as f:
+            last = [u for u in json.load(f)['uids'] if isinstance(u, str)]
+    except Exception:
+        return 0                               # no clean sync on record: nothing to compare
+    if not last:
+        return 0
+    c = sqlite3.connect('file:pokemon.db?mode=ro', uri=True)
+    try:
+        bag = c.execute('SELECT COUNT(*) FROM pokemon WHERE in_bag=1').fetchone()[0]
+        tagged = c.execute("SELECT COUNT(*) FROM pokemon WHERE in_bag=1 AND auth_tag_names IS NOT NULL "
+                           "AND auth_tag_names!=''").fetchone()[0]
+        here = []
+        for i in range(0, len(last), 400):
+            part = last[i:i + 400]
+            here += c.execute('SELECT uid_hex, species_name, iv_total, auth_tag_names FROM pokemon WHERE in_bag=1 AND '
+                              'uid_hex IN (%s)' % ','.join('?' * len(part)), part).fetchall()
+    finally:
+        c.close()
+    if tagged < 0.5 * bag:
+        say('hand kept: not checked -- this walk read tags on only %d of %d Pokemon' % (tagged, bag))
+        return 0
+    out = [(u, n, iv) for u, n, iv, t in here if 'Transfer' not in (t or '').split(';')]
+    try:
+        known = keep_config.hand_kept()
+        try:
+            with open(HAND_KEPT, encoding='utf-8') as f:
+                d = json.load(f)
+        except FileNotFoundError:
+            d = {}
+        if not isinstance(d, dict):
+            raise ValueError('not a JSON object')
+    except Exception as e:
+        say('HAND KEPT: %s cannot be read (%s: %s) -- STOPPED before the audits and the sync' % (HAND_KEPT, type(e).__name__, e))
+        return 2
+    new = [x for x in out if x[0] not in known]
+    if new:
+        stamp = time.strftime('%Y-%m-%d %H:%M')
+        for u, n, iv in new:
+            d[u] = {'since': stamp, 'was': '%d%% %s' % (round((iv or 0) * 100 / 45), n)}
+        with open(HAND_KEPT + '.tmp', 'w', encoding='utf-8') as f:
+            json.dump(d, f, indent=0)
+        os.replace(HAND_KEPT + '.tmp', HAND_KEPT)
+        for scr in ('keep_policy.py', 'build_tagsets.py'):
+            p = subprocess.run([PY, os.path.join('system', 'scripts', scr)], capture_output=True, text=True,
+                               encoding='utf-8', errors='replace', timeout=900)
+            if p.returncode:
+                say('HAND KEPT: %s rc=%d -- %s. STOPPED before the audits and the sync' % (scr, p.returncode, ' | '.join(
+                    ((p.stdout or '') + (p.stderr or '')).strip().splitlines()[-2:])[:300]))
+                return 2
+        say('hand kept: %d cop%s you took out of the Transfer tag stay%s kept from now on -- %s'
+            % (len(new), 'y' if len(new) == 1 else 'ies', 's' if len(new) == 1 else '',
+               ', '.join(d[u]['was'] for u, _n, _iv in new)[:400]))
+    try:
+        with open(os.path.join('system', 'analysis', 'bag_count.json'), encoding='utf-8') as f:
+            _ts = json.load(f).get('ts')
+    except Exception:
+        _ts = None
+    with open(HAND_STATE, 'w', encoding='utf-8') as f:
+        json.dump({'bag_ts': _ts, 'new': [u for u, _n, _iv in new], 'still_tagged': len(here) - len(out), 'total': len(d)}, f)
+    return 0
 
 
 def room_bar_step():
@@ -1205,6 +1305,9 @@ def _main():
                     'nothing was synced and the pile on disk is the last live pass\'s'); return 8
             say('RECRAWL FAILED rc=%s -- aborting' % rc); return 2
         say('recrawl ok')
+        _hkrc = hand_kept_step()               # what he untagged stays kept; new ones re-run the engine (2026-11-12)
+        if _hkrc:
+            return _hkrc
         _rbrc = room_bar_step()                # the spare-copy bar follows the room; a move re-runs the engine (2026-11-12, "A")
         if _rbrc:
             return _rbrc
@@ -1299,6 +1402,7 @@ def _main():
         say('audits pass; --no-sync given, stopping before any phone write'); return 0
 
     catcher_pause()                            # phone again: the catcher lets go (~1 s)
+    pile_on_phone_set(False)                   # a sync starts: the record of the phone's pile is void until its read-back is clean
     _pp = post_push_start()                    # starts with the sync; attaches once prune's session is up (2026-10-29)
     try:
         rc, log = run_job('/api/sync', {'dry': False, 'audited_pile_members': _audited, 'audited_tagsets': _audited_files,
@@ -1386,6 +1490,7 @@ def _main():
         say("VERIFY OK (prune's fresh read-back after the push is clean; %s) -- %s"
             % ('user playing -> no second cache read' if _playing else 'no tag written -> no second cache read',
                _unproven_note(log)))
+        pile_on_phone_set(True)                # the phone holds this pile: the next walk can tell what he took out of it
         say('DONE -- %s' % _done_text(state()['pile'], log))
         post_tags_say(*_post)                  # Remote Trade + the tag order ran in the post-push session above
         catcher_resume()                       # last phone step done -- the reports are offline
@@ -1413,6 +1518,8 @@ def _main():
             print('    ' + l.rstrip()[:110])
     say('VERIFY %s' % (('OK (a second client-cache reconcile, fresh attach: clean) -- %s' % _unproven_note(log))
                         if v.returncode == 0 else '*** FAILED ***'))
+    if v.returncode == 0:
+        pile_on_phone_set(True)                # the phone holds this pile: the next walk can tell what he took out of it
     say('DONE -- %s%s' % (_done_text(state()['pile'], log), '' if v.returncode == 0 else ' (VERIFY FAILED)'))
     # THE FOREVER-FRIENDS TRADE WINDOW, REFRESHED EVERY CULL (user 2026-09-19: "make this a part of your cull every
     # time to update it"). Same session shape as the tag sync; never creates a tag, and a failure here never fails the

@@ -128,6 +128,9 @@ DEFAULTS = {
         #                                 as the best / only shiny of its look at its stage (user 2026-11-11, pick "D2"); OFF = as before
         "room_bar_skips_gigantamax": False,   # the room bar -- a Gigantamax copy is judged against the bar's LOWEST point (room_bar.lo)
         #                                 however far the bar has moved (user 2026-11-12: "the gmax off limits for now"); OFF = as before
+        "hand_kept": False,             # WHAT HE UNTAGS STAYS -- a copy he took OUT of the Transfer tag by hand is kept from then on
+        #                                 (hand_kept(): system/analysis/hand_kept.json, written by full_audit.hand_kept_step;
+        #                                 user 2026-11-12); OFF = the list is not read
     },
     "per_species_caps": {},       # Curation Studio per-species overrides {category:{pid:cap}}; empty = use the global cap (behavior-neutral)
     # PATTERN-POOLED LINES (user 2026-09-08 "top 3 of each region type only for its whole evo line"): lines whose
@@ -174,8 +177,9 @@ CFG = _load()
 
 def reload():
     """Re-read keep_config.json (for a long-lived process like the dashboard)."""
-    global CFG
+    global CFG, _HAND
     CFG = _load()
+    _HAND = None
     return CFG
 
 
@@ -551,6 +555,37 @@ def ae_pids():
     return _pid_set("adventure_effect_pids")
 
 
+HAND_KEPT_PATH = os.path.join(HERE, 'system', 'analysis', 'hand_kept.json')
+_HAND = None
+
+
+def hand_kept():
+    """uids of the copies he took OUT of the Transfer tag by hand and kept (rules.hand_kept; full_audit.hand_kept_step
+    writes system/analysis/hand_kept.json, {uid: note}). User 2026-11-12, after untagging the same copies twice in one
+    night. Rule off or no file = none. A file that exists but cannot be read RAISES: answering "none" would put a copy he
+    pulled back into the irreversible pile again."""
+    global _HAND
+    if not rule_enabled("hand_kept"):
+        return frozenset()
+    if _HAND is None:
+        try:
+            with open(HAND_KEPT_PATH, encoding='utf-8') as f:
+                d = json.load(f)
+        except FileNotFoundError:
+            d = {}
+        if not isinstance(d, dict):
+            raise ValueError('hand_kept.json is not a JSON object -- refusing to read it as empty')
+        _HAND = frozenset(d)
+    return _HAND
+
+
+def is_protected(r):
+    """KEEP THIS COPY WHATEVER ELSE (engine reason 'protected', tag Never Cull): its species is on the keep-every-copy list
+    (protected_keep_all_pids), or he took THIS copy out of the Transfer tag by hand (hand_kept). ONE predicate for the
+    engine and every mirror."""
+    return r['pokemon_id'] in protected_pids() or r['uid_hex'] in hand_kept()
+
+
 def origin_owners():
     src = CFG.get("origin_owners")
     if not isinstance(src, list):
@@ -770,7 +805,7 @@ def validate(cfg):
                     probs.append("rule toggle '%s' must be true/false" % k)
     psc = cfg.get("per_species_caps")
     if psc is not None:
-        _psc_cats = {"gigantamax", "dynamax", "cosmetic", "shiny", "rarity", "rarity_shadow", "xxl", "xxs", "location_card"}   # xxs: rule 7b consults species_cap('xxs', ...)
+        _psc_cats = {"gigantamax", "dynamax", "cosmetic", "shiny", "rarity", "rarity_shadow", "xxl", "xxs", "location_card", "pattern_min"}   # xxs: rule 7b consults species_cap('xxs', ...)
         if not isinstance(psc, dict):
             probs.append("'per_species_caps' must be {category: {pid: int}}")
         else:
