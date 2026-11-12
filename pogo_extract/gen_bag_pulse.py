@@ -230,10 +230,13 @@ WINDOW = {
     'ladder': _fl('resident_mean_iv', 1), 'best': _fl('best_per_stage_mean_iv', 1), 'shiny': _fl('shiny_mean_iv', 1),
     'gl5': _fl('pvp_gl_top5'), 'ul5': _fl('pvp_ul_top5'), 'gl1': _fl('pvp_gl_rank1'), 'ul1': _fl('pvp_ul_rank1'),
     'gl100': _fl('pvp_gl_top100'), 'ul100': _fl('pvp_ul_top100'), 'hundo_stages': _fl('stages_with_hundo'),
+    # AVERAGE CP (2026-11-12, user: "start tracking the trend for all my BEST gl, BEST ul, best ml, and hundo avg CP"): ladder_report.cp_metrics
+    'cp': {k: dict(_fl('cp_' + k), n=PP[-1].get('n_' + k)) for k in ('best_gl', 'best_ul', 'best_ml', 'hundo')},
     'sum': {'improved': _sum('stage_best_improved'), 'hundos': _sum('new_hundos'), 'gl1': _sum('new_gl1'), 'ul1': _sum('new_ul1'),
             'evolved': _sum('evolved'), 'picks': _sum('promises_kept'), 'broken': _sum('promises_broken'), 'caught': _sum('caught'), 'released': _sum('released')},
     'series': {'ladder': _s('resident_mean_iv'), 'best': _s('best_per_stage_mean_iv'), 'gl5': _s('pvp_gl_top5'), 'ul5': _s('pvp_ul_top5'),
                'gl1': _s('pvp_gl_rank1'), 'ul1': _s('pvp_ul_rank1'), 'gl100': _s('pvp_gl_top100'), 'ul100': _s('pvp_ul_top100'),
+               'cp_best_gl': _s('cp_best_gl'), 'cp_best_ul': _s('cp_best_ul'), 'cp_best_ml': _s('cp_best_ml'), 'cp_hundo': _s('cp_hundo'),
                'improved': _s('stage_best_improved'), 'hundos': _s('new_hundos'), 'pvp1': [(e.get('new_gl1') or 0) + (e.get('new_ul1') or 0) for e in PP]},
     'cum': {'improved': _cum('stage_best_improved'), 'hundos': _cum('new_hundos'), 'pvp1': _cum('new_gl1', 'new_ul1'), 'picks': _cum('promises_kept')},
 }
@@ -432,7 +435,8 @@ h2{font-family:var(--font-num);font-weight:600;font-size:17px;margin:0 0 10px;le
 .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:14px;margin-bottom:14px}
 .card{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:14px 16px;min-width:0}
 .card.wide{grid-column:1/-1}
-.chart{position:relative;height:220px;width:100%}.chart.tall{height:260px}
+.chart{position:relative;height:220px;width:100%}
+.cpgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px}.cpgrid .chart{height:130px}.cpgrid .v{font-family:var(--font-mono);font-size:18px;margin:2px 0 4px}.cpgrid .d{color:var(--mut);font-size:12px}.chart.tall{height:260px}
 .note{color:var(--mut);font-size:12px;margin:8px 0 0}
 table{border-collapse:collapse;width:100%;font-size:13px;font-variant-numeric:tabular-nums}
 th,td{padding:6px 8px;border-bottom:1px solid var(--line);text-align:left;vertical-align:middle}th{color:var(--mut);font-weight:700;font-size:12px}
@@ -472,6 +476,9 @@ __ART_CSS__</style>
           <div class="legend"><span><i style="background:var(--accent)"></i>stage bests beaten</span><span><i style="background:var(--hundo)"></i>new hundos</span><span><i style="background:var(--pvp)"></i>GL / UL #1 found</span><span><i style="background:var(--shiny)"></i>evolve picks done</span></div>
           <div class="chart"><canvas id="c_pp_cum"></canvas></div>
           <p class="note">Each line is a running total over these culls: a stage best is a new plain copy better than any you had at that stage; a pick is an Evolve label you followed. Flat stretches are culls that only released.</p></div>
+        <div class="card wide" style="padding:10px 12px"><div class="eyebrow">Average CP, every pass</div>
+          <div class="cpgrid" id="cp_grid"></div>
+          <p class="note">The mean CP of the copies in your Best GL, Best UL and Best ML tags, and of all your hundos. A line rises as you power them up; a newly tagged copy at low CP pulls it down.</p></div>
       </div>
     </div>
     <div class="card wide">
@@ -603,6 +610,17 @@ new Chart(el('c_pp_cum'), {type: 'line', data: {labels: W.labels, datasets: [
   {label: 'evolve picks done', data: W.cum.picks, borderColor: tok('--shiny'), borderWidth: 2, stepped: true, pointRadius: 0}]},
   options: {responsive: true, maintainAspectRatio: false, interaction: {mode: 'index', intersect: false}, plugins: {legend: {display: false}},
     scales: {x: ppx, y: ax({beginAtZero: true, title: {display: true, text: 'running total'}})}}});
+{ // AVERAGE CP, every pass (2026-11-12): one small chart per group, each on its own scale -- the four sit 1,000s of CP apart
+  const G = [['best_gl', 'Best GL', '--pvp'], ['best_ul', 'Best UL', '--warn'], ['best_ml', 'Best ML', '--shiny'], ['hundo', 'Hundos', '--hundo']];
+  const num = v => v == null ? '—' : v.toLocaleString('en-US');
+  el('cp_grid').innerHTML = G.map(([k, name]) => { const o = (W.cp || {})[k] || {};
+    return '<div><div class="eyebrow">' + name + (o.n != null ? ' · ' + o.n + ' copies' : '') + '</div><div class="v">' + num(o.to) + ' CP</div>' +
+      '<div class="d">' + (o.d == null ? 'no earlier pass to compare' : '<span class="' + dcls(o.d) + '">' + sgn(o.d) + '</span> over these culls (from ' + num(o.from) + ')') + '</div>' +
+      '<div class="chart"><canvas id="c_cp_' + k + '"></canvas></div></div>'; }).join('');
+  G.forEach(([k, name, c]) => { const v = WS['cp_' + k] || []; if (!v.some(x => x != null)) return;
+    new Chart(el('c_cp_' + k), {type: 'line', data: {labels: W.labels, datasets: [{label: name + ' average CP', data: v, borderColor: tok(c), borderWidth: 2.5, pointRadius: 0, spanGaps: true}]},
+      options: {responsive: true, maintainAspectRatio: false, interaction: {mode: 'index', intersect: false}, plugins: {legend: {display: false}},
+        scales: {x: {display: false}, y: ax(Object.assign(tight(v, 3), {ticks: {font: mono, maxTicksLimit: 4, includeBounds: false}}))}, elements: {line: {tension: .2}}}}); }); }
 el('eta').innerHTML = [['89.5%', T.eta['89.5']], ['90%', T.eta['90']], ['91%', T.eta['91']]].map(([t, e]) => '<div><div class="t">reach ' + t + '</div><div class="w">' + etaTxt(e) + '</div></div>').join('');
 el('ladder_note').textContent = 'Pace: ' + (T.slope >= 0 ? '+' : '') + T.slope.toFixed(2) + ' points per day over ' + T.n + ' days. The dashed line just continues that pace; the real ceiling is about ' + T.ceiling + '% — the average of the best copy you own at every stage — and only better catches move it.';
 line('c_shiny', T.labels, [{data: T.shiny_iv, borderColor: tok('--shiny'), backgroundColor: tok('--shiny-soft'), fill: true, borderWidth: 2.5}], {x: ax(), y: pctAx()});

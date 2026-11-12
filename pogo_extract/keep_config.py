@@ -126,6 +126,8 @@ DEFAULTS = {
         #                                 with its own per_species_caps.xxl (Pumpkaboo / Gourgeist) is exempt; OFF = as before
         "shiny_dex_evolve": False,      # bucket 4 advice -- a shiny is told to evolve into a shiny NEVER registered in the Pokedex even
         #                                 as the best / only shiny of its look at its stage (user 2026-11-11, pick "D2"); OFF = as before
+        "room_bar_skips_gigantamax": False,   # the room bar -- a Gigantamax copy is judged against the bar's LOWEST point (room_bar.lo)
+        #                                 however far the bar has moved (user 2026-11-12: "the gmax off limits for now"); OFF = as before
     },
     "per_species_caps": {},       # Curation Studio per-species overrides {category:{pid:cap}}; empty = use the global cap (behavior-neutral)
     # PATTERN-POOLED LINES (user 2026-09-08 "top 3 of each region type only for its whole evo line"): lines whose
@@ -389,6 +391,17 @@ def row_dict(r):
     return dict(zip(k, r)) if ok else dict(r)
 
 
+def _gigantamax_copy(r):
+    """A Gigantamax copy (evolvable_forms.max_axis of its Max mode). Rows without the field (synthetic) read as not."""
+    try:
+        b = r["fresh_bread_mode"]
+    except (KeyError, IndexError, TypeError):
+        return False
+    from evolvable_forms import max_axis
+    return max_axis(b) == "gigantamax"
+
+
+
 def floor_top(rows_sorted, look=None, pid=None):
     """THE collection floor, applied to a ladder already sorted best-first (IV desc, CP desc, uid): the first copy always
     stays, every later copy must reach collection_floor_iv. Rows may be dicts or sqlite3.Rows. Used by keep_policy.topn
@@ -407,14 +420,19 @@ def floor_top(rows_sorted, look=None, pid=None):
     fl = floor_iv_for(pid)
     if fl <= 0:
         return list(rows_sorted)
+    # GIGANTAMAX IS OFF LIMITS FOR THE ROOM BAR (user 2026-11-12: "the gmax off limits for now"; rules.room_bar_skips_gigantamax):
+    # a Gigantamax copy is judged against the bar's lowest point in every ladder, however far the bar has moved
+    _rb = room_bar()
+    _glo = _rb["lo"] if _rb and fl > _rb["lo"] and rule_enabled("room_bar_skips_gigantamax") else None
+    need = (lambda r: _glo if _gigantamax_copy(r) else fl) if _glo is not None else (lambda r: fl)
     # SPECIAL SETS KEEP 3 (user 2026-11-05 "This."): a ladder whose every copy is special keeps its first look_keep copies
     first = look_keep() if rows_sorted and look_keep() and all(_special_copy(r) for r in rows_sorted) else 1
     if look is None:
-        return [r for i, r in enumerate(rows_sorted) if i < first or (r["iv_total"] or 0) >= fl]
+        return [r for i, r in enumerate(rows_sorted) if i < first or (r["iv_total"] or 0) >= need(r)]
     seen, out = set(), []
     for i, r in enumerate(rows_sorted):
         lk = look(r)
-        if i < first or (r["iv_total"] or 0) >= fl or lk not in seen:
+        if i < first or (r["iv_total"] or 0) >= need(r) or lk not in seen:
             out.append(r)
         seen.add(lk)
     return out
