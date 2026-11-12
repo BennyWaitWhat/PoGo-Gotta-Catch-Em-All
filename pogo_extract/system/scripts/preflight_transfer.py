@@ -956,9 +956,6 @@ def _keeper_reasons(r, BS, legacy_set, gm_ok, dex_counts, event_txt, legacy_txt,
         why.append('pattern_min')
     if r['uid_hex'] in _REGULAR_MIN_KEPT:          # one of the last regular copies the room bar may not take (2026-11-12)
         why.append('regular_min')
-    _ilo = keep_config.invested_floor()            # a copy he built is no spare for the room bar (2026-11-12)
-    if _ilo is not None and (r['iv_total'] or 0) >= _ilo and keep_config.is_invested(r):
-        why.append('invested')
     if pvp_best is not None:                       # Best GL / UL / ML copy of its PvP identity (rule 15d, usable-only GL/UL)
         why.extend('pvp_best_%s' % lg.lower() for lg in sorted(pvp_best.get(r['uid_hex'], ())))
 

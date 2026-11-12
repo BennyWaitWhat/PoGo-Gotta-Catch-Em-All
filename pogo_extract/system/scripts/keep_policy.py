@@ -2115,14 +2115,6 @@ def main():
                            key=lambda r: (-(r['iv_total'] or 0), -(r['cp'] or 0), r['uid_hex']))
             for r in _rest[:max(0, _short)]:
                 mark(r['uid_hex'], 'regular_min')
-    # INVESTED (user 2026-11-12, his own proof line for the room bar: "nothing released that I later powered up, battled with,
-    # evolved, favorited"): with a room bar, a copy he has put something into -- powered up, a second charged move, walked as
-    # his buddy, mega-evolved, or lucky (keep_config.is_invested) -- that reaches the bar's lowest point never goes to the pile.
-    _ilo = keep_config.invested_floor()
-    if _ilo is not None:
-        for r in rows:
-            if not keep.get(r['uid_hex']) and (r['iv_total'] or 0) >= _ilo and keep_config.is_invested(r):
-                mark(r['uid_hex'], 'invested')
     # ---- KEEP / TRANSFER ----
     allu = {r['uid_hex'] for r in rows}
     keepu = set(keep)

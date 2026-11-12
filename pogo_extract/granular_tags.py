@@ -248,7 +248,6 @@ NATIVE_COVERED_REASONS = frozenset({'rarity', 'shiny', 'location_card', 'adventu
                                     'species_min',     # one of the last caps.species_min of a species: the bag shows how few (2026-11-03)
                                     'pattern_min',     # one of the last caps.pattern_min of a pattern / form (2026-11-07)
                                     'regular_min',     # one of the last regular copies the room bar may not take (2026-11-12)
-                                    'invested',        # a copy he built: its CP, second move or lucky background show it (2026-11-12)
                                     'dex_only_copy'})  # the ONLY copy of a form explains itself in the bag (2026-09-24: the shadow
                                                        # rank floor left a lone shadow Vibrava kept for that alone; the 'Last Copy'
                                                        # chip stays retired, user 2026-09-23)

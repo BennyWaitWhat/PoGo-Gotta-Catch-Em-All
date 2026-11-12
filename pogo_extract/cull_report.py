@@ -68,8 +68,7 @@ NO_LONGER = {'favorite': 'a favorite (starred)', 'protected': 'on the keep-every
              'xxs': 'kept as an XXS',
              'species_min': 'kept as one of your last copies of its species and form',
              'pattern_min': 'kept as one of your last copies of its pattern, color, season or letter',
-             'regular_min': 'kept as one of your last regular copies of its species and form',
-             'invested': 'kept because you built it (powered up, second move, buddy, mega or lucky)'}
+             'regular_min': 'kept as one of your last regular copies of its species and form'}
 
 pct = lambda r: round((r['iv_total'] or 0) * 100 / 45)
 norm = lambda u: format(int(u, 16), 'x')
@@ -1023,7 +1022,6 @@ def main():
                 species_min='one of your last %d of its species and form' % keep_config.cap('species_min'),
                 pattern_min='one of your last %d of its pattern, color, season or letter' % keep_config.cap('pattern_min'),
                 regular_min='one of your last %d regular copies of its species and form' % keep_config.cap('regular_min'),
-                invested='one you built (powered up, second move, buddy, mega or lucky)',
                 protected='keep-every-copy list', gl_iv='GL IV keeper', ul_iv='UL IV keeper',
                 # 'not read yet' was false: the ranks are computed and can stay missing for good (keep_policy 1467-1470)
                 rank_unknown='missing its PvP ranks', data_incomplete='held for incomplete data',
