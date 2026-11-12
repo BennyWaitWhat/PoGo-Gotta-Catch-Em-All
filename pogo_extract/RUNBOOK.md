@@ -268,10 +268,13 @@ The other 24: `Adventure Effect`, `Evo GL Rank 1`, `Evo GL Rank 2-5`, `Evo UL Ra
 `Rare Other`, `Safety Hold`, `Shiny #4+`, `Shiny - Only One`, `UL Rank 1`, `UL Rank 2-5`, `Ultra Beast`,
 `Variant #1`, `Variant #2`, `Variant #3`, `Variant #4+`.
 
-**Native filter chips are labels too (2026-09-09).** Legendary, Mythical, Shiny, Shadow, Event, Location/Special
-Background and Adventure Effect chips match the DB counts exactly, so the engine emits no tag for those reasons
-(`granular_tags.NATIVE_COVERED_REASONS`); a kept mon whose only reasons are native-covered is explained by the
-chip plus the absence of Transfer. `Adventure Effect` (ours) = the FORM that has the effect, 38 mons, like the chip.
+**Every kept Pokemon carries a reason tag (2026-11-12).** User: "Every pokemon needs to have a tag for the reason why
+theyre kept. we have extensive tags already, why arent they used?" The 2026-09-09 rule (a native chip -- Legendary,
+Mythical, Shiny, Shadow, Background -- is the label; `NATIVE_COVERED_REASONS`) is gone: it left 1,181 kept copies with
+no tag. A kept copy no other tag covers wears the `Variant #1` / `#2` / `#3` / `#4+` rank of its exact look
+(`granular_tags.variant_fill`: the ladder's look plus shiny, shadow and the location card; a hundo / nundo aside).
+`build_tagsets` refuses a kept copy with no tag, and `audit_tags_membership` counts both again from the bag.
+`Adventure Effect` (ours) = the FORM that has the effect, 38 mons, like the chip.
 
 **Retired 2026-09-09** (user: "too many tags and some are redundant" -> "drop 13 + gate" -> "re-eval all the
 tags"), `granular_tags.RETIRED_TAGS`: `Evolve 1`/`Evolve 2` (identical to Evolve Next/Twice), `XXL #1`/`XXL #2`

@@ -596,6 +596,62 @@ except Exception as _e:
     FAILS.append('Power Up / 2nd Move rule unavailable')
     print('  *** could not re-derive Power Up / Unlock 2nd Move (%s) -- these tags are UNVERIFIED' % _e)
 
+print('\nEVERY KEPT POKEMON CARRIES A REASON (2026-11-12) -- coverage and the Variant rank, counted again from the bag')
+# User 2026-11-12: "Every pokemon needs to have a tag for the reason why theyre kept. we have extensive tags already, why
+# arent they used?" No kept copy is left to a native chip any more: one no other tag covers wears the Variant rank of its
+# exact look (granular_tags.variant_fill). Both halves are re-derived HERE, from the files and the bag, not asked from it:
+#   1. no kept, visible Pokemon without a keep tag (a fused component is hidden inside its Kyurem);
+#   2. a Variant label on a copy the ladder did not place (no variant_floor reason) never claims a better rank than the
+#      copy holds among the kept copies of its exact look (IV, CP, uid; a hundo / nundo aside), and no copy wears two.
+try:
+    import pattern_pools as _ppv, evolvable_forms as _efv
+    _polv = json.load(open(os.path.join('system', 'analysis', 'policy_reasons.json'), encoding='utf-8'))
+    _kt = collections.defaultdict(set)
+    for fp in sorted(os.listdir(TD)):
+        if fp.endswith('.txt') and fp not in ('Transfer.txt', '6_Transfer.txt'):
+            for u in load(fp[:-4]):
+                _kt[u].add(fp[:-4].replace('_', ' '))
+    _bare = sorted(u for u in _vis if u not in pile and not _kt.get(u))
+    print('  kept Pokemon with no tag: %d %s' % (len(_bare), 'OK' if not _bare else '*** FAIL ***'))
+    for u in _bare[:6]:
+        print('       NO TAG: %s %s%% [%s]' % (rows[u].get('species_name'), round((rows[u].get('iv_total') or 0) / 45 * 100),
+                                              ', '.join(_polv.get(u) or ['no reason'])))
+    if _bare: FAILS.append('kept Pokemon with no tag')
+    _VN = {'Variant #1': 1, 'Variant #2': 2, 'Variant #3': 3, 'Variant #4+': 4}
+    _xlook = lambda r: ((_ppv.pool_key(r['pokemon_id'], r['species_name'], r.get('form') or 0, r.get('gender'))
+                         or (r['pokemon_id'], cf(r), _efv.gender_key(r['pokemon_id'], r.get('gender'))))
+                        + (r.get('fresh_costume') or 0, deco(r), r.get('fresh_natural_art_bg') or 0, r.get('fresh_bread_mode') or 0,
+                           1 if r.get('fresh_shiny') else 0, 1 if r.get('fresh_alignment') == 1 else 0,
+                           (r.get('fresh_loc_card_enum') or -1) if r.get('fresh_has_location_card') == 1 else 0))
+    _xl = collections.defaultdict(list)
+    for u, r in _vis.items():
+        if u not in pile and not ((r.get('iv_total') or 0) == 45 or (r.get('is_zero') and r['pokemon_id'])):
+            _xl[_xlook(r)].append(r)
+    _two = sorted(u for u, ts in _kt.items() if len([t for t in ts if t in _VN]) > 1)
+    _over, _later, _nfill = [], 0, 0
+    for _lst in _xl.values():
+        _lst.sort(key=lambda r: (-(r.get('iv_total') or 0), -(r.get('cp') or 0), r['uid_hex']))
+        for _i, r in enumerate(_lst):
+            _n = [_VN[t] for t in _kt.get(r['uid_hex'], ()) if t in _VN]
+            if not _n or 'variant_floor' in (_polv.get(r['uid_hex']) or ()):
+                continue
+            _nfill += 1
+            if _n[0] < min(_i + 1, 4):
+                _over.append((r['uid_hex'], _n[0], _i + 1))
+            elif _n[0] > min(_i + 1, 4):
+                _later += 1
+    print('  Variant ranks off the ladder: %d | claims a better rank than it holds: %d %s | two Variant tags on one copy: %d %s'
+          '%s' % (_nfill, len(_over), 'OK' if not _over else '*** FAIL ***', len(_two), 'OK' if not _two else '*** FAIL ***',
+                  (' | %d counted on from a ladder number above (fine)' % _later) if _later else ''))
+    for u, _has, _is in sorted(_over)[:6]:
+        print('       WRONG RANK: %s %s%% wears Variant #%d, is copy %d of its look' % (
+            rows[u].get('species_name'), round((rows[u].get('iv_total') or 0) / 45 * 100), _has, _is))
+    if _over: FAILS.append('Variant rank better than the copy holds')
+    if _two: FAILS.append('two Variant tags on one copy')
+except Exception as _e:
+    FAILS.append('coverage / Variant rank unavailable')
+    print('  *** could not re-derive the coverage / the Variant rank (%s: %s) -- UNVERIFIED' % (type(_e).__name__, _e))
+
 print('\nTRANSFER -- must be disjoint from every keep tag')
 # NOTE: build_tagsets subtracts the pile from every keep tag before writing, so for 10 of the 11 tags
 # this can only fire if a file was hand-edited or written by something else. Evolve_Shiny.txt (written

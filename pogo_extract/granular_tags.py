@@ -239,18 +239,10 @@ RETIRED_TAGS = {
     'Shadow':             'native Shadow chip (240); the kept 224 are the shadows not in Transfer',
 }
 
-# Keep reasons the GAME already shows with a filter chip: a kept mon whose only reasons are these needs no tag of
-# ours to be explained in-game (build_tagsets coverage treats the chip as the label). 2026-09-09.
-NATIVE_COVERED_REASONS = frozenset({'rarity', 'shiny', 'location_card', 'adventure_effect', 'shadow_best',
-                                    'favorite',    # the in-game star + Favorite filter is the label (2026-09-17)
-                                    'shiny_ladder',    # a shiny held to evolve: the Shiny chip + the Evolve Shiny tag
-                                    'fused',           # held inside a fused Kyurem: the game shows it there (2026-09-26)
-                                    'species_min',     # one of the last caps.species_min of a species: the bag shows how few (2026-11-03)
-                                    'pattern_min',     # one of the last caps.pattern_min of a pattern / form (2026-11-07)
-                                    'regular_min',     # one of the last regular copies the room bar may not take (2026-11-12)
-                                    'dex_only_copy'})  # the ONLY copy of a form explains itself in the bag (2026-09-24: the shadow
-                                                       # rank floor left a lone shadow Vibrava kept for that alone; the 'Last Copy'
-                                                       # chip stays retired, user 2026-09-23)
+# EVERY KEPT POKEMON CARRIES A REASON (user 2026-11-12: "Every pokemon needs to have a tag for the reason why theyre kept.
+# we have extensive tags already, why arent they used?"). NATIVE_COVERED_REASONS (2026-09-09: a native chip -- shiny,
+# legendary, shadow, background -- or "one of the last copies of its kind" was the whole label) is GONE: it left 1,181 kept
+# copies with no tag. A kept copy no other tag covers wears the Variant rank of its exact look: variant_fill(), below.
 
 
 def stop_tags():
@@ -623,6 +615,101 @@ def _maxcp_fn():
     return maxcp
 
 
+_deco = lambda r: r.get('costume_decoration_id') if (r.get('costume_decoration_id') and str(r.get('costume_decoration_id')) != '0') else 0
+
+
+def _full_rows(rows):
+    """Dict rows with EVERY column. Callers pass sqlite3.Row (build_tagsets) or dicts (the CLI), and build_tagsets'
+    projection is NARROWED -- it has no fresh_shiny. A missing column would read as "not shiny" and silently mis-tag
+    1,479 mons, so SELECT * is re-read here rather than trusting whatever the caller happened to select. (Same reasoning
+    as the "SELECT * IS DELIBERATE" notes in the audits.)"""
+    rows = [r if isinstance(r, dict) else keep_config.row_dict(r) for r in rows]
+    if rows and 'fresh_shiny' not in rows[0]:
+        _c = sqlite3.connect(os.path.join(HERE, 'pokemon.db'))
+        _c.row_factory = sqlite3.Row
+        rows = [keep_config.row_dict(r) for r in _c.execute('SELECT * FROM pokemon WHERE in_bag=1')]
+        _c.close()
+    return rows
+
+
+def _cf_of(rows):
+    """keep_policy's form-0 fold as a function of the row (_base_form_map)."""
+    base = _base_form_map(rows)
+    return lambda r: (base.get(r['pokemon_id'], r.get('form') or 0) if not (r.get('form') or 0) else r.get('form'))
+
+
+def _ladder_key(r, cf):
+    """The look a copy's ladder slot is counted in (the engine's rule 1a / 1b key): its pattern pool, else species + form
+    (+ gender where the game draws the two differently, 2026-09-23), then costume, decoration, background and Max mode --
+    a costume / background / Max copy holds a slot on ITS OWN ladder (2026-10-25)."""
+    return ((pattern_pools.pool_key(r['pokemon_id'], r['species_name'], r.get('form') or 0, r.get('gender'))
+             or (r['pokemon_id'], cf(r), evolvable_forms.gender_key(r['pokemon_id'], r.get('gender'))))
+            + (r.get('fresh_costume') or 0, _deco(r), r.get('fresh_natural_art_bg') or 0, r.get('fresh_bread_mode') or 0))
+
+
+def look_key(r, cf):
+    """A copy's EXACT LOOK: the ladder's look with shiny, shadow and the location card on top -- each its own collectible
+    with its own keep rule (the shiny cap, the shadow bests, the per-card cap). -1 = a card whose id was never read."""
+    return _ladder_key(r, cf) + (1 if r.get('fresh_shiny') else 0, 1 if r.get('fresh_alignment') == 1 else 0,
+                                 (r.get('fresh_loc_card_enum') or -1) if r.get('fresh_has_location_card') == 1 else 0)
+
+
+def _fill_ranks(items):
+    """PURE. items: [(look, sort key, uid, state)] -- state: an int = the Variant number the copy already wears, 'bare' =
+    no tag at all, 'tagged' = another tag (it still holds its place), 'trophy' = a hundo / nundo (no place, as on the
+    ladder). -> {uid: n} for the bare copies: the place in its look, counted on from the number a copy above it wears, so
+    a rank never claims more than the copy holds."""
+    g = collections.defaultdict(list)
+    for it in items:
+        g[it[0]].append(it)
+    out = {}
+    for lst in g.values():
+        n = 0
+        for _lk, _k, u, st in sorted(lst, key=lambda it: it[1]):
+            if isinstance(st, int):
+                n = max(n + 1, st)
+            elif st == 'bare':
+                n += 1
+                out[u] = n
+            elif st == 'tagged':
+                n += 1
+    return out
+
+
+def variant_fill(rows, pile, sets):
+    """EVERY KEPT POKEMON CARRIES A REASON (user 2026-11-12: "Every pokemon needs to have a tag for the reason why theyre
+    kept. we have extensive tags already, why arent they used?"). Until then 1,181 kept copies wore no tag at all: a native
+    chip (shiny, legendary, shadow, background) or "one of the last copies of its kind" was the whole explanation.
+    A kept copy NO tag covers wears the Variant rank of its EXACT LOOK (look_key): its place among the kept copies of that
+    look by IV, CP, uid -- a hundo / nundo aside (a trophy holds no slot, as on the ladder), a copy with another tag
+    counted. 'Variant #2' on a shiny = your 2nd best shiny of that look; on a 3rd Unown A = the 3rd A you keep.
+    sets: {tag: uids or (uid, label) pairs} as built so far (Transfer is ignored). -> {label: {uid}} to ADD.
+    LABELS ONLY: nothing that decides a keep reads this. Remote Trade never offers a 'Variant #1' (remote_trade_picks)."""
+    rows = _full_rows(rows)
+    cf = _cf_of(rows)
+    labels = list(VARIANT_LABELS) + [VARIANT_OVERFLOW]
+    tagged, wears = set(), {}
+    for t, members in sets.items():
+        if t == 'Transfer':
+            continue
+        us = {m[0] if isinstance(m, (tuple, list)) else m for m in members}
+        tagged |= us
+        if t in labels:
+            wears.update((u, labels.index(t) + 1) for u in us)
+    items = []
+    for r in rows:
+        u = r['uid_hex']
+        if u in pile or keep_config.is_fused_component(r):
+            continue                                  # leaving, or hidden inside a fused Kyurem: no place on any ladder
+        st = (wears[u] if u in wears else 'bare' if u not in tagged
+              else 'trophy' if (_IV(r) == 45 or (r.get('is_zero') and r['pokemon_id'])) else 'tagged')
+        items.append((look_key(r, cf), _RANK(r), u, st))
+    out = collections.defaultdict(set)
+    for u, n in _fill_ranks(items).items():
+        out[labels[min(n, len(labels)) - 1]].add(u)
+    return dict(out)
+
+
 def build(rows, pile, reasons):
     """rows: in_bag dicts. pile: set of Transfer uid_hex. reasons: policy_reasons.json.
 
@@ -631,15 +718,8 @@ def build(rows, pile, reasons):
     # NARROWED -- it has no fresh_shiny. A missing column would read as "not shiny" and silently mis-tag
     # 1,479 mons, so we re-read SELECT * ourselves rather than trust whatever the caller happened to
     # select. (Same reasoning as the "SELECT * IS DELIBERATE" notes in the audits.)
-    rows = [r if isinstance(r, dict) else keep_config.row_dict(r) for r in rows]
-    if rows and 'fresh_shiny' not in rows[0]:
-        _c = sqlite3.connect(os.path.join(HERE, 'pokemon.db'))
-        _c.row_factory = sqlite3.Row
-        rows = [keep_config.row_dict(r) for r in _c.execute('SELECT * FROM pokemon WHERE in_bag=1')]
-        _c.close()
-    base = _base_form_map(rows)
-    cf = lambda r: (base.get(r['pokemon_id'], r.get('form') or 0)
-                    if not (r.get('form') or 0) else r.get('form'))
+    rows = _full_rows(rows)
+    cf = _cf_of(rows)
     kept = [r for r in rows if r['uid_hex'] not in pile]
     kept_uids = {r['uid_hex'] for r in kept}
     has = lambda u, x: x in (reasons.get(u) or [])
@@ -659,11 +739,7 @@ def build(rows, pile, reasons):
     # PER LOOK (2026-10-25): a costume / background / decoration / Max copy holds a slot on ITS OWN ladder (the engine's rule
     # 1a key), so it is ranked there. Pooled with the plain copies, 183 copies wore 'Variant #4+' while sitting #1-#3 on their
     # own look's ladder -- 77 of them its best (a 93% Dynamax Inteleon) -- and Remote Trade spares only Variant #1.
-    _deco = lambda r: r.get('costume_decoration_id') if (r.get('costume_decoration_id') and str(r.get('costume_decoration_id')) != '0') else 0
-    ordinal([r for r in kept if has(r['uid_hex'], 'variant_floor')],
-            lambda r: (pattern_pools.pool_key(r['pokemon_id'], r['species_name'], r.get('form') or 0, r.get('gender'))
-                       or (r['pokemon_id'], cf(r), evolvable_forms.gender_key(r['pokemon_id'], r.get('gender'))))   # per gender when the look differs (2026-09-23)
-                      + (r.get('fresh_costume') or 0, _deco(r), r.get('fresh_natural_art_bg') or 0, r.get('fresh_bread_mode') or 0),
+    ordinal([r for r in kept if has(r['uid_hex'], 'variant_floor')], lambda r: _ladder_key(r, cf),
             list(VARIANT_LABELS), VARIANT_OVERFLOW)
 
     # --- shiny: a sole shiny of a species is a different thing from the 4th dupe ---
@@ -937,6 +1013,20 @@ def filename(tag):
 
 
 if __name__ == '__main__':
+    if '--selftest' in sys.argv:
+        # offline, no data: the counting rule of variant_fill (every kept copy carries a reason, 2026-11-12)
+        _f = lambda *its: _fill_ranks([('L', i, u, st) for i, (u, st) in enumerate(its)])
+        assert _f(('a', 1), ('b', 2), ('c', 'bare')) == {'c': 3}, 'a bare copy below two ladder holders is the 3rd'
+        assert _f(('h', 'trophy'), ('a', 'bare'), ('b', 'bare')) == {'a': 1, 'b': 2}, 'a hundo holds no place'
+        assert _f(('a', 'tagged'), ('b', 'bare')) == {'b': 2}, 'a copy with another tag still holds its place'
+        assert _f(('a', 3), ('b', 'bare'), ('c', 'bare')) == {'b': 4, 'c': 5}, 'counted on from the number above'
+        assert _f(('a', 2), ('b', 'bare'), ('c', 3), ('d', 'bare')) == {'b': 3, 'd': 5}, 'a rank never claims more than it holds'
+        assert _fill_ranks([('L', 0, 'a', 'bare'), ('M', 0, 'b', 'bare')]) == {'a': 1, 'b': 1}, 'every look counts alone'
+        assert _f() == {}
+        _lb = list(VARIANT_LABELS) + [VARIANT_OVERFLOW]
+        assert [_lb[min(n, len(_lb)) - 1] for n in (1, 3, 4, 9)] == ['Variant #1', 'Variant #3', 'Variant #4+', 'Variant #4+']
+        print('granular_tags self-test OK')
+        sys.exit(0)
     if '--audit' in sys.argv:
         # Offline registry audit -- no DB, no device, no Frida. Run it after touching any tag label.
         if not os.path.isdir(tagset_dir()) or not any(f.endswith('.txt') for f in os.listdir(tagset_dir())):
