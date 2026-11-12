@@ -370,26 +370,6 @@ def regular_min():
 
 
 
-def is_invested(r):
-    """A copy he has put something into, by the game's own record of that Pokemon: powered up (numUpgrades), a second
-    charged move (move3), walked as his buddy (buddyKmWalked), mega-evolved (a mega level), or lucky. ONE definition for
-    the engine and every mirror. Rows without these fields read as not invested."""
-    def g(k):
-        try:
-            return r[k]
-        except (KeyError, IndexError, TypeError):
-            return None
-    return bool(g("is_powered_up") or g("move3") or (g("buddy_km_walked") or 0) > 0 or g("fresh_has_mega_level") or g("is_lucky"))
-
-
-def invested_floor():
-    """The IV total from which the room bar spares an invested copy (the bar's lowest point), or None = off (no room bar).
-    User 2026-11-12, his proof line for the bar: "nothing released that I later powered up, battled with, evolved"."""
-    rb = room_bar()
-    return rb["lo"] if rb else None
-
-
-
 def row_dict(r):
     """dict(r) for a sqlite3.Row, built by POSITION (speed study 2026-09-24, user: "fix it. think carefully.").
 

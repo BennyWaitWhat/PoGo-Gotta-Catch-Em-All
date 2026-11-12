@@ -341,8 +341,6 @@ AXES = {
     'pattern_min':      dict(model='capped', cap_key='pattern_min', per_sp=False, reasons=['pattern_min']),
     # with a room bar, every species + form keeps caps.regular_min regular copies: the same top-up (user 2026-11-12, pick "A")
     'regular_min':      dict(model='capped', cap_key='regular_min', per_sp=False, reasons=['regular_min']),
-    # with a room bar, a copy he built (powered up / second move / buddy / mega / lucky) is never a spare (user 2026-11-12)
-    'invested':         dict(model='keep_all', cap_key=None, per_sp=False, reasons=['invested']),
     'pvp_iv':           dict(model='keep_all', cap_key=None, per_sp=False, reasons=['gl_iv', 'ul_iv']),
     'pvp_spread':       dict(model='keep_all', cap_key=None, per_sp=False, reasons=['pvp_spread']),
     'pvp_rank':         dict(model='keep_all', cap_key=None, per_sp=False, reasons=['pvp_rank']),
@@ -385,7 +383,6 @@ MARK_MODEL = {
     'species_min': 'capped',      # the [:short] top-up slice per species (2026-11-03)
     'pattern_min': 'capped',      # the [:short] top-up slice per pattern / form (2026-11-07)
     'regular_min': 'capped',      # the [:short] top-up slice per species + form, regular copies only (2026-11-12)
-    'invested': 'uncapped',       # every invested copy from the bar's lowest point up, never a slice (2026-11-12)
 }
 
 ENGINE = 'system/scripts/keep_policy.py'
