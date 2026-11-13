@@ -414,7 +414,12 @@ def sweep(drop_trophies, drop_piled, commits=None):
                                                      pid=_DEX_SID.get(t))[:n]}
         if not any(pool[j][2] == 1 for j in _in):
             return False                     # no plain slot for it: beyond the cap, under the floor or displaced by a special
-        if len(pool) - 1 < n and not (rescue or i > best[tk]):
+        # THE COPIES THAT HOLD A SLOT NOW (keep_policy._earns_slot: `_held = topn(pool[:-1], _n)`, engine 2026-11-05; mirrored
+        # here 2026-11-13): a plain copy under the floor holds none, whatever else keeps it. Counted as occupants, an 82% XXL
+        # and a 67% Best UL Magnezone made a stage with two holders (98, 96) read FULL under the 93% floor, so a stock 98%
+        # Magnemite the engine rightly promised to Magneton (a new best there) was committed to Magnezone here -- gate failed.
+        _heldn = len(keep_config.floor_top([{'iv_total': x[0]} for x in pool if x[2] == 0], pid=_DEX_SID.get(t))[:n])
+        if _heldn < n and not (rescue or i > best[tk]):
             return False                     # open slot: worth it only as the stage's first copy or a new best -- UNLESS
             #                                  the alternative is release (keep_policy._earns_slot, 2026-09-20)
         _out = [x[0] for j, x in enumerate(pool) if j not in _in]
@@ -471,6 +476,15 @@ def sweep(drop_trophies, drop_piled, commits=None):
             _to = _choose(_rs)
             if not _to and not _rs and _collapse_victim(r):
                 _to = _choose(True)                         # the engine's collapse pass: the same copy, judged as a RESCUE
+            if commits is not None and r['uid_hex'] == os.environ.get('EVOCHECK_WHY'):
+                # ONE COPY EXPLAINED (2026-11-13): `EVOCHECK_WHY=<uid> python _evocheck.py` prints how the replay judged each
+                # target of that earmarked copy -- a "REPLAY COMMITS ELSEWHERE" failure took a debug copy of this file to read
+                print('  WHY %s %s: stock=%s rescue=%s unpaid=%s -> the replay commits it to %s' % (
+                    r['species_name'], r['uid_hex'], r['uid_hex'] in _STOCK, _rs, _unp, '/'.join(_to) or 'no stage'))
+                for _t in _order:
+                    print('  WHY   %s: earns=%s (as a rescue: %s) affordable=%s | plain copies (iv, cp) %s specials %s best %s cap %d'
+                          % (_t, improves(_t, iv(r), r, _rs), improves(_t, iv(r), r, True), afford(r, [_t]),
+                             held_cp.get(_tk(_t, r)), spec_cp.get(_tk(_t, r)), best[_tk(_t, r)], cap_of(_t, _tk(_t, r)[2])))
             if _to and not _unp:                            # H09-1: an unpaid hold spends nothing
                 spend(r, _to)
             if commits is not None:
