@@ -194,6 +194,13 @@ function withFields(api) {
   api.set('readProbs', () => mOdds); api.set('uint64', (x) => x);
   api.call('onEncounterOut', reply);
   check('wild reply carries the flag + odds', [api.get('RESP')['888'].strong, api.get('RESP')['888'].p[7]], [1, 0.15]);
+  // the "(not opened by the catcher)" line: only when the catcher tracks no encounter of that species
+  const byHand = () => api.get('OUT.log').filter((l) => l.indexOf('(not opened by the catcher)') >= 0).length;
+  check('mighty answered an open that is not ours, nothing tracked -> one line', byHand(), 1);
+  api.set('E', { 42: { pid: 306 } });
+  api.call('mightySeen', '', { t: NOW, strong: 1, p: mOdds }, 'Incense', 306);
+  api.call('mightySeen', '', { t: NOW, strong: 1, p: mOdds }, 'Incense', 598);
+  check('a species the catcher tracks -> no such line; another species -> a line', [byHand(), api.get('MLAST')], [2, NOW]);
 }
 // 9. the Mighty reserve: while Mighty Pokemon are around (one in the last 30 min), ordinary spawns leave the last 30
 //    Great Balls / Ultra Balls / Razz for them; the Mighty and the priority species are not held back; it ends by itself

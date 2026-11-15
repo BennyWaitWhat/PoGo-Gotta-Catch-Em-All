@@ -753,12 +753,16 @@ function strongOf(pk) {   /* PokemonProto -> PokemonDisplayProto.IsStrongPokemon
     var d = pk.add(OFF.pkDisp).readPointer(); return (!d.isNull() && d.add(OFF.dStrong).readU8()) ? 1 : 0;
   } catch (e) { return 0; }
 }
-/* a Mighty answered an encounter (any thread: no game call). Starts / extends THE MIGHTY RESERVE; one opened by hand
-   (not in E) gets its line here -- the catcher's own get theirs, with the ball chosen, in catchTick. */
+/* a Mighty answered an encounter (any thread: no game call). Starts / extends THE MIGHTY RESERVE. A reply to an open
+   that is not the catcher's gets its line here (the catcher's own get theirs, with the ball chosen, in catchTick):
+   with Auto-Catch off that is how the odds stay visible. Live 11-15 15:09-15:12, 4 Mighty (Incense and Wild): each
+   answered such an open ~1 s before the catcher's own -- who sent it is NOT known (a tap, or Pokemod reading the
+   spawn's stats), so the line does not say "by hand". No line when the catcher already tracks that species. */
 function mightySeen(enc, r, cls, pid) {
   MLAST = r.t;
   if (enc && E[enc]) return;
-  log('MIGHTY ' + cls + ' #' + pid + ' (opened by hand) flag=' + (r.strong ? 1 : 0) + ' odds ' + oddsStr(r.p) + ' | bag Safari=' + ITEMC[7] + ' U=' + ITEMC[3] + ' G=' + ITEMC[2]);
+  for (var k in E) if (E[k].pid === pid) return;
+  log('MIGHTY ' + cls + ' #' + pid + ' (not opened by the catcher) flag=' + (r.strong ? 1 : 0) + ' odds ' + oddsStr(r.p) + ' | bag Safari=' + ITEMC[7] + ' U=' + ITEMC[3] + ' G=' + ITEMC[2]);
 }
 function onEncounterOut(s) {   /* EncounterOutProto: status @0x1c, WildPokemon @0x10 -> encounterId @0x10, probs @0x20 */
   var pk = s.add(0x10).readPointer(); if (pk.isNull()) return;
