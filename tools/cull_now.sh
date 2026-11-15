@@ -69,6 +69,7 @@ for l in sys.stdin:
     m = re.search(r"process=(\S+) reason=\d+ \((.*?)\) subreason=\d+ \((.*?)\) status=(\d+)", l)
     if m and ts and m.group(1) == "com.nianticlabs.pokemongo" and ts[:11] >= since:   # shortcut: MM-DD as text, like the crash filter
         note = (" -- closed by hand, not a crash" if m.group(3) == "REMOVE TASK" else " -- A CRASH" if "CRASH" in m.group(2)
+                else " -- killed (signal 9): how Pokemod ends the game before it starts it again; not a crash" if (m.group(2), m.group(4)) == ("SIGNALED", "9")
                 else " -- killed (signal %s)" % m.group(4) if m.group(2) == "SIGNALED" else "")
         rows.append("  %s pid %s: %s%s%s" % (ts, pid, m.group(2), "" if m.group(3) == "UNKNOWN" else " / " + m.group(3), note))
     if m:
@@ -124,9 +125,9 @@ pass() {
   echo "--- full_audit starting $(date +%H:%M:%S)"
   ( cd pogo_extract && python full_audit.py > system/analysis/last_cull.log 2>&1 ); RC=$?; echo "rc=$RC"
   cd pogo_extract || return 1
-  grep -E "bag [0-9]|AUDIT GATE|DONE --|PHASES|STOPPED|frozen|session is gone|WARN|FAILED|remote trade:|hundo buckets:|VERIFY|retire:" system/analysis/last_cull.log \
+  # ONE grep: a warning line ("   ! ...") that also holds WARN / VERIFY / FAILED was printed twice by two greps (2026-11-15)
+  grep -E "bag [0-9]|AUDIT GATE|DONE --|PHASES|STOPPED|frozen|session is gone|WARN|FAILED|remote trade:|hundo buckets:|VERIFY|retire:|^\[ *[0-9.]+s\]   ! " system/analysis/last_cull.log \
     | awk '{ if ($0 ~ /hundo buckets:/) print; else if ($0 ~ /remote trade:/) print substr($0, 1, 700); else print substr($0, 1, 260) }'
-  grep -E "^\[ *[0-9.]+s\]   ! " system/analysis/last_cull.log | cut -c1-220
   sed -n '/=== REPORT ===/,$p' system/analysis/last_cull.log | grep -v '^\['
   if [ "$RC" -eq 0 ]; then
     PYTHONIOENCODING=utf-8 python bag_art.py --text > system/analysis/cull_now.page 2>&1; echo "bag_art rc=$? ($(wc -c < system/analysis/cull_now.page) bytes)"
@@ -204,6 +205,9 @@ case "${1:-}" in
     [ "$E" = "  11-12 12:51:07 pid 15735: APP CRASH(NATIVE) -- A CRASH
   11-12 13:40:21 pid 29205: USER REQUESTED / REMOVE TASK -- closed by hand, not a crash" ] || bad "the exit-record reader: $E"
     [ "$(echo x | exits 11-12 12:00)" = "  (Android kept no exit record of the game since then)" ] || bad "the exit-record reader on no record"
+    E=$(printf '%s\n' ' timestamp=2026-11-15 00:10:29.000 pid=8757 realUid=1 user=0' \
+          ' process=com.nianticlabs.pokemongo reason=2 (SIGNALED) subreason=0 (UNKNOWN) status=9' | exits 11-15 00:01)
+    [ "$E" = "  11-15 00:10:29 pid 8757: SIGNALED -- killed (signal 9): how Pokemod ends the game before it starts it again; not a crash" ] || bad "the exit-record reader on a signal-9 kill: $E"
     rm -rf "$CULL_NOW_STATE"
     echo "cull_now self-check OK"; exit 0 ;;
   --hook)

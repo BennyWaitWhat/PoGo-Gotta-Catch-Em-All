@@ -869,7 +869,17 @@ PILE_ON_PHONE = os.path.join('system', 'analysis', 'pile_on_phone.json')
 HAND_STATE = os.path.join('system', 'analysis', 'hand_kept_step.json')
 
 
-def pile_on_phone_set(on):
+def pile_on_phone_uids(uids, sync_log):
+    """The pile members the phone really holds in the Transfer tag: the pile file minus the ones the sync's own read-back
+    names as NOT tagged (a hatchling still flagged as an egg, a locked buddy / gym / showcase mon). None = the log has no
+    clean read-back of the tag, so nothing may be recorded. 2026-11-15: a 76% Scorbunny hatchling the game had not tagged
+    was in the record, so the next walk read it as 'you took 1 out of the Transfer tag by hand' and kept it for good."""
+    import cull_report as _cr
+    _rb = _cr._transfer_readback(sync_log or '')
+    return None if _rb is None else [u for u in uids if u.zfill(16) not in _rb[2]]
+
+
+def pile_on_phone_set(on, sync_log=''):
     """Which copies the phone holds in the Transfer tag: written after a sync whose read-back was clean (on=True), removed
     when a sync starts (on=False) -- a sync that dies half-way leaves no record, and the next pass then compares nothing."""
     try:
@@ -877,7 +887,9 @@ def pile_on_phone_set(on):
             if os.path.exists(PILE_ON_PHONE):
                 os.remove(PILE_ON_PHONE)
             return
-        uids = open(os.path.join('system', 'analysis', 'tagsets', 'Transfer.txt')).read().split()
+        uids = pile_on_phone_uids(open(os.path.join('system', 'analysis', 'tagsets', 'Transfer.txt')).read().split(), sync_log)
+        if uids is None:
+            raise ValueError("the sync log has no clean read-back of the Transfer tag")
         with open(PILE_ON_PHONE + '.tmp', 'w', encoding='utf-8') as f:
             json.dump({'ts': time.strftime('%Y-%m-%d %H:%M:%S'), 'uids': uids}, f)
         os.replace(PILE_ON_PHONE + '.tmp', PILE_ON_PHONE)
@@ -1490,7 +1502,7 @@ def _main():
         say("VERIFY OK (prune's fresh read-back after the push is clean; %s) -- %s"
             % ('user playing -> no second cache read' if _playing else 'no tag written -> no second cache read',
                _unproven_note(log)))
-        pile_on_phone_set(True)                # the phone holds this pile: the next walk can tell what he took out of it
+        pile_on_phone_set(True, log)           # the phone holds this pile: the next walk can tell what he took out of it
         say('DONE -- %s' % _done_text(state()['pile'], log))
         post_tags_say(*_post)                  # Remote Trade + the tag order ran in the post-push session above
         catcher_resume()                       # last phone step done -- the reports are offline
@@ -1519,7 +1531,7 @@ def _main():
     say('VERIFY %s' % (('OK (a second client-cache reconcile, fresh attach: clean) -- %s' % _unproven_note(log))
                         if v.returncode == 0 else '*** FAILED ***'))
     if v.returncode == 0:
-        pile_on_phone_set(True)                # the phone holds this pile: the next walk can tell what he took out of it
+        pile_on_phone_set(True, log)           # the phone holds this pile: the next walk can tell what he took out of it
     say('DONE -- %s%s' % (_done_text(state()['pile'], log), '' if v.returncode == 0 else ' (VERIFY FAILED)'))
     # THE FOREVER-FRIENDS TRADE WINDOW, REFRESHED EVERY CULL (user 2026-09-19: "make this a part of your cull every
     # time to update it"). Same session shape as the tag sync; never creates a tag, and a failure here never fails the
