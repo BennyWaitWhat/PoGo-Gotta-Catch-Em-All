@@ -187,10 +187,16 @@ _cus = lambda u: (_CUL.get(u) or {}).get('status') if _CUL is not None else 'now
 import evolvable_forms as _ef
 _EVC = set().union(*(tag(t) or set() for t in _gt.EVOLVE_COUNT_TAGS))
 _cu_pick = lambda r, lg: r['uid_hex'] in _CU[lg] and _cus(r['uid_hex']) in ('now', 'gated')
-check('Evolve for GL', 'THE copy to evolve for Great League (one per target), labelled now / gated: evolving it gives a better GL copy of its target stage than any you own (fits the league there), beside Evolve to Mid / to Final / Needs Item / Needs Task',
-      lambda r: _cu_pick(r, 'gl') and r['uid_hex'] in _EVC, every=lambda r: _cu_pick(r, 'gl'))
-check('Evolve for UL', 'THE copy to evolve for Ultra League (one per target), labelled now / gated: evolving it gives a better UL copy of its target stage than any you own (fits the league there), beside Evolve to Mid / to Final / Needs Item / Needs Task',
-      lambda r: _cu_pick(r, 'ul') and r['uid_hex'] in _EVC, every=lambda r: _cu_pick(r, 'ul'))
+# 2026-11-15: 'Evolve for GL' / 'Evolve for UL' are RETIRED (one evolve tag per copy). What they proved stays proven here:
+# every PvP comb-up pick labelled now / gated wears one of Evolve to Mid / to Final / Needs Item / Needs Task.
+_cu_all = sorted(u for u, r in rows.items() if _cu_pick(r, 'gl') or _cu_pick(r, 'ul'))
+_cu_bare = [u for u in _cu_all if u not in pile and not keep_config.is_fused_component(rows[u]) and u not in _EVC]
+print('  %-18s picks=%-7d untagged=%-4d %s -- every PvP comb-up pick (now / gated) wears ONE evolve tag'
+      % ('PvP comb-up picks', len(_cu_all), len(_cu_bare), 'OK' if not _cu_bare else '*** FAIL ***'))
+for _u in _cu_bare[:12]:
+    print('       MISSING: %s' % label(_u))
+if _cu_bare:
+    FAILS.append('PvP comb-up picks')
 check('XXL', 'XXL badge, showcase POINTS >= %d at its own stage or a stage it can evolve into, and one of the %d highest of its species+battle form (cosmetics fold)%s' % (_SC_MIN, keep_config.cap('xxl'), (' or of the %d highest that can enter a showcase of one of its types (XXL TRIM)' % keep_config.cap('xxl_per_type')) if keep_config.cap('xxl_per_type') else ''),
       lambda r: (r['pokemon_size_category'] or 0) == 5 and r['uid_hex'] in _SC_TOP, every=lambda r: r['uid_hex'] in _SC_TOP)
 if _AE is not None:
@@ -215,10 +221,11 @@ check('Shiny - Only One', 'shiny, and the only shiny of its LOOK you are keeping
 for lg, cap in (('GL', GL_CAP), ('UL', UL_CAP)):
     check('%s Rank 1-5' % lg, 'rank 1-5 AS IT IS NOW, and its CP lets it enter the league',
           lambda r, lg=lg, cap=cap: usable_rank(r, lg.lower(), cap, True) is not None)
-    # THE SECOND FOLD (2026-09-30): no evolve word here -- the copy to evolve wears Evolve for <league> instead
-    check('%s 1-5 No Evolve' % lg, 'a stage it can evolve into is rank 1-5 AND it would still fit the league there, and '
-          'NO evolve tag is on it (not the copy to evolve)',
-          lambda r, lg=lg, cap=cap: usable_rank(r, lg.lower(), cap, False) is not None and r['uid_hex'] not in _EVC)
+# ONE TAG FOR BOTH LEAGUES (2026-11-15; '<league> 1-5 No Evolve' until then): the same claim, true in Great or Ultra League
+check(_gt.NO_EVOLVE, 'a stage it can evolve into is rank 1-5 in Great or Ultra League AND it would still fit that league there, '
+      'and NO evolve tag is on it (not the copy to evolve)',
+      lambda r: (usable_rank(r, 'gl', GL_CAP, False) is not None or usable_rank(r, 'ul', UL_CAP, False) is not None)
+      and r['uid_hex'] not in _EVC)
 # EVOLVE ONCE / TWICE / GATED -- THE FOLD (2026-09-29, user: "I either evolve once or evolve twice"). Every evolve advice
 # is ONE table, evolve_advice.json (granular_tags.evolve_advice: promises, PvP comb-ups, shiny upgrades, showcase picks).
 # Its TARGETS are the engine's record, trusted as promises.json / pvp_combup_labels.json always were; its steps / gated /

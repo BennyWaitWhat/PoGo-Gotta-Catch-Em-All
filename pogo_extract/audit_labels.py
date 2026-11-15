@@ -1,4 +1,4 @@
-"""LABEL LAW AUDIT -- every advisory evolve label (Evolve to Mid / to Final / Needs Item / Needs Task, Evolve for GL / UL beside them)
+"""LABEL LAW AUDIT -- every advisory evolve label (Evolve to Mid / to Final / Needs Item / Needs Task: ONE per copy since 2026-11-15)
 must obey the bucket rules in LAW.md. A label asks the user to CONSUME a copy, so a copy kept as a trophy or collectible
 must never carry one. Read-only, DB + policy_reasons + the evolve advice table; no device contact. Exit 1 (BLOCK) on any
 violation. Written 2026-09-16 after four incidents in one day (protected Pichus, card Charmanders, legacy Primeapes, Pikachu key).
@@ -171,8 +171,8 @@ def main():
     # <league>'; the two never sit on one copy (checked right after).
     DEX = {p['speciesId']: p.get('dex') for p in gm['pokemon']}
     n_rank = 0
-    for fn, lg in (('GL_1-5_No_Evolve', 'gl'), ('UL_1-5_No_Evolve', 'ul'),
-                   ('Evolve_for_GL', 'gl'), ('Evolve_for_UL', 'ul')):      # rule 15e comb-up chips (2026-09-24)
+    # (2026-11-15) ONE tag for both leagues, read once per league; a comb-up pick's own gates are judged with the evolve tags below
+    for fn, lg in (('PvP_1-5_No_Evolve', 'gl'), ('PvP_1-5_No_Evolve', 'ul')):
         p = os.path.join('system', 'analysis', 'tagsets', fn + '.txt')
         if not os.path.exists(p):
             continue
@@ -180,7 +180,7 @@ def main():
             r = rows.get(u)
             if r is None:
                 continue                                  # released mid-sync: prune's own reconcile owns that
-            n_rank += 1
+            n_rank += lg == 'gl'
             nm = '%s %d%% [%s]' % (r['species_name'], (r['iv_total'] or 0) * 100 // 45, fn.replace('_', ' '))
             if evolvable_forms.row_can_evolve(r) is False:
                 bad.append(nm + ': this FORM has no evolution branch -- it can never reach that later stage')
@@ -189,6 +189,7 @@ def main():
             later = [x for x in stages if x != pvid(r['species_name'], r['form'] or 0)]
             if later and not any(evolvable_forms.gender_allows(r['pokemon_id'], r['gender'], DEX.get(x)) for x in later):
                 bad.append(nm + ': this gender reaches no later stage of the line')
+    bad[:] = list(dict.fromkeys(bad))                 # the merged tag is read once per league: say each problem once
     # THE BEST SHINY OF A LOOK NEVER EVOLVES (2026-09-30, user: "you dont keep my only anything when evolving shinies. for
     # example the costumed whimsicott i evolved, not theres no costumed cottonee."): a look = species + form (form 0 folded
     # into a species' single form) + costume + the gender where the game draws the two differently; its best in-bag
@@ -228,7 +229,7 @@ def main():
                        % (r['species_name'], (r['iv_total'] or 0) * 100 // 45, ', '.join(sorted(worn[u])), r['form'],
                           r['fresh_costume'] or 0, r['gender']))
     # NEVER "evolve" AND "No Evolve" ON ONE COPY (2026-09-30, user: "The tag is the bug")
-    _noev = set().union(*(_members(granular_tags.NO_EVOLVE_FMT % _l) for _l in ('GL', 'UL')))
+    _noev = set(_members(granular_tags.NO_EVOLVE))
     for u in sorted(_noev & set(worn)):
         r = rows.get(u)
         if r is not None:

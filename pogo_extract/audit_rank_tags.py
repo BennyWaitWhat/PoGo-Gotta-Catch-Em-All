@@ -1,7 +1,7 @@
 """PER-POKEMON AUDIT OF EVERY GL / UL RANK TAG (user 2026-09-19: "recheck all the ivs for each and every pokemon you
 have tagged for gl and ul potential and current ... some are incorrect. some even over the cap").
 
-For every mon carrying `GL/UL Rank 1-5` (own stage) or `GL/UL 1-5 No Evolve` (a later stage) this re-derives
+For every mon carrying `GL/UL Rank 1-5` (own stage) or `PvP 1-5 No Evolve` (a later stage, one tag for both leagues) this re-derives
 the answer from scratch -- the ranker's own tables, the stage chain, the league caps -- and reports every mon where
 the tag does not match. Five independent checks per mon:
 
@@ -25,8 +25,11 @@ import evolvable_forms
 import granular_tags as gt
 from pvp_iv_rule import pvid, maxcp, GL_CAP, UL_CAP, VIABILITY_MARGIN
 
+# (2026-11-15) ONE later-stage tag for both leagues ('GL / UL 1-5 No Evolve' until then): a member is judged in every league
+# whose later stage ranks it 1-5 (the tag builder's own test, as the two files were), and must have at least one.
+NO_EVO = gt.NO_EVOLVE
 TAGS = {'GL Rank 1-5': ('gl', 1, 5, 'own'), 'UL Rank 1-5': ('ul', 1, 5, 'own'),          # merged 2026-09-23
-        'GL 1-5 No Evolve': ('gl', 1, 5, 'evo'), 'UL 1-5 No Evolve': ('ul', 1, 5, 'evo')}   # was Evo GL/UL Rank 1-5 (2026-09-30)
+        NO_EVO + ' (GL)': ('gl', 1, 5, 'evo'), NO_EVO + ' (UL)': ('ul', 1, 5, 'evo')}
 CAP = {'gl': GL_CAP, 'ul': UL_CAP}
 
 
@@ -56,9 +59,18 @@ def main():
     con.close()
     TD = os.path.join('system', 'analysis', 'tagsets')
     members = {}
-    for tag in TAGS:
+    _mx = gt._maxcp_fn()
+    _ne_p = os.path.join(TD, NO_EVO.replace(' ', '_') + '.txt')
+    _ne_all = [u for u in (open(_ne_p).read().split() if os.path.exists(_ne_p) else []) if u in rows]
+    for tag, (_lg, _lo, _hi, _kind) in TAGS.items():
+        if _kind == 'evo':                    # the merged tag: this league's members = a later stage ranks 1-5 there
+            _via = lambda sid, _c=CAP[_lg]: bool(sid) and _mx(sid) > _c + VIABILITY_MARGIN
+            members[tag] = [u for u in _ne_all
+                            if (gt.own_and_evo_rank(rows[u], _lg, viable=_via, cap=CAP[_lg])[1] or 99) <= 5]
+            continue
         p = os.path.join(TD, tag.replace(' ', '_') + '.txt')
         members[tag] = [u for u in (open(p).read().split() if os.path.exists(p) else []) if u in rows]
+    _ne_none = sorted(set(_ne_all) - {u for tag, v in TAGS.items() if v[3] == 'evo' for u in members[tag]})
     # every fresh table this audit reads, built side by side (2026-10-29, "same results, just faster"): the same
     # all_combos_sorted the lazy get() runs, in worker processes
     rank_cache.prefill(cache, _sample + [(pvid(rows[u]['species_name'], rows[u]['form'] or 0), CAP[lg],
@@ -68,6 +80,10 @@ def main():
 
     bad = collections.defaultdict(list)
     checked = 0
+    for u in _ne_none:
+        r = rows[u]
+        bad['%s on a copy no later stage ranks 1-5 in Great or Ultra League' % NO_EVO].append(
+            '%s %d/%d/%d cp%s' % (r['species_name'], r['iv_atk'], r['iv_def'], r['iv_sta'], r['cp']))
     for tag, (lg, lo, hi, kind) in TAGS.items():
         cap = CAP[lg]
         for u in members[tag]:

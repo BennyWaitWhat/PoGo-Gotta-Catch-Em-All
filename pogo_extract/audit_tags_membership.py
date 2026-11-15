@@ -103,7 +103,8 @@ print('  missing or empty: %d %s  %s' % (len(_absent), 'OK' if not _absent else 
 import granular_tags as _gt
 # THE FOLD (2026-09-29): its names, and every Stop tag by prefix, are retired by this audit's own word, not only the registry's
 _FOLD_RETIRED = ('Evolve Next', 'Stop at Mid Stage', 'Evo Best Gated', 'Evolve Shiny', 'Evolve Shiny Gated', 'Evolve for Size',
-                 'Evo Best GL', 'Evo Best UL', 'Evo GL Rank 1-5', 'Evo UL Rank 1-5')   # THE SECOND FOLD (2026-09-30)
+                 'Evo Best GL', 'Evo Best UL', 'Evo GL Rank 1-5', 'Evo UL Rank 1-5',   # THE SECOND FOLD (2026-09-30)
+                 'Evolve for GL', 'Evolve for UL', 'GL 1-5 No Evolve', 'UL 1-5 No Evolve')   # one evolve tag per copy (2026-11-15)
 _retired_files = sorted({t for t in set(_gt.RETIRED_TAGS) | set(_FOLD_RETIRED) if os.path.exists(os.path.join(TD, _gt.filename(t)))}
                         | {f[:-4].replace('_', ' ') for f in os.listdir(TD) if f.startswith('Stop_') and f.endswith('.txt')})
 if _retired_files:
@@ -117,7 +118,7 @@ print('  registered tags without a file: %d %s  %s' % (len(_nofile), 'OK' if not
 
 print('\nDEFINITIONAL TAGS -- membership must match the rule exactly')
 
-EVO5 = ('Evolve to Mid', 'Evolve to Final', 'Evolve Needs Item', 'Evolve Needs Task', 'Evolve for GL', 'Evolve for UL')   # THE evolve tags (2026-10-25)
+EVO5 = ('Evolve to Mid', 'Evolve to Final', 'Evolve Needs Item', 'Evolve Needs Task')   # THE evolve tags: ONE per advised copy (2026-11-15)
 
 def _evolve_labelled():
     """(2026-09-29) copies being told to evolve = the union of the evolve tag files: advice never sits beside one."""
@@ -226,7 +227,12 @@ try:
         # user's call how (or whether) to label it. The keep itself (rule 15b) is untouched.
         # (2026-09-30, THE SECOND FOLD) a later-stage spread wears '<league> 1-5 No Evolve', or the evolve tags when it is
         # the copy to evolve (Evolve for <league> beside the count -- its Best chip comes off then)
-        t = load('%s_Rank_1-5' % lg) | load('%s_1-5_No_Evolve' % lg) | load('Best_%s' % lg) | _evolve_labelled()
+        # (2026-11-15) ONE No Evolve tag for both leagues: it counts for THIS league only where a later stage ranks 1-5 here
+        _mx5 = _gt._maxcp_fn()
+        _via_l = lambda sid, _c=_cap: bool(sid) and _mx5(sid) > _c + _gt.VIABILITY_MARGIN
+        _ne_l = {u for u in load('PvP_1-5_No_Evolve') if u in _vis
+                 and (_gt.own_and_evo_rank(_vis[u], lg.lower(), viable=_via_l, cap=_cap)[1] or 99) <= 5}
+        t = load('%s_Rank_1-5' % lg) | _ne_l | load('Best_%s' % lg) | _evolve_labelled()
         # OVER-CAP SPREADS CARRY NO LEAGUE CHIP (user 2026-09-23, on over-cap spreads: "why are they even tagged"):
         # a keeper none of whose rank-<=ready_rank stages it can still ENTER (pvp_iv_rule.fits, true level) needs no
         # GL/UL tag -- the chip would claim it can play. It stays KEPT (rule 15b; the 8-layer and fixture audits prove
@@ -235,9 +241,9 @@ try:
         _oc = {u for u in q if u not in t
                and not any(_rk2 <= RR and _fits(rows[u], _st2, _cap, _BS) for _st2, _rk2 in _csr(rows[u], lg.lower()))}
         verdict('%s Rank tags' % lg, set(), (q - t) - pile - _oc,
-                '(every pvp_iv_rule %s keeper that can still ENTER the league carries a %s Rank / %s 1-5 No Evolve / Best %s '
+                '(every pvp_iv_rule %s keeper that can still ENTER the league carries a %s Rank / PvP 1-5 No Evolve / Best %s '
                 '/ evolve tag; keepers=%d, over the cap and untagged by design=%d%s)'
-                % (lg, lg, lg, lg, len(q), len(_oc), (': ' + ', '.join(sorted('%s %d%%' % (rows[u]['species_name'],
+                % (lg, lg, lg, len(q), len(_oc), (': ' + ', '.join(sorted('%s %d%%' % (rows[u]['species_name'],
                    round((rows[u]['iv_total'] or 0) * 100 / 45)) for u in _oc))) if _oc else ''))
 except Exception as _e:
     FAILS.append('GL/UL rule unavailable')
@@ -321,8 +327,7 @@ try:
                 q.add(min(_c, key=lambda x: (0 if _via(x.get(_st), _cap) else 1, x[_rk], x['uid_hex']))['uid_hex'])
         if _lg == 'ML':                     # the Best ML chip skips hundos (2026-09-23) and Variant #1 (2026-10-25); the keep does not
             q = {u for u in q if (rows[u].get('iv_total') or 0) != 45} - load('Variant_#1')
-        else:                               # (2026-09-30) the Best GL/UL chip comes off the copy told to Evolve for it
-            q -= load('Evolve_for_%s' % _lg)
+        q -= _evolve_labelled()             # (2026-11-15) no Best chip on a copy told to evolve: a Best is about the stage it is leaving
         t = load('Best_%s' % _lg)
         verdict('Best %s' % _lg, t - q, (q - t) - pile,
                 '(best non-shadow copy per PvP identity -- species + battle form; winners=%d, winners in pile=%d)'
@@ -441,8 +446,7 @@ try:
         _put(u, e['target'], 'size')
     for e in _adv.values():
         e['tags'] = ({('Evolve Needs Item' if e['item'] else 'Evolve Needs Task') if e['gated']
-                      else ('Evolve to Final' if e['final'] else 'Evolve to Mid')}
-                     | {'Evolve for ' + lg.upper() for lg in e['leagues']})
+                      else ('Evolve to Final' if e['final'] else 'Evolve to Mid')})
 except Exception as _e:
     _adv = None
     FAILS.append('Evolve rule unavailable')
@@ -450,28 +454,27 @@ except Exception as _e:
 if _adv is not None:
     for _tn, _why in zip(EVO5, ('(its target evolves again -- stop there; doable now)', '(its target ends the line; doable now)',
                                 '(the game gates the way with an item or a lure only)',
-                                '(the game gates the way with a task / buddy walk / time / move)',
-                                '(beside the count: the copy to evolve for a better GL copy of a stage -- pvp_combup.pick)',
-                                '(beside the count: the copy to evolve for a better UL copy of a stage -- pvp_combup.pick)')):
+                                '(the game gates the way with a task / buddy walk / time / move)')):
         _want = {u for u, e in _adv.items() if _tn in e['tags']}
         _have = load(_tn.replace(' ', '_'))
         verdict(_tn, _have - _want, _want - _have, _why)
     # '<league> 1-5 No Evolve' (THE SECOND FOLD, 2026-09-30): every kept copy a later stage ranks 1-5 (the ranker's chain,
     # a stage that reaches the cap, fits there at its true level, its form and gender can become it) that NO producer
     # above advises to evolve -- exactly those. An evolve tag and No Evolve never sit on one copy.
+    # (2026-11-15) ONE tag for both leagues: the union of the two league sets, exactly.
+    _mx = _gt._maxcp_fn()
+    _want = set()
     for _lbl, _cap in (('GL', _gt.GL_CAP), ('UL', _gt.UL_CAP)):
-        _mx = _gt._maxcp_fn()
         _via5 = lambda sid, _c=_cap: bool(sid) and _mx(sid) > _c + _gt.VIABILITY_MARGIN
-        _want = set()
         for u, r in _vis.items():
             if u in pile:
                 continue
             _ev5 = _gt.own_and_evo_rank(r, _lbl.lower(), viable=_via5, cap=_cap)[1]
             if _ev5 is not None and _ev5 <= 5 and u not in _adv:
                 _want.add(u)
-        _have = load('%s_1-5_No_Evolve' % _lbl)
-        verdict('%s 1-5 No Evolve' % _lbl, _have - _want, _want - _have,
-                '(a later stage ranks it 1-5 and it is NOT the copy to evolve -- no producer advises it)')
+    _have = load('PvP_1-5_No_Evolve')
+    verdict('PvP 1-5 No Evolve', _have - _want, _want - _have,
+            '(a later stage ranks it 1-5 in Great or Ultra League and it is NOT the copy to evolve -- no producer advises it)')
     if _notg:
         FAILS.append('evolve advice with no target')
         print('  *** %d kept copy(ies) advised to evolve with no target -- no evolve tag tells him: %s'
