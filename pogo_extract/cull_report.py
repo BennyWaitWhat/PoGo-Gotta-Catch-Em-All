@@ -402,7 +402,7 @@ def main():
             continue                                     # (2026-09-26) never a pile mon: the CHECK line at the top names it
         src = origin.get(u, 'old')
         if norm(u) in prev_pile:
-            still.append(desc(r, False)); continue
+            still.append((desc(r, False), why_out(r))); continue
         if src not in ('old', None) and norm(src['uid_hex']) in prev_pile:
             from_pile.append('**%s** (was %s): an extra at its new stage too; %s.' % (desc(r, False), desc(src, False), why_out(r)))
             continue
@@ -1246,16 +1246,18 @@ def hand_lines(names, total):
 
 
 def still_lines(still):
-    """The mons still in the pile from the last report: one table row per kind with its IVs, never a comma wall (2026-09-29)."""
+    """The mons still in the pile from the last report: one table row per kind with its IVs, never a comma wall (2026-09-29).
+    still = [(description, why it is in the pile NOW)] -- the verdict of THIS pass, never "same reasons as before": a rule
+    change (the XXL trim, a new cut-off) can keep a mon in the pile for a DIFFERENT reason (H05-11). 2026-11-15: the table
+    had no reason at all, so three Meltan he left in the tag read as unexplained."""
     g = collections.OrderedDict()
-    for d in still:
+    for d, w in still:
         m = re.match(r'^(\d+)% (.+)$', d)
-        g.setdefault(m.group(2) if m else d, []).extend([int(m.group(1))] if m else [])
-    # "same reasons as before" was never checked -- a rule change (the XXL trim, a new cut-off) can keep a mon in the pile
-    # for a DIFFERENT reason (H05-11): say only what is known, that it was in the last pile and is still in the bag
+        g.setdefault((m.group(2) if m else d, w), []).extend([int(m.group(1))] if m else [])
     out = ['Still here from last time: %d mon%s, in the last pile too and not released yet.' % (len(still), '' if len(still) == 1 else 's'), '',
-           '| In the pile | IVs |', '|---|---|']
-    out += ['| %s | %s |' % (k, ', '.join('%d%%' % v for v in sorted(ivs, reverse=True)) or '-') for k, ivs in g.items()]
+           '| In the pile | IVs | Why |', '|---|---|---|']
+    out += ['| %s | %s | %s |' % (k, ', '.join('%d%%' % v for v in sorted(ivs, reverse=True)) or '-', w.replace('|', '/'))
+            for (k, w), ivs in g.items()]
     return out + ['']                   # a table swallows the next line unless a blank line ends it
 
 
@@ -1436,9 +1438,11 @@ def _selftest():
     assert got[3:5] == ['| In the pile | You keep instead |', '|---|---|'] and len(got) == 5 + 3, got
     assert got[5] == '| 91% Bulbasaur | 98% |' and got[6] == '| Cyndaquil x2 (71%, 64%) | 96%, 91%, 89% |', got
     assert fodder_lines([('Alolan Graveler', [36], '91%')]) == ['', 'Just-caught fodder (1), below what you keep: **36% Alolan Graveler** -- you keep 91%.']
-    st = still_lines(['91% Bulbasaur', '71% Cyndaquil', '64% Cyndaquil', '62% shadow Dialga'])
-    assert st[0] == 'Still here from last time: 4 mons, in the last pile too and not released yet.' and st[2:4] == ['| In the pile | IVs |', '|---|---|'], st
-    assert st[4:7] == ['| Bulbasaur | 91% |', '| Cyndaquil | 71%, 64% |', '| shadow Dialga | 62% |'] and st[7:] == [''], st
+    st = still_lines([('91% Bulbasaur', 'you keep 98%'), ('71% Cyndaquil', 'you keep 96%, 91%'), ('64% Cyndaquil', 'you keep 96%, 91%'),
+                      ('62% shadow Dialga', 'you keep 93% | 91%')])
+    assert st[0] == 'Still here from last time: 4 mons, in the last pile too and not released yet.' and st[2:4] == ['| In the pile | IVs | Why |', '|---|---|---|'], st
+    assert st[4:7] == ['| Bulbasaur | 91% | you keep 98% |', '| Cyndaquil | 71%, 64% | you keep 96%, 91% |',
+                       '| shadow Dialga | 62% | you keep 93% / 91% |'] and st[7:] == [''], st
     # official names (2026-09-30): display only, and every doubt falls back to today's rendering
     global _NM
     assert _NM is not None and _NM.on, 'official_names_en.json did not load: %s' % (_pd.Names.load().error,)
