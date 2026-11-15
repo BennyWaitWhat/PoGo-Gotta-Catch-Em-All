@@ -754,10 +754,13 @@ function strongOf(pk) {   /* PokemonProto -> PokemonDisplayProto.IsStrongPokemon
   } catch (e) { return 0; }
 }
 /* a Mighty answered an encounter (any thread: no game call). Starts / extends THE MIGHTY RESERVE; one opened by hand
-   (not in E) gets its line here -- the catcher's own get theirs, with the ball chosen, in catchTick. */
+   gets its line here -- the catcher's own get theirs, with the ball chosen, in catchTick. "By hand" = no tracked
+   encounter of that species: a non-wild reply carries no encounter id, and the game parses some of them twice (11-15
+   15:09:26: an Incense Aggron the catcher itself had opened was printed "(opened by hand)" one second before its own line). */
 function mightySeen(enc, r, cls, pid) {
   MLAST = r.t;
   if (enc && E[enc]) return;
+  for (var k in E) if (E[k].pid === pid) return;
   log('MIGHTY ' + cls + ' #' + pid + ' (opened by hand) flag=' + (r.strong ? 1 : 0) + ' odds ' + oddsStr(r.p) + ' | bag Safari=' + ITEMC[7] + ' U=' + ITEMC[3] + ' G=' + ITEMC[2]);
 }
 function onEncounterOut(s) {   /* EncounterOutProto: status @0x1c, WildPokemon @0x10 -> encounterId @0x10, probs @0x20 */
