@@ -175,7 +175,11 @@ def advice(members=None, pile=None):
         # ... and where a NEEDS tag ends: 'Evolve Needs Item / Task' names the gate, not the last stage
         _far = (len(e['fixed']) == 1 and not branched and not stop and len(path(tf, key, e['fixed'][0], r['gender']) or []) > 1
                 and bool(set(e['tags']) & {'Evolve Needs Item', 'Evolve Needs Task'}))
-        if not branched and not stop and not _far and not e.get('leagues'):   # a PvP comb-up always gets its line: it names the league
+        # ALWAYS SAID (2026-11-15): a PvP comb-up (its line names the league) and every copy he can evolve NOW (its line names
+        # the copy by IVs and CP: he had just evolved a 53% shiny Geodude into a Graveler when a 44% shiny Graveler got Evolve
+        # to Final -- two Gravelers, and only the tag told them apart)
+        _now = bool(set(e['tags']) & {'Evolve to Mid', 'Evolve to Final'})
+        if not branched and not stop and not _far and not e.get('leagues') and not _now:
             continue
         base = {'uid': u, 'species': r['species_name'], 'iv': round((r['iv_total'] or 0) * 100 / 45),
                 'ivs': '/'.join('?' if r[k] is None else str(r[k]) for k in ('iv_atk', 'iv_def', 'iv_sta')), 'cp': r['cp'],
