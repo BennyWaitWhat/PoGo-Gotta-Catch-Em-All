@@ -3957,7 +3957,8 @@ _WIN_RESERVED = {'CON', 'PRN', 'AUX', 'NUL'} | {'COM%d' % i for i in range(10)} 
 # prune nor deleted by retire_tags, so the old label stays on the phone for good. The Stop names come from stop_tags.json.
 FOLD_RETIRED = ('Evolve Next', 'Stop at Mid Stage', 'Evo Best Gated', 'Evolve Shiny', 'Evolve Shiny Gated',
                 'Evolve for Size',
-                'Evo Best GL', 'Evo Best UL', 'Evo GL Rank 1-5', 'Evo UL Rank 1-5')   # THE SECOND FOLD (2026-09-30)
+                'Evo Best GL', 'Evo Best UL', 'Evo GL Rank 1-5', 'Evo UL Rank 1-5',   # THE SECOND FOLD (2026-09-30)
+                'Evolve for GL', 'Evolve for UL', 'GL 1-5 No Evolve', 'UL 1-5 No Evolve')   # one evolve tag per copy (2026-11-15)
 
 
 def _calls_named(path, callee, skip_fn=None):
@@ -4257,8 +4258,7 @@ def check_tag_vocabulary(con):
             for t in e['tags']:
                 want[t].add(u)
             lg = e['leagues']
-            rule = [gt.evolve_tag(e.get('gated'), e.get('gate'), e.get('final'))] + \
-                   [gt.SIMPLE.get('pvp_combup_%s' % x, '?%s' % x) for x in lg]
+            rule = [gt.evolve_tag(e.get('gated'), e.get('gate'), e.get('final'))]   # ONE tag per row, whatever its leagues (2026-11-15)
             why = ([] if e.get('steps') in (1, 2) else ['steps %r' % (e.get('steps'),)]) + \
                   ([] if isinstance(e.get('final'), bool) else ['final %r' % (e.get('final'),)]) + \
                   ([] if e.get('targets') else ['no target']) + \
@@ -4279,8 +4279,8 @@ def check_tag_vocabulary(con):
         if rowbad or where or diff:
             fail(BLOCK, 'evolve_advice.json and the evolve tags disagree: %s' % ' | '.join((diff + where + rowbad)[:6]),
                  'THE RULE (2026-10-25): one table, one row per copy -- gated -> Evolve Needs Item (every gate an item) or '
-                 'Evolve Needs Task, else Evolve to Final (every target ends its line) or Evolve to Mid, plus Evolve for GL / '
-                 'UL per comb-up league; never a pile mon, never a fused component; the evolve tag files are exactly the '
+                 'Evolve Needs Task, else Evolve to Final (every target ends its line) or Evolve to Mid -- ONE tag per '
+                 'row (2026-11-15); never a pile mon, never a fused component; the evolve tag files are exactly the '
                  'table. build_tagsets writes both in one pass, so a gap '
                  'is a stale or hand-edited file (or a crash between the two writes): re-run build_tagsets.py; if it '
                  'persists, granular_tags.evolve_advice and the tag files disagree.')

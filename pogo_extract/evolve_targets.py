@@ -23,7 +23,8 @@ sys.stdout.reconfigure(encoding='utf-8', errors='replace')
 ROOT = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, ROOT); sys.path.insert(0, os.path.join(ROOT, 'system', 'scripts'))
 
-EVOLVE_TAGS = ('Evolve to Mid', 'Evolve to Final', 'Evolve Needs Item', 'Evolve Needs Task', 'Evolve for GL', 'Evolve for UL')   # 2026-10-25
+EVOLVE_TAGS = ('Evolve to Mid', 'Evolve to Final', 'Evolve Needs Item', 'Evolve Needs Task')   # ONE per copy (2026-11-15)
+_LG = {'gl': 'Great League', 'ul': 'Ultra League'}   # the league a PvP comb-up is for: said in its line, no tag carries it
 # The Eevee name trick picks the eeveelution (once per account per name).
 EEVEE_NAMES = {'vaporeon': 'Rainer', 'jolteon': 'Sparky', 'flareon': 'Pyro', 'espeon': 'Sakura', 'umbreon': 'Tamao',
                'leafeon': 'Linnea', 'glaceon': 'Rea', 'sylveon': 'Kira'}
@@ -116,7 +117,8 @@ def _targets(members=None, pile=None):
     for u, e in adv.items():
         tg = list(e.get('targets') or [])
         out[norm_uid(u)] = {'tags': set(e.get('tags') or []), 'fixed': tg if len(tg) == 1 else [],
-                            'split': tuple(tg) if len(tg) > 1 else None, 'source': e.get('source')}
+                            'split': tuple(tg) if len(tg) > 1 else None, 'source': e.get('source'),
+                            'leagues': [x for x in (e.get('leagues') or []) if x in _LG]}
     return out
 
 def advice(members=None, pile=None):
@@ -173,11 +175,15 @@ def advice(members=None, pile=None):
         # ... and where a NEEDS tag ends: 'Evolve Needs Item / Task' names the gate, not the last stage
         _far = (len(e['fixed']) == 1 and not branched and not stop and len(path(tf, key, e['fixed'][0], r['gender']) or []) > 1
                 and bool(set(e['tags']) & {'Evolve Needs Item', 'Evolve Needs Task'}))
-        if not branched and not stop and not _far:
+        # ALWAYS SAID (2026-11-15): a PvP comb-up (its line names the league) and every copy he can evolve NOW (its line names
+        # the copy by IVs and CP: he had just evolved a 53% shiny Geodude into a Graveler when a 44% shiny Graveler got Evolve
+        # to Final -- two Gravelers, and only the tag told them apart)
+        _now = bool(set(e['tags']) & {'Evolve to Mid', 'Evolve to Final'})
+        if not branched and not stop and not _far and not e.get('leagues') and not _now:
             continue
         base = {'uid': u, 'species': r['species_name'], 'iv': round((r['iv_total'] or 0) * 100 / 45),
                 'ivs': '/'.join('?' if r[k] is None else str(r[k]) for k in ('iv_atk', 'iv_def', 'iv_sta')), 'cp': r['cp'],
-                'gender': r['gender'], 'tags': sorted(e['tags']), 'src': sid, 'key': key,
+                'gender': r['gender'], 'tags': sorted(e['tags']), 'leagues': list(e.get('leagues') or []), 'src': sid, 'key': key,
                 'own': sorted(_own) if tf is not tform else None, 'stop': stop, 'luck': luck, 'source': e.get('source'),
                 'ivpick': tyrogue_outcomes(r['iv_atk'], r['iv_def'], r['iv_sta']) if sid == 'tyrogue' else None}
         if e['fixed']:
@@ -282,7 +288,7 @@ def lines(adv=None):
         # WHICH COPY (2026-09-30): two 76% Smolivs printed the same line, so the second read as "standing, unchanged" --
         # the IVs and CP name the copy he can find in the game (and a Dolliv still wearing the tag reads as done)
         who = '%s %d%%%s' % (a['species'], a['iv'], g) + (' %s CP %s' % (a['ivs'], a.get('cp') or '?') if a.get('ivs') else '')
-        out.append('%s (%s) -> %s%s%s' % (who, ', '.join(a['tags']), what, ('  [needs: %s]' % how) if how else '',
+        out.append('%s (%s) -> %s%s%s' % (who, ', '.join(list(a['tags']) + ['for ' + _LG[x] for x in a.get('leagues') or []]), what, ('  [needs: %s]' % how) if how else '',
                                           '  [a shiny you have never registered]' if _new and not _altnew else ''))
     return out
 
