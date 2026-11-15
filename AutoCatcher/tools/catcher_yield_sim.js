@@ -155,4 +155,62 @@ function withFields(api) {
   api.call('onSpinOut', spinOk); api.call('onSpinOut', spinOk);
   check('one spin reply, two hooks -> 1 spin', api.get('SPIN.ok'), 1);
 }
+// 8. Mighty Pokemon (Benny 11-15): the best odds the bag holds -- Safari Ball first when the server lists it, then Ultra /
+//    Great / Poke with no reserve; nothing else is ever thrown a Safari Ball; a refused Safari Ball is not thrown for 5 min
+{
+  const api = load();
+  api.set('M.useItem', {}); api.set('call', () => NUL); api.set('i32arg', () => NUL);
+  const mOdds = { 1: 0.005, 2: 0.008, 3: 0.011, 7: 0.15 }, mNoSafari = { 1: 0.005, 2: 0.008, 3: 0.011 };
+  check('mighty: the game flag', api.call('mightyOf', { strong: 1, p: { 1: 0.5 } }, 598), 1);
+  check('mighty: Poke odds under 2%', api.call('mightyOf', { strong: 0, p: mNoSafari }, 598), 1);
+  check('ordinary spawn is not mighty', api.call('mightyOf', { strong: 0, p: { 1: 0.02, 2: 0.03, 3: 0.04 } }, 143), 0);
+  check('reply of another species: not mighty', api.call('mightyOf', { strong: 1, p: mNoSafari, sp: 598 }, 821), 0);
+  api.set('ITEMC', { 1: 100, 2: 5, 3: 5, 7: 3, 701: 2, 705: 0 });
+  check('mighty -> Safari Ball', api.call('pickBall', mOdds, false, 1), 7);
+  check('mighty, Safari not listed by the server -> Ultra from the reserve', api.call('pickBall', mNoSafari, false, 1), 3);
+  api.set('ITEMC[7]', 0);
+  check('mighty, no Safari left -> Ultra from the reserve', api.call('pickBall', mOdds, false, 1), 3);
+  api.set('ITEMC', { 1: 100, 2: 0, 3: 0, 7: 0 });
+  check('mighty, only Poke Balls -> Poke', api.call('pickBall', mOdds, false, 1), 1);
+  api.set('ITEMC', { 1: 100, 2: 5, 3: 5, 7: 50, 701: 2, 705: 0 });
+  check('ordinary hard catch: never a Safari Ball, reserve kept', api.call('pickBall', { 1: 0.1, 2: 0.15, 3: 0.2, 7: 0.9 }, false, 0), 1);
+  api.set('ITEMC', { 1: 100, 2: 100, 3: 100, 7: 50 });
+  check('ordinary catches: never a Safari Ball', [api.call('pickBall', { 1: 0.5, 2: 0.6, 3: 0.7, 7: 0.99 }, false, 0),
+    api.call('pickBall', { 1: 0.1, 2: 0.15, 3: 0.2, 7: 0.9 }, false, 0), api.call('pickBall', { 1: 0.1, 2: 0.15, 3: 0.2, 7: 0.9 }, true, 0)], [2, 3, 3]);
+  api.call('safariRefused', NOW, 'test');
+  check('Safari refused -> Ultra for 5 min', api.call('pickBall', mOdds, false, 1), 3);
+  api.set('SAFARI_OFF', NOW - 1);
+  check('5 min later -> Safari again', api.call('pickBall', mOdds, false, 1), 7);
+  api.set('ITEMC', { 1: 100, 2: 5, 3: 5, 7: 0, 701: 2, 705: 0 });
+  check('Razz reserve: used on a mighty, kept otherwise', [api.call('berryFor', { probs: mNoSafari, mighty: 1 }), api.call('berryFor', { probs: { 1: 0.1, 2: 0.2, 3: 0.3 } })], [701, 0]);
+  // the flag: PokemonProto -> display pointer @OFF.pkDisp -> byte @OFF.dStrong; the wild reply reads it through WildPokemonProto @OFF.wPk
+  const disp = (v) => ({ isNull: () => false, add: (m) => ({ readU8: () => (m === 0x64 ? v : 0) }) });
+  const pkp = (v) => ({ isNull: () => false, add: (n) => ({ readPointer: () => (n === 0xd8 ? disp(v) : NUL) }) });
+  check('flag unreadable (no offsets) -> 0', api.call('strongOf', pkp(1)), 0);
+  api.set('OFF.pkDisp', 0xd8); api.set('OFF.dStrong', 0x64); api.set('OFF.wPk', 0x28);
+  check('flag read from the display', [api.call('strongOf', pkp(1)), api.call('strongOf', pkp(0)), api.call('strongOf', NUL)], [1, 0, 0]);
+  const wild = { isNull: () => false, add: (n) => ({ readU64: () => ({ compare: () => 1, toString: () => '888' }), readPointer: () => (n === 0x28 ? pkp(1) : NUL) }) };
+  const reply = { add: (n) => ({ readPointer: () => (n === 0x10 ? wild : NUL), readS32: () => (n === 0x1c ? 1 : 0) }) };
+  api.set('readProbs', () => mOdds); api.set('uint64', (x) => x);
+  api.call('onEncounterOut', reply);
+  check('wild reply carries the flag + odds', [api.get('RESP')['888'].strong, api.get('RESP')['888'].p[7]], [1, 0.15]);
+}
+// 9. the Mighty reserve: while Mighty Pokemon are around (one in the last 30 min), ordinary spawns leave the last 30
+//    Great Balls / Ultra Balls / Razz for them; the Mighty and the priority species are not held back; it ends by itself
+{
+  const api = load();
+  api.set('M.useItem', {}); api.set('call', () => NUL); api.set('i32arg', () => NUL);
+  const hard = { 1: 0.1, 2: 0.2, 3: 0.3 }, easy = { 1: 0.5, 2: 0.6, 3: 0.7 }, mOdds = { 1: 0.005, 2: 0.008, 3: 0.011 };
+  const three = () => [api.call('pickBall', easy, false, 0), api.call('pickBall', hard, false, 0), api.call('berryFor', { probs: hard })];
+  api.set('ITEMC', { 1: 100, 2: 20, 3: 20, 7: 0, 701: 20, 705: 0 });
+  check('no Mighty around: the old order', three(), [2, 3, 701]);
+  api.set('MLAST', NOW - 60000);
+  check('Mighty around: ordinary spawns get Poke Balls, no Razz', three(), [1, 1, 0]);
+  check('Mighty around: a Mighty and a priority species still get Ultra', [api.call('pickBall', mOdds, false, 1), api.call('pickBall', hard, true, 0)], [3, 3]);
+  api.set('ITEMC', { 1: 100, 2: 31, 3: 31, 7: 0, 701: 31, 705: 0 });
+  check('above the reserve: ordinary spawns use them again', three(), [2, 3, 701]);
+  api.set('ITEMC', { 1: 100, 2: 20, 3: 20, 7: 0, 701: 20, 705: 0 });
+  api.set('MLAST', NOW - 31 * 60000);
+  check('no Mighty for 30 min: the old order is back', [api.call('mightyAround'), three()], [false, [2, 3, 701]]);
+}
 process.exit(failed ? 1 : 0);

@@ -60,6 +60,20 @@ CFG = {
                                           # no Razz, while the bag has one (floor 0). Off 09-30 -> 11-08 ("pause autocatcher use
                                           # for it now": Pokemod's Pinap Master fed them too, stock 0-6; on 11-08 nothing else did)
     "razz": True, "razzFloor": 5, "razzThresh": 0.45,   # Razz (701) only when the throw is hard
+    # MIGHTY POKEMON (Benny 2026-11-15, Wild Area: "you need to catch all pokemon ... youre not catching the mighty pokemon";
+    # on Safari Balls: "dont waste em"). A Mighty breaks out of almost every ball and runs after 1-2 throws (11-15 14:39-14:50,
+    # 26 of them: Ultra Ball 12 of 17 caught, Poke Ball 1 of 9 once the Ultra Balls were down to the reserve). So a Mighty gets
+    # the best odds the bag holds: the GO Safari Ball (item 7, event-only, gone when the event ends) when the server lists it
+    # for that encounter, then Ultra, Great, Poke -- and the ball / Razz reserve ("floors") does not hold for it. Nothing else
+    # is ever thrown a Safari Ball. Mighty = the game's own flag in the encounter reply (PokemonDisplayProto.IsStrongPokemon),
+    # or a Poke Ball's odds under mightyP (the server sends 0.005 for a Mighty; an ordinary spawn's lowest is ~0.02).
+    "mightyP": 0.02,
+    # THE MIGHTY RESERVE: on 11-15 the Ultra Balls went 274 -> 5 on ordinary spawns (45 Ultra throws in 16 min against 17 at
+    # Mighty), so the Mighty got Poke Balls. While Mighty Pokemon are around (one seen in the last mightyMin minutes), ordinary
+    # spawns leave the last mightyKeep Great Balls, Ultra Balls and Razz Berries for them (an ordinary spawn rarely runs:
+    # Poke-Ball odds 0.10-0.28 were caught 19 of 19). Priority species (Galarian birds, Gimmighoul) keep their best-ball rule.
+    # No Mighty for mightyMin minutes = the event is over = the old ball order, by itself.
+    "mightyKeep": 30, "mightyMin": 30,
     # 706 Golden Razz / 708 Silver Pinap: never touched (standing instruction) -- not even in the item list.
     # SKIP LIST (walk() runs finish(enc, 'legendary') BEFORE priority and before any catch): every species the client game master
     # classes LEGENDARY / MYTHIC / ULTRA_BEAST; a missing one is auto-thrown at, up to 12 balls. 2026-09-30 (Benny: "fix it"): added
@@ -232,7 +246,7 @@ function encOf(o) { var r = call(method(o, 'get_EncounterId', 0), o, []); return
 /* ---------------- state ---------------- */
 var K = {}, M = {}, OFF = {}, PBT_VT = false;
 var CFG = {catch: false, spin: false, tap: false, perfect: false, apples: false, appleSpecies: {}, openMs: 667, maxOpen: 6, nearWait: 0, nearM: 55, readyMs: 150, thresh: 0.28,
-           ballOrder: [2, 1, 3], floors: {1: 5, 2: 5, 3: 5}, pinap: true, pinapFloor: 20, razz: true, razzFloor: 5, razzThresh: 0.45,
+           ballOrder: [2, 1, 3], floors: {1: 5, 2: 5, 3: 5}, pinap: true, pinapFloor: 20, razz: true, razzFloor: 5, razzThresh: 0.45, mightyP: 0.02, mightyKeep: 30, mightyMin: 30,
            legendary: {}, priority: {}, order: 'fifo'};
 var S = {ready: false, stale: 'first attach', nextLookup: 0, tries: 0, msvc: NULL, ib: NULL, avatar: NULL, ps: NULL};
 /* STALE MAP (2026-09-24 22:27-22:46: 20 min of vis=0 while attached, 3 Pokemon the second it re-attached). The game
@@ -245,12 +259,12 @@ var E = {}, NE = 0, DONE = {}, DONEQ = [], PEND = [], NWQ = [], RESP = {}, REQQ 
 var ITEMC = {}, LASTWORK = 0, LASTWALK = 0, LASTOPEN = 0, LASTPOLL = 0, VIS = 0;
 var HOLD = 0, HOLDWHY = '', FLEESTREAK = 0, LASTCATCHMS = 0;
 var ST = {caught: 0, fled: 0, esc: 0, miss: 0, err: 0, manual: 0, opened: 0, thrown: 0, dust: 0, candy: 0, xp: 0,
-          fedPinap: 0, fedRazz: 0, holds: 0, skip: {}, errs: 0};
+          fedPinap: 0, fedRazz: 0, holds: 0, skip: {}, errs: 0, mSeen: 0, mCaught: 0, mFled: 0, safari: 0};
 var SPIN = {next: 0, total: 0, inRange: 0, cooling: 0, spins: 0, ok: 0, xp: 0, items: 0, fail: {}}, SPUN = {}, SPINNER_OFF = -1, SPINM = {};
 var OUT = {log: [], done: [], tap: [], revealed: [], led: [], pos: []};
 var WALK_MS = 400, BERRY_MS = 800, RETHROW_MS = 900;   /* reply -> first throw = CFG.readyMs */
 var WILD = 'WildMapPokemon', DISK = 'TroyDiskMapPlacePokemon', INCENSE = 'IncenseMapPokemon';
-var POLL_IDS = [1, 2, 3, 701, 705];
+var POLL_IDS = [1, 2, 3, 7, 701, 705];   /* 7 = GO Safari Ball (ITEM_WILD_BALL): event-only, thrown at Mighty Pokemon only */
 function log(s) { OUT.log.push(s); if (OUT.log.length > 200) OUT.log.shift(); }
 function bump(o, k) { o[k] = (o[k] || 0) + 1; }
 
@@ -370,10 +384,33 @@ function pollCounts() {
   for (var i = 0; i < ids.length; i++) { var v = s32(call(M.itemCount, S.ib, [i32arg(ids[i])])); if (v >= 0) ITEMC[ids[i]] = v; }
 }
 function have(item, floor) { var c = ITEMC[item]; return c !== undefined && c > floor; }
-function ballOk(b) { var c = ITEMC[b]; if (c === undefined) return b === 1; return c > (CFG.floors[b] || 0); }
-function pickBall(pr, prio) {
+var MLAST = 0;   /* when the last Mighty Pokemon answered an encounter (ours or opened by hand) */
+function mightyAround() { return MLAST > 0 && Date.now() - MLAST < CFG.mightyMin * 60000; }
+function keepFor(floor) { return mightyAround() ? Math.max(floor, CFG.mightyKeep) : floor; }   /* THE MIGHTY RESERVE */
+function ballOk(b, plain) {   /* plain = the standing floor only (priority species); else Great / Ultra also keep the Mighty reserve */
+  var c = ITEMC[b]; if (c === undefined) return b === 1;
+  var f = CFG.floors[b] || 0; return c > ((plain || b === 1) ? f : keepFor(f));
+}
+/* MIGHTY (see CFG "mightyP"): the best odds among Safari / Ultra / Great / Poke that the bag holds (no reserve) and the
+   server lists. SAFARI_OFF: a Safari throw the server did not answer or refused -> none for 5 min (a Mighty then gets Ultra). */
+var MIGHTY_BALLS = [7, 3, 2, 1], SAFARI_OFF = 0;
+function safariRefused(now, what) { SAFARI_OFF = now + 300000; log('SAFARI BALL ' + what + ' -- not throwing them for 5 min'); }
+function oddsStr(pr) { if (!pr) return 'none'; var o = []; for (var k in pr) o.push(k + ':' + pr[k].toFixed(3)); return o.join(' '); }
+function mightyOf(r, pid) {   /* r = an encounter reply {p, strong, sp}: is this a Mighty Pokemon? */
+  if (r.sp > 0 && r.sp !== pid) return 0;   /* a non-wild reply matched to another species: not this one's odds */
+  return (r.strong || (r.p && r.p[1] !== undefined && r.p[1] < CFG.mightyP)) ? 1 : 0;
+}
+function pickBall(pr, prio, mighty) {
   var b, i, o = CFG.ballOrder;
-  if (prio) { for (b = 3; b >= 1; b--) if (ballOk(b)) return b; return 0; }
+  if (mighty && pr) {
+    var mb = 0, mp = -1;
+    for (i = 0; i < MIGHTY_BALLS.length; i++) {
+      b = MIGHTY_BALLS[i]; if (b === 7 && Date.now() < SAFARI_OFF) continue;
+      if (ITEMC[b] > 0 && pr[b] !== undefined && pr[b] > mp) { mp = pr[b]; mb = b; }
+    }
+    if (mb) return mb;
+  }
+  if (prio) { for (b = 3; b >= 1; b--) if (ballOk(b, true)) return b; return 0; }
   if (pr) {
     for (i = 0; i < o.length; i++) { b = o[i]; if (ballOk(b) && pr[b] !== undefined && pr[b] >= CFG.thresh) return b; }
     var best = 0, bp = -1; for (i = 0; i < o.length; i++) { b = o[i]; if (ballOk(b) && pr[b] !== undefined && pr[b] > bp) { bp = pr[b]; best = b; } }
@@ -384,8 +421,8 @@ function pickBall(pr, prio) {
 }
 function berryFor(e) {
   if (!M.useItem) return 0;
-  var b = pickBall(e.probs, e.prio), p = (e.probs && b && e.probs[b] !== undefined) ? e.probs[b] : -1;
-  if (CFG.razz && p >= 0 && p < CFG.razzThresh && have(701, CFG.razzFloor)) return 701;
+  var b = pickBall(e.probs, e.prio, e.mighty), p = (e.probs && b && e.probs[b] !== undefined) ? e.probs[b] : -1;
+  if (CFG.razz && p >= 0 && p < CFG.razzThresh && have(701, e.mighty ? 0 : keepFor(CFG.razzFloor))) return 701;
   if (CFG.pinap && have(705, CFG.pinapFloor)) return 705;
   return 0;
 }
@@ -448,7 +485,7 @@ function ledgerEnd(e, enc, why, now) {
                 lat: (e.lat !== null && e.lat !== undefined) ? +e.lat.toFixed(6) : null, lng: (e.lng !== null && e.lng !== undefined) ? +e.lng.toFixed(6) : null,
                 exp: e.exp || null, tx: e.tx || null, tth: e.tth, d0: e.d0, dT: e.dT === undefined ? null : e.dT, d1: (me && e.lat !== null) ? Math.round(meters(me.lat, me.lng, e.lat, e.lng)) : null,
                 tO: e.tO || null, tR: e.tR || null, rs: e.rs, tT: e.tT || null, tC: e.tC || null, n: e.att, opens: e.opens,
-                b: e.ball || null, pr: p, ord: CFG.order, om: CFG.openMs, nw: CFG.nearWait, nwt: e.nwait || 0, rm: CFG.readyMs, r: why, t1: now});
+                b: e.ball || null, pr: p, m: e.mighty ? 1 : 0, ord: CFG.order, om: CFG.openMs, nw: CFG.nearWait, nwt: e.nwait || 0, rm: CFG.readyMs, r: why, t1: now});
   } catch (x) { ST.errs++; }
 }
 /* DESPAWN-FIRST (an A/B arm, Benny 2026-11-07): open the queue soonest-to-despawn first. Under 1.5 s left (the median
@@ -554,8 +591,9 @@ function feed(e, o, item) {
   if (item === 705) ST.fedPinap++; else ST.fedRazz++;
 }
 function throwAt(e, enc, o, now) {
-  var ball = pickBall(e.probs, e.prio);
+  var ball = pickBall(e.probs, e.prio, e.mighty);
   if (!ball) { e.st = 'ready'; e.due = now + 5000; bump(ST.skip, 'noballs'); return; }
+  if (ball === 7) ST.safari++;
   var pb = il().newObject(K.PokeballThrow);
   pb.add(0x10).writeS32(ball); pb.add(0x14).writeFloat(0.02 + Math.random() * 0.10);   /* reticle: Excellent */
   pb.add(0x18).writeU8(1); pb.add(0x19).writeU8(1); pb.add(0x1a).writeU8(0);           /* curveball, hit */
@@ -572,7 +610,8 @@ function outcome(e, enc, r, now) {
   e.tC = r.t || now;
   var p =(e.probs && e.probs[e.ball] !== undefined) ? e.probs[e.ball] : -1;
   var line = e.cls.replace('MapPokemon', '').replace('MapPlacePokemon', '') + ' #' + e.pid + ' ball=' + e.ball + ' p=' + (p < 0 ? '?' : p.toFixed(2)) +
-             ' att=' + e.att + ' berry=' + (e.fedWith || 0) + ' ' + ((now - e.tOpen) / 1000).toFixed(1) + 's' + (e.apple ? ' [apple]' : '');
+             ' att=' + e.att + ' berry=' + (e.fedWith || 0) + ' ' + ((now - e.tOpen) / 1000).toFixed(1) + 's' + (e.apple ? ' [apple]' : '') + (e.mighty ? ' [mighty]' : '');
+  if (e.mighty && r.st === 1) ST.mCaught++; else if (e.mighty && r.st === 3) ST.mFled++;
   if (r.st === 1) {
     ST.caught++; FLEESTREAK = 0; LASTCATCHMS = now - e.tOpen;
     ST.dust += r.dust; ST.candy += r.candy; ST.xp += r.xp;
@@ -587,7 +626,12 @@ function outcome(e, enc, r, now) {
   } else if (r.st === 2 || r.st === 4) {
     if (r.st === 2) ST.esc++; else ST.miss++;
     if (e.att < (e.prio ? 60 : 12)) { e.st = 'ready'; e.due = now + RETHROW_MS; } else finish(enc, 'maxthrows');
-  } else { ST.err++; log('CATCHERR ' + r.st + ' ' + line); finish(enc, 'catcherr'); }
+  } else {
+    ST.err++; log('CATCHERR ' + r.st + ' ' + line);
+    /* a refused Safari Ball is not this Pokemon's end: throw again with the next best ball */
+    if (e.ball === 7 && e.att < 3) { safariRefused(now, 'refused (status ' + r.st + ')'); e.st = 'ready'; e.due = now + RETHROW_MS; }
+    else finish(enc, 'catcherr');
+  }
 }
 function notInRange(e, st) { return (e.cls === WILD && st === 5) || (e.cls === DISK && st === 3); }
 function bagFull(e, st) { return (e.cls === WILD && st === 7) || (e.cls === DISK && st === 5) || (e.cls === INCENSE && st === 3); }
@@ -601,7 +645,7 @@ function catchTick(now) {
      else is thrown while it is in the air -- the next result is then unambiguous. */
   var inflight = 0, appleInflight = false;
   for (enc in E) if (E[enc].st === 'thrown') { inflight++; if (E[enc].apple) appleInflight = true; }
-  var anyBall = ballOk(1) || ballOk(2) || ballOk(3);
+  var anyBall = ballOk(1) || ballOk(2, true) || ballOk(3, true) || ITEMC[7] > 0;   /* any throw at all possible (a Mighty may use what ordinary spawns may not) */
   if (!anyBall && fresh && now >= HOLD && PEND.length) { HOLD = now + 30000; HOLDWHY = 'out of balls (at the floors)'; ST.holds++; log('HOLD 30s: ' + HOLDWHY); holding = true; }
   if (CFG.order === 'despawn' && PEND.length > 1 && !holding) despawnFirst(now);
   for (var tries = PEND.length; tries > 0 && !holding && now - LASTOPEN >= CFG.openMs && n < CFG.maxOpen; tries--) {
@@ -636,7 +680,14 @@ function catchTick(now) {
       if (r) {
         delete RESP[enc]; e.tR = e.tR || r.t; e.rs = r.st;
         if (e.apple) log('APPLEOPEN #' + e.pid + ' enc=' + enc + ' reply status=' + r.st);
-        if (r.st === 1) { e.probs = r.p; e.st = 'ready'; e.due = now + CFG.readyMs; }
+        if (r.st === 1) {
+          e.probs = r.p; e.st = 'ready'; e.due = now + CFG.readyMs; e.mighty = mightyOf(r, e.pid);
+          if (e.mighty && !e.mlog) {   /* one line per Mighty: the flag, the odds the server gave per ball, what the bag holds */
+            e.mlog = 1; ST.mSeen++; MLAST = now;
+            log('MIGHTY ' + e.cls.replace('MapPokemon', '').replace('MapPlacePokemon', '') + ' #' + e.pid + ' flag=' + (r.strong ? 1 : 0) + ' odds ' + oddsStr(r.p) +
+                ' | bag Safari=' + ITEMC[7] + ' U=' + ITEMC[3] + ' G=' + ITEMC[2] + ' Razz=' + ITEMC[701] + ' -> ball ' + pickBall(e.probs, e.prio, 1));
+          }
+        }
         else if (notInRange(e, r.st) && e.opens < 3) { e.st = 'new'; e.retryAt = now + 4000; PEND.push(enc); }
         else if (bagFull(e, r.st)) { HOLD = now + 60000; HOLDWHY = 'Pokemon storage is full'; ST.holds++; log('HOLD 60s: ' + HOLDWHY); e.st = 'new'; e.retryAt = now + 60000; PEND.push(enc); }
         else if (notInRange(e, r.st) || r.st === 0) { log('ENCRETRY ' + e.cls + ' #' + e.pid + ' status=' + r.st + ' (retry in 20 s)'); finish(enc, r.st ? 'notinrange' : 'srverror'); }
@@ -660,6 +711,7 @@ function catchTick(now) {
         else { e.st = 'ready'; e.due = now + 800; }
       }
       else if (now - e.tThrow > 10000) { log('NORESULT ' + e.cls + ' #' + e.pid + ' ball=' + e.ball + (e.apple ? ' [apple]' : '') + ' (retry in 20 s)');
+        if (e.ball === 7) safariRefused(now, 'got no answer');
         for (var qi = REQQ.length - 1; qi >= 0; qi--) if (REQQ[qi].enc === enc) REQQ.splice(qi, 1);
         finish(enc, 'noresult'); }
     } else if (!holding && (e.st === 'ready' || e.st === 'fed') && now >= e.due) {
@@ -695,11 +747,26 @@ function lootTotal(lp) {
         var t = 0; for (var i = 0; i < cnt; i++) { var it = arr.add(0x20 + i * 8).readPointer(); if (!it.isNull()) { var c = it.add(0x10).readS32(); if (c > 0 && c < 10000) t += c; } } return t; } catch (e) { return 0; }
 }
 var LASTNW = {t: 0, sig: ''}, LASTREQ = {enc: '', t: 0}, LASTRES = {sig: '', t: 0};
+function strongOf(pk) {   /* PokemonProto -> PokemonDisplayProto.IsStrongPokemon: the game's Mighty flag (any thread: memory reads) */
+  try {
+    if (!(OFF.pkDisp >= 0) || !(OFF.dStrong >= 0) || !pk || pk.isNull()) return 0;
+    var d = pk.add(OFF.pkDisp).readPointer(); return (!d.isNull() && d.add(OFF.dStrong).readU8()) ? 1 : 0;
+  } catch (e) { return 0; }
+}
+/* a Mighty answered an encounter (any thread: no game call). Starts / extends THE MIGHTY RESERVE; one opened by hand
+   (not in E) gets its line here -- the catcher's own get theirs, with the ball chosen, in catchTick. */
+function mightySeen(enc, r, cls, pid) {
+  MLAST = r.t;
+  if (enc && E[enc]) return;
+  log('MIGHTY ' + cls + ' #' + pid + ' (opened by hand) flag=' + (r.strong ? 1 : 0) + ' odds ' + oddsStr(r.p) + ' | bag Safari=' + ITEMC[7] + ' U=' + ITEMC[3] + ' G=' + ITEMC[2]);
+}
 function onEncounterOut(s) {   /* EncounterOutProto: status @0x1c, WildPokemon @0x10 -> encounterId @0x10, probs @0x20 */
   var pk = s.add(0x10).readPointer(); if (pk.isNull()) return;
   var ev = pk.add(0x10).readU64(); if (ev.compare(uint64(0)) === 0) return;
   var est = s.add(0x1c).readS32(); if (est === 0) return;   /* status not set yet: a half-filled object */
-  RESP[ev.toString()] = {st: est, p: readProbs(s.add(0x20).readPointer()), t: Date.now()};
+  var wp = OFF.wPk >= 0 ? pk.add(OFF.wPk).readPointer() : NULL, r = {st: est, p: readProbs(s.add(0x20).readPointer()), t: Date.now(), strong: strongOf(wp)};
+  RESP[ev.toString()] = r;
+  if (est === 1 && mightyOf(r, 0)) mightySeen(ev.toString(), r, 'Wild', (OFF.pkId >= 0 && !wp.isNull()) ? wp.add(OFF.pkId).readS32() : 0);
   return true;
   /* (a non-wild class answered through the standard proto: its queued entry is dropped at the next non-wild reply) */
 }
@@ -709,8 +776,8 @@ function onEncounterOut(s) {   /* EncounterOutProto: status @0x1c, WildPokemon @
 var NWOFF = {};   /* proto class name -> {res, pk, cp} */
 function onOtherEncounterOut(s, pn) {
   var o = NWOFF[pn] || {res: 0x10, pk: -1, cp: 0x20}, now = Date.now();
-  var st = s.add(o.res).readS32(), p = readProbs(s.add(o.cp).readPointer()), sp = -1;
-  if (o.pk >= 0 && OFF.pkId >= 0) { try { var pk = s.add(o.pk).readPointer(); if (!pk.isNull()) sp = pk.add(OFF.pkId).readS32(); } catch (e) {} }
+  var st = s.add(o.res).readS32(), p = readProbs(s.add(o.cp).readPointer()), sp = -1, strong = 0;
+  if (o.pk >= 0 && OFF.pkId >= 0) { try { var pk = s.add(o.pk).readPointer(); if (!pk.isNull()) { sp = pk.add(OFF.pkId).readS32(); strong = strongOf(pk); } } catch (e) {} }
   var sig = pn + '|' + st + '|' + sp + '|' + JSON.stringify(p);
   if (sig === LASTNW.sig && now - LASTNW.t < 300) return;   /* same reply through a second MergeFrom overload */
   LASTNW = {sig: sig, t: now};
@@ -718,7 +785,9 @@ function onOtherEncounterOut(s, pn) {
   for (i = NWQ.length - 1; i >= 0; i--) { var q = NWQ[i], e = E[q.enc]; if (now - q.t > 10000 || !e || e.st !== 'open' || RESP[q.enc]) NWQ.splice(i, 1); }
   for (i = 0; i < NWQ.length && best < 0; i++) if (sp > 0 && E[NWQ[i].enc].pid === sp) best = i;
   if (best < 0 && NWQ.length) best = 0;
-  if (best >= 0) { RESP[NWQ[best].enc] = {st: st, p: p, t: now}; NWQ.splice(best, 1); }
+  var nr = {st: st, p: p, t: now, strong: strong, sp: sp};
+  if (st === 1 && mightyOf(nr, sp)) mightySeen(best >= 0 ? NWQ[best].enc : '', nr, pn.replace('EncounterOutProto', ''), sp);
+  if (best >= 0) { RESP[NWQ[best].enc] = nr; NWQ.splice(best, 1); }
   return true;
 }
 function onCatchReq(s) {   /* CatchPokemonProto: encounterId @0x10 (ours and manual throws, in send order) */
@@ -1107,7 +1176,7 @@ function pump(self) {
 
 function applyCfg(c) {
   if (!c) return;
-  ['catch', 'spin', 'tap', 'perfect', 'apples', 'openMs', 'maxOpen', 'nearWait', 'nearM', 'readyMs', 'thresh', 'ballOrder', 'pinap', 'pinapFloor', 'razz', 'razzFloor', 'razzThresh', 'order'].forEach(function (k) { if (c[k] !== undefined) CFG[k] = c[k]; });
+  ['catch', 'spin', 'tap', 'perfect', 'apples', 'openMs', 'maxOpen', 'nearWait', 'nearM', 'readyMs', 'thresh', 'ballOrder', 'pinap', 'pinapFloor', 'razz', 'razzFloor', 'razzThresh', 'order', 'mightyP', 'mightyKeep', 'mightyMin'].forEach(function (k) { if (c[k] !== undefined) CFG[k] = c[k]; });
   if (c.floors) CFG.floors = {1: c.floors['1'], 2: c.floors['2'], 3: c.floors['3']};
   if (c.legendary) { CFG.legendary = {}; c.legendary.forEach(function (d) { CFG.legendary[d] = 1; }); }
   if (c.priority) { CFG.priority = {}; c.priority.forEach(function (d) { CFG.priority[d] = 1; }); }
@@ -1189,6 +1258,15 @@ rpc.exports = {
     });
     var PKP = findClasses(['holo-protos.dll'], ['PokemonProto'], {}).PokemonProto;
     OFF.pkId = PKP ? off1(PKP, ['PokemonId', 'pokemonId_']) : -1;
+    /* the Mighty flag: WildPokemonProto.pokemon -> PokemonProto.pokemonDisplay -> PokemonDisplayProto.IsStrongPokemon */
+    var MK = findClasses(['holo-protos.dll'], ['PokemonDisplayProto', 'WildPokemonProto'], {});
+    var byType = function (k, key, re) { return fieldOffWhere(k, key, function (n, t) { return re.test(t); }); };
+    OFF.pkDisp = PKP ? off1(PKP, ['PokemonDisplay', 'pokemonDisplay_']) : -1;
+    if (OFF.pkDisp < 0 && PKP) OFF.pkDisp = byType(PKP, 'mdisp', /(^|\.)PokemonDisplayProto$/);
+    OFF.dStrong = MK.PokemonDisplayProto ? off1(MK.PokemonDisplayProto, ['IsStrongPokemon', 'isStrongPokemon_']) : -1;
+    OFF.wPk = MK.WildPokemonProto ? off1(MK.WildPokemonProto, ['Pokemon', 'pokemon_']) : -1;
+    if (OFF.wPk < 0 && MK.WildPokemonProto) OFF.wPk = byType(MK.WildPokemonProto, 'mwpk', /(^|\.)PokemonProto$/);
+    st.mighty = {wildPokemon: OFF.wPk, display: OFF.pkDisp, flag: OFF.dStrong};
     st.otherTypes = [];
     outs.forEach(function (x) {
       var nm = x[0], kl = x[1];
@@ -1245,7 +1323,7 @@ rpc.exports = {
     return {frame: GATE ? GATE.readS64().toNumber() : 0, ready: S.ready, stale: S.stale, st: ST, census: CENSUS, hidden: HIDLAST, hidNear: HIDNEARLAST, items: ITEMC, vis: VIS, tracked: NE, pend: PEND.length,
             hold: Math.max(0, Math.round((HOLD - Date.now()) / 1000)), holdWhy: HOLDWHY, lastCatchMs: LASTCATCHMS,
             spin: {total: SPIN.total, inRange: SPIN.inRange, cooling: SPIN.cooling, spins: SPIN.spins, ok: SPIN.ok, xp: SPIN.xp, items: SPIN.items, fail: SPIN.fail},
-            limit: limitState(Date.now()), srv: SRV, via: VIA, order: CFG.order, openMs: CFG.openMs,
+            limit: limitState(Date.now()), srv: SRV, via: VIA, order: CFG.order, openMs: CFG.openMs, mightyOn: mightyAround(),
             apples: AP.inst ? {on: !!CFG.apples, st: AP.st, cand: Object.keys(AP.cand).length, ids: APPLE_IDS, range: AP.maxDist, okD: AP.okD, failD: AP.failD < 9999 ? AP.failD : null} : null};
   },
   drain: function () { var o = OUT; OUT = {log: [], done: [], tap: [], revealed: [], led: [], pos: []}; return o; }
@@ -1536,9 +1614,11 @@ def report(w, stt, t0, base):
     c = st["caught"]
     w(f"run {int(time.time() - t0)}s | caught={c} esc={st['esc']} flee={st['fled']} manual={st['manual']} "
       f"({c / mins:.1f}/min, last {stt['lastCatchMs'] / 1000:.1f}s) | dust=+{st['dust']} candy=+{st['candy']} xp=+{st['xp']} | "
-      f"P={it.get('1', -1)} G={it.get('2', -1)} U={it.get('3', -1)} Razz={it.get('701', -1)}(fed {st['fedRazz']}) "
+      f"P={it.get('1', -1)} G={it.get('2', -1)} U={it.get('3', -1)} Safari={it.get('7', -1)} Razz={it.get('701', -1)}(fed {st['fedRazz']}) "
       f"Pinap={it.get('705', -1)}(fed {st['fedPinap']}) | vis={stt['vis']} track={stt['tracked']} pend={stt['pend']} "
       f"| spins={sp['ok']} stops={sp['total']}/{sp['inRange']}/{sp['cooling']} | skip={st['skip']} errs={st['errs']}"
+      + (f" | mighty {st.get('mCaught', 0)} caught / {st.get('mFled', 0)} fled of {st.get('mSeen', 0)}, Safari thrown {st.get('safari', 0)}"
+         if st.get("mSeen") else "")
       + (f" | HOLD {stt['hold']}s: {stt['holdWhy']}" if stt["hold"] else "")
       + apple_part(stt, it) + limit_part(stt, base, w)
       + (f" | spinfail={sp['fail']}" if sp["fail"] else ""))
@@ -1583,6 +1663,9 @@ def report(w, stt, t0, base):
     if all(0 <= n <= fl[k] for n, k in zip(balls, ("1", "2", "3"))):   # every ball type at its floor: no throw is allowed
         why = (f"out of balls: {balls[0]} Poke, {balls[1]} Great, {balls[2]} Ultra left "
                f"(it saves the last {fl['1']}/{fl['2']}/{fl['3']} for you)")
+    elif stt.get("mightyOn") and 0 <= balls[0] <= fl["1"]:   # only the Mighty reserve is left: ordinary spawns wait for Poke Balls
+        why = (f"out of Poke Balls: the {max(balls[1], 0)} Great and {max(balls[2], 0)} Ultra left are kept for Mighty Pokemon "
+               f"(the last {CFG['mightyKeep']} of each while they are around)")
     else:
         why = stt["holdWhy"] if stt["hold"] else ""
     via = stt.get("via") or {}
@@ -1655,7 +1738,7 @@ def session_loop(w, done_ids, base):
     base.update(mva=0, mvm=0, whykind="")
     w(f"reply types hooked: {', '.join(st.get('otherTypes') or [])}")
     w(f"attached pid={pid} age={age and int(age)}s in {time.time() - t_att:.1f}s | hooks={st.get('hooks')} "
-      f"award={st.get('award')} bag={st.get('bag', 'ItemBag')} berries={st.get('berries')} tap={st.get('tap')} apples={st.get('apples')}")
+      f"award={st.get('award')} bag={st.get('bag', 'ItemBag')} berries={st.get('berries')} tap={st.get('tap')} apples={st.get('apples')} mighty={st.get('mighty')}")
     if not st.get("award"):
         w(f"award fields: catchOut=[{st.get('catchOutFields')}] award=[{st.get('awardFields')}]")
     t0 = time.time()
