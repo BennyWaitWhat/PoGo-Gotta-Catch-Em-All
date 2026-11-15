@@ -927,6 +927,29 @@ print('  %-18s %-5d %s   (Unown letters / regional colors)' % ('FORMS wiped', le
 for k in sorted(fw)[:8]:
     u = sorted([x for x in ps if x in rows and (rows[x]['pokemon_id'], cf(rows[x])) == k])[0]
     print('     ! %s form=%s' % (rows[u]['species_name'], k[1]))
+# FORM FLOOR ON THE GAME'S OWN TWO NUMBERS (user 2026-11-15: "you do realize there are different forms of minior, right? and youre
+# culling them", "Should be 3....just like other many formed ones", "you need to future proof yourself even for pokemon that i
+# dont have or seen yet"). Every minimum above groups copies the engine's way -- display name, speciesId, pattern text -- and all
+# of them agreed while 5 of 6 Yellow-core Minior sat in the pile (the bag calls dex 774 'Minior (Core)', so 'MiniorYellow' read
+# as no kind at all). This one shares none of that: dex number + form id, straight off the row. The pile never leaves a named
+# form with fewer than min(N, held) copies. Left to their own rules above: form 0 and the '...Normal' form (the species minimum),
+# a gender form (its ladder cap), a costume form (look_keep), a pattern-pooled line (its patterns span three dex numbers).
+import costume_forms as _cfm
+_ff_roster = set(_ppm.roster())
+def _ffk(r):
+    f = r.get('form') or 0
+    nm = _cfm.form_name(f) or ''
+    if not r['pokemon_id'] or not f or int(r['pokemon_id']) in _ff_roster or _cfm.is_costume_form(f) or nm.endswith(('Normal', 'Female', 'Male')):
+        return None
+    return (int(r['pokemon_id']), int(f))
+_ffn = lambda k: min([x for x in (_smin, keep_config.species_cap('pattern_min', k[0], _pmin)) if x] or [0])
+_ff_all = collections.Counter(_ffk(r) for r in _crows if _ffk(r) and r['uid_hex'] not in _HK)
+_ff_pile = collections.Counter(_ffk(rows[u]) for u in _ps_v if _ffk(rows[u]))
+ff = [k for k, n in _ff_pile.items() if _ff_all[k] - n < min(_ffn(k), _ff_all[k])]
+print('  %-18s %-5d %s   (every named form keeps %s, counted by dex number + form id alone; %d forms held)'
+      % ('forms under floor', len(ff), chk('form under floor', len(ff)), min(_smin, _pmin) if _smin and _pmin else 'its minimum', len(_ff_all)))
+for k in sorted(ff)[:12]:
+    print('     ! dex %s form %s (%s): %d held, the pile leaves %d' % (k[0], k[1], _cfm.form_name(k[1]), _ff_all[k], _ff_all[k] - _ff_pile[k]))
 
 print('\nLAYER 6  trophy slot exemptions in force')
 hs = [r for r in rows.values() if r['iv_total'] == 45 and 'variant_floor' in pol.get(r['uid_hex'], [])]

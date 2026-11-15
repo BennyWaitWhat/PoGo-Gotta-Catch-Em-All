@@ -163,7 +163,7 @@ def describe():
     return '; '.join('%s: dex %s' % (nm, ','.join(str(p) for p in sorted(ps))) for nm, ps in sorted(lines.items())) or '(none)'
 
 
-_NOT_A_KIND = (None, 'Normal', 'Female', 'Male')   # unreadable, the plain form, and gender forms (the gender looks rule)
+_PLAIN_TAIL = ('Normal', 'Female', 'Male')   # the plain form and the gender forms (the gender looks rule), read off the ENUM name
 _SHARED = None
 
 
@@ -172,24 +172,33 @@ def min_group(pid, species_name, form):
     that pattern together; user 2026-11-07 "for those two, I want 2 of each at a min"), or one named form of one species that
     the species minimum counts as one kind with other forms, because its pvpoke speciesId does not tell them apart: each
     Unown letter, Spinda pattern, Flabebe color, Deerling season, Furfrou trim, Shellos sea, Minior core ... (user 2026-11-07,
-    "....yes."). None for form 0, costume forms (look_keep holds them), _NOT_A_KIND, and forms with a speciesId of their own
-    (Burmy cloaks, Lycanroc: the species minimum already keeps 3 of each). A pooled form with no readable pattern counts by
-    its own form id. ONE definition: keep_policy, preflight_transfer and audit_cull all group by it."""
+    "....yes."; 2026-11-15 "Should be 3....just like other many formed ones").
+    A FORM IS ITS OWN KIND UNLESS THE DATA PROVES OTHERWISE (user 2026-11-15: "you need to future proof yourself even for
+    pokemon that i dont have or seen yet"). None only for form 0, a costume form (look_keep holds them), the plain / gender
+    forms (_PLAIN_TAIL, read off the game's enum name) and a form the curated table gives a speciesId no other form id
+    shares (Burmy cloaks, Lycanroc: the species minimum already keeps 3 of each). Everything else -- a form the enum does not
+    name, a species the table has never heard of, a display name that does not match the enum -- counts by its own form id.
+    Until 2026-11-15 the kind was read by cutting the species NAME off the enum name: the bag calls dex 774 'Minior (Core)',
+    'MiniorYellow' did not start with it, "unreadable" was treated like the plain form, and 5 of 6 Yellow-core Minior went
+    to the pile while every audit (which group by this function too) agreed. No display name is parsed here any more.
+    ONE definition: keep_policy, preflight_transfer and audit_cull all group by it."""
     global _SHARED
     pid = int(pid or 0)
     line = roster().get(pid)
     if line is not None:
         return ('pattern', line, pattern(species_name, form) or 'form %s' % (form or 0))
-    if not form or costume_forms.is_costume_form(form) or pattern(species_name, form) in _NOT_A_KIND:
+    if not form or costume_forms.is_costume_form(form) or (costume_forms.form_name(form) or '').endswith(_PLAIN_TAIL):
         return None
     from pvp_iv_rule import pvid
-    if _SHARED is None:     # (species, speciesId) -> how many named, non-costume form ids map to it
-        from collections import Counter
-        from form_overrides_complete import FORM_OVERRIDES
-        _SHARED = Counter((s, v) for (s, f), v in FORM_OVERRIDES.items()
-                          if f and costume_forms.form_name(f) and not costume_forms.is_costume_form(f))
+    from form_overrides_complete import FORM_OVERRIDES
+    if _SHARED is None:     # speciesId -> the named, non-costume form ids that map to it, under ANY display name
+        _SHARED = {}
+        for (_s, f), v in FORM_OVERRIDES.items():
+            if f and costume_forms.form_name(f) and not costume_forms.is_costume_form(f):
+                _SHARED.setdefault(v, set()).add(f)
     sid = pvid(species_name, form)
-    return ('form', pid, int(form)) if sid == pvid(species_name, 0) or _SHARED[(species_name, sid)] > 1 else None
+    alone = (species_name, form) in FORM_OVERRIDES and sid != pvid(species_name, 0) and len(_SHARED.get(sid, ())) <= 1
+    return None if alone else ('form', pid, int(form))
 
 
 def min_count(g):
@@ -200,3 +209,45 @@ def min_count(g):
     import keep_config
     n = keep_config.cap('pattern_min')
     return keep_config.species_cap('pattern_min', g[1], n) if n and g and g[0] == 'form' else n
+
+
+def _selftest():
+    """The form rules hold for Pokemon he does not have and forms the tool has never seen (user 2026-11-15: "you need to future
+    proof yourself even for pokemon that i dont have or seen yet"). Runs over the game's WHOLE form enum, not the bag."""
+    import json
+    import os
+    from form_overrides_complete import FORM_OVERRIDES
+    here = os.path.dirname(os.path.abspath(__file__))
+    fe = {int(k): v for k, v in json.load(open(os.path.join(here, 'form_enum.json'), encoding='utf-8')).items()}
+    assert len(fe) > 1000, 'the form enum is short: %d' % len(fe)
+    named = [f for f, nm in fe.items() if f and not costume_forms.is_costume_form(f) and not nm.endswith(_PLAIN_TAIL)]
+    assert len(named) > 300, 'too few named forms to test: %d' % len(named)
+    # 1. the 2026-11-15 case: every Minior color, under both names the bag has carried for dex 774
+    for f in (2707, 2708, 2709, 2710, 2711, 2712, 2713, 2714, 2739, 2740, 2741, 2742, 2743, 2744):
+        for nm in ('Minior (Core)', 'Minior'):
+            assert min_group(774, nm, f) == ('form', 774, f), (nm, f, min_group(774, nm, f))
+    # 2. a species the tool has never heard of, under a name that matches nothing: every named form of the enum is its own kind
+    bad = [f for f in named if min_group(99999, 'Never Seen (Any Form)', f) != ('form', 99999, f)]
+    assert not bad, 'an unknown species lost %d form(s): %s' % (len(bad), [(f, fe[f]) for f in bad[:8]])
+    # 3. a form id the enum does not name yet (a game update the tool has not read) is held as a costume form: missing data =
+    #    protected (costume_forms.is_costume_form, 2026-09-02) -- so it never reaches the plain rules at all
+    assert costume_forms.is_costume_form(987654) and min_group(25, 'Pikachu', 987654) is None
+    # 4. every curated (name, form): its own kind, or a speciesId NO other form id shares (the species minimum counts it alone)
+    by = {}
+    for (_s, f), v in FORM_OVERRIDES.items():
+        if f and fe.get(f) and not costume_forms.is_costume_form(f):
+            by.setdefault(v, set()).add(f)
+    hole = [(s, f, v) for (s, f), v in FORM_OVERRIDES.items()
+            if f in named and min_group(99999, s, f) is None and len(by.get(v, ())) > 1]
+    assert not hole, '%d curated form(s) share a speciesId and have no minimum of their own: %s' % (len(hole), hole[:8])
+    lone = sum(1 for (s, f), v in FORM_OVERRIDES.items() if f in named and min_group(99999, s, f) is None)
+    # 5. the plain form and the gender forms stay with the species minimum / the gender ladder; a costume form with look_keep
+    assert min_group(29, 'Nidoran F', 776) is None and min_group(19, 'Rattata', 0) is None and min_group(19, 'Rattata', None) is None
+    print('pattern_pools selftest OK: %d named forms in the enum each their own kind for an unknown species; %d curated forms '
+          'ride the species minimum alone, none shares its speciesId' % (len(named), lone))
+
+
+if __name__ == '__main__':
+    import sys
+    if '--selftest' in sys.argv:
+        _selftest()
