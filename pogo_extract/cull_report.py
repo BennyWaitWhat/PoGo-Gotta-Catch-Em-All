@@ -1256,7 +1256,8 @@ def main():
                                        with_all=True)
             _abag = [x for x in C.values() if not keep_config.is_fused_component(x)]
             _okept = lambda u: bool(set(why.get(u) or ()) - {'align_line'})
-            _need, _fills, _gaps = _kpa.align_line_picks(_abag, _ag, _okept, keep_config.hand_kept())
+            _hk = keep_config.hand_kept()
+            _need, _fills, _gaps = _kpa.align_line_picks(_abag, _ag, _okept, _hk)
             _open = {(a, t) for a, t in _gaps}             # missing stages no spare is matched to yet
             _offered = set()
 
@@ -1270,7 +1271,7 @@ def main():
                 _offered.update((a, o) for o in opts)
                 return '%s -> %s' % (s, ', or '.join(stg(o) + (' (needs %s)' % g if g else '')
                                                     for o in opts for g in (ef.gate_text(o, src),)))
-            _al = [_al_line(a, t, u) for a, t, u in _fills if u in _need and u not in pile_set]
+            _al = [_al_line(a, t, u) for a, t, u in _fills if (u in _need or u in _hk) and u not in pile_set]   # a spare he saved by hand too
             _gaps = [(a, t) for a, t in _gaps if (a, t) not in _offered]
             if _al or _gaps:
                 out.extend(['', '**Shadow / purified stages to fill** (%d) -- kept so you can evolve each into a stage of its kind '

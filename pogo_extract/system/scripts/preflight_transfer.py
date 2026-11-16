@@ -750,34 +750,28 @@ def _align_line_uids(bag, pile):
     """The pile copies keep_policy's shadow / purified lines must keep (user 2026-11-16: "culling pokemon i dont have all shadow or purified evos of. i saved one from the transfer you missed"),
     counted on its own: per alignment, one slot per stage held and one per later stage a held copy can still become that no copy
     of that alignment holds; the copies outside the pile must fill as many slots as the whole bag can (a maximum matching, one
-    slot per copy), and a pile copy that would fill one more is needed. The stages a copy can become are keep_policy's ONE
-    evolution graph (pvp_later_stages), as the Best GL / UL check reads them; the counting is this file's own. A copy kept by
-    hand holds its stage but fills no slot. Rule off = nothing."""
+    slot per copy), and a pile copy that would fill one more is needed. A stage's identity and the stages a copy can become are
+    the engine's facts (keep_policy.align_key / align_targets on the ONE evolution graph), as the Best GL / UL check reads them;
+    the slots and the counting are this file's own. A copy kept by hand holds its stage and may be a spare, never a stage's own
+    copy. Rule off = nothing."""
     if not keep_config.rule_enabled('align_lines'):
         return set()
     import keep_policy as _kp
     from pvp_iv_rule import pvid as _pv
     gm = json.load(open(GAMEMASTER, encoding='utf-8'))
-    dex = {p['speciesId']: p.get('dex') for p in gm['pokemon']}
     graph = _kp.build_evo_graph(gm, {e['pid'] for e in json.load(open(os.path.join(ROOT, 'pokedex_hundos_live.json')))['entries']},
                                 with_all=True)
-
-    def fold(s):                                       # oinkologne_female is an Oinkologne; nidoran_female a species of its own
-        for suf in ('_female', '_male'):
-            if s and s.endswith(suf) and dex.get(s[:-len(suf)]) is not None and dex.get(s[:-len(suf)]) == dex.get(s):
-                return s[:-len(suf)]
-        return s
     hk, out = keep_config.hand_kept(), set()
     for a in (1, 2):
         ra = [r for r in bag if _g(r, 'fresh_alignment') == a and not keep_config.is_fused_component(r)]
-        stage = {r['uid_hex']: fold(_pv(r['species_name'], _g(r, 'form') or 0)) for r in ra}
+        stage = {r['uid_hex']: _kp.align_key(_pv(r['species_name'], _g(r, 'form') or 0), graph[3]) for r in ra}
         held = set(stage.values())
         slots = defaultdict(set)
         for r in ra:
-            if r['uid_hex'] not in hk:
+            if r['uid_hex'] not in hk:                     # a copy kept by hand never holds a stage's own slot ...
                 slots[('own', stage[r['uid_hex']])].add(r['uid_hex'])
-                for t in {fold(x) for x in _kp.pvp_later_stages(r, graph)} - held:
-                    slots[('fill', t)].add(r['uid_hex'])
+            for t in _kp.align_targets(r, graph) - held:   # ... but it is a spare like any other
+                slots[('fill', t)].add(r['uid_hex'])
 
         def filled(pool):
             owner = {}
