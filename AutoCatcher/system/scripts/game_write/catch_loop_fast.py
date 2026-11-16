@@ -34,6 +34,8 @@ LOG = os.path.join(AN, "catch_loop.log")
 LEDGER = os.path.join(AN, "spawn_ledger.jsonl")   # one line per spawn (k=spawn) and per avatar fix (k=pos): tools/yield_report.py
 STATE_FILE = "/data/local/tmp/pogo_state.txt"      # read by the AutoCatcher app
 FLAGS = {k: f"/data/local/tmp/pogo_{k}.on" for k in ("catch", "spin", "tap", "perfect", "apples")}
+# BALL-SAVER plan (AutoCatcher/tools/ballsave_plan.py writes it; delete it = catch everything again): see ballsave_skip()
+BALLSAVE_FILE = "/data/local/tmp/pogo_ballsave.json"
 COLD_AGE_S = 12      # attach once PoGo is this old; install() then retries every 3 s until the map has loaded.
                      # (30 s was for the old catcher's heavy RPC-thread setup; this one does metadata + one lookup.)
 # PAUSE HANDSHAKE: another tool that needs the game to itself (a cull, the reward catcher) writes an epoch-seconds
@@ -247,7 +249,7 @@ function encOf(o) { var r = call(method(o, 'get_EncounterId', 0), o, []); return
 var K = {}, M = {}, OFF = {}, PBT_VT = false;
 var CFG = {catch: false, spin: false, tap: false, perfect: false, apples: false, appleSpecies: {}, openMs: 667, maxOpen: 6, nearWait: 0, nearM: 55, readyMs: 150, thresh: 0.28,
            ballOrder: [2, 1, 3], floors: {1: 5, 2: 5, 3: 5}, pinap: true, pinapFloor: 20, razz: true, razzFloor: 5, razzThresh: 0.45, mightyP: 0.02, mightyKeep: 30, mightyMin: 30,
-           legendary: {}, priority: {}, order: 'fifo'};
+           legendary: {}, priority: {}, order: 'fifo', skipSp: {}};
 var S = {ready: false, stale: 'first attach', nextLookup: 0, tries: 0, msvc: NULL, ib: NULL, avatar: NULL, ps: NULL};
 /* STALE MAP (2026-09-24 22:27-22:46: 20 min of vis=0 while attached, 3 Pokemon the second it re-attached). The game
    can rebuild its map -- a new MapPlaceDirectoryService, a new map camera -- and the objects found at attach then read
@@ -430,6 +432,16 @@ function berryFor(e) {
 /* ---------------- catching ---------------- */
 var COOL = {};   /* enc -> time before which a not-final encounter is left alone */
 var FINAL = {caught: 1, fled: 1, legendary: 1, maxthrows: 1, catcherr: 1};
+/* BALL-SAVER (Benny 2026-11-16 meteor shower, spins refused): CFG.skipSp = the species the Python side's plan leaves
+   alone right now (the least stardust per ball while the balls cannot cover every species until the plan's end).
+   Looked at again after 20 s, so a species comes back the moment the plan keeps it. Each spawn is counted once. */
+var SAVED = {}, NSAVED = 0;
+function ballsave(enc, now) {
+  var e = E[enc];
+  if (e) { ledgerEnd(e, enc, 'ballsave', now); delete E[enc]; NE--; }
+  if (!SAVED[enc]) { SAVED[enc] = 1; bump(ST.skip, 'ballsave'); if (++NSAVED > 5000) { SAVED = {}; NSAVED = 0; } }
+  COOL[enc] = now + 20000;
+}
 function finish(enc, why) {
   if (E[enc]) { ledgerEnd(E[enc], enc, why, Date.now()); delete E[enc]; NE--; }
   if (why && why !== 'caught') bump(ST.skip, why);
@@ -535,7 +547,7 @@ function walk(now) {
     if (NEVER[cls]) { c[4]++; return; }
     var enc = encOf(o); if (!enc) { c[2]++; return; }
     var gk = o.toString(); if (GAMEOPEN[gk]) { GOENC[enc] = GAMEOPEN[gk]; delete GAMEOPEN[gk]; }   /* bind the game's open to THIS encounter */
-    if (DONE[enc] || (COOL[enc] && now < COOL[enc])) { c[5]++; return; }
+    if (DONE[enc] || (COOL[enc] && now < COOL[enc])) { c[5]++; if (SAVED[enc]) LASTVIS = now; return; }   /* a spawn left alone = the map is alive */
     var e = E[enc]; if (e) { LIVE[enc] = o; e.seen = now;
       if (!e.exp && now - (e.si || 0) >= 1000) { e.si = now; var s2 = spawnInfo(o); if (s2.exp) { e.exp = s2.exp; e.tth = s2.tth; e.tx = now; } }   /* 1/s: the time comes late */
       vis++; c[1]++; return; }
@@ -555,6 +567,7 @@ function walk(now) {
     }
     var pid = s32(call(method(o, 'get_PokemonId', 0), o, []));
     if (CFG.legendary[pid]) { c[4]++; finish(enc, 'legendary'); return; }
+    if (CFG.skipSp[pid] && !appleMon) { c[4]++; LASTVIS = now; ballsave(enc, now); return; }   /* apple reveals: the game opens their screen itself */
     LIVE[enc] = o; vis++; c[1]++;
     e = E[enc] = {pid: pid, cls: cls, prio: !!CFG.priority[pid], st: 'new', seen: now, att: 0, opens: 0, berry: 0, apple: appleMon};
     var si = spawnInfo(o);
@@ -650,6 +663,7 @@ function catchTick(now) {
   if (CFG.order === 'despawn' && PEND.length > 1 && !holding) despawnFirst(now);
   for (var tries = PEND.length; tries > 0 && !holding && now - LASTOPEN >= CFG.openMs && n < CFG.maxOpen; tries--) {
     enc = PEND.shift(); e = E[enc]; if (!e || e.st !== 'new') continue;
+    if (CFG.skipSp[e.pid] && !e.apple) { ballsave(enc, now); continue; }   /* queued before the plan dropped its species */
     o = LIVE[enc];
     if ((e.retryAt && now < e.retryAt) || !o) { PEND.push(enc); continue; }
     if (e.apple) {
@@ -1184,6 +1198,7 @@ function applyCfg(c) {
   if (c.floors) CFG.floors = {1: c.floors['1'], 2: c.floors['2'], 3: c.floors['3']};
   if (c.legendary) { CFG.legendary = {}; c.legendary.forEach(function (d) { CFG.legendary[d] = 1; }); }
   if (c.priority) { CFG.priority = {}; c.priority.forEach(function (d) { CFG.priority[d] = 1; }); }
+  if (c.skipSp) { CFG.skipSp = {}; c.skipSp.forEach(function (d) { CFG.skipSp[d] = 1; }); }
   if (c.appleSpecies) { CFG.appleSpecies = {}; c.appleSpecies.forEach(function (d) { CFG.appleSpecies[d] = 1; }); }
   if (GATE) GATE.add(24).writeS64(CFG.tap ? 1 : 0);   /* tap-to-move polls input every frame */
 }
@@ -1460,8 +1475,69 @@ def cur_pos():
     return f"{m.group(1)},{m.group(2)}" if m else None
 
 
+BALLS = {"usable": None}              # Poke + Great + Ultra above their floors, from the last stats read (every 10 s)
+_BS = {"mtime": None, "plan": None, "note": "off"}
+
+
+def usable_balls(items):
+    """Poke + Great + Ultra above their floors: what is left to throw at ordinary spawns. None = not read yet."""
+    if items.get("1") is None:
+        return None
+    return sum(max(0, int(items.get(k) or 0) - int(CFG["floors"][k])) for k in ("1", "2", "3"))
+
+
+def ballsave_skip(plan, balls, now):
+    """BALL-SAVER (Benny 2026-11-16, meteor shower: "i need max stardust between now and until the meteor shower is
+    over"; the server refuses spins since 17:37, so the balls on hand are all there are). Greedy by stardust per ball:
+    plan["species"][dex] = [stardust per ball, balls per minute] from this event's own catches. Best stardust per ball
+    first, each species needing balls/min x minutes left x margin; a species is kept while the ones before it leave
+    balls over (the last one kept gets what is left: it is caught while the balls last). Re-run every second against
+    the current ball count, so a wrong rate corrects itself. Returns (dex list to leave alone, one-line why).
+    [] = catch everything: no plan, an unreadable plan, the end time passed, balls not read yet, or balls for all."""
+    try:
+        if not plan or balls is None:
+            return [], "off"
+        mins = (float(plan["end"]) - now) / 60.0
+        if mins <= 0:
+            return [], "off: the plan's end time has passed"
+        margin = float(plan.get("margin", 1.0))
+        ranked = sorted(((int(d), float(v[0]), float(v[1])) for d, v in plan["species"].items()), key=lambda x: (-x[1], x[0]))
+    except (KeyError, TypeError, ValueError, IndexError, AttributeError):
+        return [], "off: unreadable plan"
+    need, skip, cut = 0.0, [], None
+    for dex, dpb, rate in ranked:
+        if need >= balls:
+            skip.append(dex)
+            cut = dpb if cut is None else cut
+        need += rate * mins * margin
+    if not skip:
+        return [], f"{balls} balls for {mins:.0f} min: catching everything (every species needs ~{need:.0f})"
+    return sorted(skip), (f"{balls} balls for {mins:.0f} min: leaving {len(skip)} of {len(ranked)} species alone "
+                          f"(at most {cut:.0f} stardust per ball)")
+
+
+def ballsave_now():
+    """The plan file, re-read only when it changes (no file or a bad one = no ball-saver), against the last ball count."""
+    try:
+        m = os.stat(BALLSAVE_FILE).st_mtime
+    except OSError:
+        m = None
+    if m != _BS["mtime"]:
+        plan = None
+        if m is not None:
+            try:
+                with open(BALLSAVE_FILE, encoding="utf-8") as fh:
+                    plan = json.load(fh)
+            except (OSError, ValueError):
+                plan = {"bad": 1}
+        _BS.update(mtime=m, plan=plan)
+    skip, _BS["note"] = ballsave_skip(_BS["plan"], BALLS["usable"], time.time())
+    return skip
+
+
 def cfg_now():
     c = dict(CFG)
+    c["skipSp"] = ballsave_now()
     for k in FLAGS:
         c[k] = flag(k)
     c["apples"] = True   # Benny 2026-10-29: "i want anything to always be picked up" -- map items no longer wait on a switch
@@ -1758,6 +1834,8 @@ def session_loop(w, done_ids, base):
                 w(f"A/B {ab}={c[ab]} (block of {c.get('abBlockS')} s)")
             if any(c[k] != cfg[k] for k in FLAGS):
                 w("toggles: " + " ".join(f"{k}={'on' if c[k] else 'off'}" for k in FLAGS))
+            if c["skipSp"] != cfg.get("skipSp"):
+                w(f"BALLSAVE {_BS['note']}" + (f" | left alone: {','.join(map(str, c['skipSp'][:40]))}" if c["skipSp"] else ""))
             cfg = c
             sc.exports_sync.cfg(c)
         d = sc.exports_sync.drain()
@@ -1776,6 +1854,7 @@ def session_loop(w, done_ids, base):
         if time.time() - last_rep >= 10:
             last_rep = time.time()
             stt = sc.exports_sync.stats()
+            BALLS["usable"] = usable_balls(stt.get("items") or {})
             if stt["ready"]:
                 report(w, stt, t0, base)
             else:
