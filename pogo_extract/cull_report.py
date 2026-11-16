@@ -1247,7 +1247,8 @@ def main():
             out.extend('- ' + l for l in _dl)
     except Exception as e:
         out.append('(new shiny Pokedex entries: not computed -- %s)' % e)
-    # SHADOW / PURIFIED STAGES TO FILL (user 2026-11-16: ''' + SAID + '''). REPORT ONLY: the keep is the engine's
+    # SHADOW / PURIFIED STAGES TO FILL (user 2026-11-16: "culling pokeon i dont have all shadow or puriefied evos of. i saved one
+    # from the transfer you missed for example"). REPORT ONLY: the keep is the engine's
     # (rules.align_lines, reason 'align_line'); this names, every cull, each spare kept to evolve into a stage of its kind he lacks.
     try:
         if keep_config.rule_enabled('align_lines'):
@@ -1273,9 +1274,11 @@ def main():
                                                     for o in opts for g in (ef.gate_text(o, src),)))
             _al = [_al_line(a, t, u) for a, t, u in _fills if (u in _need or u in _hk) and u not in pile_set]   # a spare he saved by hand too
             _gaps = [(a, t) for a, t in _gaps if (a, t) not in _offered]
-            if _al or _gaps:
+            if _al:
                 out.extend(['', '**Shadow / purified stages to fill** (%d) -- kept so you can evolve each into a stage of its kind '
                             'you do not hold yet' % len(_al)])
+            elif _gaps:
+                out.extend(['', '**Shadow / purified stages you lack** -- no spare in the bag can become them yet'])
                 out.extend('- ' + l for l in _al)
                 if _gaps:
                     out.append('- no spare yet for %d more: %s' % (len(_gaps), ', '.join(
