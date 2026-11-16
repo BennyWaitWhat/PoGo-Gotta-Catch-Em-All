@@ -858,7 +858,7 @@ def _pvp_best_uids(bag, cf_norm, BS, gm_ok):
     its form / costume / gender can become -- keep_policy.pvp_later_stages, the ONE evolution graph; if that import
     fails, the ranker's chain as it stands, which is looser and can only ALARM) and ENTER (pvp_iv_rule.fits -- its CP
     there at its TRUE level inside the cap; the ONE shared CP/level helper). Key (usable stage reaches the cap first,
-    usable rank, uid_hex); a copy with no usable stage never wins. ML: unchanged (viable ml_stage, ml_rank, uid_hex).
+    usable rank, uid_hex); a copy with no usable stage never wins. ML: (viable ml_stage, ml_rank, the higher IV total, uid_hex).
     {uid: {'GL','UL','ML'}}. If the gamemaster did not load, viability cannot be judged and rank alone decides (a
     different winner in the pile then ALARMS -- the over-protect direction; the engine keeps its own winner and trips
     its own 15d tripwire if it does not)."""
@@ -911,7 +911,8 @@ def _pvp_best_uids(bag, cf_norm, BS, gm_ok):
                     won.setdefault(b['uid_hex'], set()).add(lg.upper())
         cand = [r for r in lst if _g(r, 'ml_rank') is not None and (_g(r, 'ml_rank') <= _BRF or _g(r, 'pokemon_id') in _RARE)]
         if cand:
-            b = min(cand, key=lambda r: (0 if (gm_ok and _viable(r['ml_stage'], _MLC, BS)) else 1, r['ml_rank'], r['uid_hex']))
+            b = min(cand, key=lambda r: (0 if (gm_ok and _viable(r['ml_stage'], _MLC, BS)) else 1, r['ml_rank'],
+                                         -(_g(r, 'iv_total') or 0), r['uid_hex']))   # an ML tie: the higher IV (2026-11-16)
             won.setdefault(b['uid_hex'], set()).add('ML')
     return won
 

@@ -1361,7 +1361,8 @@ def main():
     sg = defaultdict(list)
     for r in shadows: sg[_sid(r)].append(r)
     for lst in sg.values():
-        _ml = sorted((r for r in lst if _shr(r, 'ml_rank') is not None and r['ml_rank'] <= _SRF), key=lambda r: (r['ml_rank'], r['uid_hex']))
+        _ml = sorted((r for r in lst if _shr(r, 'ml_rank') is not None and r['ml_rank'] <= _SRF),
+                     key=lambda r: (r['ml_rank'], -(_shr(r, 'iv_total') or 0), r['uid_hex']))   # an ML rank tie: the higher IV (2026-11-16)
         for _sr in _ml[:keep_config.cap('shadow')]:
             mark(_sr['uid_hex'], 'shadow_best')                  # the best Master League shadow (inside the floor)
         for lg in keep_config.shadow_leagues():               # UL only since 2026-09-26 ("remove the gl shadows")
@@ -1787,7 +1788,8 @@ def main():
     # Best = min over the copies with a usable stage of (that stage can reach the cap first, the usable rank, uid_hex):
     # a TOTAL order, so a recrawl can never flip a tie (never _best_by -- that follows SQLite rowid order). A copy with
     # no usable stage cannot be Best GL/UL; an identity with no usable copy has no Best GL/UL. Master League has no
-    # cap: its key is unchanged (viable ml_stage first, ml_rank, uid_hex). Two reasons, so the Best GL / Best UL tags
+    # cap: its key is (viable ml_stage first, ml_rank, the HIGHER IV TOTAL, uid_hex) -- a hundo wins an ML rank tie (user 2026-11-16, on a 98% Stoutland that held Best ML over his hundo -- both rank #1 at level 50: "nope, hundos are goat.");
+    # a 15/15/14 Stoutland has the hundo's exact stats at level 50, HP rounding down to 178 for both). Two reasons, so the Best GL / Best UL tags
     # and the own-stage evolve block can read which league a copy won. min(), never a [:1] slice (audit_invariants
     # I1.4). Re-derived independently (selection) in audit_cull, _lawcheck, _spotdata, audit_tags_membership and
     # preflight_transfer; they share only pvp_iv_rule's CP/level helper (fits / true_level).
@@ -1839,7 +1841,7 @@ def main():
                     won[b['uid_hex']].add(lg.upper())
             cand = [r for r in lst if _v(r, 'ml_rank') is not None and (r['ml_rank'] <= _BRF or r['pokemon_id'] in RARE_PIDS)]
             if cand:
-                b = min(cand, key=lambda r: (0 if _viable(r['ml_stage'], ML_CAP) else 1, r['ml_rank'], r['uid_hex']))
+                b = min(cand, key=lambda r: (0 if _viable(r['ml_stage'], ML_CAP) else 1, r['ml_rank'], -(_v(r, 'iv_total') or 0), r['uid_hex']))
                 won[b['uid_hex']].add('ML')
         return won
     _PVP_BEST = _pvp_best_winners()

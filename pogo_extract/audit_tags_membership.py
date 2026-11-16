@@ -260,7 +260,7 @@ except Exception as _e:
 # per PvP IDENTITY. GL / UL are USABLE ONLY (user 2026-09-23, "Best GL/UL must be able to enter the league"): a copy
 # competes with a stage it can REACH (the engine's ONE evolution graph, a fact) and ENTER (pvp_iv_rule.fits, the ONE
 # CP/level helper: its CP there at its TRUE level inside the cap), key (that stage reaches the cap first, its rank,
-# uid_hex); a copy with none never wins. ML unchanged: (viable ml_stage first, ml_rank, uid_hex). Viability =
+# uid_hex); a copy with none never wins. ML: (viable ml_stage first, ml_rank, the higher IV total, uid_hex -- 2026-11-16). Viability =
 # pvp_iv_rule.maxcp > cap + VIABILITY_MARGIN exactly as keep_policy._viable.
 try:
     from pvp_iv_rule import (maxcp as _mcp, GL_CAP as _G2, UL_CAP as _U2, ML_CAP as _M2, VIABILITY_MARGIN as _VM2,
@@ -336,7 +336,7 @@ try:
                 continue
             _c = [x for x in _l if x.get(_rk) is not None and (x.get(_rk) <= _BRF or x['pokemon_id'] in _RARE_M)]
             if _c:
-                q.add(min(_c, key=lambda x: (0 if _via(x.get(_st), _cap) else 1, x[_rk], x['uid_hex']))['uid_hex'])
+                q.add(min(_c, key=lambda x: (0 if _via(x.get(_st), _cap) else 1, x[_rk], -(x.get('iv_total') or 0), x['uid_hex']))['uid_hex'])
         if _lg == 'ML':                     # the Best ML chip skips hundos (2026-09-23) and Variant #1 (2026-10-25); the keep does not
             q = {u for u in q if (rows[u].get('iv_total') or 0) != 45} - load('Variant_#1')
         q -= _evolve_labelled()             # (2026-11-15) no Best chip on a copy told to evolve: a Best is about the stage it is leaving

@@ -298,7 +298,7 @@ for r in rows:
         _shp[pvid(r['species_name'], r['form'] or 0)].append(r)
 for _l in _shp.values():
     for x in sorted((y for y in _l if (y['ml_rank'] if 'ml_rank' in y.keys() else None) is not None and y['ml_rank'] <= _SRF),
-                    key=lambda y: (y['ml_rank'], y['uid_hex']))[:keep_config.cap('shadow')]:
+                    key=lambda y: (y['ml_rank'], -(y['iv_total'] or 0), y['uid_hex']))[:keep_config.cap('shadow')]:
         _shadow_keep.add(x['uid_hex'])
     for _lg, _cap in (('gl', _SH_GL), ('ul', _SH_UL)):
         if _lg not in keep_config.shadow_leagues():          # UL only since 2026-09-26
@@ -341,7 +341,7 @@ for _k, _l in _shyg.items():
 # ---- BEST GL / BEST UL (LAW bucket 2b = keep_policy rule 15d, user 2026-09-23) -----------------------------
 # The best NON-shadow copy per PvP IDENTITY. GL / UL are USABLE ONLY (user 2026-09-23): key (the usable stage reaches
 # the cap first, its rank, uid_hex) over the copies with a stage they can reach AND enter (_usable above); a copy with
-# none never wins. ML unchanged: (viable ml_stage first, ml_rank, uid_hex). The engine's exact total order. Such a
+# none never wins. ML: (viable ml_stage first, ml_rank, the higher IV total, uid_hex -- a hundo wins a tie, 2026-11-16). The engine's exact total order. Such a
 # copy is never fodder: if one is in the pile, no other explanation applies.
 from pvp_iv_rule import (maxcp as _pb_maxcp, GL_CAP as _PB_GL, UL_CAP as _PB_UL, ML_CAP as _PB_ML,
                          VIABILITY_MARGIN as _PB_VM, pvid as _pb_pvid)
@@ -387,7 +387,8 @@ for _l in _pbg.values():
             _pvp_best_keep.add(_w)
     _c = [x for x in _l if (x['ml_rank'] if 'ml_rank' in x.keys() else None) is not None and (x['ml_rank'] <= _BRF or x['pokemon_id'] in _LAW_RARE)]
     if _c:
-        _pvp_best_keep.add(min(_c, key=lambda x: (0 if _pb_via(x['ml_stage'], _PB_ML) else 1, x['ml_rank'], x['uid_hex']))['uid_hex'])
+        _pvp_best_keep.add(min(_c, key=lambda x: (0 if _pb_via(x['ml_stage'], _PB_ML) else 1, x['ml_rank'], -(x['iv_total'] or 0),
+                                             x['uid_hex']))['uid_hex'])
 
 # the dominance/plain groups are keyed (pid, cf, gender-for-gender-evolvers) exactly like the engine's
 # _domgrp / _stage_key. Without the gender component the audit cannot detect a regression of the guard
