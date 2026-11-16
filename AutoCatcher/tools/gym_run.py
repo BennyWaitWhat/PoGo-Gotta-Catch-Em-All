@@ -267,8 +267,22 @@ class Game:
                 say(f"    !! {nm} at {fid} is at {p['mot']:.0%} motivation but you have NO Golden Razz left")
             else:
                 say(f"    feeder: {p}")
+        elif k == "pickcall":                                # a place-handler candidate ran (learning which one places)
+            say(f"    the game called {p['name']} (a place-handler candidate)")
+        elif k == "picklearned":                             # a placement went through right after that candidate: it IS the handler
+            if p.get("name") == p.get("was"):
+                say(f"  auto-place handler {p['name']} CONFIRMED by a real placement")
+            else:
+                say(f"  auto-place handler LEARNED from a real placement: {p['name']} (was {p.get('was')}) -- auto-place uses it now")
+            try:
+                if getattr(self, "pick_file", None):
+                    json.dump({"name": p["name"], "at": time.strftime("%Y-%m-%d %H:%M:%S")}, open(self.pick_file, "w", encoding="utf-8"))
+            except Exception as _e:
+                say(f"    (could not save the learned handler: {_e})")
         elif k == "deployresult":
             say(f"    deploy result: {p['res']}")
+            if p.get("ok"):                                  # the game's own reply: a Pokemon of yours went in (by hand or auto-place)
+                self.deploy_ok_at = time.time()
             if not p.get("ok") and self.autoplaced:        # the game said no: end the wait now, with the reason
                 self.placed[self.autoplaced] = {"ok": False, "id": self.autoplaced_id, "res": p["res"]}
                 self.deploy_refused = (self.autoplaced, p["res"])
@@ -399,7 +413,7 @@ def rested(done, taken, scanned, enemy, now, rest=600):
 
 
 def pick(enemy, skip, here, goal, live, detour, area_r, ok=None):
-    """The nearest enemy gym on the LIVE map that is raid-free and on the way: at most `detour` extra meters versus
+    """The NEAREST non-red gym on the LIVE map that is raid-free and on the way: at most `detour` extra meters versus
     walking straight to the goal, or anywhere inside the goal area. `ok(fid, v)` admits more (a red gym with a free slot)."""
     best, best_key = None, None
     for fid, v in live.items():
@@ -411,17 +425,22 @@ def pick(enemy, skip, here, goal, live, detour, area_r, ok=None):
         extra = ch.meters(here, gp) + ch.meters(gp, goal) - ch.meters(here, goal)
         if extra > detour and not in_area:
             continue
-        d_m = ch.meters(here, gp)                            # the user (02:52): dominate strategically -- the CHEAPEST gym, not the closest
-        cp = v[7] if len(v) > 7 and v[7] > 0 else 0
-        contest = BUSY.get(fid, 0.5) * 60                    # a contested gym costs berries to hold / gets fed while we drain it
-        if team == 0 or team not in enemy:                   # empty, or a red gym with room: a placement with no battle
-            cost = d_m * 0.35 - 60 + contest
-        else:                                                # walking time + the CP to drain (measured ~1-2k CP per 40 s session)
-            cost = d_m * 0.35 + cp * 0.03 + contest
-        key = (0 if in_area else 1, cost)
+        d_m = ch.meters(here, gp)                            # Benny 2026-11-15 22:09: "go to the closest non red gym" -- the NEAREST one
+        key = (0 if in_area else 1, d_m)                     # (it replaced 02:52's cheapest-by-CP-and-contest order: it walked past near gyms)
         if best is None or key < best_key:
             best, best_key = (fid, gp, team), key
     return best
+
+
+def pick_any(enemy, skip, done, here, goal, live, detour, area_r, ok, now):
+    """pick() over the gyms that are not resting; when that finds nothing, an ENEMY gym that is only resting (Benny 2026-11-15:
+    "drill and finish" -- never idle while an enemy gym stands): never an empty one, never one under a raid, never one in a refused
+    placement's one-hour rest. Returns (target, it_was_resting)."""
+    t = pick(enemy + [0], skip, here, goal, live, detour, area_r, ok)
+    if t or not skip:
+        return t, False
+    t = pick(enemy, {f for f in skip if done.get(f, 0) > now}, here, goal, live, detour, area_r)
+    return t, bool(t)
 
 
 def live_range(sess):
@@ -634,7 +653,7 @@ def drill(fid, enemy, g, sc, a, tick, until, refresh=None, join_near=None, cmd_w
                 if since >= 6 and cps[-1] > lo * 1.3:
                     leaving = STALL
                     say(f"  STALEMATE at {fid[:8]}: {since} sessions without a new low (lowest {lo}, now {cps[-1]} CP) -- its team "
-                        f"feeds/refills it faster than we drain it; moving on, back to it in 10 min")
+                        f"feeds/refills it faster than we drain it; other gyms first, back to it when nothing else is left")
             if not leaving and cmd_waiting and cmd_waiting():   # a live command (go / hunt) is waiting: it decides now
                 leaving = DETOUR
                 say(f"  a new command is waiting -- leaving {fid[:8]} after this session")
@@ -831,6 +850,18 @@ def _run(a, g, mv, done, t_start, enemy, goal, sess, pid, sc):
         say(f"  gym-details request parameters: {r['detailsParams']}")
     if r.get("team") is not True:
         say(f"  !! custom team / heal unavailable: {r.get('team')}")
+    _pf = os.path.join(os.path.dirname(a.study) if a.study else HERE, "pick_handler.json")   # a place handler learned in an earlier run
+    try:
+        _pl = json.load(open(_pf, encoding="utf-8")).get("name")
+    except Exception:
+        _pl = None
+    if _pl and _pl in (r.get("pickNames") or []) and _pl != r.get("pickName"):
+        _pr = sc.exports_sync.pickname(_pl)
+        if _pr.get("ok"):
+            r["autoplace"], r["pickName"], r["pickWhy"] = True, _pl, "learned from a placement in an earlier run"
+    g.pick_file = _pf
+    say("  auto-place: " + (f"ON -- place handler {r.get('pickName')}: {r.get('pickWhy')}" if r.get("autoplace")
+                            else "OFF -- Deploy opens the list for you") + f" | shape matches {r.get('pickNames')}, deploy replies {r.get('deployCbNames')}")
     _gr = r.get("graph") or {}                               # the live service graph (H01, 2026-09-29): which one, and how fresh
     say(f"  live service graph: {_gr.get('graphs', '?')} ItemBagImpl graph(s), inventory last updated "
         + (f"{(time.time() * 1000 - _gr['ts']) / 1000:.0f} s ago" if (_gr.get("ts") or -1) > 0 else "(unreadable)")
@@ -1042,8 +1073,17 @@ def _run(a, g, mv, done, t_start, enemy, goal, sess, pid, sc):
         if g.prepstuck:
             say("STOP: a party screen stayed open over a battle -- not continuing (joystick keeps circling)")
             return
+        pull()                                               # commands are read on EVERY pass: with no GPS fix, or your gym open, the
+        if not g.in_battle() and not g.prep and any(_c.get("stop") for _c in cmdq):   # loop below never got to them (11-15: a stop sat 6 min)
+            if g.has("GymState") and not g.user_gym:
+                leave_gym(g, sc, tick)
+            say("  COMMAND stop: no battle in progress -- stopped cleanly; the tapper unloads and the session detaches now")
+            return
         p = ch.fix()
         if not p:
+            if said != "nofix":
+                say("  no GPS fix from the joystick (stopped, or a teleport?) -- waiting for one; commands still work")
+                said = "nofix"
             time.sleep(1)
             continue
         here = p[:2]
@@ -1275,8 +1315,12 @@ def _run(a, g, mv, done, t_start, enemy, goal, sess, pid, sc):
             continue
         tv = live.get(target[0]) if target else None
         if target is None or target[0] in skip or not tv or tv[4] or not (tv[0] in enemy + [0] or slot(target[0], tv)):
-            target = pick(enemy + [0], skip, here, goal, live, a.detour, a.area, slot)   # an empty gym: straight to Deploy
-            if target:
+            target, _was_resting = pick_any(enemy, skip, done, here, goal, live, a.detour, a.area, slot, time.time())   # an empty gym: straight to Deploy
+            if target and _was_resting:                      # nothing else to beat: its rest ends now
+                done.pop(target[0], None)
+                TAKEN.pop(target[0], None)
+                say(f"target {target[0][:8]} team {target[2]} (it was resting -- nothing else to beat), {ch.meters(here, target[1]):.0f} m away")
+            elif target:
                 say(f"target {target[0][:8]} team {target[2]}, {ch.meters(here, target[1]):.0f} m away")
         if not target:                                       # nothing to beat right now: keep moving
             gpos_now[0] = None
@@ -1353,8 +1397,9 @@ def _run(a, g, mv, done, t_start, enemy, goal, sess, pid, sc):
                               if f != cur and f not in skip and v[1] < 60000 and not v[4] and not (len(v) > 6 and v[6])
                               and slot(f, v) and ch.meters(q[:2], (v[2], v[3])) <= engage)
                 return near[0][1] if near else None
-            final = drill(fid, enemy, g, sc, a, tick, time.time() + a.gym_minutes * 60, refresh=batch_check, join_near=join_near,
-                          cmd_waiting=urgent_cmd)
+            final = drill(fid, enemy, g, sc, a, tick, time.time() + a.gym_minutes * 60, refresh=batch_check, join_near=None,
+                          cmd_waiting=urgent_cmd)            # join_near=None: Benny 11-15 "drill and finish" -- a red gym with room
+                                                             # is filled BETWEEN gyms (passing), never by leaving one mid-drill
         if final in (STALL, DETOUR):                         # left mid-drill on purpose: no placement step here
             g.autoplaced = None
             if final == STALL:
@@ -1429,10 +1474,13 @@ def _run(a, g, mv, done, t_start, enemy, goal, sess, pid, sc):
                                 n2 = None
                             if n2 is not None:
                                 dep["n"], dep["at"] = n2, time.time()
-                            if n is not None and n2 is not None and n2 > n:
+                            _ok = getattr(g, "deploy_ok_at", 0.0) >= t0 - 5   # the game's own deploy reply said Success (11-15: the
+                            if (n is not None and n2 is not None and n2 > n) or _ok:   # live count lagged twice -> "another red player" was YOU)
                                 placed_ok = True             # (manual / fallback placement: counted, and the bag refresh after this gym registers it)
                                 STATS["placed"] += 1
-                                say(f"  you placed a Pokemon ({n2}/{a.max_deployed} in gyms now) -- next gym")
+                                if _ok and n is not None and (n2 is None or n2 <= n):
+                                    dep["n"] = n + 1
+                                say(f"  you placed a Pokemon ({dep['n']}/{a.max_deployed} in gyms now{'; the game said Success' if _ok else ''}) -- next gym")
                             else:
                                 say(f"  another red player filled it first (your gym count is still {n2 if n2 is not None else '?'}) -- moving on")
                         else:

@@ -10,7 +10,10 @@ Run: python test_gym_stab.py      (needs node; frida is not needed -- a stub sta
      the live read (validated by species), the game master table fallback, every refusal, the multiplier, the pick that changes;
   3. stab_config(): the typing table from a synthetic game master, and from the real one when present;
   4. gym_run's report lines: stab_tag() and stab_setup() with a fake tapper;
-  5. gym_run.rested(): which gyms rest, and that a gym we emptied never rests once an enemy team holds it again (2026-11-15).
+  5. gym_run.rested(): which gyms rest, and that a gym we emptied never rests once an enemy team holds it again (2026-11-15);
+  6. the joystick fix (cutoff_hunt.fix) gives a position with no speed in the mock location (stopped / teleported), and the
+     tapper finds the gym screen's place handler by its shape, not by name (2026-11-15);
+  7. gym_run.pick_any(): with nothing else to beat, a resting enemy gym is battled anyway; never an empty / raided / hour-rested one.
 """
 import contextlib
 import io
@@ -547,6 +550,55 @@ def runner_checks():
     check(gym_run.rested({"hour": now + 3000}, {}, {"hour": scan(3, 5000)}, [1, 3], now) == ({"hour"}, []), "the one-hour rest (a refused placement) holds")
     if len(FAILS) == n0:
         print("ok: gym_run rested(): a gym we emptied never rests once an enemy team holds it again; every other rest holds")
+    # 6. the joystick fix with no speed (11-15: no GPS fix kept the runner's loop away from its commands), + the place handler by shape
+    n0 = len(FAILS)
+    chh = gym_run.ch
+    real_adb = chh.adb
+    try:
+        chh.adb = lambda cmd: ("      last mock location=Location[gps 40.752371,-73.982280 hAcc=2.5 et=+1h50m35s652ms alt=8.9 "
+                               "vel=2.8888888 bear=248.2 {Bundle[{satellites=10}]}]")
+        p = chh.fix()
+        check(bool(p) and abs(p[0] - 40.752371) < 1e-9 and abs(p[3] - 2.8888888 * 3.6) < 1e-6, f"fix with a speed: {p!r}")
+        chh.adb = lambda cmd: "      last mock location=Location[gps 40.752371,-73.982280 hAcc=2.5 et=+1d1h50m35s652ms alt=8.9 {Bundle[{satellites=10}]}]"
+        p = chh.fix()
+        check(bool(p) and abs(p[1] + 73.98228) < 1e-9 and p[3] == 0 and abs(p[2] - 93035.652) < 1e-6, f"fix with no speed (stopped): {p!r}")
+        chh.adb = lambda cmd: ""
+        check(chh.fix() is None, "no mock location at all: None")
+    finally:
+        chh.adb = real_adb
+    js = gym_tapper.JS
+    check("methodOn(K.GymApproachGuiController, 'cagd'" not in js and "methodOn(K.GymApproachGuiController, 'cage'" not in js,
+          "the place / deploy-reply handlers are not looked up by an obfuscated name any more")
+    check(js.count("methodsWhere(K.GymApproachGuiController, 1,") == 1 and "'Holoholo.Rpc.PokemonProto'" in js
+          and js.count("methodsWhere(K.GymApproachGuiController, 2,") == 1 and "if (c.length === 1) { M.pickHandler = c[0];" in js,
+          "the handlers are found by shape, and only a unique match is used")
+    check("String.fromCharCode(rn.charCodeAt(rn.length - 1) - 1)" in js and "send({k: 'picklearned'" in js and "pickname: function (name)" in js
+          and "if (QUIET) return; var t = Date.now(); LASTPICK = {m: m, name: nm, at: t};" in js,
+          "several of that shape: the one named before the reply handler, every candidate watched, a real placement teaches the right one")
+    if len(FAILS) == n0:
+        print("ok: joystick fix with / without a speed; place + deploy-reply handlers found by shape (unique match only)")
+    # 7. pick_any (Benny 11-15: "drill and finish" -- never idle while an enemy gym stands)
+    n0, now = len(FAILS), 1000000.0
+    goal = (40.753597, -73.983233)
+
+    def gym(team, dlat, raid=0, cp=5000):
+        return [team, 1000, goal[0] + dlat, goal[1], raid, 0, 0, cp]
+    live = {"yel": gym(3, 0.0005), "emp": gym(0, 0.0007), "raid": gym(1, 0.0003, raid=600000)}
+    t, w = gym_run.pick_any([1, 3], {"yel", "emp"}, {"yel": now - 60, "emp": now - 60}, goal, goal, live, 0, 250, None, now)
+    check(t and t[0] == "yel" and w, f"only a resting yellow gym (+ a resting empty one, a raided one): the yellow one, marked resting: {t!r} {w!r}")
+    live["blu"] = gym(1, 0.001)
+    t, w = gym_run.pick_any([1, 3], {"yel", "emp"}, {"yel": now - 60, "emp": now - 60}, goal, goal, live, 0, 250, None, now)
+    check(t and t[0] == "blu" and not w, f"another enemy gym that is not resting comes first: {t!r} {w!r}")
+    del live["blu"]
+    t, w = gym_run.pick_any([1, 3], {"yel", "emp"}, {"yel": now + 3000, "emp": now - 60}, goal, goal, live, 0, 250, None, now)
+    check(t is None and not w, f"a refused placement's one-hour rest holds: {t!r}")
+    t, w = gym_run.pick_any([1, 3], {"emp"}, {"emp": now - 60}, goal, goal, {"emp": gym(0, 0.0007), "raid": gym(1, 0.0003, raid=600000)}, 0, 250, None, now)
+    check(t is None, f"a resting EMPTY gym and a raided one: nothing (no Deploy loop, no raid): {t!r}")
+    near, far = gym(3, 0.0002, cp=18000), gym(1, 0.0015, cp=2000)            # 22 m / 167 m
+    t, w = gym_run.pick_any([1, 3], set(), {}, goal, goal, {"near": near, "far": far}, 0, 250, None, now)
+    check(t and t[0] == "near", f"the NEAREST non-red gym, whatever its CP (Benny 11-15: 'go to the closest non red gym'): {t!r}")
+    if len(FAILS) == n0:
+        print("ok: gym_run pick_any(): the nearest non-red gym; with nothing else a resting enemy gym is battled; empty / raided / hour-rested ones are not")
 
 
 def main():

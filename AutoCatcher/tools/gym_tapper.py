@@ -51,6 +51,16 @@ var PTM = f('il2cpp_method_get_param', 'pointer', ['pointer', 'uint32']), PNM = 
 var MPC = f('il2cpp_method_get_param_count', 'uint32', ['pointer']);
 var MCLS = f('il2cpp_method_get_class', 'pointer', ['pointer']);   /* a hook only on the class's OWN method, never an inherited one */
 function sigOf(m) { var t = []; for (var i = 0; i < MPC(m); i++) t.push(cs(TN(PTM(m, i)))); return t.join(','); }
+var CGMS = f('il2cpp_class_get_methods', 'pointer', ['pointer', 'pointer']), MGNM = f('il2cpp_method_get_name', 'pointer', ['pointer']);
+var MRTY = f('il2cpp_method_get_return_type', 'pointer', ['pointer']);
+var LASTPICK = null, PICKSENT = {};           /* the last place-handler candidate the game called (learning which one it really is) */
+function methodsWhere(k, argc, test) {        /* the class's OWN methods with argc parameters that pass test(m): found by their SHAPE, not
+                                                 by an obfuscated name a game update renames (2026-11-15: 'cagd' / 'cage' gone on 0.435) */
+  var out = [], it, m; if (!k) return out;
+  it = Memory.alloc(PS); it.writePointer(NULL);
+  while (!(m = CGMS(k, it)).isNull()) { try { if (MPC(m) === argc && test(m)) out.push(m); } catch (e) {} }
+  return out;
+}
 function byName(ns, name) {                   /* exact-name lookup per image -- never a walk over every class (that crashed PoGo twice) */
   var sp = Memory.alloc(PS), a = IL.asms(IL.domain(), sp), n = sp.readU32(), nsp = Memory.allocUtf8String(ns), nmp = Memory.allocUtf8String(name);
   for (var i = 0; i < n; i++) { var k = CFN(IL.asmImage(a.add(i * PS).readPointer()), nsp, nmp); if (!k.isNull()) return k; }
@@ -1304,10 +1314,14 @@ rpc.exports = {
     M.clickBattle = need('ClickBattle', methodOn(K.GymApproachGuiController, 'ClickBattle'));
     M.clickDeploy = need('ClickDeploy', methodOn(K.GymApproachGuiController, 'ClickDeploy'));
     M.clickStop = methodOn(K.GymApproachGuiController, 'ClickPokestopButton', 0);   /* (optional: the gym's photo disc side) */
-    (function () {                             /* optional: without it Deploy just opens the list for the user */
-      var m = methodOn(K.GymApproachGuiController, 'cagd', 1); if (!m) return;
-      var pt = f('il2cpp_method_get_param', 'pointer', ['pointer', 'uint32']), rt = f('il2cpp_method_get_return_type', 'pointer', ['pointer']);
-      if (cs(TN(pt(m, 0))) === 'Holoholo.Rpc.PokemonProto' && cs(TN(rt(m))) === 'System.Void') M.pickHandler = m;
+    (function () {                             /* optional: without it Deploy just opens the list for the user. The gym screen's own
+         "Pokemon picked" handler, found by its SHAPE -- one PokemonProto argument, returns void -- because its obfuscated name changes
+         with game updates ('cagd' on 0.429.1, gone on 0.435: auto-place was off). Exactly one method of that shape, or none is used. */
+      var c = methodsWhere(K.GymApproachGuiController, 1, function (m) {
+        return cs(TN(PTM(m, 0))) === 'Holoholo.Rpc.PokemonProto' && cs(TN(MRTY(m))) === 'System.Void'; });
+      LIT.pickNames = c.map(function (m) { return cs(MGNM(m)); });
+      LIT.pickCands = c;                       /* several of that shape (0.435.2: 3): chosen below, next to the deploy-reply handler */
+      if (c.length === 1) { M.pickHandler = c[0]; M.pickName = LIT.pickNames[0]; LIT.pickWhy = 'the only method of that shape'; }
     })();
     M.back = need('OnBackButtonPressed', methodOn(K.GymApproachGuiController, 'OnBackButtonPressed'));
     M.cont = need('ContinueToNextBattle', methodOn(K.GymBattleContinueGuiController, 'ContinueToNextBattle'));
@@ -1496,15 +1510,34 @@ rpc.exports = {
         DD_OK = !!(K.GymDeployProto && K.GymDeployOutProto && M.gdpCtor && O.gdpFort >= 0 && O.gdpPoke >= 0 && O.gdpLat >= 0 && O.gdpLng >= 0
                    && O.mpdsRpc >= 0 && O.gdoRes !== undefined && OBJNEW && WB);
       } catch (e) { DD_OK = false; }
-      var dk = byName('Holoholo.Rpc', 'GymDeployOutProto'), ce = methodOn(K.GymApproachGuiController, 'cage', 2);
-      if (!dk || !ce || !MCLS(ce).equals(K.GymApproachGuiController)) return;
-      var pt = f('il2cpp_method_get_param', 'pointer', ['pointer', 'uint32']);
-      if (cs(TN(pt(ce, 1))) !== 'Holoholo.Rpc.GymDeployOutProto') return;
+      var dk = byName('Holoholo.Rpc', 'GymDeployOutProto');   /* the deploy reply handler: by its SHAPE too ('cage' on 0.429.1) */
+      var cc = methodsWhere(K.GymApproachGuiController, 2, function (m) { return cs(TN(PTM(m, 1))) === 'Holoholo.Rpc.GymDeployOutProto'; });
+      LIT.deployCbNames = cc.map(function (m) { return cs(MGNM(m)); });
+      var ce = cc.length === 1 ? cc[0] : null;
+      if (!dk || !ce) return;
+      var cands = LIT.pickCands || [], rn = cs(MGNM(ce));
+      if (!M.pickHandler && cands.length > 1 && rn) {   /* the candidate named right before the reply handler: 0.429.1 had cagd / cage */
+        var want = rn.slice(0, -1) + String.fromCharCode(rn.charCodeAt(rn.length - 1) - 1);
+        cands.forEach(function (m) { if (cs(MGNM(m)) === want) { M.pickHandler = m; M.pickName = want;
+          LIT.pickWhy = 'named right before the deploy-reply handler ' + rn + ' (as cagd / cage were on 0.429.1) -- confirmed by the next placement'; } });
+      }
+      if (cands.length > 1) cands.forEach(function (m) {   /* watch every candidate (record only, no game call in the hook): the one the game
+                                                              calls just before a successful deploy reply IS the place handler */
+        var nm = cs(MGNM(m));
+        try { Interceptor.attach(m.readPointer(), function () { if (QUIET) return; var t = Date.now(); LASTPICK = {m: m, name: nm, at: t};
+          if (t - (PICKSENT[nm] || 0) > 1000) { PICKSENT[nm] = t; send({k: 'pickcall', name: nm}); } }); } catch (e) {}
+      });
       var ro = -1, names = {}; fieldsOf(dk).forEach(function (x) { if (x.name === 'Result') { ro = x.off; var l = enumLits(IL.classFromType(x.t)); for (var nm in l) names[l[nm]] = nm; } });
       if (ro < 0) return;
       Interceptor.attach(ce.readPointer(), function (a) { if (QUIET) return;
         try { if (!a[2].isNull() && a[2].readPointer().equals(dk)) { var r = a[2].add(ro).readS32();
           if (r !== 1) PLACED = null;                /* refused: nothing is in flight any more (a retry may fire at once) */
+          if (r === 1 && LASTPICK && Date.now() - LASTPICK.at < 10000) {   /* a placement went through: the candidate called just before it */
+            var was = M.pickName || null;
+            if (LASTPICK.name !== was) { M.pickHandler = LASTPICK.m; M.pickName = LASTPICK.name; LIT.pickWhy = 'learned from a placement'; }
+            send({k: 'picklearned', name: LASTPICK.name, was: was});
+          }
+          LASTPICK = null;
           send({k: 'deployresult', res: names[r] || String(r), ok: r === 1}); } } catch (e) {} });
     })();
     var rg = methodOn(K.GuiLayerService, 'RegisterGui', 2), ug = methodOn(K.GuiLayerService, 'UnregisterGui', 1);
@@ -1514,13 +1547,18 @@ rpc.exports = {
     if (ug) Interceptor.attach(ug.readPointer(), function (a) { if (QUIET) return;
       try { var u = a[1]; delete GUIS[u]; delete CONT_DONE[u]; delete SKIP_DONE[u]; delete OUTCOME_SEEN[u];
         POPQ = POPQ.filter(function (d) { return !d.gui.equals(u); }); } catch (e) {} });
-    return {ok: true, gyms: dirGyms().length, root: String(ROOT), guiLayer: GLS_CANDS.length, open: LIT.open, autoplace: !!M.pickHandler,
+    return {ok: true, gyms: dirGyms().length, root: String(ROOT), guiLayer: GLS_CANDS.length, open: LIT.open, autoplace: !!M.pickHandler, pickNames: LIT.pickNames || [], deployCbNames: LIT.deployCbNames || [],
+      pickName: M.pickName || null, pickWhy: LIT.pickWhy || null,
       team: TEAM_MISSING.length ? TEAM_MISSING : true, feed: FEED_MISSING.length ? FEED_MISSING : true, detailsParams: O.detailsParams || null, range: RANGE, graph: GRAPH, graphNotes: GRAPH_NOTES,
       stab: stabReport()};
   },
   stab: function (cfg) { return loadStab(cfg); },   /* the client game master's same-type multiplier + typing table, handed over by the runner (gym_tapper.stab_config) */
   open: function (fid) { if (/GymRootState|GymRotationState/.test(CHAIN)) return {known: !!GYMS[fid], busy: true};   /* a gym is opening/open */
     PENDING = fid; PENDING_AT = Date.now(); return {known: !!GYMS[fid]}; },
+  pickname: function (name) {                /* a place handler learned in an earlier run (gym_state/pick_handler.json): only one of this shape */
+    var hit = null; (LIT.pickCands || []).forEach(function (m, i) { if (LIT.pickNames[i] === name) hit = m; });
+    if (hit) { M.pickHandler = hit; M.pickName = name; LIT.pickWhy = 'learned from a placement in an earlier run'; }
+    return {ok: !!hit, name: M.pickName || null}; },
   autodeploy: function (fid, ids, friendly, team) { if (team) MYTEAM = team;
     AUTODEP = fid ? {fid: fid, at: Date.now(), cands: (ids || []).map(String), friendly: !!friendly} : null;
     return {armed: !!AUTODEP, auto: !!(AUTODEP && AUTODEP.cands.length && M.pickHandler && IBAG)}; },
