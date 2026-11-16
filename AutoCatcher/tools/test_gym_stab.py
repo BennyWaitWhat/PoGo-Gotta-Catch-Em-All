@@ -569,8 +569,11 @@ def runner_checks():
     check("methodOn(K.GymApproachGuiController, 'cagd'" not in js and "methodOn(K.GymApproachGuiController, 'cage'" not in js,
           "the place / deploy-reply handlers are not looked up by an obfuscated name any more")
     check(js.count("methodsWhere(K.GymApproachGuiController, 1,") == 1 and "'Holoholo.Rpc.PokemonProto'" in js
-          and js.count("methodsWhere(K.GymApproachGuiController, 2,") == 1 and "if (c.length === 1) M.pickHandler = c[0];" in js,
+          and js.count("methodsWhere(K.GymApproachGuiController, 2,") == 1 and "if (c.length === 1) { M.pickHandler = c[0];" in js,
           "the handlers are found by shape, and only a unique match is used")
+    check("String.fromCharCode(rn.charCodeAt(rn.length - 1) - 1)" in js and "send({k: 'picklearned'" in js and "pickname: function (name)" in js
+          and "if (QUIET) return; var t = Date.now(); LASTPICK = {m: m, name: nm, at: t};" in js,
+          "several of that shape: the one named before the reply handler, every candidate watched, a real placement teaches the right one")
     if len(FAILS) == n0:
         print("ok: joystick fix with / without a speed; place + deploy-reply handlers found by shape (unique match only)")
 

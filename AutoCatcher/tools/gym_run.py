@@ -267,6 +267,18 @@ class Game:
                 say(f"    !! {nm} at {fid} is at {p['mot']:.0%} motivation but you have NO Golden Razz left")
             else:
                 say(f"    feeder: {p}")
+        elif k == "pickcall":                                # a place-handler candidate ran (learning which one places)
+            say(f"    the game called {p['name']} (a place-handler candidate)")
+        elif k == "picklearned":                             # a placement went through right after that candidate: it IS the handler
+            if p.get("name") == p.get("was"):
+                say(f"  auto-place handler {p['name']} CONFIRMED by a real placement")
+            else:
+                say(f"  auto-place handler LEARNED from a real placement: {p['name']} (was {p.get('was')}) -- auto-place uses it now")
+            try:
+                if getattr(self, "pick_file", None):
+                    json.dump({"name": p["name"], "at": time.strftime("%Y-%m-%d %H:%M:%S")}, open(self.pick_file, "w", encoding="utf-8"))
+            except Exception as _e:
+                say(f"    (could not save the learned handler: {_e})")
         elif k == "deployresult":
             say(f"    deploy result: {p['res']}")
             if not p.get("ok") and self.autoplaced:        # the game said no: end the wait now, with the reason
@@ -831,9 +843,18 @@ def _run(a, g, mv, done, t_start, enemy, goal, sess, pid, sc):
         say(f"  gym-details request parameters: {r['detailsParams']}")
     if r.get("team") is not True:
         say(f"  !! custom team / heal unavailable: {r.get('team')}")
-    say("  auto-place: " + (f"ON -- the gym screen's place handler is {r['pickNames'][0]} (found by its shape: one PokemonProto, returns void)"
-                            if r.get("autoplace") else f"OFF -- {len(r.get('pickNames') or [])} handler(s) of that shape {r.get('pickNames')}; "
-                            "Deploy opens the list for you") + f" | deploy replies read by {r.get('deployCbNames')}")
+    _pf = os.path.join(os.path.dirname(a.study) if a.study else HERE, "pick_handler.json")   # a place handler learned in an earlier run
+    try:
+        _pl = json.load(open(_pf, encoding="utf-8")).get("name")
+    except Exception:
+        _pl = None
+    if _pl and _pl in (r.get("pickNames") or []) and _pl != r.get("pickName"):
+        _pr = sc.exports_sync.pickname(_pl)
+        if _pr.get("ok"):
+            r["autoplace"], r["pickName"], r["pickWhy"] = True, _pl, "learned from a placement in an earlier run"
+    g.pick_file = _pf
+    say("  auto-place: " + (f"ON -- place handler {r.get('pickName')}: {r.get('pickWhy')}" if r.get("autoplace")
+                            else "OFF -- Deploy opens the list for you") + f" | shape matches {r.get('pickNames')}, deploy replies {r.get('deployCbNames')}")
     _gr = r.get("graph") or {}                               # the live service graph (H01, 2026-09-29): which one, and how fresh
     say(f"  live service graph: {_gr.get('graphs', '?')} ItemBagImpl graph(s), inventory last updated "
         + (f"{(time.time() * 1000 - _gr['ts']) / 1000:.0f} s ago" if (_gr.get("ts") or -1) > 0 else "(unreadable)")
