@@ -112,9 +112,48 @@ def _stages(r, lg):
     return out
 
 
+_HALF = {}
+
+
+def top_half(lg, enabled):
+    """LAW "TOP HALF" (2026-11-16; keep_config rules.pvp_top_half -- the caller passes it as `enabled`): pvpoke's top half
+    of a league's overall list, read HERE from system/analysis/pvpoke_rankings/rankings-<cap>.json by score, on its own
+    (the engine reads it through pvp_iv_rule.meta_list). -> (top-half speciesIds, every listed speciesId), or None = NO
+    GATE: the rule is off, the league is not gl / ul, or the list is unknown (missing, under 300 entries, under 90%
+    scored) -- an unknown list is never an empty one."""
+    if not enabled or lg not in ('gl', 'ul'):
+        return None
+    if lg not in _HALF:
+        import json
+        import os
+        try:
+            lst = json.load(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'system', 'analysis',
+                                              'pvpoke_rankings', 'rankings-%d.json' % {'gl': 1500, 'ul': 2500}[lg]),
+                                 encoding='utf-8'))
+            ok = [x for x in lst if isinstance(x.get('score'), (int, float)) and not isinstance(x.get('score'), bool)]
+            ids = [x['speciesId'] for x in sorted(ok, key=lambda x: -x['score'])]
+            _HALF[lg] = ((frozenset(ids[:len(ids) // 2]), frozenset(ids))
+                         if len(lst) >= 300 and len(ok) >= 0.9 * len(lst) else None)
+        except (OSError, ValueError, KeyError, TypeError, AttributeError):
+            _HALF[lg] = None
+    return _HALF[lg]
+
+
+def in_top_half(lg, stage, shadow=0, enabled=True):
+    """May `stage` hold a Great / Ultra League keep under LAW "TOP HALF"? True inside the top half -- a shadow copy is
+    judged by its shadow entry when pvpoke lists one -- and whenever there is no gate (see top_half; no stage). A stage
+    the list does not name is NOT competitive (his words: "counting a Pokemon pvpoke doesn't rank as not competitive")."""
+    h = top_half(lg, enabled) if stage else None
+    if h is None:
+        return True
+    if shadow and stage + '_shadow' in h[1]:
+        return stage + '_shadow' in h[0]
+    return stage in h[0]
+
+
 def combup_uncovered(rows, pile, labels, *, own_of, later_fn, fits_fn, reaches_fn, caps, floor, rare_pids,
                      legacy_uids, protected_pids, cf, shadow_floor, shadow_leagues, ladder_cap, meta_ok=None,
-                     protected_uids=frozenset()):
+                     protected_uids=frozenset(), half_ok=None):
     """Pile members that are a LAW bucket 2c opportunity nobody kept. -> [(uid, league, target, rank, why)]
 
     LAW 2c: for every Great / Ultra League TARGET stage, the copy whose evolved self would BECOME YOUR BEST there
@@ -134,7 +173,9 @@ def combup_uncovered(rows, pile, labels, *, own_of, later_fn, fits_fn, reaches_f
     `meta_ok(league, stage, rank)` (LAW 2b since 2026-11-11, "Best needs a meta species"): False when a NON-shadow Best of
     that stage at that rank is not kept (past rank 5, the stage outside pvpoke's top list) -- then a copy that is your best
     there is no "Best as itself", and an evolve that would only make such a Best is no opportunity. None = no such rule.
-    The legendary roster is exempt, as from the floor."""
+    The legendary roster is exempt, as from the floor.
+    `half_ok(league, stage, shadow)` (LAW "TOP HALF", 2026-11-16): False for a stage outside pvpoke's top half of that
+    league -- no Best, no own-stage spread and no comb-up target there, shadows and the roster included. None = no rule."""
     by = {r['uid_hex']: r for r in rows}
     sh = lambda r: 1 if (_get(r, 'fresh_alignment') or 0) == 1 else 0
     forms, shinies = defaultdict(int), defaultdict(int)
@@ -155,7 +196,8 @@ def combup_uncovered(rows, pile, labels, *, own_of, later_fn, fits_fn, reaches_f
                         best[k] = (rk, r['uid_hex'])
         owned[lg] = best
         for (st, s), (rk, u) in best.items():
-            if s or meta_ok is None or meta_ok(lg, st, rk) or _get(by[u], 'pokemon_id') in rare_pids:
+            if (half_ok is None or half_ok(lg, st, s)) and (
+                    s or meta_ok is None or meta_ok(lg, st, rk) or _get(by[u], 'pokemon_id') in rare_pids):
                 own_rank[u] = min(rk, own_rank.get(u, rk))
     # each shadow species' best shadow today (bucket 7): (reaches the cap first, rank) at the best stage a copy can reach,
     # among its copies that can enter the league at one of those stages
@@ -182,6 +224,7 @@ def combup_uncovered(rows, pile, labels, *, own_of, later_fn, fits_fn, reaches_f
             return True
         o = own_of(r)
         return any(st == o and rk <= 5 and reaches_fn(st, cap) and fits_fn(r, st, cap)
+                   and (half_ok is None or half_ok(lg, st, sh(r)))
                    for lg, cap in caps.items() for st, rk in _stages(r, lg))
 
     cover = defaultdict(list)                        # (league, target, shadow) -> [kept copies the engine assigned]
@@ -210,6 +253,8 @@ def combup_uncovered(rows, pile, labels, *, own_of, later_fn, fits_fn, reaches_f
                     continue
                 if not sh(p) and meta_ok is not None and not meta_ok(lg, st, rk) and _get(p, 'pokemon_id') not in rare_pids:
                     continue                             # the evolved copy would be a Best nobody keeps (2026-11-11)
+                if half_ok is not None and not half_ok(lg, st, sh(p)):
+                    continue                             # outside pvpoke's top half: no keep there to make (2026-11-16)
                 if sh(p):
                     mine = best_of[lg].get((st, 1))
                     if mine is not None and (0, rk) >= mine:
@@ -383,4 +428,12 @@ if __name__ == '__main__':
     kwb = dict(kws, next_of=lambda r: {'mothim'} if r['species_name'].startswith('burmy') else set(), cap_of=lambda t: 2,
                plain_cap_of=lambda t: 2)
     assert shiny_ladder_violations(burmy, {'s2'}, **kwb) == [], 'p2 (40, another stage, kept) takes the one open Mothim spot'
+    # THE TOP HALF (2026-11-16): a shadow by its shadow entry; a stage pvpoke does not list is not competitive; no gate
+    # when the rule is off or in Master League
+    _HALF['gl'] = (frozenset({'a', 'b_shadow'}), frozenset({'a', 'b', 'b_shadow', 'c'}))
+    assert in_top_half('gl', 'a', 0, True) and not in_top_half('gl', 'c', 0, True), 'inside / outside the top half'
+    assert not in_top_half('gl', 'zz', 0, True), 'a stage pvpoke does not rank is not competitive'
+    assert in_top_half('gl', 'b', 1, True) and not in_top_half('gl', 'b', 0, True), 'a shadow is judged by its shadow entry'
+    assert in_top_half('gl', 'c', 0, False) and in_top_half('ml', 'c', 0, True), 'no gate: the rule off, or Master League'
+    del _HALF['gl']
     print('independent_law self-check OK')

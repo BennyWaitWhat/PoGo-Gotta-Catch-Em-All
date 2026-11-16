@@ -95,6 +95,35 @@ def meta_pos(lg, sid):
         return None
 
 
+_META_HALF = {}
+
+
+def meta_half(lg):
+    """pvpoke's TOP HALF of a league's list ('gl' / 'ul') as speciesIds: what a PvP keep there needs once keep_config
+    rules.pvp_top_half is on (user 2026-11-16: "i say keep them if they're at least in the top half of being compeititve",
+    then "for GL and UL leagues and counting a Pokemon pvpoke doesn't rank as not competitive"; Master League is not
+    gated). None = no gate: the rule is off, or the list is unknown (an unknown list is never an empty one)."""
+    if lg not in ('gl', 'ul') or not keep_config.rule_enabled('pvp_top_half'):
+        return None
+    if lg not in _META_HALF:
+        lst = meta_list(lg)
+        _META_HALF[lg] = None if lst is None else (frozenset(lst[:len(lst) // 2]), frozenset(lst))
+    return None if _META_HALF[lg] is None else _META_HALF[lg][0]
+
+
+def competitive(lg, stage, shadow=0):
+    """May `stage` (a pvpoke speciesId) hold a PvP keep in `lg`? True inside meta_half -- a shadow copy is judged by its
+    shadow entry when pvpoke lists one -- and whenever there is no gate (rule off, list unknown, Master League, no stage).
+    THE test of rules.pvp_top_half: plays(), qualifies(), owned_as_stage(), behind_owned() and keep_policy's Best,
+    0/15/15 and comb-up rules ask it; the audits and the pre-flight read the ranking files themselves."""
+    half = meta_half(lg) if stage else None
+    if half is None:
+        return True
+    if shadow and stage + '_shadow' in _META_HALF[lg][1]:
+        return stage + '_shadow' in half
+    return stage in half
+
+
 # Sentinel returned when we CANNOT compute a species' L50-hundo CP (speciesId absent from the
 # gamemaster, or the gamemaster failed to load at all). Every caller uses maxcp only in a
 # `maxcp(stage, BS) > cap + margin` VIABILITY test, so a huge sentinel makes an unjudgeable stage
@@ -244,7 +273,7 @@ def chain_stage_ranks(r, league):
     return out
 
 
-def plays(r, league, cap, BS, rr=None):
+def plays(r, league, cap, BS, rr=None, gate=True):
     """(stage, rank) of the best-ranked stage where THIS COPY is a top-`rr` spread AND can actually play `league`, else
     None. User 2026-09-30: "Why would I keep any GL and UL pokemon that cant participate? powering up is fine, but if
     its impossible in its best form for pvp, then wtf". A stage counts iff
@@ -253,14 +282,17 @@ def plays(r, league, cap, BS, rr=None):
       * fits(): this copy's CP there -- its own stage now, a later stage after evolving at its true level -- is inside
         the cap. Powering up later is fine; CP never comes back down, so over the cap there means never.
     Every stage of the ranker's chain is swept, not only the headline one. fits() is fail-safe (unknown => fits), so
-    missing base stats or an unprovable level never strip protection."""
+    missing base stats or an unprovable level never strip protection. rules.pvp_top_half (2026-11-16): the stage must also
+    be competitive() -- inside pvpoke's top half of the league; gate=False is the ungated test (the audits ask that, then
+    judge the top half from the ranking files themselves)."""
     rr = READY_RANK if rr is None else rr
     ch = chain_stage_ranks(r, league)
     if not ch and _col(r, league + '_rank') is not None:
         ch = [(_col(r, league + '_stage'), _col(r, league + '_rank'))]
     best = None
     for st, rk in ch:
-        if st and rk is not None and rk <= rr and maxcp(st, BS) > cap + VIABILITY_MARGIN and fits(r, st, cap, BS):
+        if st and rk is not None and rk <= rr and maxcp(st, BS) > cap + VIABILITY_MARGIN and fits(r, st, cap, BS) \
+                and (not gate or competitive(league, st, _shadow(r))):
             if best is None or rk < best[1]:
                 best = (st, rk)
     return best
@@ -280,7 +312,8 @@ def owned_as_stage(rows, BS, rr=None):
         own = pvid(_col(r, 'species_name'), _col(r, 'form') or 0)
         for league, cap in (('gl', GL_CAP), ('ul', UL_CAP)):
             for st, rk in chain_stage_ranks(r, league):
-                if st == own and rk <= rr and maxcp(st, BS) > cap + VIABILITY_MARGIN and fits(r, st, cap, BS):
+                if st == own and rk <= rr and maxcp(st, BS) > cap + VIABILITY_MARGIN and fits(r, st, cap, BS) \
+                        and competitive(league, st, _shadow(r)):
                     k = (league, st, _shadow(r))
                     out[k] = min(rk, out.get(k, rk))
     return out
@@ -297,7 +330,8 @@ def behind_owned(r, owned, BS, rr=None):
     own, sh, later = pvid(_col(r, 'species_name'), _col(r, 'form') or 0), _shadow(r), []
     for league, cap in (('gl', GL_CAP), ('ul', UL_CAP)):
         for st, rk in chain_stage_ranks(r, league):
-            if not st or rk > rr or maxcp(st, BS) <= cap + VIABILITY_MARGIN or not fits(r, st, cap, BS):
+            if not st or rk > rr or maxcp(st, BS) <= cap + VIABILITY_MARGIN or not fits(r, st, cap, BS) \
+                    or not competitive(league, st, sh):
                 continue
             if st == own:
                 return None                      # a usable top-rr AS IT IS: an own-stage asset
@@ -360,6 +394,8 @@ def qualifies(species_name, form, iv_atk, iv_def, iv_sta, stage, rank, floor, BS
         return False                             # must exceed cap + VIABILITY_MARGIN (keep_config pvp.viability_margin, currently 0) or the rank is degenerate (Abra/Machop hundo = #1).
     if rank is None or rank > READY_RANK:        # THE league IV-RANK check -- top-5 of 4096 spreads for the best chain form
         return False                             # (a pre-evo whose best form is only GL#116, e.g. Wooloo->Dubwool, is "way off")
+    if cap in (GL_CAP, UL_CAP) and not competitive('gl' if cap == GL_CAP else 'ul', stage, _shadow(row) if row is not None else 0):
+        return False                             # outside pvpoke's top half of that league (rules.pvp_top_half, 2026-11-16)
     if pvid(species_name, form or 0) == stage:                 # READY (evolved / as-itself)
         return cap is None or (cp or 0) <= cap   # ...but a READY mon ALREADY over the league CP cap can't enter it
     # PRE-EVO top-5 build-target for a viable evolved form -> KEEP, when THIS copy can still play it (user 2026-09-30:

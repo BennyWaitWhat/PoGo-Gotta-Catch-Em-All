@@ -138,7 +138,7 @@ def advice(members=None, pile=None):
     # pvp_combup.pick sets for a new Best AS a stage -- inside the Best floor, better than your best copy there (shadow and
     # regular apart) and, past ready_rank, a species inside the league's meta list
     import keep_config
-    from pvp_iv_rule import meta_top
+    from pvp_iv_rule import meta_top, competitive
     try:
         _cul = {norm_uid(k): v for k, v in json.load(open(os.path.join(ROOT, 'system', 'analysis', 'pvp_combup_labels.json'),
                                                              encoding='utf-8')).items()}
@@ -148,6 +148,8 @@ def advice(members=None, pile=None):
                                   keep_config.pvp('ready_rank') or 0, {})
 
     def _new_best(lg, st, rk, sh):
+        if not competitive(lg, st, sh):
+            return False                     # outside pvpoke's top half: no Best is kept there (rules.pvp_top_half, 2026-11-16)
         if (lg, st, sh) not in _owned:
             _owned[(lg, st, sh)] = min((x[lg + '_rank'] for x in rows.values() if x[lg + '_stage'] == st and x[lg + '_rank']
                                         and int((x['fresh_alignment'] or 0) == 1) == sh

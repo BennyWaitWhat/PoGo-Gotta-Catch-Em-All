@@ -663,10 +663,28 @@ if _BMT:
             _PB_META[_lg] = None
 def _pb_meta(lg, st, rk):
     return not _BMT or rk <= _RDY or _PB_META.get(lg) is None or st in _PB_META[lg]
+
+
+# THE TOP HALF (LAW 2026-11-16, keep_config rules.pvp_top_half): a Great / Ultra League keep counts only for a stage inside the
+# top half of pvpoke's list for that league (a stage it does not list is not competitive; Master League is not gated) -- read
+# by independent_law from the ranking files on its own (the engine asks pvp_iv_rule.competitive). Every Best, the roster too;
+# the 0/15/15 spread; the comb-up law; layer 7.
+from independent_law import in_top_half as _in_half, top_half as _top_half
+_AC_TH = keep_config.rule_enabled('pvp_top_half')
+_ac_half = lambda lg, st, sh=0: _in_half(lg, st, sh, _AC_TH)
+
+
+def _ac_spread(r):
+    """A 0/15/15 keeps for a GL or UL stage inside the top half (the ranker's stage there); no list at all = no gate."""
+    if _top_half('gl', _AC_TH) is None and _top_half('ul', _AC_TH) is None:
+        return True
+    _s = 1 if r.get('fresh_alignment') == 1 else 0
+    return any(r.get(lg + '_stage') and _ac_half(lg, r[lg + '_stage'], _s) for lg in ('gl', 'ul'))
 for lst in _pbg.values():
     for _lg, _cap in (('gl', _PB_GL), ('ul', _PB_UL)):
         _w, _wr = _pvp_usable_winner_rk(lst, _lg, _cap, own_only=True)
-        if _w and (_wr <= _BRF or rows[_w]['pokemon_id'] in _RARE_PIDS) \
+        if _w and _ac_half(_lg, _pb_pvid(rows[_w]['species_name'], rows[_w].get('form') or 0)) \
+                and (_wr <= _BRF or rows[_w]['pokemon_id'] in _RARE_PIDS) \
                 and (rows[_w]['pokemon_id'] in _RARE_PIDS or _pb_meta(_lg, _pb_pvid(rows[_w]['species_name'], rows[_w].get('form') or 0), _wr)):   # legendaries: no rank floor (2026-09-24), no meta gate
             _pvp_best_keep.add(_w)
     _c = [x for x in lst if x.get('ml_rank') is not None and (x['ml_rank'] <= _BRF or x['pokemon_id'] in _RARE_PIDS)]
@@ -715,7 +733,7 @@ for nm, p in [('hundo', lambda r: (r['iv_total'] or 0) == 45),
               ('legacy (kept)', lambda r: r['uid_hex'] in _legacy_keep),
               ('protected pid', lambda r: r['pokemon_id'] in _PROT),
               ('kept by hand', lambda r: r['uid_hex'] in keep_config.hand_kept()),   # he took it out of the Transfer tag (2026-11-12)
-              ('pvp spread', lambda r: (r.get('iv_atk'), r.get('iv_def'), r.get('iv_sta')) in _SPREAD),
+              ('pvp spread', lambda r: (r.get('iv_atk'), r.get('iv_def'), r.get('iv_sta')) in _SPREAD and _ac_spread(r)),
               ('best gl/ul', lambda r: r['uid_hex'] in _pvp_best_keep),
               # (2026-09-26) fused components hold no ladder slot -- and are NEVER pile candidates: the game holds
               # them inside a Kyurem (hidden, not releasable). Engine keeps them as 'fused'; any in the pile is a leak.
@@ -745,7 +763,8 @@ _il_cu = _il.combup_uncovered(
     floor=keep_config.pvp('best_rank_floor'), rare_pids=_RARE_PIDS, legacy_uids=_legrec,
     protected_pids=keep_config.protected_pids(), protected_uids=keep_config.hand_kept(), cf=cf, shadow_floor=keep_config.pvp('shadow_rank_floor'),
     shadow_leagues=keep_config.shadow_leagues(),
-    ladder_cap=lambda s: keep_config.cap('plain_line_preevo' if s in _IL_MID else 'plain_line'), meta_ok=_pb_meta)
+    ladder_cap=lambda s: keep_config.cap('plain_line_preevo' if s in _IL_MID else 'plain_line'), meta_ok=_pb_meta,
+    half_ok=_ac_half)
 print('  %-18s %-5d %s   (LAW bucket 2c re-derived: a piled copy whose evolved self would take its species\' Best)'
       % ('comb-up (law)', len(_il_cu), chk('comb-up (law)', len(_il_cu))))
 for _u, _lg, _st, _rk, _why in _il_cu[:6]:
@@ -1017,12 +1036,16 @@ if keep_config.rule_enabled('pvp_later_stage_owned'):
 
 
 def _l7_kept_later(r):
-    """[(LG, stage, its rank, the kept holder's rank)] when every stage this copy can play is a later stage held as well
-    or better by a kept copy; else None."""
+    """[(LG, stage, its rank, the kept holder's rank or None)] when every stage this copy can play is excused: OUTSIDE
+    pvpoke's top half of that league (holder None; LAW "TOP HALF", 2026-11-16, read by independent_law) or a later stage
+    held as well or better by a kept copy (15f); else None."""
     own, out = _l7_pvid(r['species_name'], r.get('form') or 0), []
     for lg, cap in (('gl', GL_CAP), ('ul', UL_CAP)):
         for st, rk in _l7_chain(r, lg):
             if rk > RR or mcp(st) <= cap + VM or not _l7_fits(r, st, cap, BS):
+                continue
+            if not _ac_half(lg, st, _l7_sh(r)):
+                out.append((lg.upper(), st, rk, None))
                 continue
             h = _l7_held.get((lg, st, _l7_sh(r)))
             if st == own or h is None or h > rk:
@@ -1031,15 +1054,16 @@ def _l7_kept_later(r):
     return out or None
 
 
-n_held = 0
+n_held = n_half = 0
 for u in sorted(t5, key=lambda z: (-(rows[z].get('iv_total') or 0), z)):
     r = rows[u]
     gl = mcp(r.get('gl_stage')) if (r.get('gl_rank') or 999) <= RR else None
     ul = mcp(r.get('ul_stage')) if (r.get('ul_rank') or 999) <= RR else None
     noise = (gl is None or gl <= GL_CAP + VM) and (ul is None or ul <= UL_CAP + VM)
-    can = [lg for lg, cap in (('gl', GL_CAP), ('ul', UL_CAP)) if _l7_plays(r, lg, cap, BS, RR) is not None]
+    can = [lg for lg, cap in (('gl', GL_CAP), ('ul', UL_CAP)) if _l7_plays(r, lg, cap, BS, RR, gate=False) is not None]
     held = _l7_kept_later(r) if (can and not noise) else None
-    n_held += bool(held)
+    n_held += bool(held) and any(h is not None for *_z, h in held)
+    n_half += bool(held) and any(h is None for *_z, h in held)
     good = noise or not can or bool(held)
     if not good:
         viol += 1
@@ -1047,11 +1071,16 @@ for u in sorted(t5, key=lambda z: (-(rows[z].get('iv_total') or 0), z)):
         r['species_name'], r.get('gl_rank'), gl, r.get('ul_rank'), ul,
         'cap-unreachable -> rank is noise, OK' if noise else
         'over the cap at every top-%d stage -> this copy cannot play it, OK' % RR if not can else
-        'top %d only as %s, each kept as well or better -> 15f, OK' % (RR, ', '.join(
-            '%s %s #%d (kept #%d)' % (lg, st, rk, h) for lg, st, rk, h in held)) if held else
+        'top %d only as %s -> %s, OK' % (RR, ', '.join(
+            '%s %s #%d (%s)' % (lg, st, rk, "outside pvpoke's top half" if h is None else 'kept #%d' % h)
+            for lg, st, rk, h in held), ' + '.join(x for x, on in (
+                ('top half', any(h is None for *_z, h in held)), ('15f', any(h is not None for *_z, h in held))) if on))
+        if held else
         '*** CAN PLAY %s, CHECK ***' % '/'.join(x.upper() for x in can)))
 if n_held:
     print('  %-18s %-5d top %d only as an evolution a kept copy already holds as well or better (15f)' % ('15f releases', n_held, RR))
+if n_half:
+    print("  %-18s %-5d top %d only at stages outside pvpoke's top half (LAW 'TOP HALF', 2026-11-16)" % ('top-half releases', n_half, RR))
 print('  %-18s %-5d %s' % ('rank<=%d violations' % RR, viol, chk('pvp rank', viol)))
 
 print('\nLAYER 8  data quality (incomplete display reads)')

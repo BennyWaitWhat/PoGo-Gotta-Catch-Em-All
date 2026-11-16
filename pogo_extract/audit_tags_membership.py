@@ -312,6 +312,10 @@ try:
                                if len(_mraw) >= 300 and len(_msc) >= 0.9 * len(_mraw) else None)
             except (OSError, ValueError, KeyError, TypeError, AttributeError):
                 _META2[_mlg] = None
+    # THE TOP HALF (LAW 2026-11-16, keep_config rules.pvp_top_half): a Best GL / UL only for a stage inside pvpoke's top half of
+    # that league, the roster too -- read by independent_law from the ranking files on its own
+    from independent_law import in_top_half as _in_half2
+    _TH2 = keep_config.rule_enabled('pvp_top_half')
     for _lg, _rk, _st, _cap in (('GL', 'gl_rank', 'gl_stage', _G2), ('UL', 'ul_rank', 'ul_stage', _U2),
                                 ('ML', 'ml_rank', 'ml_stage', _M2)):
         q = set()
@@ -323,7 +327,8 @@ try:
                 _c = [(k, x) for x in _l for k in (_usable2(x, _lg.lower(), _cap),) if k is not None]
                 if _c:
                     _bk, _bx = min(_c, key=lambda y: (y[0][0], y[0][1], y[1]['uid_hex']))
-                    if (_bk[1] <= _BRF or _bx['pokemon_id'] in _RARE_M) and (
+                    if _in_half2(_lg.lower(), _pv2(_bx['species_name'], _bx.get('form') or 0), 0, _TH2) \
+                            and (_bk[1] <= _BRF or _bx['pokemon_id'] in _RARE_M) and (
                             not _BMT2 or _bk[1] <= _RDY2 or _bx['pokemon_id'] in _RARE_M or _META2.get(_lg.lower()) is None
                             or _pv2(_bx['species_name'], _bx.get('form') or 0) in _META2[_lg.lower()]):
                         q.add(_bx['uid_hex'])

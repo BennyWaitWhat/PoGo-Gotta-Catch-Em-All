@@ -60,7 +60,7 @@ def _own_stage_best():
     gate), the best shiny of its look (pvp_combup.shiny_trophies), and a legacy move (legacy_accurate.json: a mover past
     the legacy cap carries no 'legacy' reason)."""
     import json, sqlite3
-    from pvp_iv_rule import pvid, usable_best, maxcp, GL_CAP, UL_CAP, READY_RANK, VIABILITY_MARGIN
+    from pvp_iv_rule import pvid, usable_best, maxcp, GL_CAP, UL_CAP, READY_RANK, VIABILITY_MARGIN, competitive
     try:
         pol = json.load(open(os.path.join('system', 'analysis', 'policy_reasons.json'), encoding='utf-8'))
         legacy = {norm(e['uid_hex']) for e in json.load(open('legacy_accurate.json', encoding='utf-8'))}
@@ -81,6 +81,7 @@ def _own_stage_best():
             own = pvid(r['species_name'], r['form'] or 0)
             top = any(r[st] == own and r[rk] is not None and r[rk] <= READY_RANK and own in BS
                       and maxcp(own, BS) > cap + VIABILITY_MARGIN
+                      and competitive(st[:2], own, 1 if r['fresh_alignment'] == 1 else 0)   # the top half (2026-11-16)
                       for st, rk, cap in (('gl_stage', 'gl_rank', GL_CAP), ('ul_stage', 'ul_rank', UL_CAP)))
             if top or 'pvp_best_gl' in rs or 'pvp_best_ul' in rs:   # every Best wins as itself since 2026-10-29 (15d)
                 out.add(norm(r['uid_hex']))

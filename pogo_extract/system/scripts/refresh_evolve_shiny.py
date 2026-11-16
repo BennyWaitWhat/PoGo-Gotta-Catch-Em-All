@@ -23,7 +23,7 @@ from keep_policy import build_evo_graph, ITEM_GATED_TARGETS as SPECIAL   # ONE i
 from keep_policy import pvp_later_stages                # the later stages a specimen can become (Best GL/UL, 2026-09-23)
 import keep_config
 import evolvable_forms                                  # a costume form the game master cannot evolve is never tagged (Psyduck Swim 2025, 2026-09-16)
-from pvp_iv_rule import pvid, usable_best, GL_CAP, UL_CAP, maxcp, READY_RANK, VIABILITY_MARGIN
+from pvp_iv_rule import pvid, usable_best, GL_CAP, UL_CAP, maxcp, READY_RANK, VIABILITY_MARGIN, competitive
 import costume_names as cn
 # pogo_il2cpp / tag_ops / reconcile_tags are imported inside main(): compute_target() must stay a light, device-free
 # import -- keep_policy calls it, including inside sandboxed engine runs whose stdout is redirected (2026-09-17).
@@ -128,6 +128,7 @@ def compute_target(why=None, spent=None, detail=None, gated=None, items_spent=No
         fr = _full.get(u)
         own_rank = fr is not None and any(
             fr[st] == own and fr[rk] is not None and fr[rk] <= READY_RANK and own in _BSx and maxcp(own, _BSx) > cap + VIABILITY_MARGIN
+            and competitive(st[:2], own, 1 if fr['fresh_alignment'] == 1 else 0)   # the top half (rules.pvp_top_half, 2026-11-16)
             for st, rk, cap in (('gl_stage', 'gl_rank', GL_CAP), ('ul_stage', 'ul_rank', UL_CAP)))
         return own_rank or 'pvp_best_gl' in rs or 'pvp_best_ul' in rs
 

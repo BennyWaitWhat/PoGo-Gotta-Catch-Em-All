@@ -774,6 +774,22 @@ def _loc_card_kept_uids(bag, cf_norm):
 
 
 _META_SETS = {}
+from independent_law import in_top_half as _il_half, top_half as _il_top_half   # THE TOP HALF: pvpoke's list on its own
+
+
+def _pf_half(lg, stage, shadow=0):
+    """THE TOP HALF (LAW 2026-11-16, keep_config rules.pvp_top_half): may this stage hold a GL / UL keep? Read by
+    independent_law from the ranking file (not pvp_iv_rule.competitive, the engine's test); no list = no gate."""
+    return _il_half(lg, stage, shadow, keep_config.rule_enabled('pvp_top_half'))
+
+
+def _pf_spread(r):
+    """A configured 0/15/15 keeps only for a GL / UL stage inside the top half (its ranker stage there); no list = no gate."""
+    on = keep_config.rule_enabled('pvp_top_half')
+    if _il_top_half('gl', on) is None and _il_top_half('ul', on) is None:
+        return True
+    sh = 1 if _g(r, 'fresh_alignment') == 1 else 0
+    return any(_g(r, lg + '_stage') and _pf_half(lg, _g(r, lg + '_stage'), sh) for lg in ('gl', 'ul'))
 
 
 def _meta_ok(lg, stage, rank):
@@ -850,8 +866,9 @@ def _pvp_best_uids(bag, cf_norm, BS, gm_ok):
             cand = [(k, r) for r in lst for k in (_usable(r, lg, cap),) if k is not None]
             if cand:
                 bk, b = min(cand, key=lambda x: (x[0][0], x[0][1], x[1]['uid_hex']))
-                if _g(b, 'pokemon_id') in _RARE or (bk[1] <= _BRF and _meta_ok(   # legendaries: no rank floor, no meta gate
-                        lg, _pv(b['species_name'], _g(b, 'form') or 0), bk[1])):
+                if _pf_half(lg, _pv(b['species_name'], _g(b, 'form') or 0)) and (   # the top half: the roster too (2026-11-16)
+                        _g(b, 'pokemon_id') in _RARE or (bk[1] <= _BRF and _meta_ok(   # legendaries: no rank floor, no meta gate
+                        lg, _pv(b['species_name'], _g(b, 'form') or 0), bk[1]))):
                     won.setdefault(b['uid_hex'], set()).add(lg.upper())
         cand = [r for r in lst if _g(r, 'ml_rank') is not None and (_g(r, 'ml_rank') <= _BRF or _g(r, 'pokemon_id') in _RARE)]
         if cand:
@@ -931,7 +948,7 @@ def _keeper_reasons(r, BS, legacy_set, gm_ok, dex_counts, event_txt, legacy_txt,
     if _g(r, 'fresh_has_location_card') == 1:
         if not (_g(r, 'fresh_loc_card_enum') or 0) or r['uid_hex'] in _LOC_CARD_KEPT:
             why.append('location_card')
-    if (r['iv_atk'], r['iv_def'], r['iv_sta']) in keep_config.pvp_spread_keep():
+    if (r['iv_atk'], r['iv_def'], r['iv_sta']) in keep_config.pvp_spread_keep() and _pf_spread(r):
         why.append('pvp_spread')
     _lpk = _line_pool(r)
     if _lpk is not None:
@@ -1351,6 +1368,12 @@ def main():
         _n15f = sum(1 for _r in bag if _r['uid_hex'] in _pile_15f and _behind_owned(_r, _HELD_LATER, BS))
         print('  rule 15f: %d pile copies are top %d only as an evolution a copy outside the pile holds as well or better'
               % (_n15f, READY_RANK))
+    if gm_ok and _plays is not None and keep_config.rule_enabled('pvp_top_half'):
+        _pile_th, _lgs = set(transfer_uids), (('gl', GL_CAP), ('ul', UL_CAP))
+        _nth = sum(1 for _r in bag if _r['uid_hex'] in _pile_th
+                   and any(_plays(_r, _l, _c, BS, gate=False) is not None for _l, _c in _lgs)
+                   and not any(_plays(_r, _l, _c, BS) is not None for _l, _c in _lgs))
+        print("  top-half rule: %d pile copies are top %d only at stages outside pvpoke's top half" % (_nth, READY_RANK))
     pvp_best_kept = _pvp_best_uids(bag, _cf_norm, BS, gm_ok)
     print('  best GL/UL/ML (rule 15d, usable-only GL/UL): %d best non-shadow copies across PvP identities; %d of them in the pile'
           % (len(pvp_best_kept), len(set(pvp_best_kept) & set(transfer_uids))))
@@ -1405,7 +1428,7 @@ def main():
                 legacy_uids=legacy_set, protected_pids=keep_config.protected_pids(), protected_uids=keep_config.hand_kept(), cf=_cf_norm,
                 shadow_floor=keep_config.pvp('shadow_rank_floor'), shadow_leagues=keep_config.shadow_leagues(),
                 ladder_cap=lambda s: keep_config.cap('plain_line_preevo' if s in _mid_l else 'plain_line'),
-                meta_ok=_meta_ok):
+                meta_ok=_meta_ok, half_ok=_pf_half):
             _found.append((_u, 'pvp_combup(law: %s)' % _why))
         for _u, _why in _il.shiny_ladder_violations(
                 bag, _pile_set, own_of=_own_l, next_of=_next_l, can_evolve=lambda r: bool(_later_l(r)),

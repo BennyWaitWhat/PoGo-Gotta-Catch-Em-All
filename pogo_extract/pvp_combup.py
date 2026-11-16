@@ -122,10 +122,12 @@ def pick(rows, later_fn, BS, floor, rare_pids, legacy_uids=(), protected_pids=()
     # BEST NEEDS A META SPECIES (keep_policy 15d, user 2026-11-11 "P2"): past pvp.ready_rank a non-shadow Best GL / UL is
     # kept only for a stage inside pvpoke's top pvp.best_meta_top of that league -- so a copy that fails it is no "Best as
     # itself" (it may evolve), and an evolve whose target fails it would make a Best nobody keeps (no comb-up).
-    from pvp_iv_rule import meta_top
+    from pvp_iv_rule import meta_top, competitive
     _bmt, _rdy = keep_config.pvp('best_meta_top'), keep_config.pvp('ready_rank')
 
     def meta_best(lg, st, rk):
+        if not competitive(lg, st):              # the top half (rules.pvp_top_half, 2026-11-16): every rank
+            return False
         if not _bmt or rk <= _rdy:
             return True
         top = meta_top(lg, _bmt)
@@ -134,7 +136,7 @@ def pick(rows, later_fn, BS, floor, rare_pids, legacy_uids=(), protected_pids=()
     own_rank = {}                                        # uid -> its rank where it is your best AS its stage
     for lg in LEAGUES:
         for (st, sh), (rk, u) in owned[lg].items():
-            if sh or meta_best(lg, st, rk) or pid_of[u] in rare_pids:
+            if competitive(lg, st, sh) and (sh or meta_best(lg, st, rk) or pid_of[u] in rare_pids):
                 own_rank[u] = min(rk, own_rank.get(u, rk))
     later_memo = {}
 
@@ -171,7 +173,8 @@ def pick(rows, later_fn, BS, floor, rare_pids, legacy_uids=(), protected_pids=()
             return True                                  # the best shiny of its look stays where it is (audit_labels)
         for lg in LEAGUES:                               # an own-stage top-5 spread is an asset where it stands
             for st, rk in chains[lg][u]:
-                if st == own_of[u] and rk <= 5 and viable(st, caps[lg]) and fits(r, st, caps[lg], BS):
+                if st == own_of[u] and rk <= 5 and viable(st, caps[lg]) and fits(r, st, caps[lg], BS) \
+                        and competitive(lg, st, sh_of[u]):   # outside pvpoke's top half: no asset (2026-11-16)
                     return True
         return False
 
@@ -219,7 +222,7 @@ def pick(rows, later_fn, BS, floor, rare_pids, legacy_uids=(), protected_pids=()
                 break                                    # it would not be your new Best there
             if rk > (sh_floor if sh else floor) and _g(r, 'pokemon_id') not in rare_pids:
                 break                                    # outside the Best floor (candidates are rank-sorted)
-            if not sh and not meta_best(lg, st, rk) and _g(r, 'pokemon_id') not in rare_pids:
+            if not competitive(lg, st, sh) or (not sh and not meta_best(lg, st, rk) and _g(r, 'pokemon_id') not in rare_pids):
                 break                                    # the evolved copy would be a Best nobody keeps (2026-11-11)
             if promised.get(u, st) != st:
                 continue                                 # already promised to another stage -- next-best copy
@@ -272,6 +275,7 @@ if __name__ == '__main__':
     real = (P.fits, P.maxcp, K.cap)
     K.CFG = dict(K.CFG, pvp=dict(K.CFG.get('pvp') or {}, best_meta_top=0))   # the toy stages are in no ranking list: the meta gate
     #                                                                          (2026-11-11) is off here; independent_law's self-check covers it
+    K.CFG = dict(K.CFG, rules=dict(K.CFG.get('rules') or {}, pvp_top_half=False))   # ... and the top half, until its own case below
     P.fits = lambda r, st, cap, bs: True
     P.maxcp = lambda st, bs: 9999
     K.cap = lambda name, *a, **k: {'plain_line': 2, 'plain_line_preevo': 1}[name] if name in ('plain_line', 'plain_line_preevo') else real[2](name, *a, **k)
@@ -312,6 +316,12 @@ if __name__ == '__main__':
         assert P.behind_owned(mk('p3', 'a:4(9%);b:3(99%)'), own, BS) is None        # top 5 as itself: an own-stage asset
         assert P.behind_owned(dict(mk('p4', 'a:900(9%);b:3(99%)'), fresh_alignment=1), own, BS) is None   # shadow vs plain
         assert P.behind_owned(mk('p5', 'a:900(9%);b:3(99%);c:4(99%)'), own, BS) is None   # nobody holds c: kept
+        # THE TOP HALF (2026-11-16, rules.pvp_top_half): b outside pvpoke's top half -> no comb-up into b; c inside -> x2 to c
+        K.CFG = dict(K.CFG, rules=dict(K.CFG['rules'], pvp_top_half=True))
+        P._META_HALF.update(gl=(frozenset({'a', 'c'}), frozenset({'a', 'b', 'c'})), ul=None)
+        res = pick(rows, lambda r: {'b', 'c'}, BS, 614, set())
+        assert res['gl'] == {'x2': ('c', 30, None)}, res
+        assert not P.competitive('gl', 'b') and not P.competitive('gl', 'zz') and P.competitive('ul', 'b') and P.competitive('ml', 'b')
     finally:
         P.fits, P.maxcp, K.cap = real
     print('pvp_combup self-check OK')

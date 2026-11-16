@@ -16,6 +16,7 @@ ROOT = os.path.dirname(os.path.dirname(HERE))
 sys.path.insert(0, ROOT)
 import keep_config   # single source of truth for every tunable cap/roster (dashboard-editable)
 from pvp_iv_rule import plays, owned_as_stage, behind_owned
+from pvp_iv_rule import competitive as pvp_competitive, meta_half as pvp_meta_half   # rules.pvp_top_half (2026-11-16)
 from pvp_iv_rule import meta_top as pvp_meta_top     # pvpoke's top-N of a league: the Best GL/UL meta gate (2026-11-11)
 from pvp_iv_rule import (qualifies as pvp_iv_qualifies, pvid, GL_CAP, UL_CAP, ML_CAP, maxcp as pvp_maxcp,
                          READY_RANK, VIABILITY_MARGIN, usable_best)
@@ -1563,6 +1564,22 @@ def main():
     # copy AS every one of those stages (same shadow-ness) ranked as well or better -- four 13/15/15 Pidgey for a Pidgeot
     # UL #5 beside a #1 Pidgeot. That holder is an own-stage top 5, kept by 15b, so the comparison never points at a copy
     # in the pile. Every other axis still applies (hundo, species / form minimums, variant floor ...).
+    # THE TOP HALF (user 2026-11-16: "keep them if they're at least in the top half of being compeititve" -- GL and UL, and
+    # a species pvpoke does not rank is not competitive; keep_config rules.pvp_top_half): every Great / Ultra League keep
+    # below -- the IV keeper (15), the 0/15/15 spread, the rank safety net (15b), Best GL / UL (15d, the roster too) and
+    # the comb-up (15e) -- counts only for a stage inside the top half of pvpoke's list for that league
+    # (pvp_iv_rule.competitive, asked by plays / qualifies / owned_as_stage / behind_owned). Master League is not gated.
+    _hg, _hu = pvp_meta_half('gl'), pvp_meta_half('ul')
+    if _hg is not None or _hu is not None:
+        print("[top-half] a GL / UL PvP keep needs a stage in pvpoke's top half: GL top %s, UL top %s"
+              % (len(_hg) if _hg is not None else 'n/a', len(_hu) if _hu is not None else 'n/a'))
+
+    def _spread_competes(r):
+        """rules.pvp_top_half: a 0/15/15 keeps for a GL or UL stage inside pvpoke's top half of that league."""
+        if _hg is None and _hu is None:
+            return True
+        _sh = int((r['fresh_alignment'] or 0) == 1)
+        return any(r[lg + '_stage'] and pvp_competitive(lg, r[lg + '_stage'], _sh) for lg in ('gl', 'ul'))
     _owned_as = owned_as_stage(rows, BS) if keep_config.rule_enabled('pvp_later_stage_owned') else None
     _behind = {r['uid_hex'] for r in rows if _owned_as is not None and behind_owned(r, _owned_as, BS)}
     if _behind:
@@ -1580,7 +1597,7 @@ def main():
     # PvP-perfect 0/15/15 spread kept outright (user-named), regardless of rank/CP.
     _trophy = keep_config.pvp_spread_keep()
     for r in rows:
-        if (r['iv_atk'], r['iv_def'], r['iv_sta']) in _trophy:
+        if (r['iv_atk'], r['iv_def'], r['iv_sta']) in _trophy and _spread_competes(r):
             mark(r['uid_hex'], 'pvp_spread')
 
     # 15b. PvP RANK SAFETY NET (user 2026-06-05: "check every single iv rank for their league" -- after a
@@ -1681,6 +1698,8 @@ def main():
         _BMT, _RDY = keep_config.pvp('best_meta_top'), keep_config.pvp('ready_rank')
         def _meta_best(b, lg):
             ub = _pvp_own(b, lg)
+            if not pvp_competitive(lg, ub[2]):   # the top half (rules.pvp_top_half, 2026-11-16): every rank, the roster too
+                return False
             if not _BMT or ub[1] <= _RDY or b['pokemon_id'] in RARE_PIDS:
                 return True
             _top = pvp_meta_top(lg, _BMT)
@@ -1805,8 +1824,12 @@ def main():
         # ... and a Best GL / Best UL copy (user 2026-09-23: "only if its best rank is at a later stage"): since
         # 2026-10-29 every Best wins AS ITSELF (15d), so every one is an own-stage asset -- a later stage is reached
         # through 15e's Evolve for GL / UL only. Mirrored in audit_labels, refresh_evolve_shiny and sync_evolve_size.
-        _own_pvp = ((r['gl_stage'] == _sid(r) and r['gl_rank'] is not None and r['gl_rank'] <= READY_RANK and _viable(r['gl_stage'], GL_CAP))
-                    or (r['ul_stage'] == _sid(r) and r['ul_rank'] is not None and r['ul_rank'] <= READY_RANK and _viable(r['ul_stage'], UL_CAP))
+        # (2026-11-16) an own-stage top 5 OUTSIDE pvpoke's top half is no PvP asset (rules.pvp_top_half): it may climb
+        _own_sh = int((r['fresh_alignment'] or 0) == 1)
+        _own_pvp = ((r['gl_stage'] == _sid(r) and r['gl_rank'] is not None and r['gl_rank'] <= READY_RANK and _viable(r['gl_stage'], GL_CAP)
+                     and pvp_competitive('gl', r['gl_stage'], _own_sh))
+                    or (r['ul_stage'] == _sid(r) and r['ul_rank'] is not None and r['ul_rank'] <= READY_RANK and _viable(r['ul_stage'], UL_CAP)
+                        and pvp_competitive('ul', r['ul_stage'], _own_sh))
                     or 'pvp_best_gl' in _kr or 'pvp_best_ul' in _kr)
         if (_kr & {'location_card', 'xxl', 'legacy', 'dex_only_copy', 'mighty', 'protected'}) or _own_pvp:
             if _is_stock:
