@@ -322,6 +322,15 @@ if __name__ == '__main__':
         res = pick(rows, lambda r: {'b', 'c'}, BS, 614, set())
         assert res['gl'] == {'x2': ('c', 30, None)}, res
         assert not P.competitive('gl', 'b') and not P.competitive('gl', 'zz') and P.competitive('ul', 'b') and P.competitive('ml', 'b')
+        # ... a callable gate judges the top half in competitive()'s place (the pre-flight's own read of the list)
+        t5 = mk('t5', 'a:900(9%);b:3(99%)')
+        assert P.plays(t5, 'gl', P.GL_CAP, BS) is None and P.plays(t5, 'gl', P.GL_CAP, BS, gate=False) == ('b', 3)
+        assert P.plays(t5, 'gl', P.GL_CAP, BS, gate=lambda lg, st, sh: st == 'b') == ('b', 3)
+        assert P.plays(t5, 'gl', P.GL_CAP, BS, gate=lambda lg, st, sh: st != 'b') is None
+        # ... and a CP-blind qualifies() caller can still name a shadow: 'b_shadow' inside the half, plain 'b' outside
+        P._META_HALF.update(gl=(frozenset({'a', 'b_shadow'}), frozenset({'a', 'b', 'b_shadow'})))
+        _q = lambda **k: P.qualifies('A', 0, 0, 15, 15, 'b', 3, 0, BS, cp=500, cap=P.GL_CAP, **k)
+        assert not _q() and not _q(shadow=0) and _q(shadow=1) and _q(row=dict(t5, fresh_alignment=1))
     finally:
         P.fits, P.maxcp, K.cap = real
     print('pvp_combup self-check OK')

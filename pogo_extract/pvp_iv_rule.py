@@ -285,7 +285,8 @@ def plays(r, league, cap, BS, rr=None, gate=True):
     Every stage of the ranker's chain is swept, not only the headline one. fits() is fail-safe (unknown => fits), so
     missing base stats or an unprovable level never strip protection. rules.pvp_top_half (2026-11-16): the stage must also
     be competitive() -- inside pvpoke's top half of the league; gate=False is the ungated test (the audits ask that, then
-    judge the top half from the ranking files themselves)."""
+    judge the top half from the ranking files themselves); a callable gate(league, stage, shadow) judges the top half in
+    competitive()'s place (the pre-flight passes its own read of the list, 2026-11-16)."""
     rr = READY_RANK if rr is None else rr
     ch = chain_stage_ranks(r, league)
     if not ch and _col(r, league + '_rank') is not None:
@@ -293,7 +294,7 @@ def plays(r, league, cap, BS, rr=None, gate=True):
     best = None
     for st, rk in ch:
         if st and rk is not None and rk <= rr and maxcp(st, BS) > cap + VIABILITY_MARGIN and fits(r, st, cap, BS) \
-                and (not gate or competitive(league, st, _shadow(r))):
+                and (not gate or (gate if callable(gate) else competitive)(league, st, _shadow(r))):
             if best is None or rk < best[1]:
                 best = (st, rk)
     return best
@@ -373,7 +374,7 @@ def usable_best(r, league, cap, BS, later=None):
     return None if best is None else (best[0][0], best[0][1], best[1])
 
 
-def qualifies(species_name, form, iv_atk, iv_def, iv_sta, stage, rank, floor, BS, cp=None, cap=None, row=None):
+def qualifies(species_name, form, iv_atk, iv_def, iv_sta, stage, rank, floor, BS, cp=None, cap=None, row=None, shadow=None):
     """True iff this specimen earns the league IV tag for ranked form `stage`.
 
     RANK-DRIVEN -- NO IV-magnitude threshold. (user 2026-06-05, after a GL#1 0/13/11 Mareep
@@ -395,7 +396,8 @@ def qualifies(species_name, form, iv_atk, iv_def, iv_sta, stage, rank, floor, BS
         return False                             # must exceed cap + VIABILITY_MARGIN (keep_config pvp.viability_margin, currently 0) or the rank is degenerate (Abra/Machop hundo = #1).
     if rank is None or rank > READY_RANK:        # THE league IV-RANK check -- top-5 of 4096 spreads for the best chain form
         return False                             # (a pre-evo whose best form is only GL#116, e.g. Wooloo->Dubwool, is "way off")
-    if cap in (GL_CAP, UL_CAP) and not competitive('gl' if cap == GL_CAP else 'ul', stage, _shadow(row) if row is not None else 0):
+    _sh = shadow if shadow is not None else _shadow(row) if row is not None else 0   # a CP-blind caller still names a shadow
+    if cap in (GL_CAP, UL_CAP) and not competitive('gl' if cap == GL_CAP else 'ul', stage, _sh):
         return False                             # outside pvpoke's top half of that league (rules.pvp_top_half, 2026-11-16)
     if pvid(species_name, form or 0) == stage:                 # READY (evolved / as-itself)
         return cap is None or (cp or 0) <= cap   # ...but a READY mon ALREADY over the league CP cap can't enter it
