@@ -136,6 +136,10 @@ def picks(pile=None):
     _bs = {k: showcase_plan.score(v[0]) for k, v in showcase_plan.best_entries(rows).items()}
     big = [to_the_end(e, _by[norm(e['uid'])], _nxt, _bs,
                       lambda t, s, _u=norm(e['uid']): s >= _min and t not in _blk.get(_u, ())) for e in big]
+    for e in big:                                         # name which half of that test a stop failed (the which-way line)
+        for t, w in (e.get('stop') or {}).items():
+            if w.get('kind') == 'bar':
+                e['stop'][t] = dict(w, kind='min', min=_min) if (w.get('score') or 0) < _min else dict(w, kind='promised')
     # KEPT AFTER EVOLVING, ALSO UNDER "A LATER STAGE WINS" (2026-11-11, "X1"; keep_config rules.xxl_later_stage_wins): a pick
     # that stops at a middle stage is no pick when an entry you own at a stage after it already scores at least what this
     # copy could reach from there -- size_line.xxl_keepers would drop the evolved copy the same cull.
@@ -181,13 +185,25 @@ def to_the_end(e, r, nxt, bestscore, ok, projected=None, can_reach=None):
         can_reach = evolvable_forms.can_reach
     src, seen = pvid(r['species_name'], r['form'] or 0), {e['target']}
     while True:
-        more = []
+        more, why = [], {}
         for t in nxt.get(e['target'], ()):
-            ps = None if t in seen or can_reach(r['fresh_form'] or r['form'], t, src, r['gender']) is False else projected(r, t)
-            if ps and ps[0] is not None and (bestscore.get(t) is None or ps[0] > bestscore[t]) and ok(t, ps[0]):
+            if t in seen:
+                continue
+            if can_reach(r['fresh_form'] or r['form'], t, src, r['gender']) is False:
+                why[t] = {'kind': 'cannot'}
+                continue
+            ps = projected(r, t)
+            if not ps or ps[0] is None:
+                why[t] = {'kind': 'unknown'}
+            elif bestscore.get(t) is not None and ps[0] <= bestscore[t]:
+                why[t] = {'kind': 'beaten', 'score': ps[0], 'best': bestscore[t]}
+            elif not ok(t, ps[0]):
+                why[t] = {'kind': 'bar', 'score': ps[0]}
+            else:
                 more.append((ps[0], t, ps[1]))
         if not more:
-            return e
+            # WHY IT ENDS HERE (2026-11-16): each next stage and the test it failed -- the which-way line says it (words only)
+            return dict(e, stop=why) if why else e
         s, t, z = max(more)
         seen.add(t)
         e = dict(e, via=list(e.get('via') or ()) + [e['target']], target=t, score_after=s, z_after=z, beats=bestscore.get(t))
@@ -201,6 +217,8 @@ def _selfcheck():
     got = to_the_end(dict(e), r, nxt, {'b': 900, 'c': 700}, ok, proj, reach)
     assert (got['target'], got['via'], got['score_after'], got['beats']) == ('c', ['b'], 1100, 700), got
     assert to_the_end(dict(e), r, nxt, {'b': 900, 'c': 1100}, ok, proj, reach)['target'] == 'b'      # a tie does not beat it
+    assert to_the_end(dict(e), r, nxt, {'b': 900, 'c': 1100}, ok, proj, reach)['stop'] == \
+        {'c': {'kind': 'beaten', 'score': 1100, 'best': 1100}}                                        # ... and says why (2026-11-16)
     assert to_the_end(dict(e), r, nxt, {'b': 900}, lambda t, s: False, proj, reach)['target'] == 'b'  # under min / promised slot
     assert to_the_end(dict(e), r, nxt, {'b': 900}, ok, proj, lambda *a: False)['target'] == 'b'       # the game denies the branch
     assert to_the_end(dict(e), r, nxt, {'b': 900}, ok, lambda r, t: None, reach)['target'] == 'b'     # unknown template

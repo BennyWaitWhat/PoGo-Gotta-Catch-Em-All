@@ -35,11 +35,46 @@ COLOR = 6
 # condition -- NOT candy. Exclude any pre-evo whose terminal is one of these.
 
 
-def compute_target(why=None, spent=None, detail=None, gated=None, items_spent=None, db=None, walk=None, held=None):
+def shiny_spot(iv, cap, held, looks, look, plain, floor_iv, floor_keep, plain_cap, held_plain):
+    """THE SHINY LADDER'S SPOT TEST (LAW "Shiny ladder"): does a shiny of IV total `iv` earn a spot at a stage whose shinies
+    have the IVs `held` (best first)? `looks`: {look: the best IV of that look there}, `look`: this copy's look; `plain`: no
+    background / card / costume / Max / shadow, so the shiny floor and the plain sub-cap judge it too (`held_plain`, best first).
+    ONE function for the ladder's decision (compute_target's need) and for the which-way line that explains it (2026-11-16:
+    "i just want everything to make sense"). None = it earns a spot; else why not, with the IVs of the copies holding the
+    spots it would need, best first: {'kind': 'none'} (cap 0), 'looks' (+ 'looks': how many look-bests hold a spot), 'full',
+    'floor' (+ 'floor'), 'plain' (+ 'all': every shiny there, plain or not)."""
+    if cap <= 0:
+        return {'kind': 'none', 'held': []}
+    if look in looks and iv <= looks[look]:
+        # NOT THE BEST OF ITS LOOK THERE (2026-11-11): the look-bests hold their slots whatever their IV, so it
+        # must fit in what they leave -- a 49% shiny Haunter was promised a Gengar spot "beating" a 20% costume
+        rest = list(held)
+        for _b in looks.values():
+            if _b in rest:
+                rest.remove(_b)
+        slots = cap - len(looks)
+        if slots <= 0 or not (len(rest) < slots or iv > rest[slots - 1]):
+            return {'kind': 'looks', 'held': sorted(list(looks.values()) + rest[:max(slots, 0)], reverse=True),
+                    'looks': len(looks)}
+    elif not (len(held) < cap or iv > held[cap - 1]):
+        return {'kind': 'full', 'held': list(held[:cap])}
+    if not plain:
+        return None
+    # ... or one of the stage's N best (2026-10-25: "at least keep 2"); shiny floor (2026-09-24): only a form's first PLAIN shiny may be that low
+    if iv < floor_iv and held_plain and len(held) >= floor_keep and iv <= held[floor_keep - 1]:
+        return {'kind': 'floor', 'held': list(held[:floor_keep]), 'floor': floor_iv}
+    if not (plain_cap > 0 and (len(held_plain) < plain_cap or iv > held_plain[plain_cap - 1])):   # a plain spare must clear the PLAIN bar too
+        return {'kind': 'plain', 'held': list(held_plain[:max(plain_cap, 0)]), 'all': len(held)}
+    return None
+
+
+def compute_target(why=None, spent=None, detail=None, gated=None, items_spent=None, db=None, walk=None, held=None, onward=None):
     """why: reasons to use instead of policy_reasons.json (keep_policy passes its in-memory map); spent: dict to receive
     the candy each family spends on the returned targets (keep_policy reserves it before the plain comb-up). db: the
     database to read -- keep_policy passes its own DB, so a SANDBOXED engine run (regress_pvp_keepers, what-ifs) reads
-    the sandbox copy; the import-time os.chdir(ROOT) used to point the relative 'pokemon.db' at the LIVE bag (2026-09-29)."""
+    the sandbox copy; the import-time os.chdir(ROOT) used to point the relative 'pokemon.db' at the LIVE bag (2026-09-29).
+    onward: dict to receive, for every copy sent (detail) or named (gated) toward ONE stage, what this rule does with it
+    once it stands there and why (_onward_verdict) -- the which-way line's reason (2026-11-16). Words only."""
     gm = json.load(open('pvpoke_gamemaster.json', encoding='utf-8'))
     try:
         seen = {e['pid'] for e in json.load(open('pokedex_hundos_live.json'))['entries']}
@@ -221,24 +256,41 @@ def compute_target(why=None, spent=None, detail=None, gated=None, items_spent=No
                 sh_ivs_pl[_k].append(r['iv'] or 0); sh_ivs_pl[_k].sort(reverse=True)
     _arr = defaultdict(list)                     # stage -> the spares this pass sends there (they arrive before the next cull)
 
-    def _goes_on(r, sid, n, gated_sid, need):
-        """WHERE IT ENDS (2026-11-10): the stage after n when this same rule would send the evolved copy on from n, else
-        None. n has exactly one branch this specimen can take, a plain candy tap with a shiny spot for it, and a better
-        shiny of the copy's LOOK (form, costume, drawn gender -- the stage_best rule) is at n or arrives there, so the
-        copy would be a spare again instead of n's trophy."""
+    def _onward_verdict(r, sid, n, gated_sid, spot):
+        """WHERE IT ENDS (2026-11-10) AND WHY (2026-11-16): what this same rule does with the copy once it stands at n.
+        'on': it goes straight on to 'next' -- n has exactly one branch this specimen can take, a plain candy tap with a
+        shiny spot for it (spot(x) is None), and a better shiny of the copy's LOOK (form, costume, drawn gender -- the
+        stage_best rule) is at n or arrives there, so the copy would be a spare again instead of n's trophy. Every other
+        kind says why it stops at n or waits there: 'end' (no stage after n it can become), 'split' (more than one way on:
+        'spots', each branch's spot test, 'gated'), 'gated' (the one way on needs more than candy: 'spot' None = a spot is
+        open there), 'full' (no shiny spot there: 'spot' = shiny_spot's why-not), 'trophy' (it would be the best shiny of its
+        look at n, which never moves: 'n_at' shinies at n now, 'top' their best IV), 'dex' (that trophy goes on next cull
+        toward a shiny never registered, "D2"). 'iv' and 'next' ride along for the line."""
         fr = _full.get(r['u'])
         nb = [x for x in nxt.get(n, []) if sid_to_pid.get(x) and sid_to_pid.get(x) != sid_to_pid.get(n)
               and x in _later_sh.get(r['u'], ())
               and (fr is None or evolvable_forms.can_reach(fr['fresh_form'] or fr['form'], x, sid, fr['gender']) is not False)]
-        if len(nb) != 1 or gated_sid(nb[0]) or not need(nb[0]):
-            return None
+        base = {'at': n, 'next': list(nb), 'iv': r['iv'] or 0}
+        if not nb:
+            return dict(base, kind='end')
+        if len(nb) > 1:
+            return dict(base, kind='split', spots={x: spot(x) for x in nb}, gated=[x for x in nb if gated_sid(x)])
+        w = spot(nb[0])
+        if gated_sid(nb[0]):
+            return dict(base, kind='gated', spot=w)
+        if w is not None:
+            return dict(base, kind='full', spot=w)
         pid_n, k, me = sid_to_pid.get(n), _skey(n, r), ((r['iv'] or 0), r['u'])
         gk = evolvable_forms.gender_key(pid_n, r['g'])
         better = lambda x: ((x['fc'] or 0) == (r['fc'] or 0) and evolvable_forms.gender_key(pid_n, x['g']) == gk
                             and ((x['iv'] or 0), x['u']) > me)
         if any(x['sh'] and pvid(x['s'], x['form'] or 0) == n and (not k[1] or _fname(x) == k[1]) and better(x) for x in rows)                 or any(_skey(n, x)[1] == k[1] and better(x) for x in _arr[n]):
-            return nb[0]
-        return None
+            return dict(base, kind='on')
+        at = [(x['iv'] or 0) for x in rows if x['sh'] and pvid(x['s'], x['form'] or 0) == n and (not k[1] or _fname(x) == k[1])] + \
+             [(x['iv'] or 0) for x in _arr[n] if _skey(n, x)[1] == k[1]]
+        if _D2 and sid_to_pid.get(nb[0]) not in _shdex:
+            return dict(base, kind='dex')    # the look's best goes on only toward a never-registered shiny, after every spare
+        return dict(base, kind='trophy', n_at=len(at), top=max(at, default=None))
     by_stage = defaultdict(list)                 # (pid, form) -> surplus shiny candidates
     for r in rows:
         # EVOLVABILITY FROM THE ONE GRAPH, NOT A STALE COLUMN (H08, 2026-09-29): can_evolve_estimated has no writer since
@@ -270,7 +322,7 @@ def compute_target(why=None, spent=None, detail=None, gated=None, items_spent=No
         by_stage[(r['pid'], _nf(r))].append(r)
     target = set()
     # ONE best-first order across every stage, not one stage group after another (2026-11-11): a spare sent on to the END
-    # stage (_goes_on) takes a spot there at once, and a better spare of the middle stage, handled later, bumped it with
+    # stage (_onward_verdict) takes a spot there at once, and a better spare of the middle stage, handled later, bumped it with
     # nothing to take its advice back -- the copy would be culled after evolving (audit_promises)
     _order = sorted(((k, c) for k, cs in by_stage.items() for c in cs),
                     key=lambda kc: (kc[1]['u'] in _dexonly, bool(kc[1]['u'] in _dexonly and kc[1]['fc']),
@@ -336,40 +388,26 @@ def compute_target(why=None, spent=None, detail=None, gated=None, items_spent=No
                         _pnew = _pd
                     if _pending is None:
                         _pending = _pd
-            def need(n, iv=(r['iv'] or 0), pl=_plain_sh(r), row=r):
+            def _spot(n, iv=(r['iv'] or 0), pl=_plain_sh(r), row=r):
+                """shiny_spot at stage n for this copy: None = it earns a shiny spot there, else why not."""
                 pid = sid_to_pid.get(n)
                 cap = keep_config.species_cap('shiny', pid, keep_config.cap('shiny'))
                 k = _skey(n, row)
-                h = sh_ivs.get(k, [])
-                if cap <= 0:
-                    return False
-                lb, lk = sh_look.get(k, {}), _slook(pid, row)
-                if lk in lb and iv <= lb[lk]:
-                    # NOT THE BEST OF ITS LOOK THERE (2026-11-11): the look-bests hold their slots whatever their IV, so it
-                    # must fit in what they leave -- a 49% shiny Haunter was promised a Gengar spot "beating" a 20% costume
-                    rest = list(h)
-                    for _b in lb.values():
-                        if _b in rest:
-                            rest.remove(_b)
-                    slots = cap - len(lb)
-                    if slots <= 0 or not (len(rest) < slots or iv > rest[slots - 1]):
-                        return False
-                elif not (len(h) < cap or iv > h[cap - 1]):
-                    return False
-                if not pl:
-                    return True
-                _K = keep_config.shiny_floor_keep()                     # ... or one of the stage's N best (2026-10-25: "at least keep 2")
-                if iv < keep_config.shiny_floor_iv(pid) and sh_ivs_pl.get(k) and len(h) >= _K and iv <= h[_K - 1]:   # shiny floor (2026-09-24): only a form's first PLAIN shiny may be that low
-                    return False
-                pcap = cap if keep_config.species_cap('shiny', pid, None) is not None else min(cap, keep_config.cap('shiny_plain'))
-                hp = sh_ivs_pl.get(k, [])
-                return pcap > 0 and (len(hp) < pcap or iv > hp[pcap - 1])   # a plain spare must clear the PLAIN bar too
+                return shiny_spot(iv, cap, sh_ivs.get(k, []), sh_look.get(k, {}), _slook(pid, row), pl,
+                                  keep_config.shiny_floor_iv(pid), keep_config.shiny_floor_keep(),
+                                  cap if keep_config.species_cap('shiny', pid, None) is not None
+                                  else min(cap, keep_config.cap('shiny_plain')), sh_ivs_pl.get(k, []))
+
+            def need(n, iv=(r['iv'] or 0), pl=_plain_sh(r), row=r):
+                return _spot(n, iv, pl, row) is None
             _pg = _pnew or _pending          # a never-registered shiny first ("D2")
             _g_ok = bool(not ok and _pg is not None and need(_pg['target']))
             if _g_ok and gated is not None:
                 gated[r['u']] = _pg              # nothing takeable at all -> the report names what it needs -- only when
                 #                                  that stage has a shiny spot for it (a gated upgrade that earns nothing
                 #                                  is no upgrade: a 62% shiny Qwilfish was told to go for a full Overqwil)
+            if _g_ok and onward is not None:
+                onward[r['u']] = _onward_verdict(r, sid, _pg['target'], _gated_sid, _spot)
             # THE HOLD (H08, 2026-09-29). LAW: "A shiny past the shiny cap is held (reason shiny_ladder) when it earns such a
             # spot", and a copy that earns a slot it cannot take today is HELD, never released. Every branch gated today
             # (a buddy walk, a task, a stone he lacks) is not "no spot": the spare that would earn one on every branch it
@@ -396,6 +434,8 @@ def compute_target(why=None, spent=None, detail=None, gated=None, items_spent=No
                     and need(_pnew['target'])):
                 if gated is not None:
                     gated[r['u']] = _pnew
+                if onward is not None:
+                    onward[r['u']] = _onward_verdict(r, sid, _pnew['target'], _gated_sid, _spot)
                 if held is not None:
                     held[r['u']] = [_pnew['target']]
                 _take(_pnew['target'], r)
@@ -408,11 +448,16 @@ def compute_target(why=None, spent=None, detail=None, gated=None, items_spent=No
                 # (a 22% shiny Alolan Geodude: "Graveler, then STOP" at 14:21, "Golem" at 14:40; 22 such flips 10-23..11-04).
                 # Name the stage it ends at NOW when both steps are plain candy taps the family can pay for today; every
                 # other case keeps the one step, which evolve_targets words as one step and never as a stop.
-                _on = _goes_on(r, sid, ok[0], _gated_sid, need) if len(ok) == 1 and not _gated_sid(ok[0]) else None
+                # The same verdict says WHY it stops at that one stage, for the which-way line (2026-11-16).
+                _v = _onward_verdict(r, sid, ok[0], _gated_sid, _spot) if len(ok) == 1 else None
+                _on = _v['next'][0] if _v is not None and _v['kind'] == 'on' and not _gated_sid(ok[0]) else None
                 if _on is not None:
                     _c2 = cost + (evolvable_forms.step_cost(ok[0], _on) or 0)
                     if fam is None or (_candy is not None and _candy.get(fam, 0) >= _c2):
                         ok, cost = [_on], _c2
+                        _v = _onward_verdict(r, sid, _on, _gated_sid, _spot)
+                    else:
+                        _v = dict(_v, kind='candy', need=_c2 - cost)   # goes on once the family can pay the second step
                 # UNREAD CANDY IS NOT "CAN PAY" (LAW 2026-09-29: "an unread count HOLDS (no Evolve label)"; keep_policy._afford
                 # already reads it so for every plain promise) -- the spare is HELD, never labelled on a count nobody read.
                 if (_candy is None and fam is not None and cost) or \
@@ -437,6 +482,8 @@ def compute_target(why=None, spent=None, detail=None, gated=None, items_spent=No
                 target.add(r['u']); tagged = True
                 if detail is not None:
                     detail[r['u']] = list(ok)             # the next stage(s) this shiny is promised (audit_promises)
+                if onward is not None and _v is not None:
+                    onward[r['u']] = _v
                 for n in ok:                          # the evolved shiny takes its spot: the next spare competes with it
                     _take(n, r)
                     _arr[n].append(r)
