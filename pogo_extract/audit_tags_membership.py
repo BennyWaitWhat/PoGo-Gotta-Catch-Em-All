@@ -220,7 +220,8 @@ try:
                                     ('UL', 'ul_stage', 'ul_rank', _UF, _ULC)):
         q = {u for u, r in rows.items()
              if _pvpq(r['species_name'], r['form'], r['iv_atk'], r['iv_def'], r['iv_sta'],
-                      r[_st], r[_rk], _fl, _BS, r['cp'], _cap)}
+                      r[_st], r[_rk], _fl, _BS, r['cp'], _cap, shadow=1 if r['fresh_alignment'] == 1 else 0)}
+        # (2026-11-16) CP-blind as before, but a shadow is judged by its shadow entry for the top half, as the engine judges it
         # an over-cap keeper gets no Rank chip (that chip claims this copy can play the league). Until 2026-09-23 it
         # was always its identity's Best GL/UL, which labelled it; Best GL/UL is USABLE-ONLY now (keep_policy 15d),
         # so an over-cap spread is no longer that league's Best -- a MISSING here is that case, and it is the

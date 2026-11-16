@@ -429,19 +429,39 @@ def main():
         # every pile mon; this line makes that visible and names the pile mon that came closest.
         try:
             from pvp_iv_rule import maxcp as _mcp, GL_CAP as _GL, UL_CAP as _UL, VIABILITY_MARGIN as _VM, READY_RANK as _RR
+            from pvp_iv_rule import owned_as_stage as _oas, behind_owned as _bo
+            from independent_law import in_top_half as _ih
+            import keep_config as _kc
             _gm = json.load(open('pvpoke_gamemaster.json', encoding='utf-8')); _BS = {q['speciesId']: q.get('baseStats', {}) for q in _gm['pokemon']}
-            _close = []
+            # BY RULE, NOT AN ALARM (2026-11-16: this line printed "*** 49 IN A TOP 5" for a pile that was lawful but for its
+            # 9 0/15/15s): a top 5 at a stage outside pvpoke's top half (rules.pvp_top_half, the list read on its own) or only
+            # as an evolution a kept copy holds as well or better (15f, as the cull report judges it). Never a 0/15/15: the top
+            # half never touches the trophy spread, so one in the pile stays an alarm. The report's safety check says each in words.
+            _th, _spr = _kc.rule_enabled('pvp_top_half'), _kc.pvp_spread_keep()
+            _own = (_oas([x for v, x in rows.items() if v not in pile and not _kc.is_fused_component(x)], _BS)
+                    if _kc.rule_enabled('pvp_later_stage_owned') else None)
+            _close, _half, _later = [], set(), set()
             for u in pile:
                 r = rows[u]
+                _sh, _tro = 1 if r['fresh_alignment'] == 1 else 0, (r['iv_atk'], r['iv_def'], r['iv_sta']) in _spr
+                _held = {(x[0], x[1]) for x in (_bo(r, _own, _BS) or ())} if _own is not None else set()
                 for lg, cap, nm in (('gl', _GL, 'Great'), ('ul', _UL, 'Ultra')):
                     for m_ in re.finditer(r'([a-z0-9_]+):(\d+)\(', r[lg + '_chain_ranks'] or ''):
                         if m_.group(1) in _BS and _mcp(m_.group(1), _BS) > cap + _VM:
+                            if int(m_.group(2)) <= _RR and not _tro:
+                                if not _ih(lg, m_.group(1), _sh, _th):
+                                    _half.add(u); continue
+                                if (lg, m_.group(1)) in _held:
+                                    _later.add(u); continue
                             _close.append((int(m_.group(2)), '%s %d/%d/%d, %s League #%s as %s' % (r['species_name'], r['iv_atk'], r['iv_def'], r['iv_sta'], nm, m_.group(2), m_.group(1))))
             _close.sort()
             _hits = [c for c in _close if c[0] <= _RR]
+            _by = ', '.join(x for x in ('%d top %d only at stages outside pvpoke\'s top half' % (len(_half - _later), _RR) if _half - _later else '',
+                                        '%d top %d only as an evolution you keep as well or better' % (len(_later), _RR) if _later else '') if x)
             if pile:
-                print('  PvP check on the pile: %d checked, %s%s' % (len(pile), ('*** %d IN A TOP %d: %s' % (len(_hits), _RR, '; '.join(c[1] for c in _hits))) if _hits else 'none in any top %d' % _RR,
-                                                                   ('' if _hits or not _close else ' (closest: %s)' % _close[0][1])))
+                print('  PvP check on the pile: %d checked, %s%s%s' % (len(pile), ('*** %d IN A TOP %d: %s' % (len(_hits), _RR, '; '.join(c[1] for c in _hits))) if _hits else 'none in any top %d a rule keeps' % _RR,
+                                                                     (' -- by rule: %s' % _by) if _by else '',
+                                                                     ('' if _hits or not _close else ' (closest: %s)' % _close[0][1])))
         except Exception as _e:
             print('  PvP check on the pile could not run: %s' % _e)
         try:                                          # what you have to spend (user 2026-09-17 "read everything")

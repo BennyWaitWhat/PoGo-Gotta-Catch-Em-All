@@ -980,8 +980,9 @@ def _keeper_reasons(r, BS, legacy_set, gm_ok, dex_counts, event_txt, legacy_txt,
     # it, the old CP-blind check still over-protects.
     _play = gm_ok and _plays is not None
     if _play:
-        _gl_ok = _plays(r, 'gl', GL_CAP, BS) is not None
-        _ul_ok = _plays(r, 'ul', UL_CAP, BS) is not None
+        # THE TOP HALF judged here, from the ranking file (_pf_half), not by the engine's competitive() (2026-11-16)
+        _gl_ok = _plays(r, 'gl', GL_CAP, BS, gate=_pf_half) is not None
+        _ul_ok = _plays(r, 'ul', UL_CAP, BS, gate=_pf_half) is not None
         # RULE 15f (user 2026-11-16, "yes"): top 5 ONLY as stages it would evolve into, each held as well or better by a copy
         # that is NOT in this pile (same shadow-ness, as itself) -> no PvP-rank keep. The holders come from the bag minus the
         # pile, so a holder that is itself in the pile never counts.
