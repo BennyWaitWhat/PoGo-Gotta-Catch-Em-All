@@ -329,7 +329,8 @@ for _l in _pbg.values():
                 pvp_best[_bx['uid_hex']].add(_lg.upper())
     _c = [x for x in _l if x.get('ml_rank') is not None and (x['ml_rank'] <= _BRF or x['pokemon_id'] in _SD_RARE)]
     if _c:
-        pvp_best[min(_c, key=lambda x: (0 if _pb_via(x.get('ml_stage'), _PB_ML) else 1, x['ml_rank'], x['uid_hex']))['uid_hex']].add('ML')
+        pvp_best[min(_c, key=lambda x: (0 if _pb_via(x.get('ml_stage'), _PB_ML) else 1, x['ml_rank'], -(x.get('iv_total') or 0),
+                                     x['uid_hex']))['uid_hex']].add('ML')   # an ML tie: the higher IV (2026-11-16)
 
 
 # the evolution graph comes from the engine's builder: the hand-rolled recursion here had no

@@ -375,7 +375,7 @@ for r in _crows:                                     # (2026-09-26) fused compon
     if (r.get('fresh_alignment') or 0) == 1:
         _shp[_sh_pvid(r['species_name'], r.get('form') or 0)].append(r)
 for lst in _shp.values():
-    for r in sorted((x for x in lst if x.get('ml_rank') is not None and x['ml_rank'] <= _SRF), key=lambda x: (x['ml_rank'], x['uid_hex']))[:keep_config.cap('shadow')]:
+    for r in sorted((x for x in lst if x.get('ml_rank') is not None and x['ml_rank'] <= _SRF), key=lambda x: (x['ml_rank'], -(x.get('iv_total') or 0), x['uid_hex']))[:keep_config.cap('shadow')]:
         _shadow_keep.add(r['uid_hex'])
     for _lg, _cap in (('gl', _SH_GL), ('ul', _SH_UL)):
         if _lg not in keep_config.shadow_leagues():          # UL only since 2026-09-26
@@ -633,7 +633,7 @@ _SPREAD = keep_config.pvp_spread_keep()                # named PvP trophy spread
 # Best GL / Best UL (keep_policy rule 15d, user 2026-09-23): the best NON-shadow copy per PvP IDENTITY. GL / UL are
 # USABLE ONLY (user 2026-09-23, "Best GL/UL must be able to enter the league"): key (the usable stage reaches the cap
 # first, its rank, uid_hex) over the copies with a stage they can reach AND enter -- _pvp_usable() above. ML unchanged:
-# (viable ml_stage first, ml_rank, uid_hex). The engine's exact TOTAL order, NOT the rowid-ordered _best_by above;
+# (viable ml_stage first, ml_rank, the higher IV total, uid_hex: a hundo wins an ML tie, 2026-11-16). The engine's exact TOTAL order, NOT the rowid-ordered _best_by above;
 # viability = pvp_iv_rule.maxcp > cap + VIABILITY_MARGIN exactly as keep_policy._viable. Not switchable.
 from pvp_iv_rule import (maxcp as _pb_maxcp, GL_CAP as _PB_GL, UL_CAP as _PB_UL, ML_CAP as _PB_ML,
                          VIABILITY_MARGIN as _PB_VM, pvid as _pb_pvid)
@@ -681,7 +681,8 @@ for lst in _pbg.values():
             _pvp_best_keep.add(_w)
     _c = [x for x in lst if x.get('ml_rank') is not None and (x['ml_rank'] <= _BRF or x['pokemon_id'] in _RARE_PIDS)]
     if _c:
-        _pvp_best_keep.add(min(_c, key=lambda x: (0 if _pb_via(x.get('ml_stage'), _PB_ML) else 1, x['ml_rank'], x['uid_hex']))['uid_hex'])
+        _pvp_best_keep.add(min(_c, key=lambda x: (0 if _pb_via(x.get('ml_stage'), _PB_ML) else 1, x['ml_rank'], -(x.get('iv_total') or 0),
+                                             x['uid_hex']))['uid_hex'])
 
 for nm, p in [('hundo', lambda r: (r['iv_total'] or 0) == 45),
               # was `(r['iv_total'] or -1) == 0`, which evaluates 0 or -1 -> -1 and is therefore
