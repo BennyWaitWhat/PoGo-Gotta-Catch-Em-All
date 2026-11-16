@@ -120,6 +120,9 @@ def inventory_part(doc, read_at_expected=None):
     return {'stardust': doc.get('stardust'), 'coins': doc.get('coins'), 'xp': num('Experience'),
             'captured': num('NumPokemonCaptured'), 'km_walked': num('KmWalked'), 'evolutions': num('NumEvolutions'),
             'hatched': num('NumEggsHatched'),
+            # Benny 2026-11-16: the game's spin / encounter counters, already read every walk -- kept so rolling 24 h / 7 day
+            # spins and encounters (the spin cap test) come from the game's own numbers, at no cost on the phone
+            'stop_visits': num('PokeStopVisits'), 'encountered': num('NumPokemonEncountered'),
             'candy_total': sum((v or {}).get('candy', 0) + ((v or {}).get('xl') or 0) for v in fams.values()) if fams else None}
 
 
@@ -541,6 +544,12 @@ def _selftest():
     bagonly = fp(T + 20000, T, services={'svc': {'addr': '0xS', 'bag': '0xOTHERBAG'}})
     bagonly['graph']['bag'] = '0xB'
     assert [(lv, c) for lv, c, _ in check_services(bagonly)] == [(STOP, 'MIXED_GRAPH')], check_services(bagonly)   # R3
+    doc = {'read_at': '2026-11-16 13:28:32', 'stardust': 900602, 'coins': 113, 'families': {},
+           'player': {'Experience': '1043746125', 'NumPokemonCaptured': 444845, 'PokeStopVisits': 271946,
+                      'NumPokemonEncountered': 854224, 'KmWalked': 15099.8, 'NumEvolutions': 6490, 'NumEggsHatched': 4216}}
+    ip = inventory_part(doc, read_at_expected='2026-11-16 13:28:32')
+    assert ip['stop_visits'] == 271946 and ip['encountered'] == 854224 and ip['captured'] == 444845, ip
+    assert inventory_part(doc, read_at_expected='2026-11-16 13:24:51') is None      # an old file never stands in
     print('walk_tripwires selftest: OK')
 
 
