@@ -115,7 +115,8 @@ def competitive(lg, stage, shadow=0):
     """May `stage` (a pvpoke speciesId) hold a PvP keep in `lg`? True inside meta_half -- a shadow copy is judged by its
     shadow entry when pvpoke lists one -- and whenever there is no gate (rule off, list unknown, Master League, no stage).
     THE test of rules.pvp_top_half: plays(), qualifies(), owned_as_stage(), behind_owned() and keep_policy's Best and
-    comb-up rules ask it -- never the 0/15/15 spread (his 11-16 correction: "no 0-15-15 pokemon should be cull'd"); the audits and the pre-flight read
+    comb-up rules ask it -- never the 0/15/15 spread (his 11-16 correction: "no 0-15-15 pokemon should be cull'd") and never an IV rank #1
+    (the callers skip the test for it: his 11-16 "But why are you culling a #1 ranked PVP pokemon? how does this make any sense?"); the audits and the pre-flight read
     the ranking files themselves."""
     half = meta_half(lg) if stage else None
     if half is None:
@@ -286,7 +287,7 @@ def plays(r, league, cap, BS, rr=None, gate=True):
     missing base stats or an unprovable level never strip protection. rules.pvp_top_half (2026-11-16): the stage must also
     be competitive() -- inside pvpoke's top half of the league; gate=False is the ungated test (the audits ask that, then
     judge the top half from the ranking files themselves); a callable gate(league, stage, shadow) judges the top half in
-    competitive()'s place (the pre-flight passes its own read of the list, 2026-11-16)."""
+    competitive()'s place (the pre-flight passes its own read of the list, 2026-11-16). An IV rank #1 is never gated (his 11-16 "But why are you culling a #1 ranked PVP pokemon? how does this make any sense?")."""
     rr = READY_RANK if rr is None else rr
     ch = chain_stage_ranks(r, league)
     if not ch and _col(r, league + '_rank') is not None:
@@ -294,7 +295,7 @@ def plays(r, league, cap, BS, rr=None, gate=True):
     best = None
     for st, rk in ch:
         if st and rk is not None and rk <= rr and maxcp(st, BS) > cap + VIABILITY_MARGIN and fits(r, st, cap, BS) \
-                and (not gate or (gate if callable(gate) else competitive)(league, st, _shadow(r))):
+                and (not gate or rk == 1 or (gate if callable(gate) else competitive)(league, st, _shadow(r))):
             if best is None or rk < best[1]:
                 best = (st, rk)
     return best
@@ -315,7 +316,7 @@ def owned_as_stage(rows, BS, rr=None):
         for league, cap in (('gl', GL_CAP), ('ul', UL_CAP)):
             for st, rk in chain_stage_ranks(r, league):
                 if st == own and rk <= rr and maxcp(st, BS) > cap + VIABILITY_MARGIN and fits(r, st, cap, BS) \
-                        and competitive(league, st, _shadow(r)):
+                        and (rk == 1 or competitive(league, st, _shadow(r))):   # a #1 always counts (11-16)
                     k = (league, st, _shadow(r))
                     out[k] = min(rk, out.get(k, rk))
     return out
@@ -333,7 +334,7 @@ def behind_owned(r, owned, BS, rr=None):
     for league, cap in (('gl', GL_CAP), ('ul', UL_CAP)):
         for st, rk in chain_stage_ranks(r, league):
             if not st or rk > rr or maxcp(st, BS) <= cap + VIABILITY_MARGIN or not fits(r, st, cap, BS) \
-                    or not competitive(league, st, sh):
+                    or (rk != 1 and not competitive(league, st, sh)):   # a #1 always counts (11-16)
                 continue
             if st == own:
                 return None                      # a usable top-rr AS IT IS: an own-stage asset
@@ -397,7 +398,7 @@ def qualifies(species_name, form, iv_atk, iv_def, iv_sta, stage, rank, floor, BS
     if rank is None or rank > READY_RANK:        # THE league IV-RANK check -- top-5 of 4096 spreads for the best chain form
         return False                             # (a pre-evo whose best form is only GL#116, e.g. Wooloo->Dubwool, is "way off")
     _sh = shadow if shadow is not None else _shadow(row) if row is not None else 0   # a CP-blind caller still names a shadow
-    if cap in (GL_CAP, UL_CAP) and not competitive('gl' if cap == GL_CAP else 'ul', stage, _sh):
+    if cap in (GL_CAP, UL_CAP) and rank != 1 and not competitive('gl' if cap == GL_CAP else 'ul', stage, _sh):   # never a #1
         return False                             # outside pvpoke's top half of that league (rules.pvp_top_half, 2026-11-16)
     if pvid(species_name, form or 0) == stage:                 # READY (evolved / as-itself)
         return cap is None or (cp or 0) <= cap   # ...but a READY mon ALREADY over the league CP cap can't enter it

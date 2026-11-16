@@ -1030,13 +1030,13 @@ if keep_config.rule_enabled('pvp_later_stage_owned'):
 def _l7_kept_later(r):
     """[(LG, stage, its rank, the kept holder's rank or None)] when every stage this copy can play is excused: OUTSIDE
     pvpoke's top half of that league (holder None; LAW "TOP HALF", 2026-11-16, read by independent_law) or a later stage
-    held as well or better by a kept copy (15f); else None."""
+    held as well or better by a kept copy (15f); else None. A #1 is never excused by the top half (his 11-16 "But why are you culling a #1 ranked PVP pokemon? how does this make any sense?")."""
     own, out = _l7_pvid(r['species_name'], r.get('form') or 0), []
     for lg, cap in (('gl', GL_CAP), ('ul', UL_CAP)):
         for st, rk in _l7_chain(r, lg):
             if rk > RR or mcp(st) <= cap + VM or not _l7_fits(r, st, cap, BS):
                 continue
-            if not _ac_half(lg, st, _l7_sh(r)):
+            if rk != 1 and not _ac_half(lg, st, _l7_sh(r)):
                 out.append((lg.upper(), st, rk, None))
                 continue
             h = _l7_held.get((lg, st, _l7_sh(r)))

@@ -221,9 +221,9 @@ def main():
 
     def below_half(m):
         """[(lg, stage, rank)] for each top-5 stage this copy can play (it reaches the cap, its CP fits there) that is
-        outside pvpoke's top half -- [] when none, or the rule is off."""
+        outside pvpoke's top half -- [] when none, or the rule is off. Never a #1: the top half never touches it (11-16)."""
         return [(lg, st, rk) for lg, cap in (('gl', pv.GL_CAP), ('ul', pv.UL_CAP)) for st, rk in pv.chain_stage_ranks(m, lg)
-                if rk <= pv.READY_RANK and half_out(lg, st, _shd(m)) and pv.maxcp(st, BS) > cap + pv.VIABILITY_MARGIN
+                if 1 < rk <= pv.READY_RANK and half_out(lg, st, _shd(m)) and pv.maxcp(st, BS) > cap + pv.VIABILITY_MARGIN
                 and pv.fits(m, st, cap, BS)]
 
     def half_text(bh):
@@ -807,7 +807,7 @@ def main():
             below_list.append('%s is top %d only as %s' % (desc(m, False), pv.READY_RANK, half_text(_bh)))
         for lg in CAPS:
             for st, rk in chain(m, lg):
-                if not st or half_out(lg, st, _shd(m)):
+                if not st or (rk != 1 and half_out(lg, st, _shd(m))):
                     continue                             # outside pvpoke's top half: no keep there at any rank (named above)
                 capreach = CAPS[lg] is not None and pv.maxcp(st, BS) > CAPS[lg] + pv.VIABILITY_MARGIN
                 _held = bool(_hl) and any(x[0] == lg and x[1] == st for x in _hl)   # rule 15f: named above

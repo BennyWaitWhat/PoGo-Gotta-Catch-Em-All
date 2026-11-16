@@ -131,7 +131,7 @@ DEFAULTS = {
         "hand_kept": False,             # WHAT HE UNTAGS STAYS -- a copy he took OUT of the Transfer tag by hand is kept from then on
         #                                 (hand_kept(): system/analysis/hand_kept.json, written by full_audit.hand_kept_step;
         #                                 user 2026-11-12); OFF = the list is not read
-        "pvp_top_half": False,          # rules 15 / 15b / 15d / 15e (NEVER the 0/15/15 spread) -- a Great or Ultra League keep counts only for
+        "pvp_top_half": False,          # rules 15 / 15b / 15d / 15e (NEVER the 0/15/15 spread, NEVER an IV rank #1) -- a Great or Ultra League keep counts only for
         #                                 a stage inside the top half of pvpoke's ranking list for that league; a species pvpoke does
         #                                 not rank is not competitive; Master League is not gated (pvp_iv_rule.competitive; user
         #                                 2026-11-16: "keep them if they're at least in the top half"); OFF = no such gate, as before

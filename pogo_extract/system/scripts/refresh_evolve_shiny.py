@@ -128,7 +128,7 @@ def compute_target(why=None, spent=None, detail=None, gated=None, items_spent=No
         fr = _full.get(u)
         own_rank = fr is not None and any(
             fr[st] == own and fr[rk] is not None and fr[rk] <= READY_RANK and own in _BSx and maxcp(own, _BSx) > cap + VIABILITY_MARGIN
-            and competitive(st[:2], own, 1 if fr['fresh_alignment'] == 1 else 0)   # the top half (rules.pvp_top_half, 2026-11-16)
+            and (fr[rk] == 1 or competitive(st[:2], own, 1 if fr['fresh_alignment'] == 1 else 0))   # the top half (2026-11-16); a #1 always counts
             for st, rk, cap in (('gl_stage', 'gl_rank', GL_CAP), ('ul_stage', 'ul_rank', UL_CAP)))
         return own_rank or 'pvp_best_gl' in rs or 'pvp_best_ul' in rs
 

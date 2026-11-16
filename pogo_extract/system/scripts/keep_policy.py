@@ -1568,7 +1568,8 @@ def main():
     # a species pvpoke does not rank is not competitive; keep_config rules.pvp_top_half): every Great / Ultra League keep
     # below -- the IV keeper (15), the rank safety net (15b), Best GL / UL (15d, the roster too) and the comb-up (15e) --
     # counts only for a stage inside the top half of pvpoke's list for that league (pvp_iv_rule.competitive, asked by
-    # plays / qualifies / owned_as_stage / behind_owned). Master League is not gated, and NEVER the 0/15/15 spread
+    # plays / qualifies / owned_as_stage / behind_owned). Master League is not gated, NEVER an IV rank #1 (his 11-16 "But why are you culling a #1 ranked PVP pokemon? how does this make any sense?"),
+    # and NEVER the 0/15/15 spread
     # (his 11-16 correction: "no 0-15-15 pokemon should be cull'd").
     _hg, _hu = pvp_meta_half('gl'), pvp_meta_half('ul')
     if _hg is not None or _hu is not None:
@@ -1818,12 +1819,13 @@ def main():
         # ... and a Best GL / Best UL copy (user 2026-09-23: "only if its best rank is at a later stage"): since
         # 2026-10-29 every Best wins AS ITSELF (15d), so every one is an own-stage asset -- a later stage is reached
         # through 15e's Evolve for GL / UL only. Mirrored in audit_labels, refresh_evolve_shiny and sync_evolve_size.
-        # (2026-11-16) an own-stage top 5 OUTSIDE pvpoke's top half is no PvP asset (rules.pvp_top_half): it may climb
+        # (2026-11-16) an own-stage top 5 OUTSIDE pvpoke's top half is no PvP asset (rules.pvp_top_half): it may climb -- an
+        # own-stage #1 always is one (his 11-16 "But why are you culling a #1 ranked PVP pokemon? how does this make any sense?")
         _own_sh = int((r['fresh_alignment'] or 0) == 1)
         _own_pvp = ((r['gl_stage'] == _sid(r) and r['gl_rank'] is not None and r['gl_rank'] <= READY_RANK and _viable(r['gl_stage'], GL_CAP)
-                     and pvp_competitive('gl', r['gl_stage'], _own_sh))
+                     and (r['gl_rank'] == 1 or pvp_competitive('gl', r['gl_stage'], _own_sh)))
                     or (r['ul_stage'] == _sid(r) and r['ul_rank'] is not None and r['ul_rank'] <= READY_RANK and _viable(r['ul_stage'], UL_CAP)
-                        and pvp_competitive('ul', r['ul_stage'], _own_sh))
+                        and (r['ul_rank'] == 1 or pvp_competitive('ul', r['ul_stage'], _own_sh)))
                     or 'pvp_best_gl' in _kr or 'pvp_best_ul' in _kr)
         if (_kr & {'location_card', 'xxl', 'legacy', 'dex_only_copy', 'mighty', 'protected'}) or _own_pvp:
             if _is_stock:
