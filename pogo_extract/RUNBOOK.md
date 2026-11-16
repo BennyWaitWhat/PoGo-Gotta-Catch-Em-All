@@ -287,7 +287,7 @@ stale one), members STRIPPED on the device by prune, empty shell deleted by `ret
 **Rank tags are per STAGE (2026-09-08).** `GL Rank 1` / `GL Rank 2-5` (and UL) are the mon's OWN-stage
 stat-product rank at the L50 ceiling -- the number the Pokemod overlay prints for the mon on screen.
 `Evo GL Rank 1` / `Evo GL Rank 2-5` (and UL) meant a LATER stage of its line reaches that rank. Since 2026-09-30 (the
-second fold) that copy wears `PvP 1-5 No Evolve` (ONE tag for both leagues since 2026-11-15), unless it is THE copy to evolve, which wears
+second fold) that copy wore `PvP 1-5 No Evolve` (ONE tag for both leagues from 2026-11-15) and since 2026-11-16 wears no PvP chip (`PvP 1-5 No Evolve` is now an own-stage top 5 that can still evolve), unless it is THE copy to evolve, which wears
 ONE evolve tag (`Evolve to Mid` / `Evolve to Final` / `Evolve Needs Item` / `Evolve Needs Task`; `Evolve for GL` / `UL` are retired). A 0/15/15 Raboot (Cinderace #1) is never `GL Rank 1-5` (Raboot is #7).
 Rank tags are GATED to stages that can reach the league cap (2026-09-09): an under-cap species pins every IV to
 L50 and its hundo ranks "#1" -- true, printed by Pokemod, useless (`UL Rank 1` sat on 352 mons, 89% hundos).

@@ -227,24 +227,30 @@ try:
         # user's call how (or whether) to label it. The keep itself (rule 15b) is untouched.
         # (2026-09-30, THE SECOND FOLD) a later-stage spread wears '<league> 1-5 No Evolve', or the evolve tags when it is
         # the copy to evolve (Evolve for <league> beside the count -- its Best chip comes off then)
-        # (2026-11-15) ONE No Evolve tag for both leagues: it counts for THIS league only where a later stage ranks 1-5 here
-        _mx5 = _gt._maxcp_fn()
-        _via_l = lambda sid, _c=_cap: bool(sid) and _mx5(sid) > _c + _gt.VIABILITY_MARGIN
-        _ne_l = {u for u in load('PvP_1-5_No_Evolve') if u in _vis
-                 and (_gt.own_and_evo_rank(_vis[u], lg.lower(), viable=_via_l, cap=_cap)[1] or 99) <= 5}
-        t = load('%s_Rank_1-5' % lg) | _ne_l | load('Best_%s' % lg) | _evolve_labelled()
+        # (2026-11-16) No Evolve is an own-stage top 5 since today, so it is inside the Rank chip and adds nothing here
+        t = load('%s_Rank_1-5' % lg) | load('Best_%s' % lg) | _evolve_labelled()
         # OVER-CAP SPREADS CARRY NO LEAGUE CHIP (user 2026-09-23, on over-cap spreads: "why are they even tagged"):
         # a keeper none of whose rank-<=ready_rank stages it can still ENTER (pvp_iv_rule.fits, true level) needs no
         # GL/UL tag -- the chip would claim it can play. It stays KEPT (rule 15b; the 8-layer and fixture audits prove
         # that); it is listed here so it is never silent.
-        from pvp_iv_rule import fits as _fits, chain_stage_ranks as _csr
+        from pvp_iv_rule import fits as _fits, chain_stage_ranks as _csr, pvid as _pvid, maxcp as _mxc, VIABILITY_MARGIN as _VMG
         _oc = {u for u in q if u not in t
                and not any(_rk2 <= RR and _fits(rows[u], _st2, _cap, _BS) for _st2, _rk2 in _csr(rows[u], lg.lower()))}
-        verdict('%s Rank tags' % lg, set(), (q - t) - pile - _oc,
-                '(every pvp_iv_rule %s keeper that can still ENTER the league carries a %s Rank / PvP 1-5 No Evolve / Best %s '
-                '/ evolve tag; keepers=%d, over the cap and untagged by design=%d%s)'
-                % (lg, lg, lg, len(q), len(_oc), (': ' + ', '.join(sorted('%s %d%%' % (rows[u]['species_name'],
-                   round((rows[u]['iv_total'] or 0) * 100 / 45)) for u in _oc))) if _oc else ''))
+        # A LATER STAGE ONLY CARRIES NO LEAGUE CHIP EITHER (2026-11-16, user: "the pokemon in "pvp no evolve" tag make no
+        # fucking sense"): a keeper that ranks 1-5 only as a stage it would evolve into, and is neither its Best nor
+        # advised to evolve, wore PvP 1-5 No Evolve -- false on the overlay. Still KEPT (rule 15b); listed, never silent.
+        # A copy whose OWN stage is a usable top 5 is never exempt: without its Rank chip it is MISSING below.
+        _own_ok = lambda u: any(_rk2 <= RR and _st2 == _pvid(rows[u]['species_name'], rows[u]['form'] or 0)
+                                and _mxc(_st2, _BS) > _cap + _VMG and _fits(rows[u], _st2, _cap, _BS)
+                                for _st2, _rk2 in _csr(rows[u], lg.lower()))
+        _ls = {u for u in q if u not in t and u not in _oc and not _own_ok(u)}
+        _nm = lambda us: ', '.join(sorted('%s %d%%' % (rows[u]['species_name'], round((rows[u]['iv_total'] or 0) * 100 / 45))
+                                          for u in us))
+        verdict('%s Rank tags' % lg, set(), (q - t) - pile - _oc - _ls,
+                '(every pvp_iv_rule %s keeper that can ENTER the league as it is carries a %s Rank / Best %s / evolve tag; '
+                'keepers=%d, over the cap and untagged by design=%d%s; top 5 only as a later stage, untagged by design=%d%s)'
+                % (lg, lg, lg, len(q), len(_oc), (': ' + _nm(_oc)) if _oc else '',
+                   len(_ls - pile), (': ' + _nm(_ls - pile)) if _ls - pile else ''))
 except Exception as _e:
     FAILS.append('GL/UL rule unavailable')
     print('  *** could not re-derive the GL/UL rule (%s) -- these tags are UNVERIFIED' % _e)
@@ -462,19 +468,32 @@ if _adv is not None:
     # a stage that reaches the cap, fits there at its true level, its form and gender can become it) that NO producer
     # above advises to evolve -- exactly those. An evolve tag and No Evolve never sit on one copy.
     # (2026-11-15) ONE tag for both leagues: the union of the two league sets, exactly.
+    # (2026-11-16, user: "the pokemon in "pvp no evolve" tag make no fucking sense") its OWN stage ranks 1-5 now (a usable
+    # Rank 1-5 of either league), it can still evolve (its form has a branch, its chain a later stage, its gender reaches
+    # one -- judged here on evolvable_forms, not on the builder's helper), and no producer advises it. A later stage's rank
+    # no longer counts.
+    import evolvable_forms as _evf
     _mx = _gt._maxcp_fn()
+    _dexn = {p['speciesId']: p.get('dex') for p in json.load(open('pvpoke_gamemaster.json', encoding='utf-8'))['pokemon']}
+
+    def _evolves(r):
+        if _evf.row_can_evolve(r) is False:
+            return False
+        _o = _gt.pvid(r['species_name'], r.get('form') or 0)
+        _st = {p.split(':')[0].strip() for lg in ('gl', 'ul') for p in str(r.get(lg + '_chain_ranks') or '').split(';') if ':' in p}
+        return any(s != _o and _evf.gender_allows(r['pokemon_id'], r.get('gender'), _dexn.get(s)) for s in _st)
     _want = set()
     for _lbl, _cap in (('GL', _gt.GL_CAP), ('UL', _gt.UL_CAP)):
         _via5 = lambda sid, _c=_cap: bool(sid) and _mx(sid) > _c + _gt.VIABILITY_MARGIN
         for u, r in _vis.items():
-            if u in pile:
+            if u in pile or u in _adv:
                 continue
-            _ev5 = _gt.own_and_evo_rank(r, _lbl.lower(), viable=_via5, cap=_cap)[1]
-            if _ev5 is not None and _ev5 <= 5 and u not in _adv:
+            _own5 = _gt.own_and_evo_rank(r, _lbl.lower(), viable=_via5, cap=_cap)[0]
+            if _own5 is not None and _own5 <= 5 and _evolves(r):
                 _want.add(u)
     _have = load('PvP_1-5_No_Evolve')
     verdict('PvP 1-5 No Evolve', _have - _want, _want - _have,
-            '(a later stage ranks it 1-5 in Great or Ultra League and it is NOT the copy to evolve -- no producer advises it)')
+            '(rank 1-5 in Great or Ultra League AS IT IS NOW, it can still evolve, and no producer advises it to)')
     if _notg:
         FAILS.append('evolve advice with no target')
         print('  *** %d kept copy(ies) advised to evolve with no target -- no evolve tag tells him: %s'

@@ -1,7 +1,8 @@
 """PER-POKEMON AUDIT OF EVERY GL / UL RANK TAG (user 2026-09-19: "recheck all the ivs for each and every pokemon you
 have tagged for gl and ul potential and current ... some are incorrect. some even over the cap").
 
-For every mon carrying `GL/UL Rank 1-5` (own stage) or `PvP 1-5 No Evolve` (a later stage, one tag for both leagues) this re-derives
+For every mon carrying `GL/UL Rank 1-5` (own stage) or `PvP 1-5 No Evolve` (the same own-stage rank 1-5, in either league, on a
+copy that can still evolve -- a later stage's rank until 2026-11-16) this re-derives
 the answer from scratch -- the ranker's own tables, the stage chain, the league caps -- and reports every mon where
 the tag does not match. Five independent checks per mon:
 
@@ -25,11 +26,14 @@ import evolvable_forms
 import granular_tags as gt
 from pvp_iv_rule import pvid, maxcp, GL_CAP, UL_CAP, VIABILITY_MARGIN
 
-# (2026-11-15) ONE later-stage tag for both leagues ('GL / UL 1-5 No Evolve' until then): a member is judged in every league
-# whose later stage ranks it 1-5 (the tag builder's own test, as the two files were), and must have at least one.
+# (2026-11-15) ONE No Evolve tag for both leagues ('GL / UL 1-5 No Evolve' until then): a member is judged in every league
+# where it carries the claim, and must have at least one.
+# (2026-11-16, user: "the pokemon in "pvp no evolve" tag make no fucking sense") the claim is its OWN stage rank 1-5 -- kind
+# 'ne' runs every own-stage check -- and that it can still evolve (its form, its chain, its gender). A later stage's rank
+# made 47 of 49 members false on the overlay.
 NO_EVO = gt.NO_EVOLVE
 TAGS = {'GL Rank 1-5': ('gl', 1, 5, 'own'), 'UL Rank 1-5': ('ul', 1, 5, 'own'),          # merged 2026-09-23
-        NO_EVO + ' (GL)': ('gl', 1, 5, 'evo'), NO_EVO + ' (UL)': ('ul', 1, 5, 'evo')}
+        NO_EVO + ' (GL)': ('gl', 1, 5, 'ne'), NO_EVO + ' (UL)': ('ul', 1, 5, 'ne')}
 CAP = {'gl': GL_CAP, 'ul': UL_CAP}
 
 
@@ -63,14 +67,14 @@ def main():
     _ne_p = os.path.join(TD, NO_EVO.replace(' ', '_') + '.txt')
     _ne_all = [u for u in (open(_ne_p).read().split() if os.path.exists(_ne_p) else []) if u in rows]
     for tag, (_lg, _lo, _hi, _kind) in TAGS.items():
-        if _kind == 'evo':                    # the merged tag: this league's members = a later stage ranks 1-5 there
+        if _kind == 'ne':                     # the merged tag: this league's members = its own stage ranks 1-5 there
             _via = lambda sid, _c=CAP[_lg]: bool(sid) and _mx(sid) > _c + VIABILITY_MARGIN
             members[tag] = [u for u in _ne_all
-                            if (gt.own_and_evo_rank(rows[u], _lg, viable=_via, cap=CAP[_lg])[1] or 99) <= 5]
+                            if (gt.own_and_evo_rank(rows[u], _lg, viable=_via, cap=CAP[_lg])[0] or 99) <= 5]
             continue
         p = os.path.join(TD, tag.replace(' ', '_') + '.txt')
         members[tag] = [u for u in (open(p).read().split() if os.path.exists(p) else []) if u in rows]
-    _ne_none = sorted(set(_ne_all) - {u for tag, v in TAGS.items() if v[3] == 'evo' for u in members[tag]})
+    _ne_none = sorted(set(_ne_all) - {u for tag, v in TAGS.items() if v[3] == 'ne' for u in members[tag]})
     # every fresh table this audit reads, built side by side (2026-10-29, "same results, just faster"): the same
     # all_combos_sorted the lazy get() runs, in worker processes
     rank_cache.prefill(cache, _sample + [(pvid(rows[u]['species_name'], rows[u]['form'] or 0), CAP[lg],
@@ -82,8 +86,21 @@ def main():
     checked = 0
     for u in _ne_none:
         r = rows[u]
-        bad['%s on a copy no later stage ranks 1-5 in Great or Ultra League' % NO_EVO].append(
+        bad['%s on a copy that is not rank 1-5 AS IT IS in Great or Ultra League' % NO_EVO].append(
             '%s %d/%d/%d cp%s' % (r['species_name'], r['iv_atk'], r['iv_def'], r['iv_sta'], r['cp']))
+    # ... and every member can still evolve: else "No Evolve" says nothing (judged once per copy, not once per league)
+    _dexn = {k: v.get('dex') for k, v in pdb.items()}
+    for u in _ne_all:
+        r = rows[u]
+        name = '%s %d/%d/%d cp%s' % (r['species_name'], r['iv_atk'], r['iv_def'], r['iv_sta'], r['cp'])
+        own = pvid(r['species_name'], r['form'] or 0)
+        later = {p.split(':')[0].strip() for lg in CAP for p in str(r[lg + '_chain_ranks'] or '').split(';') if ':' in p} - {own}
+        if evolvable_forms.row_can_evolve(r) is False:
+            bad['%s on a form that cannot evolve' % NO_EVO].append(name)
+        elif not later:
+            bad['%s with no later stage in its chain' % NO_EVO].append(name)
+        elif not any(evolvable_forms.gender_allows(r['pokemon_id'], r['gender'], _dexn.get(s)) for s in later):
+            bad['%s on a gender that reaches no later stage' % NO_EVO].append(name)
     for tag, (lg, lo, hi, kind) in TAGS.items():
         cap = CAP[lg]
         for u in members[tag]:
@@ -105,26 +122,17 @@ def main():
                     except ValueError:
                         pass
             if got is None:
-                if kind == 'own':
-                    bad['the ranker cannot rank this stage at all'].append('%-26s [%s]' % (name, tag))
+                bad['the ranker cannot rank this stage at all'].append('%-26s [%s]' % (name, tag))
             else:
                 if stored is not None and stored != got['rank']:
                     bad['stored rank disagrees with a fresh computation'].append(
                         '%-26s [%s] stored #%s, recomputed #%s' % (name, tag, stored, got['rank']))
-                if kind == 'own' and not (lo <= got['rank'] <= hi):
+                if not (lo <= got['rank'] <= hi):
                     bad['tag says rank %s-%s, its own stage is #%d' % (lo, hi, got['rank'])].append(
                         '%-26s [%s] as %s' % (name, tag, own))
-            # 4. stage checks
-            if kind == 'own':
-                if not (own in BS and maxcp(own, BS) > cap + VIABILITY_MARGIN):
-                    bad['own stage cannot reach the league cap'].append('%-26s [%s] %s' % (name, tag, own))
-            else:
-                if evolvable_forms.row_can_evolve(r) is False:
-                    bad['an EVO tag on a form that cannot evolve'].append('%-26s [%s]' % (name, tag))
-                else:
-                    later = [k for k in gt.stage_ranks(r, lg) if k != own]
-                    if not later:
-                        bad['an EVO tag with no later stage in its chain'].append('%-26s [%s]' % (name, tag))
+            # 4. stage check (both kinds claim the OWN stage since 2026-11-16; No Evolve's can-it-evolve check is above)
+            if not (own in BS and maxcp(own, BS) > cap + VIABILITY_MARGIN):
+                bad['own stage cannot reach the league cap'].append('%-26s [%s] %s' % (name, tag, own))
     # ---- AND EVERY RANK OF EVERY MON, tagged or not (user 2026-09-19: "i told you to check each pokemon for a
     # reason" -> "this is why i asked you to check PVP ranks"). The per-tag checks above only see mons that already
     # carry a chip, so a wrong rank on an untagged mon -- the one that would show up next cycle -- was invisible.

@@ -116,6 +116,13 @@ EVOLVE_MID, EVOLVE_FINAL = 'Evolve to Mid', 'Evolve to Final'
 # GL / UL / ML chip (a Best is about the stage it is leaving); the league is in the cull report's which-way line and on the
 # evolved copy. The two league 'No Evolve' tags are ONE tag: a LATER stage of its line ranks 1-5 in Great or Ultra League and
 # this copy is NOT the one to evolve. Labels only: nothing kept or released changes.
+# NO EVOLVE IS ABOUT THE COPY AS IT IS (2026-11-16, user: "the pokemon in "pvp no evolve" tag make no fucking sense."). Built
+# from a LATER stage's rank, 47 of its 49 members were nowhere near top 5 on the overlay: a 13/15/15 Pidgey for a Pidgeot UL
+# #5 when he owns a #1, nine hundos, and four comb-up picks waiting for a stone -- copies the tool WILL evolve, told not to.
+# Now: rank 1-5 in Great or Ultra League as it is now (the GL / UL Rank 1-5 test), it can still evolve (can_still_evolve:
+# form, chain, gender), and no evolve advice is on it. The overlay shows #1-5 and evolving would lose that (pvp_combup never
+# evolves an own-stage top 5). A copy kept only because a later stage ranks 1-5 wears no PvP chip; its keep (rule 15b) is
+# unchanged and both chip audits list it. Labels only.
 NO_EVOLVE = 'PvP 1-5 No Evolve'
 EVOLVE_ADVICE = os.path.join(HERE, 'system', 'analysis', 'evolve_advice.json')   # {uid: {targets, steps, gated, gate, leagues, source, tags}}
 STOP_PREFIX = 'Stop at '
@@ -139,14 +146,15 @@ RARITY_NATIVE = frozenset(LEGENDARY_IDS) | frozenset(MYTHICAL_IDS)   # covered b
 RARITY_OTHER = 'Rare Other'
 LEAGUES = (('gl', GL_CAP, 'GL'), ('ul', UL_CAP, 'UL'))
 # '%s Rank N' is the mon's OWN stage (what the Pokemod overlay prints for the mon on screen). A LATER stage of its line
-# ranking top 5 was 'Evo %s Rank N' until 2026-09-30; now it is '%s 1-5 No Evolve' unless this copy is the one to
-# evolve (THE SECOND FOLD above). User 2026-09-08, a 0/15/15 Raboot: "Why is Raboot tagged as GL rank 1 if... it
-# isnt?" -- it is Raboot #7 / Cinderace #1, and one tag said "1".
+# ranking top 5 was 'Evo %s Rank N' until 2026-09-30, then '%s 1-5 No Evolve' unless this copy was the one to evolve
+# (THE SECOND FOLD above); since 2026-11-16 it has no chip, and No Evolve is an own-stage top 5 that can still evolve.
+# User 2026-09-08, a 0/15/15 Raboot: "Why is Raboot tagged as GL rank 1 if... it isnt?" -- it is Raboot #7 /
+# Cinderace #1, and one tag said "1".
 # GATED to stages that can reach the league cap (user 2026-09-09 "drop 13 + gate"): an under-cap species pins every
 # IV to L50, so its hundo ranks "#1" -- true, printed by Pokemod, and useless (UL Rank 1 sat on 352 mons, 89% hundos).
 # 'Best GL' / 'Best UL' were RETIRED 2026-09-09 as labels that decided nothing; since 2026-09-23 they label a KEEP
 # rule (keep_policy 15d, reasons pvp_best_gl / pvp_best_ul) and are emitted from SIMPLE, not re-derived here.
-LEAGUE_TAG_FMTS = ('%s Rank 1-5',)   # own stage (Rank 1 + 2-5 merged 2026-09-23: "call it 1-5 rank"); a later stage: NO_EVOLVE
+LEAGUE_TAG_FMTS = ('%s Rank 1-5',)   # own stage (Rank 1 + 2-5 merged 2026-09-23: "call it 1-5 rank"); + can still evolve: NO_EVOLVE
 
 # 'Location Card' RETIRED 2026-09-09 (same day it was merged): the native Location Background + Special Background
 # chips list every holder (54 + 239 = 293 = the DB count).
@@ -363,6 +371,17 @@ def own_and_evo_rank(r, league, viable=None, cap=None):
              if k != own_sid and (viable is None or viable(k)) and _fits(k)
              and evolvable_forms.gender_allows(r['pokemon_id'], r.get('gender'), _dex.get(k))]
     return own, (min(later) if later else None)
+
+
+def can_still_evolve(r):
+    """True when this copy can still become a later stage of its line: its form has an evolution branch, its rank chain
+    lists a later stage, and its gender reaches one (own_and_evo_rank's gates, without the rank). No Evolve needs it."""
+    if evolvable_forms.row_can_evolve(r) is False:
+        return False
+    own_sid = pvid(r['species_name'], r.get('form') or 0)
+    _dex = _dex_of()
+    return any(k != own_sid and evolvable_forms.gender_allows(r['pokemon_id'], r.get('gender'), _dex.get(k))
+               for lg in ('gl', 'ul') for k in stage_ranks(r, lg))
 
 
 def is_stop_tag(name):
@@ -788,23 +807,23 @@ def build(rows, pile, reasons):
     # OWN STAGE vs EVOLVED STAGE (2026-09-08). gl_rank/ul_rank is the chain's best VIABLE stage -- for a 0/15/15
     # Raboot that is Cinderace #1 while Raboot itself is #7, and the overlay the user reads shows #7. So:
     #   '%s Rank 1' / '%s Rank 2-5'         = the mon's OWN stage rank (what Pokemod prints for this mon)
-    #   '%s 1-5 No Evolve'                  = a LATER stage of its line reaches rank 1-5 and this copy is NOT the one
-    #                                         to evolve (2026-09-30); the one to evolve wears Evolve for <league>
+    #   'PvP 1-5 No Evolve'                 = that own-stage rank 1-5, in either league, on a copy that can still evolve
+    #                                         and is advised to stay (2026-11-16; a LATER stage's rank until then)
     # Both read the per-stage chain rank_cache already stores; nothing is gated (Pokemod labels).
     # GATED (2026-09-09): a stage earns a rank label only if it can reach the league cap (L50-hundo CP above
     # cap + keep_config pvp.viability_margin -- the same test pvp_iv_rule.qualifies uses for the keep decision).
     maxcp = _maxcp_fn()
-    _later5 = collections.defaultdict(set)            # a later stage ranks it 1-5 -> No Evolve unless advised (below)
+    _own5_evo = set()                                 # own stage 1-5 and it can still evolve -> No Evolve unless advised (below)
     for league, cap, lbl in LEAGUES:
         _viable = (lambda _cap: (lambda sid: bool(sid) and maxcp(sid) > _cap + VIABILITY_MARGIN))(cap)
         for r in kept:
             if keep_config.is_fused_component(r):
                 continue                              # (2026-09-26) fused components hold no ladder slot
-            own, evo = own_and_evo_rank(r, league, viable=_viable, cap=cap)
+            own, _evo = own_and_evo_rank(r, league, viable=_viable, cap=cap)
             if own is not None and own <= 5:
                 T[LEAGUE_TAG_FMTS[0] % lbl].add(r['uid_hex'])
-            if evo is not None and evo <= 5:
-                _later5[lbl].add(r['uid_hex'])
+                if can_still_evolve(r):
+                    _own5_evo.add(r['uid_hex'])
 
     # An over-cap rank 1-5 keeper gets NO extra chip (user 2026-09-23: "why are they even tagged"). Best GL/UL is
     # USABLE-ONLY since 2026-09-23 (keep_policy 15d: the best copy that can ENTER the league), so an over-cap spread is
@@ -839,7 +858,9 @@ def build(rows, pile, reasons):
     # keep is unchanged (the Best ML-on-a-hundo precedent above).
     # 2026-11-15: ONE No Evolve tag for both leagues, and a copy told to evolve wears NO Best chip (GL / UL / ML), whatever
     # the advice is for -- one message per copy.
-    T[NO_EVOLVE] |= set().union(*_later5.values()) - set(LAST_ADVICE)
+    # 2026-11-16: No Evolve = rank 1-5 AS IT IS NOW and it can still evolve (see NO_EVOLVE); a later stage's rank no longer
+    # puts it there.
+    T[NO_EVOLVE] |= _own5_evo - set(LAST_ADVICE)
     for _lg in ('gl', 'ul', 'ml'):
         T[SIMPLE['pvp_best_' + _lg]] -= set(LAST_ADVICE)
     # LEGACY MOVES IS A FACT, NOT A KEEP REASON (2026-09-17). The legacy keep axis is now capped (best 10 per species,
