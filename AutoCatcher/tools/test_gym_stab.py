@@ -594,8 +594,11 @@ def runner_checks():
     check(t is None and not w, f"a refused placement's one-hour rest holds: {t!r}")
     t, w = gym_run.pick_any([1, 3], {"emp"}, {"emp": now - 60}, goal, goal, {"emp": gym(0, 0.0007), "raid": gym(1, 0.0003, raid=600000)}, 0, 250, None, now)
     check(t is None, f"a resting EMPTY gym and a raided one: nothing (no Deploy loop, no raid): {t!r}")
+    near, far = gym(3, 0.0002, cp=18000), gym(1, 0.0015, cp=2000)            # 22 m / 167 m
+    t, w = gym_run.pick_any([1, 3], set(), {}, goal, goal, {"near": near, "far": far}, 0, 250, None, now)
+    check(t and t[0] == "near", f"the NEAREST non-red gym, whatever its CP (Benny 11-15: 'go to the closest non red gym'): {t!r}")
     if len(FAILS) == n0:
-        print("ok: gym_run pick_any(): with nothing else to beat a resting enemy gym is battled; empty / raided / hour-rested ones are not")
+        print("ok: gym_run pick_any(): the nearest non-red gym; with nothing else a resting enemy gym is battled; empty / raided / hour-rested ones are not")
 
 
 def main():

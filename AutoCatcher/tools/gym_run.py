@@ -413,7 +413,7 @@ def rested(done, taken, scanned, enemy, now, rest=600):
 
 
 def pick(enemy, skip, here, goal, live, detour, area_r, ok=None):
-    """The nearest enemy gym on the LIVE map that is raid-free and on the way: at most `detour` extra meters versus
+    """The NEAREST non-red gym on the LIVE map that is raid-free and on the way: at most `detour` extra meters versus
     walking straight to the goal, or anywhere inside the goal area. `ok(fid, v)` admits more (a red gym with a free slot)."""
     best, best_key = None, None
     for fid, v in live.items():
@@ -425,14 +425,8 @@ def pick(enemy, skip, here, goal, live, detour, area_r, ok=None):
         extra = ch.meters(here, gp) + ch.meters(gp, goal) - ch.meters(here, goal)
         if extra > detour and not in_area:
             continue
-        d_m = ch.meters(here, gp)                            # the user (02:52): dominate strategically -- the CHEAPEST gym, not the closest
-        cp = v[7] if len(v) > 7 and v[7] > 0 else 0
-        contest = BUSY.get(fid, 0.5) * 60                    # a contested gym costs berries to hold / gets fed while we drain it
-        if team == 0 or team not in enemy:                   # empty, or a red gym with room: a placement with no battle
-            cost = d_m * 0.35 - 60 + contest
-        else:                                                # walking time + the CP to drain (measured ~1-2k CP per 40 s session)
-            cost = d_m * 0.35 + cp * 0.03 + contest
-        key = (0 if in_area else 1, cost)
+        d_m = ch.meters(here, gp)                            # Benny 2026-11-15 22:09: "go to the closest non red gym" -- the NEAREST one
+        key = (0 if in_area else 1, d_m)                     # (it replaced 02:52's cheapest-by-CP-and-contest order: it walked past near gyms)
         if best is None or key < best_key:
             best, best_key = (fid, gp, team), key
     return best
