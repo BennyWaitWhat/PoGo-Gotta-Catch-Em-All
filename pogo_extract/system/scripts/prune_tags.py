@@ -746,6 +746,20 @@ def main():
                            for u, v in change_map.items() if u in hex_to_proto]
                 miss = len(change_map) - len(changes)
                 rpcs = (len(changes) + 149) // 150
+                # THE FIRST WRITE WARMS UP (2026-11-16): an EMPTY SetPokemonTags first, as sync_post_tags and the other
+                # writers do. This was the one writer that sent its first real batch cold, and that batch threw
+                # NullReferenceException in 5 of 22 passes (11-11..11-16; the retry always took it). An empty list changes
+                # no mon and no tag; the real batch keeps its retry and its server-answer check. Its result is logged
+                # (routine for the cull summary), so the log shows whether the warm-up absorbed it.
+                try:
+                    _w = bt.exports_sync.bulk_apply_changes(svc, [])
+                    if _w.get('promise'):
+                        bt.exports_sync.promise_free(_w['promise'])
+                    if not _w.get('ok'):
+                        print('  (warm-up threw, ignored: %s %s)' % (_w.get('err'), _w.get('excClass') or ''))
+                except Exception as e:
+                    print('  (warm-up threw, ignored: %s)' % e)
+                time.sleep(0.5)
                 n = tag_ops.apply_changes(bt, svc, changes)
                 ntags = len([t for t in targets if t in PLAN])
                 print(f'  [atomic] applied {n}/{len(changes)} mons across {ntags} tags in '
