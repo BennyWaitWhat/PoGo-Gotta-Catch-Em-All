@@ -229,15 +229,6 @@ def main():
     def half_text(bh):
         return '; '.join('%s (%s #%d), and %s' % (stg(st), lg.upper(), rk, half_txt(lg, st)) for lg, st, rk in bh)
 
-    def spread_out(m):
-        """A configured 0/15/15 the top half stops keeping: [(lg, stage)] of its GL / UL stages ([] = none ranked), else None."""
-        if (m['iv_atk'], m['iv_def'], m['iv_sta']) not in keep_config.pvp_spread_keep():
-            return None
-        _st = [(lg, m[lg + '_stage']) for lg in ('gl', 'ul') if m[lg + '_stage']]
-        if (pv.meta_half('gl') is None and pv.meta_half('ul') is None) or any(not half_out(lg, st, _shd(m)) for lg, st in _st):
-            return None
-        return _st
-
     # ---- arrivals: caught vs evolved (IVs + creation date survive an evolution; the uid does not) ----
     gone = {sig(P[u]): P[u] for u in sorted(set(P) - set(C))}
     origin = {}                                          # new uid -> source row (evolved) or None (caught)
@@ -485,19 +476,12 @@ def main():
             # its own fact -- say it, never dress it up as "outranked" (H05-3)
             _hl = held_later(r)                  # rule 15f: one plain clause instead of the IV-keeper / rank-spread ones
             _bh = below_half(r)                  # the top half (2026-11-16): the same, for stages outside pvpoke's top half
-            _so = spread_out(r) if 'pvp_spread' in _was else None
             parts = ['no longer %s' % NO_LONGER[x] for x in _was if x in NO_LONGER
-                     and not ((_hl or _bh) and x in ('gl_iv', 'ul_iv')) and not (_so and x == 'pvp_spread')]
+                     and not ((_hl or _bh) and x in ('gl_iv', 'ul_iv'))]
             if _hl:
                 parts.append('top %d only as %s: no longer kept for that (your 11-16 yes)' % (pv.READY_RANK, held_text(_hl)))
             if _bh:
                 parts.append('top %d only as %s: no longer kept for that (your 11-16 top-half rule)' % (pv.READY_RANK, half_text(_bh)))
-            if _so is not None:                  # each list place said once: the stages _bh named above are not repeated
-                _new = [x for x in _so if not any(b[:2] == x for b in _bh)]
-                parts.append(('a 0-15-15 spread, but %s: no longer kept for that%s' % (
-                    '; '.join(half_txt(lg, st) for lg, st in _new), ' either' if _bh else ' (your 11-16 top-half rule)'))
-                             if _new else 'its 0-15-15 spread no longer keeps it either' if _bh else
-                             'a 0-15-15 spread, but pvpoke ranks none of its stages: no longer kept for that (your 11-16 top-half rule)')
             if 'hundo' in _was and (r['iv_total'] or 0) != 45:
                 # a hundo cannot stop being one: one of the two walks misread its IVs (R-B review)
                 parts.append('***CHECK: kept as a hundo last time, but this walk reads %s/%s/%s -- an IV misread in one of '

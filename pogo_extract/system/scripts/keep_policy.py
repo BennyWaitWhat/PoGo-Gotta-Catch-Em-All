@@ -1566,20 +1566,14 @@ def main():
     # in the pile. Every other axis still applies (hundo, species / form minimums, variant floor ...).
     # THE TOP HALF (user 2026-11-16: "keep them if they're at least in the top half of being compeititve" -- GL and UL, and
     # a species pvpoke does not rank is not competitive; keep_config rules.pvp_top_half): every Great / Ultra League keep
-    # below -- the IV keeper (15), the 0/15/15 spread, the rank safety net (15b), Best GL / UL (15d, the roster too) and
-    # the comb-up (15e) -- counts only for a stage inside the top half of pvpoke's list for that league
-    # (pvp_iv_rule.competitive, asked by plays / qualifies / owned_as_stage / behind_owned). Master League is not gated.
+    # below -- the IV keeper (15), the rank safety net (15b), Best GL / UL (15d, the roster too) and the comb-up (15e) --
+    # counts only for a stage inside the top half of pvpoke's list for that league (pvp_iv_rule.competitive, asked by
+    # plays / qualifies / owned_as_stage / behind_owned). Master League is not gated, and NEVER the 0/15/15 spread
+    # (his 11-16 correction: "no 0-15-15 pokemon should be cull'd").
     _hg, _hu = pvp_meta_half('gl'), pvp_meta_half('ul')
     if _hg is not None or _hu is not None:
         print("[top-half] a GL / UL PvP keep needs a stage in pvpoke's top half: GL top %s, UL top %s"
               % (len(_hg) if _hg is not None else 'n/a', len(_hu) if _hu is not None else 'n/a'))
-
-    def _spread_competes(r):
-        """rules.pvp_top_half: a 0/15/15 keeps for a GL or UL stage inside pvpoke's top half of that league."""
-        if _hg is None and _hu is None:
-            return True
-        _sh = int((r['fresh_alignment'] or 0) == 1)
-        return any(r[lg + '_stage'] and pvp_competitive(lg, r[lg + '_stage'], _sh) for lg in ('gl', 'ul'))
     _owned_as = owned_as_stage(rows, BS) if keep_config.rule_enabled('pvp_later_stage_owned') else None
     _behind = {r['uid_hex'] for r in rows if _owned_as is not None and behind_owned(r, _owned_as, BS)}
     if _behind:
@@ -1597,7 +1591,7 @@ def main():
     # PvP-perfect 0/15/15 spread kept outright (user-named), regardless of rank/CP.
     _trophy = keep_config.pvp_spread_keep()
     for r in rows:
-        if (r['iv_atk'], r['iv_def'], r['iv_sta']) in _trophy and _spread_competes(r):
+        if (r['iv_atk'], r['iv_def'], r['iv_sta']) in _trophy:    # never gated by the top half (2026-11-16)
             mark(r['uid_hex'], 'pvp_spread')
 
     # 15b. PvP RANK SAFETY NET (user 2026-06-05: "check every single iv rank for their league" -- after a

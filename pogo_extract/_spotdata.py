@@ -99,17 +99,10 @@ except Exception as _e:
 PROTECTED = keep_config.protected_pids()
 SPREADS = keep_config.pvp_spread_keep()
 # THE TOP HALF (LAW 2026-11-16, keep_config rules.pvp_top_half): a GL / UL keep only for a stage inside pvpoke's top half of
-# that league (Best GL / UL, the roster too; the 0/15/15 spread) -- read by independent_law from the ranking files on its own
-from independent_law import in_top_half as _sd_in_half, top_half as _sd_top_half
+# that league (Best GL / UL, the roster too; NEVER the 0/15/15 spread) -- read by independent_law from the ranking files on its own
+from independent_law import in_top_half as _sd_in_half
 _SD_TH = keep_config.rule_enabled('pvp_top_half')
 _sd_half = lambda lg, st, sh=0: _sd_in_half(lg, st, sh, _SD_TH)
-
-
-def _sd_spread(r):
-    if _sd_top_half('gl', _SD_TH) is None and _sd_top_half('ul', _SD_TH) is None:
-        return True
-    _s = 1 if r.get('fresh_alignment') == 1 else 0
-    return any(r.get(lg + '_stage') and _sd_half(lg, r[lg + '_stage'], _s) for lg in ('gl', 'ul'))
 
 # rarity ranking, same grouping as the engine: (pid, cf, shadow, bread-mode), shinies excluded (kept in
 # full by the shiny rule so they never eat a rarity slot); rarity_keep_all pids (Mewtwo) have no cap.
@@ -167,7 +160,7 @@ def axes(r):
         'fused_component': r['uid_hex'] in FUSED,   # held inside a fused Kyurem: no ladder slot, never a pile candidate
         'legacy_moves': r['uid_hex'] in LEGACY,
         'protected_pid': r['pokemon_id'] in PROTECTED,
-        'pvp_spread_trophy': (r.get('iv_atk'), r.get('iv_def'), r.get('iv_sta')) in SPREADS and _sd_spread(r),
+        'pvp_spread_trophy': (r.get('iv_atk'), r.get('iv_def'), r.get('iv_sta')) in SPREADS,
         'unown': r['pokemon_id'] == 201,
         'gender_split_species': r['pokemon_id'] in GENDER_SPLIT or r['pokemon_id'] in evolvable_forms.GENDER_VARIANT_PIDS, 'gender': r.get('gender'),
         'gl_rank': r.get('gl_rank'), 'ul_rank': r.get('ul_rank'),

@@ -114,8 +114,9 @@ def meta_half(lg):
 def competitive(lg, stage, shadow=0):
     """May `stage` (a pvpoke speciesId) hold a PvP keep in `lg`? True inside meta_half -- a shadow copy is judged by its
     shadow entry when pvpoke lists one -- and whenever there is no gate (rule off, list unknown, Master League, no stage).
-    THE test of rules.pvp_top_half: plays(), qualifies(), owned_as_stage(), behind_owned() and keep_policy's Best,
-    0/15/15 and comb-up rules ask it; the audits and the pre-flight read the ranking files themselves."""
+    THE test of rules.pvp_top_half: plays(), qualifies(), owned_as_stage(), behind_owned() and keep_policy's Best and
+    comb-up rules ask it -- never the 0/15/15 spread (his 11-16 correction: "no 0-15-15 pokemon should be cull'd"); the audits and the pre-flight read
+    the ranking files themselves."""
     half = meta_half(lg) if stage else None
     if half is None:
         return True
