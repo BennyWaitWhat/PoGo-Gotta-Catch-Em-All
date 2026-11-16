@@ -303,6 +303,15 @@ if __name__ == '__main__':
         res = pick([mk('s1', 'a:900(9%);b:1(99%)'), mk('s2', 'a:950(9%);c:2(99%)'), mk('s3', 'a:960(9%)')],
                    lambda r: {'b', 'c'}, BS, 614, set())
         assert res['gl'] == {'s1': ('b', 1, None)}, res
+        # rule 15f (2026-11-16, pvp_iv_rule.behind_owned): top 5 only as b, and a B held as itself ranks as well or better
+        hold = dict(mk('hb', 'b:2(99%)'), species_name='B', pokemon_id=2)       # a B that is #2 as itself
+        own = P.owned_as_stage([hold], BS)
+        assert own == {('gl', 'b', 0): 2}, own
+        assert P.behind_owned(mk('p1', 'a:900(9%);b:3(99%)'), own, BS) == [('gl', 'b', 3, 2)]
+        assert P.behind_owned(mk('p2', 'a:900(9%);b:1(99%)'), own, BS) is None      # it would be your new best B: kept
+        assert P.behind_owned(mk('p3', 'a:4(9%);b:3(99%)'), own, BS) is None        # top 5 as itself: an own-stage asset
+        assert P.behind_owned(dict(mk('p4', 'a:900(9%);b:3(99%)'), fresh_alignment=1), own, BS) is None   # shadow vs plain
+        assert P.behind_owned(mk('p5', 'a:900(9%);b:3(99%);c:4(99%)'), own, BS) is None   # nobody holds c: kept
     finally:
         P.fits, P.maxcp, K.cap = real
     print('pvp_combup self-check OK')

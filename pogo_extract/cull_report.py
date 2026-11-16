@@ -192,6 +192,19 @@ def main():
     _by = {norm(u): u for u in C}
     pile = [_by[norm(u)] for u in open(os.path.join(A, 'tagsets', 'Transfer.txt')).read().split() if norm(u) in _by]
     pile_set = set(pile)
+    # RULE 15f (user 2026-11-16, "yes" to: stop keeping the copies whose only value is an evolution you already own as good or
+    # better): what the copies OUTSIDE the pile hold AS each stage. A pile copy that is top 5 only as stages they hold as well
+    # or better is a lawful release: said once, in plain words, never as a CHECK.
+    _h15 = (pv.owned_as_stage([x for x in C.values() if x['uid_hex'] not in pile_set
+                               and not keep_config.is_fused_component(x)], BS)
+            if keep_config.rule_enabled('pvp_later_stage_owned') else None)
+
+    def held_later(m):
+        return pv.behind_owned(m, _h15, BS) if _h15 is not None else None
+
+    def held_text(hl):
+        return '; '.join('%s (%s #%d), and you already keep a #%d %s' % (stg(st), lg.upper(), rk, h, stg(st))
+                         for lg, st, rk, h in hl)
 
     # ---- arrivals: caught vs evolved (IVs + creation date survive an evolution; the uid does not) ----
     gone = {sig(P[u]): P[u] for u in sorted(set(P) - set(C))}
@@ -438,7 +451,10 @@ def main():
             lost = [x for x in _was if x in LABEL and x != 'dex_only_copy']
             # a keep reason that is not a slot (a favorite star, the keep-all list, Adventure Effect ...): losing it is
             # its own fact -- say it, never dress it up as "outranked" (H05-3)
-            parts = ['no longer %s' % NO_LONGER[x] for x in _was if x in NO_LONGER]
+            _hl = held_later(r)                  # rule 15f: one plain clause instead of the IV-keeper / rank-spread ones
+            parts = ['no longer %s' % NO_LONGER[x] for x in _was if x in NO_LONGER and not (_hl and x in ('gl_iv', 'ul_iv'))]
+            if _hl:
+                parts.append('top %d only as %s: no longer kept for that (your 11-16 yes)' % (pv.READY_RANK, held_text(_hl)))
             if 'hundo' in _was and (r['iv_total'] or 0) != 45:
                 # a hundo cannot stop being one: one of the two walks misread its IVs (R-B review)
                 parts.append('***CHECK: kept as a hundo last time, but this walk reads %s/%s/%s -- an IV misread in one of '
@@ -463,6 +479,8 @@ def main():
                     parts.append('lost its %s%s -- no just-arrived copy is promised %s' % (
                         LABEL[reason], (' (%s)' % _tg) if _tg else '', 'that target' if _tg else 'its target'))
                     continue
+                if reason in NOT_A_SLOT and _hl:
+                    continue                             # rule 15f: said above
                 if reason in NOT_A_SLOT:
                     # rule 15b keeps EVERY rank-1-5 spread at a stage that reaches its league: no copy takes that from another,
                     # so it was lost to a rank / reach change -- say what the ranks are now (H05-2)
@@ -740,16 +758,23 @@ def main():
                 return (desc(x, False), ub[1], ub[2])
         return None
     CLOSE_CALL = 100                                     # top ~2.5% of 4,096 spreads: worth a line even when lawful
+    later_held = []                                      # rule 15f releases (2026-11-16): lawful, said in plain words
     for u in pile:
         m = C[u]
+        _hl = held_later(m)
+        if _hl:
+            later_held.append('%s is top %d only as %s' % (desc(m, False), pv.READY_RANK, held_text(_hl)))
         for lg in CAPS:
             for st, rk in chain(m, lg):
                 if not st:
                     continue
                 capreach = CAPS[lg] is not None and pv.maxcp(st, BS) > CAPS[lg] + pv.VIABILITY_MARGIN
-                if capreach and (close is None or rk < close[0]):
+                _held = bool(_hl) and any(x[0] == lg and x[1] == st for x in _hl)   # rule 15f: named above
+                if capreach and not _held and (close is None or rk < close[0]):
                     close = (rk, m, NAMES[lg], st, CAPS[lg] is None or pv.fits(m, st, CAPS[lg], BS))
                 if capreach and rk <= pv.READY_RANK and (CAPS[lg] is None or pv.fits(m, st, CAPS[lg], BS)):
+                    if _held:
+                        continue                         # rule 15f: a kept copy holds this stage as well or better (above)
                     checks.append('%s is %s #%d as %s (a top-%d spread)' % (desc(m, False), NAMES[lg], rk, st, pv.READY_RANK))
                 elif capreach and rk <= pv.READY_RANK:
                     # user 2026-09-30: "Why would I keep any GL and UL pokemon that cant participate?" -- lawful, but say so
@@ -1111,10 +1136,13 @@ def main():
             out.extend(fodder_lines(fodder))
         out.append('')
         out.append('**PvP safety check** (all %d, every league and every stage they can evolve into):' % len(pile))
+        if later_held:
+            out.append('- top %d only as an evolution you already keep as well or better (your 11-16 yes, %d): %s'
+                       % (pv.READY_RANK, len(later_held), '; '.join(later_held)))
         if checks:
             out.extend('- ***CHECK: %s***' % c for c in checks)
         else:
-            out.append('- none is a top-%d spread%s%s' % (pv.READY_RANK, ' it can still play' if over_cap else '', (' -- closest: %s at %s #%d as %s%s'
+            out.append('- none %sis a top-%d spread%s%s' % ('else ' if later_held else '', pv.READY_RANK, ' it can still play' if over_cap else '', (' -- closest: %s at %s #%d as %s%s'
                         % (desc(close[1], False), close[2], close[0], stg(close[3]),
                            '' if close[4] else ' (its CP is already over that league cap, so it can never play there)')) if close else ''))
             # a floor note IS a copy that beats every copy kept at that stage (bk is None or rk < bk[0]) -- the summary must

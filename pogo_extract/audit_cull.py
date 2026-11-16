@@ -996,21 +996,62 @@ viol = 0
 # can never play it (over the cap there now, or after evolving at its true level -- user 2026-09-30: "Why would I keep
 # any GL and UL pokemon that cant participate?"). The play test is pvp_iv_rule.plays(), the engine's own rule 15b
 # (every chain stage; unknown data => fits => a violation, never a pass).
-from pvp_iv_rule import plays as _l7_plays
+from pvp_iv_rule import plays as _l7_plays, fits as _l7_fits, chain_stage_ranks as _l7_chain, pvid as _l7_pvid
+# A LATER STAGE YOU ALREADY KEEP (keep_policy 15f; user 2026-11-16, "yes" to: stop keeping the copies whose only value is an
+# evolution you already own as good or better; keep_config rules.pvp_later_stage_owned). A pile copy that can play is lawful
+# only when EVERY stage it can play is a later stage, and a copy that is NOT in the pile holds each one AS ITSELF -- same
+# shadow-ness, a rank at least as good, a stage that reaches the cap, its own CP inside it. Re-derived HERE from the chain
+# ranks and the kept set; the engine's behind_owned() is not asked.
+_l7_sh = lambda r: 1 if r.get('fresh_alignment') == 1 else 0
+_l7_held = {}
+if keep_config.rule_enabled('pvp_later_stage_owned'):
+    for _hu, _hr in rows.items():
+        if _hu in ps or keep_config.is_fused_component(_hr):
+            continue
+        _ho = _l7_pvid(_hr['species_name'], _hr.get('form') or 0)
+        for _hlg, _hcap in (('gl', GL_CAP), ('ul', UL_CAP)):
+            for _hst, _hrk in _l7_chain(_hr, _hlg):
+                if _hst == _ho and _hrk <= RR and mcp(_hst) > _hcap + VM and (_hr.get('cp') or 0) <= _hcap:
+                    _hk = (_hlg, _hst, _l7_sh(_hr))
+                    _l7_held[_hk] = min(_hrk, _l7_held.get(_hk, _hrk))
+
+
+def _l7_kept_later(r):
+    """[(LG, stage, its rank, the kept holder's rank)] when every stage this copy can play is a later stage held as well
+    or better by a kept copy; else None."""
+    own, out = _l7_pvid(r['species_name'], r.get('form') or 0), []
+    for lg, cap in (('gl', GL_CAP), ('ul', UL_CAP)):
+        for st, rk in _l7_chain(r, lg):
+            if rk > RR or mcp(st) <= cap + VM or not _l7_fits(r, st, cap, BS):
+                continue
+            h = _l7_held.get((lg, st, _l7_sh(r)))
+            if st == own or h is None or h > rk:
+                return None
+            out.append((lg.upper(), st, rk, h))
+    return out or None
+
+
+n_held = 0
 for u in sorted(t5, key=lambda z: (-(rows[z].get('iv_total') or 0), z)):
     r = rows[u]
     gl = mcp(r.get('gl_stage')) if (r.get('gl_rank') or 999) <= RR else None
     ul = mcp(r.get('ul_stage')) if (r.get('ul_rank') or 999) <= RR else None
     noise = (gl is None or gl <= GL_CAP + VM) and (ul is None or ul <= UL_CAP + VM)
     can = [lg for lg, cap in (('gl', GL_CAP), ('ul', UL_CAP)) if _l7_plays(r, lg, cap, BS, RR) is not None]
-    good = noise or not can
+    held = _l7_kept_later(r) if (can and not noise) else None
+    n_held += bool(held)
+    good = noise or not can or bool(held)
     if not good:
         viol += 1
     print('    %-13s GL#%-5s(stage max %s)  UL#%-5s(stage max %s)  %s' % (
         r['species_name'], r.get('gl_rank'), gl, r.get('ul_rank'), ul,
         'cap-unreachable -> rank is noise, OK' if noise else
-        'over the cap at every top-%d stage -> this copy cannot play it, OK' % RR if good else
+        'over the cap at every top-%d stage -> this copy cannot play it, OK' % RR if not can else
+        'top %d only as %s, each kept as well or better -> 15f, OK' % (RR, ', '.join(
+            '%s %s #%d (kept #%d)' % (lg, st, rk, h) for lg, st, rk, h in held)) if held else
         '*** CAN PLAY %s, CHECK ***' % '/'.join(x.upper() for x in can)))
+if n_held:
+    print('  %-18s %-5d top %d only as an evolution a kept copy already holds as well or better (15f)' % ('15f releases', n_held, RR))
 print('  %-18s %-5d %s' % ('rank<=%d violations' % RR, viol, chk('pvp rank', viol)))
 
 print('\nLAYER 8  data quality (incomplete display reads)')
