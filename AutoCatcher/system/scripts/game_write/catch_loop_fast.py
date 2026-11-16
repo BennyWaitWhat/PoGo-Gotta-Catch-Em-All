@@ -1495,8 +1495,10 @@ def ballsave_skip(plan, balls, now):
     the current ball count, so a wrong rate corrects itself. Returns (dex list to leave alone, one-line why).
     [] = catch everything: no plan, an unreadable plan, the end time passed, balls not read yet, or balls for all."""
     try:
-        if not plan or balls is None:
+        if not plan:
             return [], "off"
+        if balls is None:
+            return [], "waiting for the ball count"
         mins = (float(plan["end"]) - now) / 60.0
         if mins <= 0:
             return [], "off: the plan's end time has passed"
@@ -1532,7 +1534,21 @@ def ballsave_now():
                 plan = {"bad": 1}
         _BS.update(mtime=m, plan=plan)
     skip, _BS["note"] = ballsave_skip(_BS["plan"], BALLS["usable"], time.time())
-    return skip
+    keep = set(CFG.get("priority") or [])          # Gimmighoul / Galarian birds: never left alone
+    return [d for d in skip if d not in keep]
+
+
+def ballsave_log(w, now):
+    """One BALLSAVE line when the saver's state changes kind (off / unreadable / end passed / waiting for the ball count /
+    catching everything / leaving species alone), and at most one a minute while only the cut moves. Silent on days with
+    no plan file. (Review 11-16: a bad plan file and a re-attach were silent; the cut flapped ~3 lines a minute.)"""
+    note = _BS["note"]
+    kind = "leaving" if " leaving " in note else ("all" if "catching everything" in note else note)
+    if _BS["mtime"] is None and _BS.get("lkind") in (None, "off"):
+        return
+    if kind != _BS.get("lkind") or (note != _BS.get("lnote") and now - _BS.get("lt", 0) >= 60):
+        _BS.update(lkind=kind, lnote=note, lt=now)
+        w(f"BALLSAVE {note}")
 
 
 def cfg_now():
@@ -1754,6 +1770,8 @@ def report(w, stt, t0, base):
                  sum(v for k, v in via.items() if k.startswith(("enc:", "other:")))))
     if not why:
         why = why_idle(list(hist), stt, flag("catch"), flag("spin"))
+        if why.startswith("no Pokemon") and " leaving " in _BS["note"]:   # the map is full, the saver is passing them by
+            why = "no Pokemon worth a ball in range (saving balls: " + _BS["note"].split(": ", 1)[-1] + ")"
         kind = why.split(":")[0].split(" (")[0]   # log each kind once when it starts, not every 10 s
         if kind != base.get("whykind"):
             base["whykind"] = kind
@@ -1834,10 +1852,9 @@ def session_loop(w, done_ids, base):
                 w(f"A/B {ab}={c[ab]} (block of {c.get('abBlockS')} s)")
             if any(c[k] != cfg[k] for k in FLAGS):
                 w("toggles: " + " ".join(f"{k}={'on' if c[k] else 'off'}" for k in FLAGS))
-            if c["skipSp"] != cfg.get("skipSp"):
-                w(f"BALLSAVE {_BS['note']}" + (f" | left alone: {','.join(map(str, c['skipSp'][:40]))}" if c["skipSp"] else ""))
             cfg = c
             sc.exports_sync.cfg(c)
+        ballsave_log(w, time.time())
         d = sc.exports_sync.drain()
         for line in d["log"]:
             w(line)
@@ -1854,7 +1871,9 @@ def session_loop(w, done_ids, base):
         if time.time() - last_rep >= 10:
             last_rep = time.time()
             stt = sc.exports_sync.stats()
-            BALLS["usable"] = usable_balls(stt.get("items") or {})
+            u = usable_balls(stt.get("items") or {})
+            if u is not None:          # the first read after an attach has no item counts yet: keep the last known count
+                BALLS["usable"] = u
             if stt["ready"]:
                 report(w, stt, t0, base)
             else:
