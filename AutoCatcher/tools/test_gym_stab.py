@@ -597,8 +597,14 @@ def runner_checks():
     near, far = gym(3, 0.0002, cp=18000), gym(1, 0.0015, cp=2000)            # 22 m / 167 m
     t, w = gym_run.pick_any([1, 3], set(), {}, goal, goal, {"near": near, "far": far}, 0, 250, None, now)
     check(t and t[0] == "near", f"the NEAREST non-red gym, whatever its CP (Benny 11-15: 'go to the closest non red gym'): {t!r}")
+    t, w = gym_run.pick_any([1, 3], {"near"}, {"near": now + 12 * 3600}, goal, goal, {"near": near, "far": far}, 0, 250, None, now)
+    check(t and t[0] == "far" and not w, f"a gym Benny said to skip is never picked, the next nearest is: {t!r}")
+    t, w = gym_run.pick_any([1, 3], {"near"}, {"near": now + 12 * 3600}, goal, goal, {"near": near}, 0, 250, None, now)
+    check(t is None, f"...not even with nothing else to beat: {t!r}")
+    sk, _b = gym_run.rested({"near": now + 12 * 3600}, {}, {}, [1, 3], now)
+    check(sk == {"near"}, f"a skipped gym rests for the whole run: {sk!r}")
     if len(FAILS) == n0:
-        print("ok: gym_run pick_any(): the nearest non-red gym; with nothing else a resting enemy gym is battled; empty / raided / hour-rested ones are not")
+        print("ok: gym_run pick_any(): the nearest non-red gym; with nothing else a resting enemy gym is battled; empty / raided / hour-rested / skipped ones are not")
 
 
 def main():

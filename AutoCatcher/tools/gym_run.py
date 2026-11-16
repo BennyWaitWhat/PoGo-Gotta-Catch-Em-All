@@ -392,6 +392,7 @@ class Mover:
 
 BUSY = {}                                        # fort id -> smoothed share of scans that found it in battle (contest level)
 TAKEN = {}                                       # fort id -> the rest stamp of a gym we EMPTIED (its rest ends when an enemy team holds it)
+USER_SKIP = set()                                # 8-char gym ids Benny said to leave alone this run (--skip / {"skip": ...}; 11-15: Starbucks)
 
 
 def rested(done, taken, scanned, enemy, now, rest=600):
@@ -781,6 +782,7 @@ def main():
     ap.add_argument("--attack-report", type=float, default=3.0,   # Benny 2026-09-30 ("Maybe middle ground?"): 3 s, was 1.5 -- 20 reports/min instead of 40
                     help="s between the battle's attack reports (server setting 5; 0 = leave it)")
     ap.add_argument("--cmd", default=None, help="live command file (JSON, re-read when it changes): {go: fid} / {hunt: meters}")
+    ap.add_argument("--skip", default="", help="gym ids (8-char prefixes, comma-separated) to leave alone for this whole run")
     ap.add_argument("--join-first", default=None, help="fort id: go there first -- beat + place (enemy/empty) or join (red with room)")
     ap.add_argument("--study", default=None, help="append the feed-study JSON lines (gym readings, map flags, feed replies) here")
     ap.add_argument("--feed-zone", default=None, help="lat,lng,radius_m: feed only defenders in gyms inside this circle")
@@ -791,6 +793,7 @@ def main():
     ap.add_argument("--feed-at", type=float, default=0.34, help="feed a Golden Razz at this motivation or less (the last third)")
     ap.add_argument("--feed-hot", type=float, default=0.34, help="...or at this level when the gym was attacked in the last 5 min (the server allows ~10 berries per defender, so a buffer burns them)")
     a = ap.parse_args()
+    USER_SKIP.update(x.strip()[:8] for x in a.skip.split(",") if x.strip())
     enemy = [int(x) for x in a.enemy.split(",")]
     goal = [float(x) for x in a.goal.split(",")]               # a list: the next-goal switch survives a re-attach
     mv, done, t_start = Mover(a.speed, a.travel_speed), {}, time.time()
@@ -1055,7 +1058,7 @@ def _run(a, g, mv, done, t_start, enemy, goal, sess, pid, sc):
 
     def urgent_cmd():                                        # a queued command that should end a drill
         pull()
-        return g.graph_stale or any(set(c) & {"go", "hunt", "stop", "spin", "lap"} for c in cmdq)
+        return g.graph_stale or any(set(c) & {"go", "hunt", "stop", "spin", "lap", "skip"} for c in cmdq)
 
     def tick():                                              # keep circling the current gym while waiting on it
         quick_cmds()
@@ -1133,6 +1136,10 @@ def _run(a, g, mv, done, t_start, enemy, goal, sess, pid, sc):
                     scan_logged[f] = sv[1] // 15000
                     g.study_f.write(json.dumps({"k": "study", "src": "scan", "t": int(time.time() * 1000) - sv[1], "fid": f,
                                                 "team": sv[0], "ib": sv[2], "n": sv[3], "cp": sv[4], "ours": sv[5], "mots": sv[6]}) + "\n")
+        for f in live:                                       # gyms Benny said to skip: left alone for the rest of the run (a hard rest:
+            if f[:8] in USER_SKIP and done.get(f, 0) < time.time() + 3600:   # never picked, not even with nothing else to beat)
+                done[f] = time.time() + 12 * 3600
+                TAKEN.pop(f, None)
         skip, _back = rested(done, TAKEN, _scn, enemy, time.time())
         for f, sv in _back:                                  # an enemy team holds a gym we emptied: no rest, it is a target now
             done.pop(f, None)
@@ -1181,6 +1188,12 @@ def _run(a, g, mv, done, t_start, enemy, goal, sess, pid, sc):
             if _cmd.get("stop"):
                 stop_req[0] = True
                 say("  COMMAND stop: finishing any battle in progress, leaving the gym, then unloading from the game cleanly")
+            if _cmd.get("skip"):                             # {"skip": "4232f472"} or a list: leave those gyms alone this run
+                for _s in ([_cmd["skip"]] if isinstance(_cmd["skip"], str) else _cmd["skip"]):
+                    USER_SKIP.add(str(_s)[:8])
+                if target and target[0][:8] in USER_SKIP:
+                    target = None
+                say(f"  COMMAND skip: {sorted(USER_SKIP)} left alone for the rest of this run -- the nearest other gym next")
             if "topup" in _cmd:
                 _tu = sc.exports_sync.topup(bool(_cmd["topup"]), a.topup_reserve)
                 say(f"  COMMAND topup: {'ON' if _tu.get('on') else 'OFF'} (keeping {a.topup_reserve} of each; bag {_tu.get('berries')})")
