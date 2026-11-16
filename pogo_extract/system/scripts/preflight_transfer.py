@@ -382,6 +382,7 @@ from cpm_table import CPM50 as _CANON_CPM50, GL_CAP as _CANON_GL_CAP, UL_CAP as 
 try:
     from pvp_iv_rule import maxcp as _pvp_maxcp, READY_RANK, GL_CAP, UL_CAP, VIABILITY_MARGIN
     from pvp_iv_rule import plays as _plays      # rule 15b's "this copy can PLAY it" test (2026-09-30)
+    from pvp_iv_rule import owned_as_stage as _owned_as_stage, behind_owned as _behind_owned   # rule 15f (2026-11-16)
     _HAVE_VIABILITY = True
     _VIABILITY_NOTE = "pvp_iv_rule (maxcp/READY_RANK/GL_CAP/UL_CAP/VIABILITY_MARGIN)"
 except Exception as _e:                                   # pragma: no cover -- defensive
@@ -403,6 +404,7 @@ except Exception as _e:                                   # pragma: no cover -- 
                      * (b.get('hp', 0) + 15) ** 0.5 * _CPM50 ** 2) / 10) if b else _UNKNOWN_MAXCP)
     _HAVE_VIABILITY = False
     _plays = None                      # no shared rule -> the rank alarm below over-protects (CP-blind, as before)
+    _owned_as_stage = _behind_owned = None   # ... and rule 15f cannot release anything (no exemption)
     _VIABILITY_NOTE = ("LOCAL FALLBACK (pvp_iv_rule import FAILED: %s) -- READY_RANK=%d, caps "
                        "%d/%d, margin %d (all from keep_config)"
                        % (_e, READY_RANK, GL_CAP, UL_CAP, VIABILITY_MARGIN))
@@ -720,6 +722,8 @@ def _pattern_min_uids(bag, pile):
 
 
 _REGULAR_MIN_KEPT = set()  # regular minimum (user 2026-11-12, room bar "A"), populated in main() beside _SPECIES_MIN_KEPT
+_HELD_LATER = None         # rule 15f (2026-11-16): {(league, stage, shadow): best rank} held AS that stage by copies OUTSIDE this
+#                            pile; None = rule off or no game master -> no 15f exemption (the PvP alarm over-protects)
 
 
 def _regular_min_uids(bag, pile):
@@ -970,6 +974,11 @@ def _keeper_reasons(r, BS, legacy_set, gm_ok, dex_counts, event_txt, legacy_txt,
     if _play:
         _gl_ok = _plays(r, 'gl', GL_CAP, BS) is not None
         _ul_ok = _plays(r, 'ul', UL_CAP, BS) is not None
+        # RULE 15f (user 2026-11-16, "yes"): top 5 ONLY as stages it would evolve into, each held as well or better by a copy
+        # that is NOT in this pile (same shadow-ness, as itself) -> no PvP-rank keep. The holders come from the bag minus the
+        # pile, so a holder that is itself in the pile never counts.
+        if (_gl_ok or _ul_ok) and _HELD_LATER is not None and _behind_owned(r, _HELD_LATER, BS):
+            _gl_ok = _ul_ok = False
     else:
         _gl_ok = (r['gl_rank'] is not None and r['gl_rank'] <= READY_RANK
                   and (not gm_ok or _viable(r['gl_stage'], GL_CAP, BS)))
@@ -1335,6 +1344,13 @@ def main():
     except Exception as e:
         print("WARN: gamemaster load failed (%s) -- PvP-rank axis now OVER-PROTECTS"
               " (any rank<=%d flags as a keeper; never silently passes)." % (e, READY_RANK))
+    global _HELD_LATER
+    if gm_ok and _owned_as_stage is not None and keep_config.rule_enabled('pvp_later_stage_owned'):
+        _pile_15f = set(transfer_uids)
+        _HELD_LATER = _owned_as_stage([_r for _r in bag if _r['uid_hex'] not in _pile_15f], BS)
+        _n15f = sum(1 for _r in bag if _r['uid_hex'] in _pile_15f and _behind_owned(_r, _HELD_LATER, BS))
+        print('  rule 15f: %d pile copies are top %d only as an evolution a copy outside the pile holds as well or better'
+              % (_n15f, READY_RANK))
     pvp_best_kept = _pvp_best_uids(bag, _cf_norm, BS, gm_ok)
     print('  best GL/UL/ML (rule 15d, usable-only GL/UL): %d best non-shadow copies across PvP identities; %d of them in the pile'
           % (len(pvp_best_kept), len(set(pvp_best_kept) & set(transfer_uids))))

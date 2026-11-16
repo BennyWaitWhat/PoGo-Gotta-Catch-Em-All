@@ -266,6 +266,48 @@ def plays(r, league, cap, BS, rr=None):
     return best
 
 
+def _shadow(r):
+    return 1 if _col(r, 'fresh_alignment') == 1 else 0
+
+
+def owned_as_stage(rows, BS, rr=None):
+    """{(league, stage speciesId, shadow 0/1): best rank} over the copies in `rows` whose OWN stage is a usable top-`rr`
+    spread there: rank <= rr, the stage reaches the cap, and the copy is inside the cap now (fits). What you already hold
+    AS each stage. The caller passes the rows that can battle (fused components out)."""
+    rr = READY_RANK if rr is None else rr
+    out = {}
+    for r in rows:
+        own = pvid(_col(r, 'species_name'), _col(r, 'form') or 0)
+        for league, cap in (('gl', GL_CAP), ('ul', UL_CAP)):
+            for st, rk in chain_stage_ranks(r, league):
+                if st == own and rk <= rr and maxcp(st, BS) > cap + VIABILITY_MARGIN and fits(r, st, cap, BS):
+                    k = (league, st, _shadow(r))
+                    out[k] = min(rk, out.get(k, rk))
+    return out
+
+
+def behind_owned(r, owned, BS, rr=None):
+    """[(league, stage, its rank, your best rank AS that stage)] when this copy is a top-`rr` spread ONLY as later stages
+    and the bag already holds a copy AS every one of them (same shadow-ness, `owned` = owned_as_stage) ranked as well or
+    better; else None. User 2026-11-16, "yes" to: stop keeping the copies whose only value is an evolution you already own
+    as good or better (keep_config rules.pvp_later_stage_owned). The stages are the ones plays() counts: rank <= rr, the
+    stage reaches the cap, this copy fits there (its true level after evolving; unknown => fits). An own stage that is a
+    usable top-rr, or no usable stage at all, or ONE later stage nobody holds as well -> None (kept as before)."""
+    rr = READY_RANK if rr is None else rr
+    own, sh, later = pvid(_col(r, 'species_name'), _col(r, 'form') or 0), _shadow(r), []
+    for league, cap in (('gl', GL_CAP), ('ul', UL_CAP)):
+        for st, rk in chain_stage_ranks(r, league):
+            if not st or rk > rr or maxcp(st, BS) <= cap + VIABILITY_MARGIN or not fits(r, st, cap, BS):
+                continue
+            if st == own:
+                return None                      # a usable top-rr AS IT IS: an own-stage asset
+            have = owned.get((league, st, sh))
+            if have is None or have > rk:
+                return None                      # this evolution would be your best there: kept (and a comb-up candidate)
+            later.append((league, st, rk, have))
+    return later or None
+
+
 def usable_best(r, league, cap, BS, later=None):
     """The copy's USABLE rank in `league` (user 2026-09-23: "Best GL/UL must be able to enter the league").
 

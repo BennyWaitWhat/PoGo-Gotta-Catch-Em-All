@@ -131,6 +131,9 @@ DEFAULTS = {
         "hand_kept": False,             # WHAT HE UNTAGS STAYS -- a copy he took OUT of the Transfer tag by hand is kept from then on
         #                                 (hand_kept(): system/analysis/hand_kept.json, written by full_audit.hand_kept_step;
         #                                 user 2026-11-12); OFF = the list is not read
+        "pvp_later_stage_owned": False, # rule 15 / 15b (15f) -- a spread that is top 5 ONLY as a stage it would evolve into is not
+        #                                 kept for that rank when you already hold a copy AS each such stage ranked as well or better
+        #                                 (pvp_iv_rule.behind_owned; user 2026-11-16: "yes"); OFF = every such spread kept, as before
     },
     "per_species_caps": {},       # Curation Studio per-species overrides {category:{pid:cap}}; empty = use the global cap (behavior-neutral)
     # PATTERN-POOLED LINES (user 2026-09-08 "top 3 of each region type only for its whole evo line"): lines whose

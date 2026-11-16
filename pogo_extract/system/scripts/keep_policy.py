@@ -15,7 +15,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(HERE))
 sys.path.insert(0, ROOT)
 import keep_config   # single source of truth for every tunable cap/roster (dashboard-editable)
-from pvp_iv_rule import plays
+from pvp_iv_rule import plays, owned_as_stage, behind_owned
 from pvp_iv_rule import meta_top as pvp_meta_top     # pvpoke's top-N of a league: the Best GL/UL meta gate (2026-11-11)
 from pvp_iv_rule import (qualifies as pvp_iv_qualifies, pvid, GL_CAP, UL_CAP, ML_CAP, maxcp as pvp_maxcp,
                          READY_RANK, VIABILITY_MARGIN, usable_best)
@@ -1537,7 +1537,20 @@ def main():
     # league CP cap 1500/2500 so they can actually ENTER the league) + perfect-bulk
     # pre-evo BUILD-TARGETS (def>=14 & sta>=14); cuts mediocre pre-evos (Tentacool
     # 0/11/12), under-cap hundos, AND over-cap mons (a cp2494 Gardevoir is UL, not GL).
+    # 15f (read by 15 and 15b). A LATER-STAGE SPREAD YOU ALREADY OWN (user 2026-11-16, "yes" to: stop keeping the 14 Pokemon
+    # whose only value is an evolution you already own as good or better; keep_config rules.pvp_later_stage_owned): a copy
+    # that is a top-READY_RANK spread ONLY as stages it would evolve into earns no PvP-rank keep when the bag already holds a
+    # copy AS every one of those stages (same shadow-ness) ranked as well or better -- four 13/15/15 Pidgey for a Pidgeot
+    # UL #5 beside a #1 Pidgeot. That holder is an own-stage top 5, kept by 15b, so the comparison never points at a copy
+    # in the pile. Every other axis still applies (hundo, species / form minimums, variant floor ...).
+    _owned_as = owned_as_stage(rows, BS) if keep_config.rule_enabled('pvp_later_stage_owned') else None
+    _behind = {r['uid_hex'] for r in rows if _owned_as is not None and behind_owned(r, _owned_as, BS)}
+    if _behind:
+        print('[15f] %d spread(s) top %d only as an evolution you already own as good or better: no PvP-rank keep'
+              % (len(_behind), READY_RANK))
     for r in rows:
+        if r['uid_hex'] in _behind:
+            continue
         if pvp_iv_qualifies(r['species_name'], r['form'], r['iv_atk'], r['iv_def'],
                             r['iv_sta'], r['gl_stage'], r['gl_rank'], GL_FLOOR, BS, r['cp'], GL_CAP, row=r):
             mark(r['uid_hex'], 'gl_iv')
@@ -1570,7 +1583,7 @@ def main():
         # all kept for a league they CAN play).
         return plays(r, 'gl', GL_CAP, BS) is not None or plays(r, 'ul', UL_CAP, BS) is not None
     for r in rows:
-        if _pvp_asset(r):
+        if _pvp_asset(r) and r['uid_hex'] not in _behind:          # 15f above
             mark(r['uid_hex'], 'pvp_rank')
 
     # 15c. RANK-DATA GUARD (2026-09-02) -- the missing half of the Mareep lesson.
@@ -2130,7 +2143,11 @@ def main():
     rowmap = {r['uid_hex']: r for r in rows}
     # Same test rule 15b keeps by -- _pvp_asset() -- or the tripwire fires on mons the rule deliberately does not
     # keep and the cull can never finish (it did exactly that on the cp1914 Magmar, 2026-09-19).
-    leak = [u for u in transu if _pvp_asset(rowmap[u])]
+    # 15f (2026-11-16): a spread top 5 only as an evolution you already own may be in the pile, but only while a KEPT copy AS
+    # every stage it plays ranks as well or better -- re-derived on the FINAL keep set, so a holder that left fires this.
+    _owned_kept = owned_as_stage([r for r in rows if r['uid_hex'] in keepu], BS) if _owned_as is not None else None
+    leak = [u for u in transu if _pvp_asset(rowmap[u])
+            and not (_owned_kept is not None and behind_owned(rowmap[u], _owned_kept, BS))]
     if leak:
         ex = [(rowmap[u]['species_name'], rowmap[u]['gl_rank'], rowmap[u]['ul_rank']) for u in leak[:10]]
         raise SystemExit(f"ABORT keep_policy: {len(leak)} rank<=READY_RANK viable PvP spread(s) leaked into Transfer -- {ex}")
