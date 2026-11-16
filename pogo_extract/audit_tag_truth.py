@@ -222,10 +222,23 @@ for lg, cap in (('GL', GL_CAP), ('UL', UL_CAP)):
     check('%s Rank 1-5' % lg, 'rank 1-5 AS IT IS NOW, and its CP lets it enter the league',
           lambda r, lg=lg, cap=cap: usable_rank(r, lg.lower(), cap, True) is not None)
 # ONE TAG FOR BOTH LEAGUES (2026-11-15; '<league> 1-5 No Evolve' until then): the same claim, true in Great or Ultra League
-check(_gt.NO_EVOLVE, 'a stage it can evolve into is rank 1-5 in Great or Ultra League AND it would still fit that league there, '
-      'and NO evolve tag is on it (not the copy to evolve)',
-      lambda r: (usable_rank(r, 'gl', GL_CAP, False) is not None or usable_rank(r, 'ul', UL_CAP, False) is not None)
-      and r['uid_hex'] not in _EVC)
+# ABOUT THE COPY AS IT IS (2026-11-16, user: "the pokemon in "pvp no evolve" tag make no fucking sense"): it was a LATER
+# stage's rank; now the overlay's own number (rank 1-5 as it is, CP inside the cap) on a copy that can still evolve
+_GMDEX = {p['speciesId']: p.get('dex') for p in json.load(open('pvpoke_gamemaster.json', encoding='utf-8'))['pokemon']}
+
+
+def can_still_evolve(r):
+    """Its form has an evolution branch, its rank chain lists a later stage, and its gender reaches one."""
+    if _ef.row_can_evolve(r) is False:
+        return False
+    return any(st != own(r) and _ef.gender_allows(r['pokemon_id'], r['gender'], _GMDEX.get(st))
+               for lg in ('gl', 'ul') for st, _rk in chain_stage_ranks(r, lg))
+
+
+check(_gt.NO_EVOLVE, 'rank 1-5 AS IT IS NOW in Great or Ultra League (its CP lets it enter), it can still evolve, and NO '
+      'evolve tag is on it (evolving would lose that rank)',
+      lambda r: (usable_rank(r, 'gl', GL_CAP, True) is not None or usable_rank(r, 'ul', UL_CAP, True) is not None)
+      and can_still_evolve(r) and r['uid_hex'] not in _EVC)
 # EVOLVE ONCE / TWICE / GATED -- THE FOLD (2026-09-29, user: "I either evolve once or evolve twice"). Every evolve advice
 # is ONE table, evolve_advice.json (granular_tags.evolve_advice: promises, PvP comb-ups, shiny upgrades, showcase picks).
 # Its TARGETS are the engine's record, trusted as promises.json / pvp_combup_labels.json always were; its steps / gated /

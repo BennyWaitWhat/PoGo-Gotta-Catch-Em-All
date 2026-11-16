@@ -169,6 +169,8 @@ def main():
     # so the same two gates apply. A PikachuGofest2026CapYellow wore "Evo GL Rank 1" for a Raichu it can never become.
     # Since 2026-09-30 (THE SECOND FOLD) the chips are '<league> 1-5 No Evolve' and, on the copy to evolve, 'Evolve for
     # <league>'; the two never sit on one copy (checked right after).
+    # Since 2026-11-16 No Evolve names the copy's OWN rank (audit_rank_tags judges it), and these gates prove the other half
+    # of its claim: a copy that cannot evolve has nothing to be told not to do.
     DEX = {p['speciesId']: p.get('dex') for p in gm['pokemon']}
     n_rank = 0
     # (2026-11-15) ONE tag for both leagues, read once per league; a comb-up pick's own gates are judged with the evolve tags below
@@ -183,7 +185,7 @@ def main():
             n_rank += lg == 'gl'
             nm = '%s %d%% [%s]' % (r['species_name'], (r['iv_total'] or 0) * 100 // 45, fn.replace('_', ' '))
             if evolvable_forms.row_can_evolve(r) is False:
-                bad.append(nm + ': this FORM has no evolution branch -- it can never reach that later stage')
+                bad.append(nm + ': this FORM has no evolution branch -- there is nothing to not evolve')
                 continue
             stages = [x.split(':')[0].strip() for x in (r[lg + '_chain_ranks'] or '').split(';') if ':' in x]
             later = [x for x in stages if x != pvid(r['species_name'], r['form'] or 0)]

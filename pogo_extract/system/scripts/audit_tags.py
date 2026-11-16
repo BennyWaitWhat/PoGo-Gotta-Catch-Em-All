@@ -50,8 +50,10 @@ LABEL = [('Legacy Moves', 'Legacy_Moves.txt', 'legacy'),      # 'Event' retired 
 # PvP_Spread counts too: an over-cap keeper gets no Rank chip (it cannot enter that league) but is still the elite
 # spread rule 15b keeps. audit_tags_membership.py learned this on 2026-09-19; this file had to as well.
 _EVF = ['Evolve_to_Mid.txt', 'Evolve_to_Final.txt', 'Evolve_Needs_Item.txt', 'Evolve_Needs_Task.txt']   # ONE evolve tag per copy (2026-11-15)
-RANKED = [('gl_iv', 'GL rank tags', ['GL_Rank_1-5.txt', 'PvP_1-5_No_Evolve.txt', 'Best_GL.txt'] + _EVF),   # 2026-09-30
-          ('ul_iv', 'UL rank tags', ['UL_Rank_1-5.txt', 'PvP_1-5_No_Evolve.txt', 'Best_UL.txt'] + _EVF)]
+# (2026-11-16) PvP 1-5 No Evolve left the lists: it is an own-stage top 5 now, inside the Rank file, and it named the other
+# league's rank for a copy ranked in only one. A keeper that ranks 1-5 only as a later stage carries no chip: _later_only.
+RANKED = [('gl_iv', 'GL rank tags', ['GL_Rank_1-5.txt', 'Best_GL.txt'] + _EVF),   # 2026-09-30
+          ('ul_iv', 'UL rank tags', ['UL_Rank_1-5.txt', 'Best_UL.txt'] + _EVF)]
 
 print("=== TAG AUDIT (keep_policy reason <-> build_tagsets file) ===")
 # Best ML = the pvp_best_ml reason MINUS hundos (user 2026-09-23: the chip skips a hundo, the keep does not) and MINUS
@@ -106,6 +108,39 @@ def _overcap_spreads(uids, reason):
         return set()
 
 
+def _later_only(uids, reason):
+    """Spreads kept by rule 15b whose usable rank<=ready stages are ALL later stages (none is the copy's own stage) carry
+    NO rank chip (2026-11-16, user: "the pokemon in "pvp no evolve" tag make no fucking sense" -- they wore PvP 1-5 No
+    Evolve, false on the overlay); the keep itself is untouched. Same exemption as audit_tags_membership.py. Unknown data
+    (no row) is never exempted; a copy whose own stage is usable rank<=ready is never exempted."""
+    try:
+        import sqlite3 as _sq
+        _root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        sys.path.insert(0, _root)
+        import keep_config as _kc
+        from pvp_iv_rule import fits as _fits, chain_stage_ranks as _csr, maxcp as _maxcp, pvid as _pvid, GL_CAP as _G, UL_CAP as _U, VIABILITY_MARGIN as _VM
+        lg = 'gl' if reason == 'gl_iv' else 'ul'
+        cap = _G if lg == 'gl' else _U
+        BS = {p['speciesId']: p.get('baseStats', {}) for p in json.load(open(os.path.join(_root, 'pvpoke_gamemaster.json'), encoding='utf-8'))['pokemon']}
+        rr = _kc.pvp('ready_rank')
+        con = _sq.connect('file:%s?mode=ro' % os.path.join(_root, 'pokemon.db').replace('\\', '/'), uri=True)
+        con.row_factory = _sq.Row
+        out = set()
+        for u in uids:
+            r = con.execute('SELECT * FROM pokemon WHERE uid_hex=?', (u,)).fetchone()
+            if r is None:
+                continue
+            own = _pvid(r['species_name'], r['form'] or 0)
+            usable = [st for st, rk in _csr(r, lg) if rk <= rr and _maxcp(st, BS) > cap + _VM and _fits(r, st, cap, BS)]
+            if usable and own not in usable:
+                out.add(u)
+        con.close()
+        return out
+    except Exception as _e:
+        print('  (later-stage exemption unavailable: %s)' % _e)
+        return set()
+
+
 for reason, tag, fns in RANKED:
     R = ru(reason)
     F = set().union(*(fu(fn) for fn in fns))
@@ -114,6 +149,10 @@ for reason, tag, fns in RANKED:
     if _oc:
         print(f"  {tag:<15} {len(_oc)} kept spread(s) cannot enter the league at any rank<=ready stage -> no chip by design")
         miss = miss - _oc
+    _lo = _later_only(miss, reason) if miss else set()
+    if _lo:
+        print(f"  {tag:<15} {len(_lo)} kept spread(s) rank 1-5 only as a later stage -> no chip by design")
+        miss = miss - _lo
     if leak:
         problems.append(f"{tag}: {len(leak)} tagged mon(s) ALSO in Transfer (keeper leak)")
     if miss:
