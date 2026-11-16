@@ -774,22 +774,13 @@ def _loc_card_kept_uids(bag, cf_norm):
 
 
 _META_SETS = {}
-from independent_law import in_top_half as _il_half, top_half as _il_top_half   # THE TOP HALF: pvpoke's list on its own
+from independent_law import in_top_half as _il_half   # THE TOP HALF: pvpoke's list on its own
 
 
 def _pf_half(lg, stage, shadow=0):
     """THE TOP HALF (LAW 2026-11-16, keep_config rules.pvp_top_half): may this stage hold a GL / UL keep? Read by
     independent_law from the ranking file (not pvp_iv_rule.competitive, the engine's test); no list = no gate."""
     return _il_half(lg, stage, shadow, keep_config.rule_enabled('pvp_top_half'))
-
-
-def _pf_spread(r):
-    """A configured 0/15/15 keeps only for a GL / UL stage inside the top half (its ranker stage there); no list = no gate."""
-    on = keep_config.rule_enabled('pvp_top_half')
-    if _il_top_half('gl', on) is None and _il_top_half('ul', on) is None:
-        return True
-    sh = 1 if _g(r, 'fresh_alignment') == 1 else 0
-    return any(_g(r, lg + '_stage') and _pf_half(lg, _g(r, lg + '_stage'), sh) for lg in ('gl', 'ul'))
 
 
 def _meta_ok(lg, stage, rank):
@@ -948,7 +939,7 @@ def _keeper_reasons(r, BS, legacy_set, gm_ok, dex_counts, event_txt, legacy_txt,
     if _g(r, 'fresh_has_location_card') == 1:
         if not (_g(r, 'fresh_loc_card_enum') or 0) or r['uid_hex'] in _LOC_CARD_KEPT:
             why.append('location_card')
-    if (r['iv_atk'], r['iv_def'], r['iv_sta']) in keep_config.pvp_spread_keep() and _pf_spread(r):
+    if (r['iv_atk'], r['iv_def'], r['iv_sta']) in keep_config.pvp_spread_keep():   # any stage: never gated by the top half
         why.append('pvp_spread')
     _lpk = _line_pool(r)
     if _lpk is not None:

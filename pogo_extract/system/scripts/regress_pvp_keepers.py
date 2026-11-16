@@ -563,20 +563,19 @@ def live_artifact_hashes():
 
 
 def _outside_half(fx, d):
-    """rules.pvp_top_half on (LAW 2026-11-16): the stages that could keep this fixture -- each top-READY_RANK headline stage,
-    and for a configured 0/15/15 every headline stage -- in words when ALL of them are outside pvpoke's top half (read by
-    independent_law on its own, not the engine's pvp_iv_rule.competitive); '' when one is inside, or the rule is off."""
+    """rules.pvp_top_half on (LAW 2026-11-16): each top-READY_RANK headline stage that could keep this fixture, in words,
+    when ALL of them are outside pvpoke's top half (read by independent_law on its own, not the engine's
+    pvp_iv_rule.competitive); '' when one is inside, when there is none, when the rule is off -- and for a configured
+    0/15/15, which the top half never touches (his 11-16 correction: "no 0-15-15 pokemon should be cull'd")."""
     import keep_config
     from independent_law import in_top_half
     on = keep_config.rule_enabled('pvp_top_half')
-    if not on:
+    if not on or tuple(fx['ivs']) in keep_config.pvp_spread_keep():
         return ''
-    trophy = tuple(fx['ivs']) in keep_config.pvp_spread_keep()
-    st = [(lg, x['stage']) for lg, x in (('gl', d[1]), ('ul', d[2]))
-          if x and x.get('stage') and (trophy or x['rank'] <= READY_RANK)]
-    if any(in_top_half(lg, s, 0, on) for lg, s in st) or not (st or trophy):
+    st = [(lg, x['stage']) for lg, x in (('gl', d[1]), ('ul', d[2])) if x and x.get('stage') and x['rank'] <= READY_RANK]
+    if not st or any(in_top_half(lg, s, 0, on) for lg, s in st):
         return ''
-    return ', '.join('%s %s' % (lg.upper(), s) for lg, s in st) or 'no ranked stage'
+    return ', '.join('%s %s' % (lg.upper(), s) for lg, s in st)
 
 
 def main():

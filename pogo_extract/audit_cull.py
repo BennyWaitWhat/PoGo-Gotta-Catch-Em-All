@@ -668,18 +668,10 @@ def _pb_meta(lg, st, rk):
 # THE TOP HALF (LAW 2026-11-16, keep_config rules.pvp_top_half): a Great / Ultra League keep counts only for a stage inside the
 # top half of pvpoke's list for that league (a stage it does not list is not competitive; Master League is not gated) -- read
 # by independent_law from the ranking files on its own (the engine asks pvp_iv_rule.competitive). Every Best, the roster too;
-# the 0/15/15 spread; the comb-up law; layer 7.
-from independent_law import in_top_half as _in_half, top_half as _top_half
+# the comb-up law; layer 7. NEVER the 0/15/15 spread (his 11-16 correction: "no 0-15-15 pokemon should be cull'd"): its layer below stays unconditional.
+from independent_law import in_top_half as _in_half
 _AC_TH = keep_config.rule_enabled('pvp_top_half')
 _ac_half = lambda lg, st, sh=0: _in_half(lg, st, sh, _AC_TH)
-
-
-def _ac_spread(r):
-    """A 0/15/15 keeps for a GL or UL stage inside the top half (the ranker's stage there); no list at all = no gate."""
-    if _top_half('gl', _AC_TH) is None and _top_half('ul', _AC_TH) is None:
-        return True
-    _s = 1 if r.get('fresh_alignment') == 1 else 0
-    return any(r.get(lg + '_stage') and _ac_half(lg, r[lg + '_stage'], _s) for lg in ('gl', 'ul'))
 for lst in _pbg.values():
     for _lg, _cap in (('gl', _PB_GL), ('ul', _PB_UL)):
         _w, _wr = _pvp_usable_winner_rk(lst, _lg, _cap, own_only=True)
@@ -733,7 +725,7 @@ for nm, p in [('hundo', lambda r: (r['iv_total'] or 0) == 45),
               ('legacy (kept)', lambda r: r['uid_hex'] in _legacy_keep),
               ('protected pid', lambda r: r['pokemon_id'] in _PROT),
               ('kept by hand', lambda r: r['uid_hex'] in keep_config.hand_kept()),   # he took it out of the Transfer tag (2026-11-12)
-              ('pvp spread', lambda r: (r.get('iv_atk'), r.get('iv_def'), r.get('iv_sta')) in _SPREAD and _ac_spread(r)),
+              ('pvp spread', lambda r: (r.get('iv_atk'), r.get('iv_def'), r.get('iv_sta')) in _SPREAD),   # any stage, any list place
               ('best gl/ul', lambda r: r['uid_hex'] in _pvp_best_keep),
               # (2026-09-26) fused components hold no ladder slot -- and are NEVER pile candidates: the game holds
               # them inside a Kyurem (hidden, not releasable). Engine keeps them as 'fused'; any in the pile is a leak.
