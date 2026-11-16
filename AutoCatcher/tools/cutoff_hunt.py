@@ -58,13 +58,13 @@ def adb(cmd):
 
 
 def fix():
-    m = re.search(r"Location\[gps ([-0-9.]+),([-0-9.]+) .*?et=\+(?:(\d+)d)?(?:(\d+)h)?(?:(\d+)m)?(?:(\d+)s)?(?:(\d+)ms)?.*?vel=([0-9.]+)",
+    m = re.search(r"Location\[gps ([-0-9.]+),([-0-9.]+) .*?et=\+(?:(\d+)d)?(?:(\d+)h)?(?:(\d+)m)?(?:(\d+)s)?(?:(\d+)ms)?(?:.*?vel=([0-9.]+))?",
                   adb("dumpsys location | grep -m1 'last mock location'"))
     if not m:
         return None
     # et= is uptime and gains a day field after 24 h ("+1d21h18m28s184ms"); without (\d+)d the whole match came back 0
     et = int(m[3] or 0) * 86400 + int(m[4] or 0) * 3600 + int(m[5] or 0) * 60 + int(m[6] or 0) + int(m[7] or 0) / 1000
-    return (float(m[1]), float(m[2]), et, float(m[8]) * 3.6)
+    return (float(m[1]), float(m[2]), et, float(m[8] or 0) * 3.6)   # no vel= = the joystick is not moving (stopped / a teleport)
 
 
 def meters(a, b):

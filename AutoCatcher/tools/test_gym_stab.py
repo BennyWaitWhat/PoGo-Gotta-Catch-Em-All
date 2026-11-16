@@ -10,7 +10,9 @@ Run: python test_gym_stab.py      (needs node; frida is not needed -- a stub sta
      the live read (validated by species), the game master table fallback, every refusal, the multiplier, the pick that changes;
   3. stab_config(): the typing table from a synthetic game master, and from the real one when present;
   4. gym_run's report lines: stab_tag() and stab_setup() with a fake tapper;
-  5. gym_run.rested(): which gyms rest, and that a gym we emptied never rests once an enemy team holds it again (2026-11-15).
+  5. gym_run.rested(): which gyms rest, and that a gym we emptied never rests once an enemy team holds it again (2026-11-15);
+  6. the joystick fix (cutoff_hunt.fix) gives a position with no speed in the mock location (stopped / teleported), and the
+     tapper finds the gym screen's place handler by its shape, not by name (2026-11-15).
 """
 import contextlib
 import io
@@ -547,6 +549,30 @@ def runner_checks():
     check(gym_run.rested({"hour": now + 3000}, {}, {"hour": scan(3, 5000)}, [1, 3], now) == ({"hour"}, []), "the one-hour rest (a refused placement) holds")
     if len(FAILS) == n0:
         print("ok: gym_run rested(): a gym we emptied never rests once an enemy team holds it again; every other rest holds")
+    # 6. the joystick fix with no speed (11-15: no GPS fix kept the runner's loop away from its commands), + the place handler by shape
+    n0 = len(FAILS)
+    chh = gym_run.ch
+    real_adb = chh.adb
+    try:
+        chh.adb = lambda cmd: ("      last mock location=Location[gps 40.752371,-73.982280 hAcc=2.5 et=+1h50m35s652ms alt=8.9 "
+                               "vel=2.8888888 bear=248.2 {Bundle[{satellites=10}]}]")
+        p = chh.fix()
+        check(bool(p) and abs(p[0] - 40.752371) < 1e-9 and abs(p[3] - 2.8888888 * 3.6) < 1e-6, f"fix with a speed: {p!r}")
+        chh.adb = lambda cmd: "      last mock location=Location[gps 40.752371,-73.982280 hAcc=2.5 et=+1d1h50m35s652ms alt=8.9 {Bundle[{satellites=10}]}]"
+        p = chh.fix()
+        check(bool(p) and abs(p[1] + 73.98228) < 1e-9 and p[3] == 0 and abs(p[2] - 93035.652) < 1e-6, f"fix with no speed (stopped): {p!r}")
+        chh.adb = lambda cmd: ""
+        check(chh.fix() is None, "no mock location at all: None")
+    finally:
+        chh.adb = real_adb
+    js = gym_tapper.JS
+    check("methodOn(K.GymApproachGuiController, 'cagd'" not in js and "methodOn(K.GymApproachGuiController, 'cage'" not in js,
+          "the place / deploy-reply handlers are not looked up by an obfuscated name any more")
+    check(js.count("methodsWhere(K.GymApproachGuiController, 1,") == 1 and "'Holoholo.Rpc.PokemonProto'" in js
+          and js.count("methodsWhere(K.GymApproachGuiController, 2,") == 1 and "if (c.length === 1) M.pickHandler = c[0];" in js,
+          "the handlers are found by shape, and only a unique match is used")
+    if len(FAILS) == n0:
+        print("ok: joystick fix with / without a speed; place + deploy-reply handlers found by shape (unique match only)")
 
 
 def main():

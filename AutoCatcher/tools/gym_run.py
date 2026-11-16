@@ -831,6 +831,9 @@ def _run(a, g, mv, done, t_start, enemy, goal, sess, pid, sc):
         say(f"  gym-details request parameters: {r['detailsParams']}")
     if r.get("team") is not True:
         say(f"  !! custom team / heal unavailable: {r.get('team')}")
+    say("  auto-place: " + (f"ON -- the gym screen's place handler is {r['pickNames'][0]} (found by its shape: one PokemonProto, returns void)"
+                            if r.get("autoplace") else f"OFF -- {len(r.get('pickNames') or [])} handler(s) of that shape {r.get('pickNames')}; "
+                            "Deploy opens the list for you") + f" | deploy replies read by {r.get('deployCbNames')}")
     _gr = r.get("graph") or {}                               # the live service graph (H01, 2026-09-29): which one, and how fresh
     say(f"  live service graph: {_gr.get('graphs', '?')} ItemBagImpl graph(s), inventory last updated "
         + (f"{(time.time() * 1000 - _gr['ts']) / 1000:.0f} s ago" if (_gr.get("ts") or -1) > 0 else "(unreadable)")
@@ -1042,8 +1045,17 @@ def _run(a, g, mv, done, t_start, enemy, goal, sess, pid, sc):
         if g.prepstuck:
             say("STOP: a party screen stayed open over a battle -- not continuing (joystick keeps circling)")
             return
+        pull()                                               # commands are read on EVERY pass: with no GPS fix, or your gym open, the
+        if not g.in_battle() and not g.prep and any(_c.get("stop") for _c in cmdq):   # loop below never got to them (11-15: a stop sat 6 min)
+            if g.has("GymState") and not g.user_gym:
+                leave_gym(g, sc, tick)
+            say("  COMMAND stop: no battle in progress -- stopped cleanly; the tapper unloads and the session detaches now")
+            return
         p = ch.fix()
         if not p:
+            if said != "nofix":
+                say("  no GPS fix from the joystick (stopped, or a teleport?) -- waiting for one; commands still work")
+                said = "nofix"
             time.sleep(1)
             continue
         here = p[:2]
