@@ -562,6 +562,23 @@ def live_artifact_hashes():
     return out
 
 
+def _outside_half(fx, d):
+    """rules.pvp_top_half on (LAW 2026-11-16): the stages that could keep this fixture -- each top-READY_RANK headline stage,
+    and for a configured 0/15/15 every headline stage -- in words when ALL of them are outside pvpoke's top half (read by
+    independent_law on its own, not the engine's pvp_iv_rule.competitive); '' when one is inside, or the rule is off."""
+    import keep_config
+    from independent_law import in_top_half
+    on = keep_config.rule_enabled('pvp_top_half')
+    if not on:
+        return ''
+    trophy = tuple(fx['ivs']) in keep_config.pvp_spread_keep()
+    st = [(lg, x['stage']) for lg, x in (('gl', d[1]), ('ul', d[2]))
+          if x and x.get('stage') and (trophy or x['rank'] <= READY_RANK)]
+    if any(in_top_half(lg, s, 0, on) for lg, s in st) or not (st or trophy):
+        return ''
+    return ', '.join('%s %s' % (lg.upper(), s) for lg, s in st) or 'no ranked stage'
+
+
 def main():
     argv = sys.argv[1:]
     verbose = '-v' in argv or '--verbose' in argv
@@ -640,7 +657,16 @@ def main():
             why = sorted(reasons.get(uid, []))
             saved_by = sorted(set(why) & fx['axis'])
             note = MARGIN_NOTE if fx['margin_sensitive'] else ''
-            if uid in pile or not why:
+            _out = _outside_half(fx, derived[i])
+            if _out and saved_by:
+                verdict = 'LEAK'
+                fails.append("FAIL %s: kept by %s, but every stage that could keep it is outside pvpoke's top half (%s) -- "
+                             "rules.pvp_top_half is on, so the engine ignored it" % (fx['label'], saved_by, _out))
+            elif _out:
+                verdict = 'BY RULE'
+                notes.append("%s: every stage that could keep it is outside pvpoke's top half (%s) -- not a PvP keeper by "
+                             "design (rules.pvp_top_half, 2026-11-16)" % (fx['label'], _out))
+            elif uid in pile or not why:
                 verdict = 'TRANSFER'
                 fails.append('FAIL %s: the CURRENT engine puts this spread in the IRREVERSIBLE '
                              'Transfer pile. %s%s' % (fx['label'], fx['why'], note))
@@ -698,9 +724,12 @@ def main():
               'correct engine keeps; do NOT sync a pile until this passes. (%.1fs)'
               % (len(fails), time.time() - t0))
         return 1
+    _byrule = sum(1 for n in notes if 'not a PvP keeper by design' in n)
     print('VERDICT: ALL PVP KEEPER FIXTURES KEPT -- %d/%d lost-keeper spreads survive the current '
-          'engine; ranks, form mappings and standing anchors all reproduce. (%.1fs)'
-          % (len(FIXTURES), len(FIXTURES), time.time() - t0))
+          'engine%s; ranks, form mappings and standing anchors all reproduce. (%.1fs)'
+          % (len(FIXTURES) - _byrule, len(FIXTURES) - _byrule,
+             " (%d more are outside pvpoke's top half: no keepers by your 11-16 rule)" % _byrule if _byrule else '',
+             time.time() - t0))
     return 0
 
 

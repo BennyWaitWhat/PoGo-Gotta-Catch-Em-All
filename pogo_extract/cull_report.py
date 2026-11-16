@@ -206,6 +206,38 @@ def main():
         return '; '.join('%s (%s #%d), and you already keep a #%d %s' % (stg(st), lg.upper(), rk, h, stg(st))
                          for lg, st, rk, h in hl)
 
+    # THE TOP HALF (LAW 2026-11-16, his "...then cull"; keep_config rules.pvp_top_half): a Great / Ultra League keep counts only
+    # for a stage inside the top half of pvpoke's list for that league (a stage it does not list is not competitive). A pile
+    # copy that is top 5 only at such stages is a lawful release: said once, in plain words, never as a CHECK.
+    _shd = lambda m: 1 if m['fresh_alignment'] == 1 else 0
+
+    def half_out(lg, st, sh=0):
+        return lg in ('gl', 'ul') and bool(st) and not pv.competitive(lg, st, sh)
+
+    def half_txt(lg, st):
+        _p = pv.meta_pos(lg, st)
+        return ("%s is #%d on pvpoke's %s list, outside its top %d" % (stg(st), _p, lg.upper(), len(pv.meta_half(lg)))
+                if _p else "pvpoke does not rank %s in %s" % (stg(st), lg.upper()))
+
+    def below_half(m):
+        """[(lg, stage, rank)] for each top-5 stage this copy can play (it reaches the cap, its CP fits there) that is
+        outside pvpoke's top half -- [] when none, or the rule is off."""
+        return [(lg, st, rk) for lg, cap in (('gl', pv.GL_CAP), ('ul', pv.UL_CAP)) for st, rk in pv.chain_stage_ranks(m, lg)
+                if rk <= pv.READY_RANK and half_out(lg, st, _shd(m)) and pv.maxcp(st, BS) > cap + pv.VIABILITY_MARGIN
+                and pv.fits(m, st, cap, BS)]
+
+    def half_text(bh):
+        return '; '.join('%s (%s #%d), and %s' % (stg(st), lg.upper(), rk, half_txt(lg, st)) for lg, st, rk in bh)
+
+    def spread_out(m):
+        """A configured 0/15/15 the top half stops keeping: [(lg, stage)] of its GL / UL stages ([] = none ranked), else None."""
+        if (m['iv_atk'], m['iv_def'], m['iv_sta']) not in keep_config.pvp_spread_keep():
+            return None
+        _st = [(lg, m[lg + '_stage']) for lg in ('gl', 'ul') if m[lg + '_stage']]
+        if (pv.meta_half('gl') is None and pv.meta_half('ul') is None) or any(not half_out(lg, st, _shd(m)) for lg, st in _st):
+            return None
+        return _st
+
     # ---- arrivals: caught vs evolved (IVs + creation date survive an evolution; the uid does not) ----
     gone = {sig(P[u]): P[u] for u in sorted(set(P) - set(C))}
     origin = {}                                          # new uid -> source row (evolved) or None (caught)
@@ -452,9 +484,20 @@ def main():
             # a keep reason that is not a slot (a favorite star, the keep-all list, Adventure Effect ...): losing it is
             # its own fact -- say it, never dress it up as "outranked" (H05-3)
             _hl = held_later(r)                  # rule 15f: one plain clause instead of the IV-keeper / rank-spread ones
-            parts = ['no longer %s' % NO_LONGER[x] for x in _was if x in NO_LONGER and not (_hl and x in ('gl_iv', 'ul_iv'))]
+            _bh = below_half(r)                  # the top half (2026-11-16): the same, for stages outside pvpoke's top half
+            _so = spread_out(r) if 'pvp_spread' in _was else None
+            parts = ['no longer %s' % NO_LONGER[x] for x in _was if x in NO_LONGER
+                     and not ((_hl or _bh) and x in ('gl_iv', 'ul_iv')) and not (_so and x == 'pvp_spread')]
             if _hl:
                 parts.append('top %d only as %s: no longer kept for that (your 11-16 yes)' % (pv.READY_RANK, held_text(_hl)))
+            if _bh:
+                parts.append('top %d only as %s: no longer kept for that (your 11-16 top-half rule)' % (pv.READY_RANK, half_text(_bh)))
+            if _so is not None:                  # each list place said once: the stages _bh named above are not repeated
+                _new = [x for x in _so if not any(b[:2] == x for b in _bh)]
+                parts.append(('a 0-15-15 spread, but %s: no longer kept for that%s' % (
+                    '; '.join(half_txt(lg, st) for lg, st in _new), ' either' if _bh else ' (your 11-16 top-half rule)'))
+                             if _new else 'its 0-15-15 spread no longer keeps it either' if _bh else
+                             'a 0-15-15 spread, but pvpoke ranks none of its stages: no longer kept for that (your 11-16 top-half rule)')
             if 'hundo' in _was and (r['iv_total'] or 0) != 45:
                 # a hundo cannot stop being one: one of the two walks misread its IVs (R-B review)
                 parts.append('***CHECK: kept as a hundo last time, but this walk reads %s/%s/%s -- an IV misread in one of '
@@ -479,8 +522,8 @@ def main():
                     parts.append('lost its %s%s -- no just-arrived copy is promised %s' % (
                         LABEL[reason], (' (%s)' % _tg) if _tg else '', 'that target' if _tg else 'its target'))
                     continue
-                if reason in NOT_A_SLOT and _hl:
-                    continue                             # rule 15f: said above
+                if reason in NOT_A_SLOT and (_hl or _bh):
+                    continue                             # rule 15f / the top half: said above
                 if reason in NOT_A_SLOT:
                     # rule 15b keeps EVERY rank-1-5 spread at a stage that reaches its league: no copy takes that from another,
                     # so it was lost to a rank / reach change -- say what the ranks are now (H05-2)
@@ -536,6 +579,10 @@ def main():
                 # its stage is outside pvpoke's top pvp.best_meta_top -- say the list place, not "no copy is kept"
                 if not new and reason in ('pvp_best_gl', 'pvp_best_ul'):
                     _ms = pv.pvid(r['species_name'], r['form'] or 0)
+                    if half_out(_lg[0], _ms):            # THE TOP HALF (2026-11-16): at any rank, the legendary roster too
+                        parts.append(('lost its %s too' % LABEL[reason]) if any(b[:2] == (_lg[0], _ms) for b in _bh) else
+                                     'lost its %s: %s (your 11-16 top-half rule)' % (LABEL[reason], half_txt(_lg[0], _ms)))
+                        continue
                     _mk = next((k for s, k in pv.chain_stage_ranks(r, _lg[0]) if s == _ms), None)
                     if meta_out(_lg[0], _ms, _mk, r['pokemon_id']):
                         parts.append('lost its %s: %s, outside your top %d, so its #%d spread is no keeper (a top-%d spread '
@@ -597,6 +644,12 @@ def main():
                     _ct = None
                     if _cl and not ks:                   # a comb-up whose target would be a Best nobody keeps (2026-11-11)
                         _co = pv.pvid(r['species_name'], r['form'] or 0)
+                        _cth = [(k, s) for s, k in pv.chain_stage_ranks(r, _cl) if s != _co and k <= keep_config.pvp('best_rank_floor')
+                                and pv.fits(r, s, pv.GL_CAP if _cl == 'gl' else pv.UL_CAP, BS)]
+                        if _cth and all(half_out(_cl, s, _shd(r)) for _k, s in _cth):   # THE TOP HALF (2026-11-16)
+                            parts.append('lost its %s: its target %s (your 11-16 top-half rule)'
+                                         % (LABEL[reason], half_txt(_cl, min(_cth)[1])))
+                            continue
                         _ct = min(((k, s) for s, k in pv.chain_stage_ranks(r, _cl)
                                    if s != _co and k <= keep_config.pvp('best_rank_floor') and meta_out(_cl, s, k, r['pokemon_id'])
                                    and pv.fits(r, s, pv.GL_CAP if _cl == 'gl' else pv.UL_CAP, BS)), default=None)
@@ -759,15 +812,19 @@ def main():
         return None
     CLOSE_CALL = 100                                     # top ~2.5% of 4,096 spreads: worth a line even when lawful
     later_held = []                                      # rule 15f releases (2026-11-16): lawful, said in plain words
+    below_list = []                                      # the top half (2026-11-16): lawful, said in plain words
     for u in pile:
         m = C[u]
         _hl = held_later(m)
         if _hl:
             later_held.append('%s is top %d only as %s' % (desc(m, False), pv.READY_RANK, held_text(_hl)))
+        _bh = below_half(m)
+        if _bh:
+            below_list.append('%s is top %d only as %s' % (desc(m, False), pv.READY_RANK, half_text(_bh)))
         for lg in CAPS:
             for st, rk in chain(m, lg):
-                if not st:
-                    continue
+                if not st or half_out(lg, st, _shd(m)):
+                    continue                             # outside pvpoke's top half: no keep there at any rank (named above)
                 capreach = CAPS[lg] is not None and pv.maxcp(st, BS) > CAPS[lg] + pv.VIABILITY_MARGIN
                 _held = bool(_hl) and any(x[0] == lg and x[1] == st for x in _hl)   # rule 15f: named above
                 if capreach and not _held and (close is None or rk < close[0]):
@@ -1139,10 +1196,13 @@ def main():
         if later_held:
             out.append('- top %d only as an evolution you already keep as well or better (your 11-16 yes, %d): %s'
                        % (pv.READY_RANK, len(later_held), '; '.join(later_held)))
+        if below_list:
+            out.append("- top %d only at stages outside pvpoke's top half (your 11-16 top-half rule, %d): %s"
+                       % (pv.READY_RANK, len(below_list), '; '.join(below_list)))
         if checks:
             out.extend('- ***CHECK: %s***' % c for c in checks)
         else:
-            out.append('- none %sis a top-%d spread%s%s' % ('else ' if later_held else '', pv.READY_RANK, ' it can still play' if over_cap else '', (' -- closest: %s at %s #%d as %s%s'
+            out.append('- none %sis a top-%d spread%s%s' % ('else ' if (later_held or below_list) else '', pv.READY_RANK, ' it can still play' if over_cap else '', (' -- closest: %s at %s #%d as %s%s'
                         % (desc(close[1], False), close[2], close[0], stg(close[3]),
                            '' if close[4] else ' (its CP is already over that league cap, so it can never play there)')) if close else ''))
             # a floor note IS a copy that beats every copy kept at that stage (bk is None or rk < bk[0]) -- the summary must

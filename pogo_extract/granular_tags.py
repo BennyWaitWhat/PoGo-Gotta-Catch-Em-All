@@ -869,6 +869,10 @@ def build(rows, pile, reasons):
     T[NO_EVOLVE] |= _own5_evo - set(LAST_ADVICE)
     for _lg in ('gl', 'ul', 'ml'):
         T[SIMPLE['pvp_best_' + _lg]] -= set(LAST_ADVICE)
+    # ... nor an own-stage rank chip (2026-11-16): under rules.pvp_top_half an own-stage top 5 OUTSIDE pvpoke's top half is no
+    # PvP asset, so it may be the copy told to evolve -- its chip would ride along onto a stage where it is false
+    for _lg, _cap, _lbl in LEAGUES:
+        T[LEAGUE_TAG_FMTS[0] % _lbl] -= set(LAST_ADVICE)
     # LEGACY MOVES IS A FACT, NOT A KEEP REASON (2026-09-17). The legacy keep axis is now capped (best 10 per species,
     # user "Best 10"), so a copy past the cap that another axis keeps (shiny, dex copy ...) lost its 'legacy' reason --
     # but it still HAS legacy moves, and a label must be true for the mon on screen. Tag every kept legacy mover.

@@ -13,6 +13,7 @@ import keep_config
 import evolvable_forms
 import granular_tags
 from pvp_iv_rule import pvid, maxcp, GL_CAP, UL_CAP, READY_RANK, VIABILITY_MARGIN, fits
+from independent_law import in_top_half as _in_half   # THE TOP HALF (2026-11-16): pvpoke's list read on its own
 
 CONSUMED = {'protected', 'legacy', 'location_card', 'xxl', 'mighty', 'dex_only_copy', 'species_min', 'pattern_min', 'regular_min', 'rarity', 'adventure_effect',
             'shadow_best', 'hundo', 'nundo',        # keep axes that evolving would destroy or that never evolve
@@ -150,8 +151,12 @@ def main():
                            % ' and '.join(_f))
         if src == 'shiny' and r['fresh_alignment'] == 1:
             bad.append(name + ': shadow advised to evolve')
-        own_pvp = ((r['gl_stage'] == own and r['gl_rank'] is not None and r['gl_rank'] <= READY_RANK and viable(own, GL_CAP))
-                   or (r['ul_stage'] == own and r['ul_rank'] is not None and r['ul_rank'] <= READY_RANK and viable(own, UL_CAP)))
+        # (2026-11-16) outside pvpoke's top half an own-stage top 5 is no asset (rules.pvp_top_half): it may be told to evolve
+        _th, _shd = keep_config.rule_enabled('pvp_top_half'), 1 if r['fresh_alignment'] == 1 else 0
+        own_pvp = ((r['gl_stage'] == own and r['gl_rank'] is not None and r['gl_rank'] <= READY_RANK and viable(own, GL_CAP)
+                    and _in_half('gl', own, _shd, _th))
+                   or (r['ul_stage'] == own and r['ul_rank'] is not None and r['ul_rank'] <= READY_RANK and viable(own, UL_CAP)
+                       and _in_half('ul', own, _shd, _th)))
         if own_pvp:                                   # every producer (2026-09-29): bucket 2 comes first; 2c names it too
             bad.append(name + ': own-stage PvP asset (rank <= %d) advised to evolve' % READY_RANK)
         # a Best GL / Best UL copy (rule 15d) is never advised to evolve by any producer (user 2026-09-23): since

@@ -375,10 +375,14 @@ if _BMT:
                            if len(_mraw) >= 300 and len(_msc) >= 0.9 * len(_mraw) else None)
         except (OSError, ValueError, KeyError, TypeError, AttributeError):
             _PB_META[_mlg] = None
+# THE TOP HALF (LAW 2026-11-16, keep_config rules.pvp_top_half): a Best GL / UL only for a stage inside pvpoke's top half of that
+# league, the roster too -- read by independent_law from the ranking files on its own (the engine asks pvp_iv_rule.competitive)
+from independent_law import in_top_half as _lc_in_half
+_LC_TH = keep_config.rule_enabled('pvp_top_half')
 for _l in _pbg.values():
     for _lg, _cap in (('gl', _PB_GL), ('ul', _PB_UL)):
         _w, _wr = _usable_winner_rk(_l, _lg, _cap, own_only=True)
-        if _w and (_wr <= _BRF or _pid_of.get(_w) in _LAW_RARE) and (
+        if _w and _lc_in_half(_lg, _sid_of[_w], 0, _LC_TH) and (_wr <= _BRF or _pid_of.get(_w) in _LAW_RARE) and (
                 not _BMT or _wr <= _RDY or _pid_of.get(_w) in _LAW_RARE or _PB_META.get(_lg) is None or _sid_of[_w] in _PB_META[_lg]):
             _pvp_best_keep.add(_w)
     _c = [x for x in _l if (x['ml_rank'] if 'ml_rank' in x.keys() else None) is not None and (x['ml_rank'] <= _BRF or x['pokemon_id'] in _LAW_RARE)]
