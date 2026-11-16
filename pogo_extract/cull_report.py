@@ -188,6 +188,7 @@ def main():
     prev_why = state.get('reasons') or {}
     prev_pile = {norm(u) for u in state.get('pile') or []}
     prev_targets = {norm(u): v for u, v in (state.get('targets') or {}).items()}
+    prev_onward = {norm(u): v for u, v in (state.get('onward') or {}).items()}   # the last report said: it may go on there after its target
     _by = {norm(u): u for u in C}
     pile = [_by[norm(u)] for u in open(os.path.join(A, 'tagsets', 'Transfer.txt')).read().split() if norm(u) in _by]
     pile_set = set(pile)
@@ -1142,9 +1143,12 @@ def main():
         for n in close_calls:
             # user 2026-09-24: "I want whichever is best. Spares are not ok." -- say which one wins, never offer to keep both
             out.append('- close call: %s' % n)
+    onward = {}
     try:
         import evolve_targets
-        ww = evolve_targets.lines()
+        _adv = evolve_targets.advice()
+        ww = evolve_targets.lines(_adv)
+        onward = {norm(a['uid']): a['onward']['target'] for a in _adv if a.get('onward')}
         if ww:
             out.append('')
             out.append('**Which way to evolve**')
@@ -1180,6 +1184,8 @@ def main():
             _meant = prev_targets.get(norm(_src['uid_hex'])) if _src else None
             _nt = _now_t.get(norm(_u))
             if _meant and _nt and any(sid(C[_u]).startswith(t.split('_')[0]) for t in _meant):
+                if set(_nt) == {prev_onward.get(norm(_src['uid_hex']))}:
+                    continue                    # the last report's line said it may go on there (2026-11-15): no news
                 _flip.append('%s (last report: %s -> now %s)' % (desc(C[_u], False), ' / '.join(stg(t) for t in _meant),
                                                             ' / '.join(stg(t) for t in _nt)))
         if _flip:
@@ -1208,9 +1214,9 @@ def main():
         # 'which_way' and 'dex_hundos' ride along in 'prev' too: a RE-PRINT of this walk compares against what this report
         # compared against, and it said "standing, unchanged" from which_way (H05-9: the re-print re-announced them all)
         json.dump({'walk': cur_stamp, 'pile': pile, 'reasons': why, 'targets': {norm(u): v for u, v in targets.items()},
-                   'which_way': (ww if 'ww' in dir() else []),
+                   'which_way': (ww if 'ww' in dir() else []), 'onward': onward,
                    'dex_hundos': sorted(_dexh_now) if _dexh_now is not None else None,
-                   'prev': {k: state.get(k) for k in ('walk', 'pile', 'reasons', 'targets', 'which_way', 'dex_hundos')}},
+                   'prev': {k: state.get(k) for k in ('walk', 'pile', 'reasons', 'targets', 'which_way', 'onward', 'dex_hundos')}},
                   open(STATE, 'w', encoding='utf-8'))
     return 0
 

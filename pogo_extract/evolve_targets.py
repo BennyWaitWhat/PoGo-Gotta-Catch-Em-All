@@ -134,6 +134,28 @@ def advice(members=None, pile=None):
     rows = {norm_uid(r['uid_hex']): r for r in c.execute('SELECT * FROM pokemon WHERE in_bag=1')}
     c.close()
     out, groups, free = [], {}, _free_fn(ef)
+    # A STOP ON THE WAY IS NOT A STOP (2026-11-15, _onward): each copy's own PvP comb-up (any status), and the bar
+    # pvp_combup.pick sets for a new Best AS a stage -- inside the Best floor, better than your best copy there (shadow and
+    # regular apart) and, past ready_rank, a species inside the league's meta list
+    import keep_config
+    from pvp_iv_rule import meta_top
+    try:
+        _cul = {norm_uid(k): v for k, v in json.load(open(os.path.join(ROOT, 'system', 'analysis', 'pvp_combup_labels.json'),
+                                                             encoding='utf-8')).items()}
+    except (OSError, ValueError):
+        _cul = {}
+    _floor, _bmt, _rdy, _owned = (keep_config.pvp('best_rank_floor') or 0, keep_config.pvp('best_meta_top'),
+                                  keep_config.pvp('ready_rank') or 0, {})
+
+    def _new_best(lg, st, rk, sh):
+        if (lg, st, sh) not in _owned:
+            _owned[(lg, st, sh)] = min((x[lg + '_rank'] for x in rows.values() if x[lg + '_stage'] == st and x[lg + '_rank']
+                                        and int((x['fresh_alignment'] or 0) == 1) == sh
+                                        and pvid(x['species_name'], x['form'] or 0) == st), default=None)
+        if _owned[(lg, st, sh)] is not None and rk >= _owned[(lg, st, sh)]:
+            return False
+        top = meta_top(lg, _bmt) if _bmt and rk > _rdy and not sh else None
+        return top is None or st in top
     for u, e in _targets(members, pile).items():
         r = rows.get(u)
         if r is None:
@@ -185,6 +207,8 @@ def advice(members=None, pile=None):
                 'ivs': '/'.join('?' if r[k] is None else str(r[k]) for k in ('iv_atk', 'iv_def', 'iv_sta')), 'cp': r['cp'],
                 'gender': r['gender'], 'tags': sorted(e['tags']), 'leagues': list(e.get('leagues') or []), 'src': sid, 'key': key,
                 'own': sorted(_own) if tf is not tform else None, 'stop': stop, 'luck': luck, 'source': e.get('source'),
+                'onward': _onward(_cul.get(u), e, r, _floor, lambda lg, st, rk, _sh=int((r['fresh_alignment'] or 0) == 1):
+                                  _new_best(lg, st, rk, _sh)) if stop else None,
                 'ivpick': tyrogue_outcomes(r['iv_atk'], r['iv_def'], r['iv_sta']) if sid == 'tyrogue' else None}
         if e['fixed']:
             for t in e['fixed']:
@@ -283,7 +307,7 @@ def lines(adv=None):
                 how = '; '.join('%s: %s' % (n_, w_) for n_, w_ in [(_nice(a['target']), a['how'])] + [
                     (_disp(*o_), ef.gate_text(o_[0], _src)) for o_ in _alts] if w_)
             if a.get('stop'):
-                what += _stop_text(a.get('source'), a['stop'])
+                what += _onward_text(a['onward']) if a.get('onward') else _stop_text(a.get('source'), a['stop'])
         g = {1: ' ♂', 2: ' ♀'}.get(a['gender'], '') if a['src'] in ('charcadet', 'kirlia', 'snorunt') else ''
         # WHICH COPY (2026-09-30): two 76% Smolivs printed the same line, so the second read as "standing, unchanged" --
         # the IVs and CP name the copy he can find in the game (and a Dolliv still wearing the tag reads as done)
@@ -360,9 +384,74 @@ def _stop_text(source, stops):
             else ', then STOP -- do not evolve it on to %s') % ' / '.join(stops)
 
 
+def _onward(c, e, r, floor, new_best, between=None):
+    """Where THIS copy goes on after the advice row's one target, or None = nothing further, the STOP stands (2026-11-15).
+    A 67% Trapinch (1/14/15) was promised to the empty Vibrava stage and told 'then STOP -- do not evolve it on to Flygon'
+    while it was Ultra League #5 as Flygon; he evolved it as told and the next cull's PvP comb-up sent it on. Two sources:
+    its comb-up row `c` (pvp_combup_labels.json: now / gated / hold) when that ends further up the line, else its own best
+    league stage (row `r`: gl_/ul_ stage + rank) when that lies further up, is inside the Best floor and would be a Best he
+    keeps there (`new_best(league, stage, rank)`) -- the test pvp_combup.pick applies once the copy stands at the target
+    ('maybe': pick can still block it there). Words only: no tag, promise or keep reason reads this."""
+    if len(e.get('fixed') or ()) != 1:
+        return None
+    if between is None:
+        import granular_tags
+        between = granular_tags.path_between
+    tgt = e['fixed'][0]
+    if c and c.get('target') and between(tgt, c['target']):
+        return {'target': c['target'], 'leagues': [x for x in (c.get('leagues') or []) if x in _LG], 'rank': c.get('rank'),
+                'status': c.get('status'), 'why': c.get('why') or ''}
+    got = {}
+    for lg in _LG:
+        st, rk = r[lg + '_stage'], r[lg + '_rank']
+        if st and rk and rk <= floor and between(tgt, st) and new_best(lg, st, rk):
+            got.setdefault(st, {})[lg] = rk
+    if not got:
+        return None
+    st = min(got, key=lambda s: (min(got[s].values()), s))
+    return {'target': st, 'leagues': sorted(got[st]), 'rank': min(got[st].values()), 'ranks': got[st], 'status': 'maybe', 'why': ''}
+
+
+def _onward_text(o):
+    """What the line says instead of a STOP when the copy goes on (_onward): where, for which league, and when."""
+    lgs = (' / '.join('%s (#%s)' % (_LG[x], o['ranks'][x]) for x in o['leagues']) if o.get('ranks')
+           else ' / '.join(_LG[x] for x in o.get('leagues') or []) + (' (#%s)' % o['rank'] if o.get('rank') else ''))
+    tgt = _nice(o['target']) + (' for ' + lgs if lgs.strip() else '')
+    if o.get('status') == 'now':
+        return ', then on to %s' % tgt
+    if o.get('status') == 'maybe':
+        return ', then leave it there -- the next cull says if it goes on to %s' % tgt
+    why = o.get('why') or ''
+    when = ('; that step has a requirement the next cull names' if o.get('status') == 'gated'
+            else ' once you have the candy' if why == 'short on candy' else ' once you can (%s)' % why if why else ' later')
+    return ', then leave it there -- it goes on to %s%s' % (tgt, when)
+
+
 def _selfcheck():
     assert _stop_text('promise', ['Golem']) == ', then STOP -- do not evolve it on to Golem'
     assert 'STOP' not in _stop_text('shiny', ['Golem']) and _stop_text('shiny', ['Golem']).startswith(', then leave it')
+    # a stop on the way is not a STOP (2026-11-15): the Trapinch of 15:27 -- promised to Vibrava, Ultra League #5 as Flygon
+    _bt = lambda a, b: {('vibrava', 'flygon'): ['flygon'], ('trapinch', 'flygon'): ['vibrava', 'flygon']}.get((a, b), [])
+    _e, _r = {'fixed': ['vibrava'], 'source': 'promise'}, {'gl_stage': 'flygon', 'gl_rank': 18, 'ul_stage': 'flygon', 'ul_rank': 5}
+    _nb = lambda lg, st, rk: rk < {('ul', 'flygon'): 807, ('gl', 'flygon'): 12}.get((lg, st), 10 ** 9)
+    _o = _onward(None, _e, _r, 25, _nb, _bt)                                            # Great League #18 loses to your #12
+    assert _o == {'target': 'flygon', 'leagues': ['ul'], 'rank': 5, 'ranks': {'ul': 5}, 'status': 'maybe', 'why': ''}, _o
+    assert _onward_text(_o) == ', then leave it there -- the next cull says if it goes on to Flygon for Ultra League (#5)'
+    assert _onward(None, _e, _r, 4, _nb, _bt) is None                                   # outside the Best floor: the STOP stands
+    assert _onward(None, _e, dict(_r, ul_rank=900), 25, _nb, _bt) is None               # not a Best you would keep there
+    assert _onward(None, _e, dict(_r, ul_stage='vibrava', gl_stage='trapinch'), 25, _nb, _bt) is None   # nothing FURTHER up
+    assert _onward(None, _e, {'gl_stage': None, 'gl_rank': None, 'ul_stage': None, 'ul_rank': None}, 25, _nb, _bt) is None
+    _b = _onward(None, _e, dict(_r, gl_rank=3), 25, _nb, _bt)                           # one evolution serves both leagues
+    assert _onward_text(_b).endswith('goes on to Flygon for Great League (#3) / Ultra League (#5)'), _b
+    assert _onward(None, {'fixed': [], 'split': ('a', 'b')}, _r, 25, _nb, _bt) is None
+    _c = {'target': 'flygon', 'leagues': ['ul'], 'rank': 5, 'status': 'hold', 'why': 'short on candy'}
+    _h = _onward(_c, _e, _r, 25, _nb, _bt)                                              # its comb-up row wins: it says when
+    assert _onward_text(_h) == ', then leave it there -- it goes on to Flygon for Ultra League (#5) once you have the candy', _h
+    assert _onward_text(dict(_h, status='now', why='')) == ', then on to Flygon for Ultra League (#5)'
+    assert _onward_text(dict(_h, why='needs Unova Stone')).endswith('once you can (needs Unova Stone)')
+    assert _onward_text(dict(_h, status='gated', why='questDisplay')).endswith('; that step has a requirement the next cull names')
+    assert all('STOP' not in _onward_text(dict(_h, status=s)) for s in ('now', 'gated', 'hold', 'maybe'))
+    assert _onward(dict(_c, target='vibrava'), _e, dict(_r, ul_rank=900, gl_rank=900), 25, _nb, _bt) is None   # the row's own target
     tf = {'GLOOMNORMAL': {'vileplume': [['VILEPLUMENORMAL', '']], 'bellossom': [['BELLOSSOMNORMAL', '']]},
           'ODDISHNORMAL': {'gloom': [['GLOOMNORMAL', '']]},
           'KIRLIANORMAL': {'gallade': [['GALLADENORMAL', 'MALE']], 'gardevoir': [['GARDEVOIRNORMAL', '']]},
