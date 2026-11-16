@@ -77,17 +77,31 @@ for l in sys.stdin:
 print("\n".join(rows[::-1][-6:]) or "  (Android kept no exit record of the game since then)")' "$1" "$2" | tr -d '\r'
 }
 
+adb_state() {   # this phone's state in `adb devices`: device / unauthorized / offline, or nothing when adb does not list it
+  adb devices 2>/dev/null | tr -d '\r' | awk -v t="$T" '$1 == t { print $2 }'
+}
+
+# why the phone does not answer, in words he can act on (2026-11-15 21:11: after a phone restart adb said "unauthorized" for
+# 31 s and the line said OFFLINE beside a Tailscale row that said active)
+offline_why() {
+  if [ "$(adb_state)" = unauthorized ]; then
+    echo "The phone ANSWERS but has not authorized this PC (adb: unauthorized): tap Allow on its \"Allow USB debugging?\" prompt and tick \"Always allow from this computer\"."
+  else
+    phone_row
+  fi
+}
+
 pass() {
   echo "start $(date '+%m-%d %H:%M:%S')"
   [ -f "$A/push.log" ] && echo "last background push: $(grep -m1 '^inventory:' "$A/push.log" || tail -1 "$A/push.log")"
   for i in $(seq 1 180); do
     adb connect "$T" > "$A/cull_now.adb" 2>&1
-    adb devices | tr -d '\r' | grep -q "^$T[[:space:]]*device$" && break
+    [ "$(adb_state)" = device ] && break
     # said at once, never after silent minutes (2026-11-13: the phone's Tailscale was off and the pass waited 5 minutes unseen)
-    [ "$i" -eq 1 ] && echo "PHONE OFFLINE at $(date +%H:%M:%S) -- the pass waits: adb connect $T is retried every 15 s for 45 min and it starts by itself when the phone answers. $(phone_row)"
+    [ "$i" -eq 1 ] && echo "PHONE OFFLINE at $(date +%H:%M:%S) -- the pass waits: adb connect $T is retried every 15 s for 45 min and it starts by itself when the phone answers. $(offline_why)"
     sleep 15
   done
-  if ! adb devices | tr -d '\r' | grep -q "^$T[[:space:]]*device$"; then
+  if [ "$(adb_state)" != device ]; then
     echo "PHONE STILL OFFLINE at $(date +%H:%M) -- last adb connect: $(tr -d '\r' < "$A/cull_now.adb")"; return 3
   fi
   [ "$i" -gt 1 ] && echo "phone back at $(date +%H:%M:%S)"
@@ -208,6 +222,11 @@ case "${1:-}" in
     E=$(printf '%s\n' ' timestamp=2026-11-15 00:10:29.000 pid=8757 realUid=1 user=0' \
           ' process=com.nianticlabs.pokemongo reason=2 (SIGNALED) subreason=0 (UNKNOWN) status=9' | exits 11-15 00:01)
     [ "$E" = "  11-15 00:10:29 pid 8757: SIGNALED -- killed (signal 9): how Pokemod ends the game before it starts it again; not a crash" ] || bad "the exit-record reader on a signal-9 kill: $E"
+    # a phone that answers but has not authorized this PC is named as that, with what to tap (adb is a stub here: no phone)
+    W=$(adb() { printf 'List of devices attached\n%s\tunauthorized\n' "$T"; }; echo "$(adb_state)|$(offline_why)")
+    case "$W" in "unauthorized|"*"tap Allow"*) ;; *) bad "an unauthorized phone was not named: $W" ;; esac
+    W=$(adb() { printf 'List of devices attached\n%s\tdevice\n192.168.1.9:5555\tunauthorized\n' "$T"; }; adb_state)
+    [ "$W" = device ] || bad "adb_state read another device's row: $W"
     rm -rf "$CULL_NOW_STATE"
     echo "cull_now self-check OK"; exit 0 ;;
   --hook)
