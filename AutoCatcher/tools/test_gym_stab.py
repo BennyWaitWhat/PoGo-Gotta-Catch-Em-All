@@ -9,7 +9,8 @@ Run: python test_gym_stab.py      (needs node; frida is not needed -- a stub sta
   2. the STAB block: the field-offset resolution against the REAL PokemonSettingsProto recon (the old matcher could not find type1_),
      the live read (validated by species), the game master table fallback, every refusal, the multiplier, the pick that changes;
   3. stab_config(): the typing table from a synthetic game master, and from the real one when present;
-  4. gym_run's report lines: stab_tag() and stab_setup() with a fake tapper.
+  4. gym_run's report lines: stab_tag() and stab_setup() with a fake tapper;
+  5. gym_run.rested(): which gyms rest, and that a gym we emptied never rests once an enemy team holds it again (2026-11-15).
 """
 import contextlib
 import io
@@ -522,6 +523,30 @@ def runner_checks():
             gym_tapper.stab_config = real_cfg
     if not FAILS:
         print("ok: gym_run stab_tag() / stab_setup() / the charged moves line")
+    # 5. the rest list (Benny 2026-11-15: "you skipped a yellow gym and walked by it")
+    n0, now = len(FAILS), 1000000.0
+
+    def scan(team, age_ms):
+        return [team, age_ms, 0, 1, 3374, 0, [], "x"]
+    done = {"retaken": now - 120, "stalled": now - 120, "red": now - 120, "over": now - 700, "oldscan": now - 120, "empty": now - 120,
+            "early": now - 20}
+    taken = {f: done[f] for f in ("retaken", "red", "over", "oldscan", "empty", "early")}
+    scans = {"retaken": scan(3, 5000), "stalled": scan(3, 5000), "red": scan(2, 5000), "over": scan(3, 5000), "oldscan": scan(3, 60000),
+             "empty": scan(0, 5000), "early": scan(3, 30000)}
+    skip, back = gym_run.rested(done, taken, scans, [1, 3], now)
+    check([f for f, _ in back] == ["retaken"] and back[0][1][0] == 3, f"a gym we emptied that yellow holds again is put back at once: {back!r}")
+    check("stalled" in skip, "a gym we made no progress on still rests (it was never emptied)")
+    check("red" in skip and "empty" in skip, "a gym that is red, or still empty, keeps its rest")
+    check("oldscan" in skip, "a reading older than 45 s puts nothing back")
+    check("early" in skip, "a reading taken BEFORE we emptied the gym puts nothing back (it shows the team we just beat)")
+    check("over" not in skip and "over" not in [f for f, _ in back], "a rest that is over is neither skipped nor announced")
+    check(gym_run.rested(done, taken, {}, [1, 3], now) == ({"retaken", "stalled", "red", "oldscan", "empty", "early"}, []), "no reading at all: every running rest holds")
+    done["retaken"] = now - 10                               # the same gym rests again for another reason (a stall): that is not a take
+    skip, back = gym_run.rested(done, taken, scans, [1, 3], now)
+    check("retaken" in skip and not back, "a later rest of the same gym (no progress) is not ended by the old take")
+    check(gym_run.rested({"hour": now + 3000}, {}, {"hour": scan(3, 5000)}, [1, 3], now) == ({"hour"}, []), "the one-hour rest (a refused placement) holds")
+    if len(FAILS) == n0:
+        print("ok: gym_run rested(): a gym we emptied never rests once an enemy team holds it again; every other rest holds")
 
 
 def main():

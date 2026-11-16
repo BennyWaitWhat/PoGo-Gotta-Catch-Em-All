@@ -377,6 +377,25 @@ class Mover:
 
 
 BUSY = {}                                        # fort id -> smoothed share of scans that found it in battle (contest level)
+TAKEN = {}                                       # fort id -> the rest stamp of a gym we EMPTIED (its rest ends when an enemy team holds it)
+
+
+def rested(done, taken, scanned, enemy, now, rest=600):
+    """The gyms left alone right now, and the ones just put back on the list: (skip, back).
+    A gym rests `rest` seconds after a battle that made no progress, after it grew while we walked, or while it stays empty
+    after we emptied it. A gym we EMPTIED that an enemy team holds again NEVER rests (Benny 2026-11-15: "you skipped a yellow
+    gym and walked by it" -- yellow had retaken it 2 minutes after he took it, and the 10-minute rest hid it from the picker):
+    the game's own gym details, read after we left it, put it back at once. back = [(fid, scan)]; the caller forgets their rest."""
+    skip, back = set(), []
+    for f, t in done.items():
+        if now - t >= rest:
+            continue
+        sv = scanned.get(f)                              # [team, age ms, in battle, defenders, CP now, ...]
+        if taken.get(f) == t and sv and sv[0] in enemy and sv[1] < 45000 and now - sv[1] / 1000.0 > t + 3:
+            back.append((f, sv))
+        else:
+            skip.add(f)
+    return skip, back
 
 
 def pick(enemy, skip, here, goal, live, detour, area_r, ok=None):
@@ -1052,7 +1071,8 @@ def _run(a, g, mv, done, t_start, enemy, goal, sess, pid, sc):
             tscan_at[0] = time.time()
             sc.exports_sync.scan([target[0]])
         verified = set()                                     # scan < 30 s old: its free slot is real
-        for f, sv in sc.exports_sync.scanned().items():      # [team, age ms, in battle, defenders, CP now, ours, motivations, name]
+        _scn = sc.exports_sync.scanned()
+        for f, sv in _scn.items():                           # [team, age ms, in battle, defenders, CP now, ours, motivations, name]
             if len(sv) > 7 and sv[7]:
                 NAMES[f[:8]] = sv[7]
             if f in live and sv[1] < 30000:
@@ -1073,7 +1093,11 @@ def _run(a, g, mv, done, t_start, enemy, goal, sess, pid, sc):
                     scan_logged[f] = sv[1] // 15000
                     g.study_f.write(json.dumps({"k": "study", "src": "scan", "t": int(time.time() * 1000) - sv[1], "fid": f,
                                                 "team": sv[0], "ib": sv[2], "n": sv[3], "cp": sv[4], "ours": sv[5], "mots": sv[6]}) + "\n")
-        skip = {f for f, t in done.items() if time.time() - t < 600}
+        skip, _back = rested(done, TAKEN, _scn, enemy, time.time())
+        for f, sv in _back:                                  # an enemy team holds a gym we emptied: no rest, it is a target now
+            done.pop(f, None)
+            TAKEN.pop(f, None)
+            say(f"  {f[:8]} is team {sv[0]} again ({sv[3]} defender(s), {sv[4]} CP) -- no rest: it is a target now")
         mine = {x[5] for x in dep["dp"] if len(x) > 5}
 
         def slot(f, v):                                  # OUR team's gym with a free slot and none of ours: join it, no battle
@@ -1341,6 +1365,8 @@ def _run(a, g, mv, done, t_start, enemy, goal, sess, pid, sc):
             say("STOP: a party screen stayed open over a battle -- not continuing (joystick keeps circling)")
             return
         done[fid] = time.time()
+        if final in (0, a.team):                             # emptied (or red now): this rest ends the moment an enemy team holds it again
+            TAKEN[fid] = done[fid]
         if a.join_first and fid == a.join_first:
             first_done[0] = True
         say(f"  gym {fid[:8]} now team {final}" if final is not None else f"  gave up on {fid[:8]}")
