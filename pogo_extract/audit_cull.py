@@ -929,6 +929,53 @@ _rg_pile = collections.Counter(_smk(rows[u]) for u in _ps_v if rows[u]['pokemon_
 _rg_hit = {_smk(rows[u]) for u in _ps_v if rows[u]['pokemon_id'] and _reg(rows[u]) and (rows[u].get('iv_total') or 0) >= _rlo}
 rm = [k for k in _rg_hit if _rmin and _rg_all[k] - _rg_pile[k] < _rmin]
 print('  %-18s %-5d %s   (at least %d regular copies of every species + form the room bar could take)' % ('regular under min', len(rm), chk('regular under minimum', len(rm)), _rmin))
+# SHADOW / PURIFIED LINES (user 2026-11-16: "culling pokemon i dont have all shadow or purified evos of. i saved one from the transfer you missed"): per alignment, the copies the pile
+# leaves must fill as many slots -- one per stage held, one per later stage a held copy can still become that none of that kind
+# holds -- as the whole bag can (a maximum matching, one slot per copy; a copy kept by hand holds its stage and may be a spare,
+# never a stage's own copy). The slots and the count are this file's own; a stage's identity and the stages a copy can become are
+# the engine's facts (keep_policy.align_key / align_targets on _PU_GRAPH, the ONE graph), as the Best GL / UL check reads them.
+def _al_short():
+    if not keep_config.rule_enabled('align_lines'):
+        return 0, []
+    if '_PU_GRAPH' not in globals():                   # the engine's graph did not load (said above): the lines cannot be judged
+        return 1, ['the evolution graph did not load -- the shadow / purified lines were not checked']
+    _pile = set(_ps_v)
+    lost, named = 0, []
+    for a in (1, 2):
+        ra = [r for r in _crows if r.get('fresh_alignment') == a]
+        stage = {r['uid_hex']: _kp_g.align_key(_sh_pvid(r['species_name'], r.get('form') or 0), _PU_GRAPH[3]) for r in ra}
+        held = set(stage.values())
+        slots = collections.defaultdict(set)
+        for r in ra:
+            if r['uid_hex'] not in _HK:                # a copy kept by hand never holds a stage's own slot ...
+                slots[('own', stage[r['uid_hex']])].add(r['uid_hex'])
+            for t in _kp_g.align_targets(r, _PU_GRAPH) - held:   # ... but it is a spare like any other
+                slots[('fill', t)].add(r['uid_hex'])
+        def _filled(pool):
+            owner = {}
+            def _aug(s, seen):
+                for u in sorted(slots[s] & pool):
+                    if u not in seen:
+                        seen.add(u)
+                        if u not in owner or _aug(owner[u], seen):
+                            owner[u] = s
+                            return True
+                return False
+            return sum(1 for s in sorted(slots) if _aug(s, set()))
+        every = {u for v in slots.values() for u in v}
+        outside = {u for u in every if u not in _pile}
+        left, full = _filled(outside), _filled(every)
+        if left < full:
+            lost += full - left
+            named += ['%s %s %d/%d/%d is needed for its line' % ({1: 'shadow', 2: 'purified'}[a], rows[u]['species_name'], rows[u]['iv_atk'],
+                                                                 rows[u]['iv_def'], rows[u]['iv_sta'])
+                      for u in sorted(every & _pile) if _filled(outside | {u}) > left]
+    return lost, named
+_al_lost, _al_named = _al_short()
+print('  %-18s %-5d %s   (every shadow / purified stage held, and a spare for each stage of that kind it lacks)'
+      % ('shadow/purif short', _al_lost, chk('shadow / purified line short', _al_lost)))
+for _n in _al_named[:8]:
+    print('     ! %s' % _n)
 fc = collections.Counter((r['pokemon_id'], cf(r)) for r in _crows)
 fp2 = collections.Counter((rows[u]['pokemon_id'], cf(rows[u])) for u in _ps_v)
 fw = [k for k, n in fp2.items() if fc[k] == n]

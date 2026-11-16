@@ -169,7 +169,8 @@ def _rows():
 # A shadow kept for any of these reasons is valuable AS A SHADOW (or as the copy it is); purifying would destroy that.
 _KEEP_AS_IS = {'shadow_best', 'dex_only_copy', 'legacy', 'gl_iv', 'ul_iv', 'pvp_rank', 'pvp_spread', 'rank_unknown',
                'location_card', 'variant_floor', 'xxl', 'mighty', 'protected', 'favorite', 'adventure_effect', 'origin',
-               'rarity', 'hundo', 'nundo', 'shiny', 'shiny_ladder'}
+               'rarity', 'hundo', 'nundo', 'shiny', 'shiny_ladder',
+               'align_line'}     # the copy a shadow line keeps -- its stage, or the spare for one he lacks (rules.align_lines, 2026-11-16)
 PVP_WORTH = 100          # a shadow ranked this well at a stage that reaches the league cap is a PvP piece -- leave it
 
 
