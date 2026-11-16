@@ -10,7 +10,7 @@ import tempfile
 HERE = os.path.dirname(os.path.abspath(__file__))
 src = open(os.path.join(HERE, os.pardir, "system", "scripts", "game_write", "catch_loop_fast.py"), encoding="utf-8").read()
 ns = {"CFG": {"floors": {"1": 5, "2": 5, "3": 5}}}
-for name in ("usable_balls", "ballsave_skip"):
+for name in ("usable_balls", "ballsave_skip", "ballsave_now", "ballsave_log"):
     exec(re.search(rf"^def {name}\(.*?(?=^\n\ndef )", src, re.S | re.M).group(0), ns)
 skip_of, usable = ns["ballsave_skip"], ns["usable_balls"]
 failed = 0
@@ -39,11 +39,48 @@ check("no margin at 900", skip_of(PLAN, 900, NOW)[0], [41])
 check("margin 1.5 at 900 reserves more", skip_of(dict(PLAN, margin=1.5), 900, NOW)[0], [10, 41])
 check("end time passed: catch everything", skip_of(PLAN, 10, NOW + 101 * 60), ([], "off: the plan's end time has passed"))
 check("no plan", skip_of(None, 10, NOW), ([], "off"))
-check("balls not read yet", skip_of(PLAN, None, NOW), ([], "off"))
+check("balls not read yet", skip_of(PLAN, None, NOW), ([], "waiting for the ball count"))
 check("unreadable plan", skip_of({"bad": 1}, 10, NOW), ([], "off: unreadable plan"))
 check("the why line", skip_of(PLAN, 1700, NOW)[1], "1700 balls for 100 min: leaving 1 of 4 species alone (at most 150 stardust per ball)")
 check("balls above the floors", usable({"1": 1704, "2": 5, "3": 9}), 1703)
 check("balls not read", usable({}), None)
+
+# ---- the plan file, priority species, and the BALLSAVE log lines
+import json
+import time
+tmp = tempfile.mkdtemp()
+pf = os.path.join(tmp, "plan.json")
+ns.update(BALLSAVE_FILE=pf, BALLS={"usable": 1700}, _BS={"mtime": None, "plan": None, "note": "off"}, os=os, json=json, time=time,
+          CFG={"floors": {"1": 5, "2": 5, "3": 5}, "priority": [41]})
+lines = []
+log = lambda now: ns["ballsave_log"](lines.append, now)
+check("no plan file: nothing left alone", ns["ballsave_now"](), [])
+log(0)
+check("no plan file: no log line", lines, [])
+json.dump(dict(PLAN, end=time.time() + 100 * 60), open(pf, "w"))
+check("priority species never left alone", ns["ballsave_now"](), [])   # #41 is the cut (1700 balls) but a priority species
+ns["CFG"]["priority"] = []
+os.utime(pf, (time.time() + 5, time.time() + 5))                        # same file, new mtime: re-read
+check("plan read: the cut", ns["ballsave_now"](), [41])
+log(100)
+check("one line when it starts", len(lines), 1)
+ns["BALLS"]["usable"] = 1699
+ns["ballsave_now"]()
+log(130)
+check("cut moves within a minute: quiet", len(lines), 1)
+log(161)
+check("a minute later: one line", len(lines), 2)
+open(pf, "w").write("{not json")
+os.utime(pf, (time.time() + 9, time.time() + 9))
+ns["ballsave_now"]()
+log(162)
+check("unreadable plan: logged at once", lines[-1], "BALLSAVE off: unreadable plan")
+os.remove(pf)
+ns["ballsave_now"]()
+log(163)
+check("plan deleted: one 'off' line", lines[-1], "BALLSAVE off")
+log(300)
+check("then silent", len(lines), 4)
 
 # ---- JS (node): applyCfg + ballsave()
 i = src.index('JS = r"""') + 9
