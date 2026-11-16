@@ -49,6 +49,7 @@ jobs:
           python pogo_extract/remote_trade_picks.py --selfcheck
           python pogo_extract/granular_tags.py --selftest
           python pogo_extract/pattern_pools.py --selftest
+          python -c "import sys; sys.path[:0] = ['pogo_extract', 'pogo_extract/system/scripts']; import keep_policy as k; k._align_selftest()"
           bash tools/cull_now.sh --selfcheck
           python pogo_extract/system/scripts/check_constant_drift.py
           python pogo_extract/system/scripts/refresh_gamemaster.py --selftest

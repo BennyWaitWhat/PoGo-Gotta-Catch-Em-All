@@ -138,6 +138,10 @@ DEFAULTS = {
         "pvp_later_stage_owned": False, # rule 15 / 15b (15f) -- a spread that is top 5 ONLY as a stage it would evolve into is not
         #                                 kept for that rank when you already hold a copy AS each such stage ranked as well or better
         #                                 (pvp_iv_rule.behind_owned; user 2026-11-16: "yes"); OFF = every such spread kept, as before
+        "align_lines": False,           # SHADOW / PURIFIED LINES -- every shadow / purified stage held keeps a copy, and every later
+        #                                 stage a held copy can still become but none of that kind holds keeps ONE spare that can
+        #                                 become it (keep_policy.align_line_picks; user 2026-11-16: "culling pokemon i dont have all
+        #                                 shadow or purified evos of"); OFF = as before
     },
     "per_species_caps": {},       # Curation Studio per-species overrides {category:{pid:cap}}; empty = use the global cap (behavior-neutral)
     # PATTERN-POOLED LINES (user 2026-09-08 "top 3 of each region type only for its whole evo line"): lines whose

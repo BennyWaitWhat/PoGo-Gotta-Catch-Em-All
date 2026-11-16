@@ -523,7 +523,7 @@ def evolve_advice(kept, reasons, pile):
     # a showcase pick is an evolution promise too now (bucket 8 under the label law, audit_labels 2026-09-29): never a copy
     # another bucket will not give up -- the last copy of its form, a trophy, protected, legacy, Mighty, Adventure Effect,
     # a card holder, a legendary, a best shadow, a fused component. The XXL badge itself carries through (its point).
-    _SIZE_BLOCK = {'protected', 'legacy', 'location_card', 'mighty', 'dex_only_copy', 'species_min', 'pattern_min', 'regular_min', 'rarity', 'adventure_effect',
+    _SIZE_BLOCK = {'protected', 'legacy', 'location_card', 'mighty', 'dex_only_copy', 'species_min', 'pattern_min', 'regular_min', 'align_line', 'rarity', 'adventure_effect',
                    'shadow_best', 'hundo', 'nundo', 'fused'}
     for u, e in _sz_best.items():                         # 4. the showcase picks
         if _SIZE_BLOCK & set(reasons.get(pad(u)) or ()):

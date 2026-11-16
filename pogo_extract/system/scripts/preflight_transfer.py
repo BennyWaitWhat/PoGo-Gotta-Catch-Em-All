@@ -722,6 +722,7 @@ def _pattern_min_uids(bag, pile):
 
 
 _REGULAR_MIN_KEPT = set()  # regular minimum (user 2026-11-12, room bar "A"), populated in main() beside _SPECIES_MIN_KEPT
+_ALIGN_LINE_KEPT = set()   # shadow / purified lines (user 2026-11-16), populated in main() beside _REGULAR_MIN_KEPT
 _HELD_LATER = None         # rule 15f (2026-11-16): {(league, stage, shadow): best rank} held AS that stage by copies OUTSIDE this
 #                            pile; None = rule off or no game master -> no 15f exemption (the PvP alarm over-protects)
 
@@ -743,6 +744,59 @@ def _regular_min_uids(bag, pile):
                                              key=_ivkey)[:max(0, short)]}
     return out
 
+
+
+def _align_line_uids(bag, pile):
+    """The pile copies keep_policy's shadow / purified lines must keep (user 2026-11-16: "culling pokemon i dont have all shadow or purified evos of. i saved one from the transfer you missed"),
+    counted on its own: per alignment, one slot per stage held and one per later stage a held copy can still become that no copy
+    of that alignment holds; the copies outside the pile must fill as many slots as the whole bag can (a maximum matching, one
+    slot per copy), and a pile copy that would fill one more is needed. The stages a copy can become are keep_policy's ONE
+    evolution graph (pvp_later_stages), as the Best GL / UL check reads them; the counting is this file's own. A copy kept by
+    hand holds its stage but fills no slot. Rule off = nothing."""
+    if not keep_config.rule_enabled('align_lines'):
+        return set()
+    import keep_policy as _kp
+    from pvp_iv_rule import pvid as _pv
+    gm = json.load(open(GAMEMASTER, encoding='utf-8'))
+    dex = {p['speciesId']: p.get('dex') for p in gm['pokemon']}
+    graph = _kp.build_evo_graph(gm, {e['pid'] for e in json.load(open(os.path.join(ROOT, 'pokedex_hundos_live.json')))['entries']},
+                                with_all=True)
+
+    def fold(s):                                       # oinkologne_female is an Oinkologne; nidoran_female a species of its own
+        for suf in ('_female', '_male'):
+            if s and s.endswith(suf) and dex.get(s[:-len(suf)]) is not None and dex.get(s[:-len(suf)]) == dex.get(s):
+                return s[:-len(suf)]
+        return s
+    hk, out = keep_config.hand_kept(), set()
+    for a in (1, 2):
+        ra = [r for r in bag if _g(r, 'fresh_alignment') == a and not keep_config.is_fused_component(r)]
+        stage = {r['uid_hex']: fold(_pv(r['species_name'], _g(r, 'form') or 0)) for r in ra}
+        held = set(stage.values())
+        slots = defaultdict(set)
+        for r in ra:
+            if r['uid_hex'] not in hk:
+                slots[('own', stage[r['uid_hex']])].add(r['uid_hex'])
+                for t in {fold(x) for x in _kp.pvp_later_stages(r, graph)} - held:
+                    slots[('fill', t)].add(r['uid_hex'])
+
+        def filled(pool):
+            owner = {}
+
+            def aug(s, seen):
+                for u in sorted(slots[s] & pool):
+                    if u not in seen:
+                        seen.add(u)
+                        if u not in owner or aug(owner[u], seen):
+                            owner[u] = s
+                            return True
+                return False
+            return sum(1 for s in sorted(slots) if aug(s, set()))
+        every = {u for v in slots.values() for u in v}
+        outside = {u for u in every if u not in pile}
+        have = filled(outside)
+        if have < filled(every):
+            out |= {u for u in every if u in pile and filled(outside | {u}) > have}
+    return out
 
 
 def _loc_card_kept_uids(bag, cf_norm):
@@ -967,6 +1021,8 @@ def _keeper_reasons(r, BS, legacy_set, gm_ok, dex_counts, event_txt, legacy_txt,
         why.append('pattern_min')
     if r['uid_hex'] in _REGULAR_MIN_KEPT:          # one of the last regular copies the room bar may not take (2026-11-12)
         why.append('regular_min')
+    if r['uid_hex'] in _ALIGN_LINE_KEPT:           # a shadow / purified copy its line needs: its stage, or one it lacks (2026-11-16)
+        why.append('align_line')
     if pvp_best is not None:                       # Best GL / UL / ML copy of its PvP identity (rule 15d, usable-only GL/UL)
         why.extend('pvp_best_%s' % lg.lower() for lg in sorted(pvp_best.get(r['uid_hex'], ())))
 
@@ -1314,7 +1370,7 @@ def main():
         _f = rr['form'] or 0
         return _base_form.get(rr['pokemon_id'], _f) if _f == 0 else _f
     # Use the same canonical form pool as the engine and the other independent cap checks.
-    global _LOC_CARD_KEPT, _COMBUP_KEPT, _SPECIES_MIN_KEPT, _PATTERN_MIN_KEPT, _REGULAR_MIN_KEPT
+    global _LOC_CARD_KEPT, _COMBUP_KEPT, _SPECIES_MIN_KEPT, _PATTERN_MIN_KEPT, _REGULAR_MIN_KEPT, _ALIGN_LINE_KEPT
     _SPECIES_MIN_KEPT = _species_min_uids(bag, set(transfer_uids))
     print('  species minimum: %d pile copies would leave a species under %d' % (len(_SPECIES_MIN_KEPT),
                                                                             keep_config.cap('species_min')))
@@ -1324,6 +1380,9 @@ def main():
     _REGULAR_MIN_KEPT = _regular_min_uids(bag, set(transfer_uids))
     print('  regular minimum: %d pile copies would leave a species + form under %d regular copies (room bar)'
           % (len(_REGULAR_MIN_KEPT), keep_config.regular_min()[0]))
+    _ALIGN_LINE_KEPT = _align_line_uids(bag, set(transfer_uids))
+    print('  shadow / purified lines: %d pile copies are needed for a stage of their kind (rule %s)'
+          % (len(_ALIGN_LINE_KEPT), 'on' if keep_config.rule_enabled('align_lines') else 'off'))
     _LOC_CARD_KEPT = _loc_card_kept_uids(bag, _cf_norm)
     _cu = __import__('pvp_combup').pick_default(bag)
     _COMBUP_KEPT = set(_cu['gl']) | set(_cu['ul'])

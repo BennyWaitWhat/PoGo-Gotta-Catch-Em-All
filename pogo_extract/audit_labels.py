@@ -15,7 +15,7 @@ import granular_tags
 from pvp_iv_rule import pvid, maxcp, GL_CAP, UL_CAP, READY_RANK, VIABILITY_MARGIN, fits
 from independent_law import in_top_half as _in_half   # THE TOP HALF (2026-11-16): pvpoke's list read on its own
 
-CONSUMED = {'protected', 'legacy', 'location_card', 'xxl', 'mighty', 'dex_only_copy', 'species_min', 'pattern_min', 'regular_min', 'rarity', 'adventure_effect',
+CONSUMED = {'protected', 'legacy', 'location_card', 'xxl', 'mighty', 'dex_only_copy', 'species_min', 'pattern_min', 'regular_min', 'align_line', 'rarity', 'adventure_effect',
             'shadow_best', 'hundo', 'nundo',        # keep axes that evolving would destroy or that never evolve
             'fused'}     # (2026-09-26) fused components hold no ladder slot: held inside a Kyurem, never advised to evolve
 # EACH PRODUCER UNDER ITS OWN BUCKET'S LAW (2026-09-29, the fold) -- LAW.md: a copy belongs to the FIRST bucket that applies.

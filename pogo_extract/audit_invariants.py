@@ -341,6 +341,8 @@ AXES = {
     'pattern_min':      dict(model='capped', cap_key='pattern_min', per_sp=True,  reasons=['pattern_min']),   # per species since 2026-11-12 (Unown: 3)
     # with a room bar, every species + form keeps caps.regular_min regular copies: the same top-up (user 2026-11-12, pick "A")
     'regular_min':      dict(model='capped', cap_key='regular_min', per_sp=False, reasons=['regular_min']),
+    # every shadow / purified stage held keeps a copy, and every stage of that kind it lacks one spare (user 2026-11-16)
+    'align_lines':      dict(model='keep_all', cap_key=None, per_sp=False, reasons=['align_line']),
     'pvp_iv':           dict(model='keep_all', cap_key=None, per_sp=False, reasons=['gl_iv', 'ul_iv']),
     'pvp_spread':       dict(model='keep_all', cap_key=None, per_sp=False, reasons=['pvp_spread']),
     'pvp_rank':         dict(model='keep_all', cap_key=None, per_sp=False, reasons=['pvp_rank']),
@@ -383,6 +385,7 @@ MARK_MODEL = {
     'species_min': 'capped',      # the [:short] top-up slice per species (2026-11-03)
     'pattern_min': 'capped',      # the [:short] top-up slice per pattern / form (2026-11-07)
     'regular_min': 'capped',      # the [:short] top-up slice per species + form, regular copies only (2026-11-12)
+    'align_line': 'uncapped',     # one copy per slot of a maximum matching (2026-11-16), never a slice
 }
 
 ENGINE = 'system/scripts/keep_policy.py'

@@ -376,6 +376,125 @@ def pvp_later_stages(r, graph):
     return tg | {evolvable_forms.gendered_target(own, r['gender'], t) for t in tg}
 
 
+# ---- SHADOW / PURIFIED LINES (user 2026-11-16: "culling pokemon i dont have all shadow or purified evos of. i saved one from the transfer you missed") ----
+# A shadow evolves only into a shadow and a purified only into a purified, so a spare of either kind is his one way to a stage of
+# that kind he lacks. keep_config rules.align_lines; preflight_transfer and audit_cull count the same slots their own way.
+ALIGNMENTS = ((1, 'shadow'), (2, 'purified'))
+
+
+def align_key(sid, sp_to_dex):
+    """A stage's identity in a shadow / purified line: its speciesId, a gender suffix folded into its species only when both
+    name the SAME dex number (oinkologne_female -> oinkologne; nidoran_female stays: a species of its own)."""
+    for suf in ('_female', '_male'):
+        if sid and sid.endswith(suf) and sp_to_dex.get(sid[:-len(suf)]) is not None and sp_to_dex.get(sid[:-len(suf)]) == sp_to_dex.get(sid):
+            return sid[:-len(suf)]
+    return sid
+
+
+def align_targets(r, graph):
+    """The later stages this copy can still become, as align_key ids: pvp_later_stages (the ONE evolution graph; its own form, the
+    other gender's branch and a form / costume that cannot evolve taken out) with its gendered aliases folded."""
+    return {align_key(t, graph[3]) for t in pvp_later_stages(r, graph)}
+
+
+def _align_match(slots, cands):
+    """A maximum matching of slots to copies (Kuhn): each copy fills one slot; a slot tries its candidates in the order given, so
+    the order is the preference. {slot: uid}"""
+    owner = {}
+
+    def _try(s, seen):
+        for u in cands[s]:
+            if u not in seen:
+                seen.add(u)
+                if u not in owner or _try(owner[u], seen):
+                    owner[u] = s
+                    return True
+        return False
+    for s in slots:
+        _try(s, set())
+    return {s: u for u, s in owner.items()}
+
+
+def align_line_picks(rows, graph, kept, hand_kept=frozenset()):
+    """SHADOW / PURIFIED LINES (user 2026-11-16). Per alignment: every stage held keeps one copy of it (an 'own' slot), and every
+    later stage a held copy can still become but no copy of that alignment holds gets ONE spare that can become it (a 'fill'
+    slot) -- one maximum matching per alignment, so a branch (a Poliwhirl makes a Poliwrath OR a Politoed) and a gender lock (only
+    a male Kirlia makes a Gallade) are solved together. An own slot prefers a copy another rule already keeps; a fill slot
+    prefers a copy nobody keeps (one kept for another job counts only when no free spare can); then the best by IV, CP, uid. A
+    copy kept by hand counts as holding its stage but fills no slot, like the minimums (an extra he chose). kept(uid) -> another
+    rule keeps it. Returns (need, fills, gaps): need {uid: slot} -- the matched copies nobody else keeps (the engine marks them
+    'align_line'); fills [(alignment, target, uid)] -- every fill slot and its copy; gaps [(alignment, target)] -- a missing
+    stage no spare can fill."""
+    need, fills, gaps = {}, [], []
+    ivk = lambda r: (-(r['iv_total'] or 0), -(r['cp'] or 0), r['uid_hex'])
+    for a, _nm in ALIGNMENTS:
+        ra = [r for r in rows if r['fresh_alignment'] == a]
+        if not ra:
+            continue
+        st = {r['uid_hex']: align_key(pvid(r['species_name'], r['form'] or 0), graph[3]) for r in ra}
+        held = set(st.values())
+        free = [r for r in ra if r['uid_hex'] not in hand_kept]
+        own_c, fill_c = defaultdict(list), defaultdict(list)
+        for r in sorted(free, key=lambda r: (not kept(r['uid_hex']), ivk(r))):
+            own_c[('own', st[r['uid_hex']])].append(r['uid_hex'])
+        for r in sorted(free, key=lambda r: (bool(kept(r['uid_hex'])), ivk(r))):
+            for t in sorted(align_targets(r, graph) - held):
+                fill_c[('fill', t)].append(r['uid_hex'])
+        cands = dict(own_c)
+        cands.update(fill_c)
+        m = _align_match(sorted(own_c) + sorted(fill_c, key=lambda s: (len(fill_c[s]), s[1])), cands)
+        for s, u in m.items():
+            if not kept(u):
+                need[u] = s
+            if s[0] == 'fill':
+                fills.append((a, s[1], u))
+        gaps.extend((a, s[1]) for s in fill_c if s not in m)
+    return need, sorted(fills), sorted(gaps)
+
+
+def _align_selftest():
+    """Offline proof of align_line_picks (CI): a branch, a gender lock, a free spare over a busy one, a copy kept by hand, the
+    two alignments apart, and the gender fold. No game data: the stages each copy can become are given."""
+    global align_targets, pvid
+    saved = align_targets, pvid
+    T = {}
+    try:
+        pvid = lambda name, form: name
+        align_targets = lambda r, g: set(T.get(r['uid_hex'], ()))
+        G = (None, None, None, {}, None)
+        R = lambda u, sp, iv, a=1: {'uid_hex': u, 'species_name': sp, 'form': 0, 'fresh_alignment': a, 'iv_total': iv, 'cp': 500}
+        # a branch: two shadow Poliwhirls and nothing else of the line -- the kept one stays itself, the other is the one spare
+        T.update(w1={'poliwrath', 'politoed'}, w2={'poliwrath', 'politoed'}, w3={'poliwrath', 'politoed'})
+        need, fills, gaps = align_line_picks([R('w1', 'poliwhirl', 34), R('w2', 'poliwhirl', 26)], G, lambda u: u == 'w1')
+        assert need == {'w2': ('fill', 'politoed')} and fills == [(1, 'politoed', 'w2')] and gaps == [(1, 'poliwrath')], (need, gaps)
+        # a gender lock: only the male Kirlia (k1) makes a Gallade -- the female holds the stage, the male fills the Gallade
+        T.update(k1={'gardevoir', 'gallade'}, k2={'gardevoir'})
+        need, fills, gaps = align_line_picks([R('k1', 'kirlia', 40), R('k2', 'kirlia', 20)], G, lambda u: False)
+        assert need == {'k2': ('own', 'kirlia'), 'k1': ('fill', 'gallade')} and gaps == [(1, 'gardevoir')], (need, gaps)
+        # one stage missing: a free spare is kept before a copy another rule keeps for its own job
+        T.update(w1={'poliwrath'}, w2={'poliwrath'}, w3={'poliwrath'})
+        need, fills, gaps = align_line_picks([R('w1', 'poliwhirl', 40), R('w2', 'poliwhirl', 20), R('w3', 'poliwhirl', 30)], G,
+                                             lambda u: u in ('w1', 'w3'))
+        assert need == {'w2': ('fill', 'poliwrath')} and not gaps, (need, gaps)
+        # every stage held: nothing more is kept
+        need, fills, gaps = align_line_picks([R('w1', 'poliwhirl', 40), R('w2', 'poliwhirl', 20), R('x1', 'poliwrath', 10)], G,
+                                             lambda u: u in ('w1', 'x1'))
+        assert need == {} and not fills and not gaps, (need, gaps)
+        # a copy kept by hand holds its stage but fills no slot: the other copy keeps the stage
+        need, fills, gaps = align_line_picks([R('w1', 'poliwhirl', 40), R('w2', 'poliwhirl', 20)], G, lambda u: False,
+                                             hand_kept={'w1'})
+        assert need == {'w2': ('own', 'poliwhirl')} and gaps == [(1, 'poliwrath')], (need, gaps)
+        # a shadow never fills a purified stage: each alignment counts its own copies
+        need, fills, gaps = align_line_picks([R('w1', 'poliwhirl', 40, 1), R('w2', 'poliwhirl', 20, 2)], G, lambda u: False)
+        assert need == {'w1': ('own', 'poliwhirl'), 'w2': ('own', 'poliwhirl')} and gaps == [(1, 'poliwrath'), (2, 'poliwrath')]
+    finally:
+        align_targets, pvid = saved
+    d = {'oinkologne': 916, 'oinkologne_female': 916, 'nidoran_female': 29, 'nidoran_male': 32, 'x': 1, 'x_female': 2}
+    assert align_key('oinkologne_female', d) == 'oinkologne' and align_key('nidoran_female', d) == 'nidoran_female'
+    assert align_key('x_female', d) == 'x_female' and align_key('poliwrath', d) == 'poliwrath'
+    print('align_line_picks selftest OK')
+
+
 def main():
     # ---- INPUT GATE (2026-09-02) ------------------------------------------------------------------
     # THE PILE IS THE ONE IRREVERSIBLE OUTPUT, so every input that decides it must be PRESENT, not
@@ -2172,6 +2291,15 @@ def main():
                            key=lambda r: (-(r['iv_total'] or 0), -(r['cp'] or 0), r['uid_hex']))
             for r in _rest[:max(0, _short)]:
                 mark(r['uid_hex'], 'regular_min')
+    # SHADOW / PURIFIED LINES (user 2026-11-16: "culling pokemon i dont have all shadow or purified evos of. i saved one from the transfer you missed"): every shadow / purified stage he holds keeps a copy, and
+    # every later stage a held copy can still become but none of that kind holds keeps ONE spare that can become it
+    # (align_line_picks). Last, so it only adds; a copy kept by hand fills no slot. The report lists each spare and its stage.
+    if keep_config.rule_enabled('align_lines'):
+        _al_need, _al_fills, _al_gaps = align_line_picks(rows, _EVO_GRAPH, lambda u: bool(keep.get(u)), _HK)
+        for _u in _al_need:
+            mark(_u, 'align_line')
+        print(f"[align lines] {len(_al_need)} kept for a shadow / purified stage; {len(_al_fills)} missing stage(s) have a "
+              f"spare, {len(_al_gaps)} have none", flush=True)
     # ---- KEEP / TRANSFER ----
     allu = {r['uid_hex'] for r in rows}
     keepu = set(keep)

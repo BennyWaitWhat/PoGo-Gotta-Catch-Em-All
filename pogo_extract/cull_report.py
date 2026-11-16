@@ -68,7 +68,8 @@ NO_LONGER = {'favorite': 'a favorite (starred)', 'protected': 'on the keep-every
              'xxs': 'kept as an XXS',
              'species_min': 'kept as one of your last copies of its species and form',
              'pattern_min': 'kept as one of your last copies of its pattern, color, season or letter',
-             'regular_min': 'kept as one of your last regular copies of its species and form'}
+             'regular_min': 'kept as one of your last regular copies of its species and form',
+             'align_line': 'kept to evolve into a shadow / purified stage you lack, or as your only copy of one'}
 
 pct = lambda r: round((r['iv_total'] or 0) * 100 / 45)
 norm = lambda u: format(int(u, 16), 'x')
@@ -1096,6 +1097,7 @@ def main():
                 species_min='one of your last %d of its species and form' % keep_config.cap('species_min'),
                 pattern_min='one of your last %d of its pattern, color, season or letter' % keep_config.cap('pattern_min'),
                 regular_min='one of your last %d regular copies of its species and form' % keep_config.cap('regular_min'),
+                align_line='kept for a shadow / purified stage you lack',
                 protected='keep-every-copy list', gl_iv='GL IV keeper', ul_iv='UL IV keeper',
                 # 'not read yet' was false: the ranks are computed and can stay missing for good (keep_policy 1467-1470)
                 rank_unknown='missing its PvP ranks', data_incomplete='held for incomplete data',
@@ -1245,6 +1247,31 @@ def main():
             out.extend('- ' + l for l in _dl)
     except Exception as e:
         out.append('(new shiny Pokedex entries: not computed -- %s)' % e)
+    # SHADOW / PURIFIED STAGES TO FILL (user 2026-11-16: ''' + SAID + '''). REPORT ONLY: the keep is the engine's
+    # (rules.align_lines, reason 'align_line'); this names, every cull, each spare kept to evolve into a stage of its kind he lacks.
+    try:
+        if keep_config.rule_enabled('align_lines'):
+            import keep_policy as _kpa
+            _ag = _kpa.build_evo_graph(_gm, {e['pid'] for e in json.load(open(os.path.join(ROOT, 'pokedex_hundos_live.json')))['entries']},
+                                       with_all=True)
+            _abag = [x for x in C.values() if not keep_config.is_fused_component(x)]
+            _okept = lambda u: bool(set(why.get(u) or ()) - {'align_line'})
+            _need, _fills, _gaps = _kpa.align_line_picks(_abag, _ag, _okept, keep_config.hand_kept())
+            def _al_line(a, t, u):
+                s = desc(C[u], False)                       # '41% shadow Poliwhirl'; a purified copy says so too
+                s = s.replace('% ', '% purified ', 1) if a == 2 else s
+                g = ef.gate_text(t, pvid(C[u]['species_name'], C[u]['form'] or 0))
+                return '%s -> %s%s' % (s, stg(t), ' (needs %s)' % g if g else '')
+            _al = [_al_line(a, t, u) for a, t, u in _fills if u in _need and u not in pile_set]
+            if _al or _gaps:
+                out.extend(['', '**Shadow / purified stages to fill** (%d) -- kept so you can evolve each into a stage of its kind '
+                            'you do not hold yet' % len(_al)])
+                out.extend('- ' + l for l in _al)
+                if _gaps:
+                    out.append('- no spare yet for %d more: %s' % (len(_gaps), ', '.join(
+                        '%s %s' % ({1: 'shadow', 2: 'purified'}[a], stg(t)) for a, t in _gaps)))
+    except Exception as e:
+        out.append('(shadow / purified stages: not computed -- %s)' % e)
     # A STOP STAYS A STOP (2026-11-04 review of the 11-03 ask). REPORT ONLY: no tag, keep reason or pile decision reads it, and
     # it never fails the report. A copy that evolved INTO the stage the last report named for it and is now advised to evolve
     # AGAIN. ladder_history cannot see it (engine promises only; an evolution gives the copy a new uid). 10-23..11-04: 22 such
