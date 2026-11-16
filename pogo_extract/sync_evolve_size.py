@@ -81,7 +81,7 @@ def _own_stage_best():
             own = pvid(r['species_name'], r['form'] or 0)
             top = any(r[st] == own and r[rk] is not None and r[rk] <= READY_RANK and own in BS
                       and maxcp(own, BS) > cap + VIABILITY_MARGIN
-                      and competitive(st[:2], own, 1 if r['fresh_alignment'] == 1 else 0)   # the top half (2026-11-16)
+                      and (r[rk] == 1 or competitive(st[:2], own, 1 if r['fresh_alignment'] == 1 else 0))   # the top half (2026-11-16); a #1 always counts
                       for st, rk, cap in (('gl_stage', 'gl_rank', GL_CAP), ('ul_stage', 'ul_rank', UL_CAP)))
             if top or 'pvp_best_gl' in rs or 'pvp_best_ul' in rs:   # every Best wins as itself since 2026-10-29 (15d)
                 out.add(norm(r['uid_hex']))

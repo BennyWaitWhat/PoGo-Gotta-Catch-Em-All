@@ -174,7 +174,7 @@ def pick(rows, later_fn, BS, floor, rare_pids, legacy_uids=(), protected_pids=()
         for lg in LEAGUES:                               # an own-stage top-5 spread is an asset where it stands
             for st, rk in chains[lg][u]:
                 if st == own_of[u] and rk <= 5 and viable(st, caps[lg]) and fits(r, st, caps[lg], BS) \
-                        and competitive(lg, st, sh_of[u]):   # outside pvpoke's top half: no asset (2026-11-16)
+                        and (rk == 1 or competitive(lg, st, sh_of[u])):   # outside pvpoke's top half: no asset, but a #1 always is
                     return True
         return False
 
@@ -327,6 +327,13 @@ if __name__ == '__main__':
         assert P.plays(t5, 'gl', P.GL_CAP, BS) is None and P.plays(t5, 'gl', P.GL_CAP, BS, gate=False) == ('b', 3)
         assert P.plays(t5, 'gl', P.GL_CAP, BS, gate=lambda lg, st, sh: st == 'b') == ('b', 3)
         assert P.plays(t5, 'gl', P.GL_CAP, BS, gate=lambda lg, st, sh: st != 'b') is None
+        # ... and an IV rank #1 is never gated, whatever the list says (his 11-16 "why are you culling a #1 ranked PVP pokemon?")
+        t1 = mk('t1', 'a:900(9%);b:1(99%)')
+        assert P.plays(t1, 'gl', P.GL_CAP, BS) == ('b', 1) and P.plays(t1, 'gl', P.GL_CAP, BS, gate=lambda lg, st, sh: False) == ('b', 1)
+        assert P.qualifies('A', 0, 0, 15, 15, 'b', 1, 0, BS, cp=500, cap=P.GL_CAP)
+        hb1 = dict(mk('hb1', 'b:1(99%)'), species_name='B', pokemon_id=2)
+        assert P.owned_as_stage([hb1, hold], BS) == {('gl', 'b', 0): 1}               # the #2 B outside the half no longer counts
+        assert P.behind_owned(t1, {('gl', 'b', 0): 1}, BS) == [('gl', 'b', 1, 1)]   # 15f still applies to a #1 you already hold
         # ... and a CP-blind qualifies() caller can still name a shadow: 'b_shadow' inside the half, plain 'b' outside
         P._META_HALF.update(gl=(frozenset({'a', 'b_shadow'}), frozenset({'a', 'b', 'b_shadow'})))
         _q = lambda **k: P.qualifies('A', 0, 0, 15, 15, 'b', 3, 0, BS, cp=500, cap=P.GL_CAP, **k)

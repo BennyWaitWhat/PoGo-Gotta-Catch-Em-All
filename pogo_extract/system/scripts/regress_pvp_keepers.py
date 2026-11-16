@@ -572,10 +572,10 @@ def _outside_half(fx, d):
     on = keep_config.rule_enabled('pvp_top_half')
     if not on or tuple(fx['ivs']) in keep_config.pvp_spread_keep():
         return ''
-    st = [(lg, x['stage']) for lg, x in (('gl', d[1]), ('ul', d[2])) if x and x.get('stage') and x['rank'] <= READY_RANK]
-    if not st or any(in_top_half(lg, s, 0, on) for lg, s in st):
+    st = [(lg, x['stage'], x['rank']) for lg, x in (('gl', d[1]), ('ul', d[2])) if x and x.get('stage') and x['rank'] <= READY_RANK]
+    if not st or any(rk == 1 or in_top_half(lg, s, 0, on) for lg, s, rk in st):   # a #1 is never gated (11-16)
         return ''
-    return ', '.join('%s %s' % (lg.upper(), s) for lg, s in st)
+    return ', '.join('%s %s' % (lg.upper(), s) for lg, s, _rk in st)
 
 
 def main():

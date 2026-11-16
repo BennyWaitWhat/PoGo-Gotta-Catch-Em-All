@@ -449,7 +449,7 @@ def main():
                     for m_ in re.finditer(r'([a-z0-9_]+):(\d+)\(', r[lg + '_chain_ranks'] or ''):
                         if m_.group(1) in _BS and _mcp(m_.group(1), _BS) > cap + _VM:
                             if int(m_.group(2)) <= _RR and not _tro:
-                                if not _ih(lg, m_.group(1), _sh, _th):
+                                if int(m_.group(2)) != 1 and not _ih(lg, m_.group(1), _sh, _th):   # never a #1 (11-16)
                                     _half.add(u); continue
                                 if (lg, m_.group(1)) in _held:
                                     _later.add(u); continue
