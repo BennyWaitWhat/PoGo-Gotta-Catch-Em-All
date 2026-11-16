@@ -12,7 +12,8 @@ Run: python test_gym_stab.py      (needs node; frida is not needed -- a stub sta
   4. gym_run's report lines: stab_tag() and stab_setup() with a fake tapper;
   5. gym_run.rested(): which gyms rest, and that a gym we emptied never rests once an enemy team holds it again (2026-11-15);
   6. the joystick fix (cutoff_hunt.fix) gives a position with no speed in the mock location (stopped / teleported), and the
-     tapper finds the gym screen's place handler by its shape, not by name (2026-11-15).
+     tapper finds the gym screen's place handler by its shape, not by name (2026-11-15);
+  7. gym_run.pick_any(): with nothing else to beat, a resting enemy gym is battled anyway; never an empty / raided / hour-rested one.
 """
 import contextlib
 import io
@@ -576,6 +577,25 @@ def runner_checks():
           "several of that shape: the one named before the reply handler, every candidate watched, a real placement teaches the right one")
     if len(FAILS) == n0:
         print("ok: joystick fix with / without a speed; place + deploy-reply handlers found by shape (unique match only)")
+    # 7. pick_any (Benny 11-15: "drill and finish" -- never idle while an enemy gym stands)
+    n0, now = len(FAILS), 1000000.0
+    goal = (40.753597, -73.983233)
+
+    def gym(team, dlat, raid=0, cp=5000):
+        return [team, 1000, goal[0] + dlat, goal[1], raid, 0, 0, cp]
+    live = {"yel": gym(3, 0.0005), "emp": gym(0, 0.0007), "raid": gym(1, 0.0003, raid=600000)}
+    t, w = gym_run.pick_any([1, 3], {"yel", "emp"}, {"yel": now - 60, "emp": now - 60}, goal, goal, live, 0, 250, None, now)
+    check(t and t[0] == "yel" and w, f"only a resting yellow gym (+ a resting empty one, a raided one): the yellow one, marked resting: {t!r} {w!r}")
+    live["blu"] = gym(1, 0.001)
+    t, w = gym_run.pick_any([1, 3], {"yel", "emp"}, {"yel": now - 60, "emp": now - 60}, goal, goal, live, 0, 250, None, now)
+    check(t and t[0] == "blu" and not w, f"another enemy gym that is not resting comes first: {t!r} {w!r}")
+    del live["blu"]
+    t, w = gym_run.pick_any([1, 3], {"yel", "emp"}, {"yel": now + 3000, "emp": now - 60}, goal, goal, live, 0, 250, None, now)
+    check(t is None and not w, f"a refused placement's one-hour rest holds: {t!r}")
+    t, w = gym_run.pick_any([1, 3], {"emp"}, {"emp": now - 60}, goal, goal, {"emp": gym(0, 0.0007), "raid": gym(1, 0.0003, raid=600000)}, 0, 250, None, now)
+    check(t is None, f"a resting EMPTY gym and a raided one: nothing (no Deploy loop, no raid): {t!r}")
+    if len(FAILS) == n0:
+        print("ok: gym_run pick_any(): with nothing else to beat a resting enemy gym is battled; empty / raided / hour-rested ones are not")
 
 
 def main():
