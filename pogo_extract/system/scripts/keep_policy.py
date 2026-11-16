@@ -824,6 +824,7 @@ def main():
     _collapsing = set()         # uids the dominance collapse is about to RELEASE: for them 'evolve into an open slot' is the
     #                             rescue, whatever keep reason they still carry at that moment (2026-09-23, Minccino 87%)
     _promises = {}                                                 # uid -> promised stage(s), for audit_promises (2026-09-17)
+    _promise_stops = {}                                            # uid -> {stage passed over: why} (_promise_targets, 2026-11-16)
     def _cost(r, ts):
         cs = [evolvable_forms.path_cost(_sid(r), t, allreach_sp) for t in ts]
         return None if (not cs or any(c is None for c in cs)) else max(cs)
@@ -1002,6 +1003,12 @@ def main():
         return v
     def _earns_slot(t, r):
         """Would the EVOLVED copy of r be kept at stage t right now? Same ranking, same dominance test as the cull."""
+        return _slot_why(t, r) is None
+    def _slot_why(t, r):
+        """_earns_slot's test, saying WHY NOT (2026-11-16, "i just want everything to make sense": the which-way line names
+        it). None = it earns a slot at t; else {'kind': 'full' (no plain slot: 'held', the IVs holding them, best first),
+        'spare' (an open slot under a better copy, 'best', for a copy kept anyway), 'tie' (it would only push out an equal
+        copy, 'iv'), 'covered' (a richer copy with a higher IV, 'iv', would collapse it on arrival)}."""
         key = _tkey(t, r); v = _virtual(r)
         # A SURPLUS CARD COPY is judged against the target's card slots first (rule 13's own cap): the special
         # background travels with it, and a stage that lacks that card gains a collectible (2026-09-16).
@@ -1017,13 +1024,17 @@ def main():
             if v['uid_hex'] in {x['uid_hex'] for x in topn(_grp + [v], _n, look=keep_config.card_look)}:
                 _best_c = max([(a['iv_total'] or 0) for a in _lad] + [-1])   # an empty ladder: the card slot is free
                 if len(_grp) >= _n or (v['iv_total'] or 0) > _best_c:
-                    return True                           # a new card at that stage, a new best, or it replaces a weaker one
+                    return None                           # a new card at that stage, a new best, or it replaces a weaker one
         pool = list(stage_pool.get(key, ())) + _committed.get(key, []) + [v]
         _n = _eff_cap(key, pool)
         _in = {x['uid_hex'] for x in topn(pool, _n)}
         _held = topn(pool[:-1], _n)                       # the copies that HOLD a slot now: one under the floor holds none (2026-11-05: a 71% Noctowl made the stage read full)
-        if v['uid_hex'] not in _in:
-            return False                                  # no plain slot: beyond the cap or displaced by a special
+        if v['uid_hex'] not in _in:                       # no plain slot: beyond the cap or displaced by a special ...
+            _ivs = sorted(((x['iv_total'] or 0) for x in _held), reverse=True)
+            _open = topn(pool, len(pool))                 # ... or under the floor (the same ladder with every slot open)
+            if v['uid_hex'] not in {x['uid_hex'] for x in _open}:
+                return {'kind': 'floor', 'held': _ivs, 'floor': keep_config.floor_iv_for(_open[0]['pokemon_id']) if _open else None}
+            return {'kind': 'full', 'held': _ivs}
         # WORTH IT (user 2026-09-17 "make sure you dont make me evolve pokemon for no reason"): the evolved copy must
         # ADD something -- the first plain copy of that stage, a new best (a hundo there counts), or it pushes a weaker
         # copy out of a full top-N. Filling an open 2nd/3rd slot beneath better copies spends candy for nothing.
@@ -1048,13 +1059,13 @@ def main():
         _rescue = r['uid_hex'] in _collapsing or (r['uid_hex'] not in _stock_uids
                                                   and not ((keep.get(r['uid_hex']) or set()) - {'evolve_1', 'evolve_2'}))
         if len(_held) < _n and (v['iv_total'] or 0) <= _best and not _rescue:
-            return False
+            return {'kind': 'spare', 'best': _best}
         # A FULL stage must be IMPROVED, not reshuffled (2026-09-17): with every slot taken, an arrival whose IV
         # EQUALS the copy it pushes out only out-ranks it on the CP tie-break, so the evolution costs candy AND a
         # copy and leaves the ladder exactly where it was. _evocheck.improves has always been strict (`i > bar`).
         _drop = [x for x in _held if x['uid_hex'] not in _in]
         if _drop and max((x['iv_total'] or 0) for x in _drop) >= (v['iv_total'] or 0):
-            return False
+            return {'kind': 'tie', 'iv': max((x['iv_total'] or 0) for x in _drop)}
         mv, ivv = _domattr(v), (v['iv_total'] or 0)
         promised = {c['uid_hex'] for c in _committed.get(key, ())}
         for a in _all_by_key.get(key, []) + _committed.get(key, []):
@@ -1064,8 +1075,8 @@ def main():
                 continue                                  # a transferred mon is never a dominator; a promised copy is kept
             ma = _domattr(a)
             if ma != mv and (ma | mv) == ma and (a['iv_total'] or 0) > ivv:
-                return False                              # would be collapsed on arrival (dominance pass, same test)
-        return True
+                return {'kind': 'covered', 'iv': a['iv_total'] or 0}   # would be collapsed on arrival (dominance pass, same test)
+        return None
     def _commit(t, r):
         _committed[_tkey(t, r)].append(_virtual(r))       # raise the bar: the next candidate competes with this one
     def _revoke_displaced(ts, r):
@@ -1133,6 +1144,7 @@ def main():
         promised with Armarouge and Ceruledge both empty; five unguided evolutions can land 4 + 1)."""
         fin = {t for t in tg if not is_pre_sp.get(t)}
         fins = _promisable(sorted(fin), _sid(r))
+        _promise_stops.pop(r['uid_hex'], None)
         if len(fins) > 1:
             # ponytail: Tyrogue is IV-determined in GO but is treated as a split (conservative); middles of a split
             # line are never promised. Resolve per-mon branches here if either starts costing real slots.
@@ -1147,11 +1159,19 @@ def main():
                     _unpaid_committed.add(r['uid_hex'])
             return []
         earned = False
-        for t in _promisable(sorted(fin) + sorted(tg - fin), _sid(r)):
-            if _earns_slot(t, r):
+        _ts = _promisable(sorted(fin) + sorted(tg - fin), _sid(r))
+        # WHY IT STOPS SHORT (2026-11-16): the stages tried before the one promised, finals first, each with the reason it
+        # was passed over -- the which-way line's "then STOP" names it (promise_stops.json). Words only.
+        _why = {t: {'kind': 'branch'} for t in sorted(tg - set(_ts))}   # an item branch beside a candy one: never promised
+        for t in _ts:
+            _w = _slot_why(t, r)
+            if _w is None:
                 earned = True
                 if _afford(r, [t]):                       # a final it cannot afford may still leave a cheaper middle
+                    _promise_stops[r['uid_hex']] = _why
                     return [t]
+                _w = {'kind': 'candy'}                    # it earns a slot there, the family cannot pay for it today
+            _why[t] = _w
         if earned:
             _short(r, _promisable(sorted(fin) + sorted(tg - fin), _sid(r)))
             # EARNED A SLOT, CANNOT PAY FOR IT TODAY. Affordability decides whether to ADVISE the evolution
@@ -2011,6 +2031,8 @@ def main():
                   open(os.path.join(ROOT, 'system', 'analysis', 'candy_short.json'), 'w'))
         json.dump({u: t for u, t in _promises.items() if any(x.startswith('evolve_') for x in keep.get(u, ()))},
                   open(os.path.join(ROOT, 'system', 'analysis', 'promises.json'), 'w'))
+        json.dump({u: s for u, s in _promise_stops.items() if u in _promises and any(x.startswith('evolve_') for x in keep.get(u, ()))},
+                  open(os.path.join(ROOT, 'system', 'analysis', 'promise_stops.json'), 'w'))   # the which-way line's reasons
         json.dump({u: sorted(ts) for u, ts in sorted(_showcase_blocked.items())},
                   open(os.path.join(ROOT, 'system', 'analysis', 'showcase_blocked.json'), 'w'))
         # THE UNPAID HOLDS THAT COMMIT A SLOT (2026-09-29): _evocheck replays them as earmarked copies, or it would read

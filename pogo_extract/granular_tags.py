@@ -461,14 +461,15 @@ def evolve_advice(kept, reasons, pile):
     A = os.path.join(HERE, 'system', 'analysis')
     load = lambda n: json.load(open(os.path.join(A, n), encoding='utf-8')) if os.path.exists(os.path.join(A, n)) else {}
     prom, cul = load('promises.json'), load('pvp_combup_labels.json')
+    pstop = load('promise_stops.json')                    # why a promise stops short of a later stage (keep_policy, 2026-11-16)
     kept_by = {r['uid_hex']: r for r in kept if not keep_config.is_fused_component(r)}
     import sys as _sys
     for _p in (HERE, os.path.join(HERE, 'system', 'scripts')):
         if _p not in _sys.path:
             _sys.path.insert(0, _p)
     from refresh_evolve_shiny import compute_target       # raises on a broken rule: fail loud, never an empty list
-    _sh_detail, _sh_gated = {}, {}
-    _sh = compute_target(detail=_sh_detail, gated=_sh_gated)
+    _sh_detail, _sh_gated, _sh_onward = {}, {}, {}
+    _sh = compute_target(detail=_sh_detail, gated=_sh_gated, onward=_sh_onward)
     import sync_evolve_size
     _sz_want, _sz_big = sync_evolve_size.picks(set(pile))
     _sz_best = {}
@@ -478,7 +479,9 @@ def evolve_advice(kept, reasons, pile):
     pad = lambda u: format(int(u, 16), '016x')
     out = {}
 
-    def put(u, targets, source, leagues=(), gated=None):
+    def put(u, targets, source, leagues=(), gated=None, stop=None):
+        """`stop`: the producer's own record of why a target that evolves again is where it ends or waits -- the
+        which-way line says it (evolve_targets, 2026-11-16). Words only: no tag, audit or keep decision reads it."""
         if u not in kept_by or not targets:
             return
         e = out.get(u)
@@ -499,21 +502,24 @@ def evolve_advice(kept, reasons, pile):
             else:
                 e['gated'] = bool(gate)
             e['gate'] = ', '.join(dict.fromkeys(gate)) or (gated if isinstance(gated, str) else None)
+            if stop and not e['final']:
+                e['stop'] = stop
         for lg in leagues:
             if lg not in e['leagues']:
                 e['leagues'].append(lg)
     for u, r in kept_by.items():                          # 1. the engine's promises
         rs = reasons.get(u) or ()
         if 'evolve_1' in rs or 'evolve_2' in rs:
-            put(u, prom.get(u) or [], 'promise')
+            put(u, prom.get(u) or [], 'promise', stop=pstop.get(u))
     for u, v in cul.items():                              # 2. the PvP comb-ups
         if v.get('status') in ('now', 'gated') and v.get('target'):
             put(u, [v['target']], 'combup', leagues=[l for l in v.get('leagues') or [] if l in ('gl', 'ul')],
                 gated=(v.get('status') == 'gated'))
     for u, t in _sh_detail.items():                       # 3. the shiny upgrades
-        put(pad(u), [t] if isinstance(t, str) else list(t or []), 'shiny')
+        put(pad(u), [t] if isinstance(t, str) else list(t or []), 'shiny', stop=_sh_onward.get(u))
     for u, v in _sh_gated.items():
-        put(pad(u), [v.get('target')] if v.get('target') else [], 'shiny', gated=v.get('need') or True)
+        put(pad(u), [v.get('target')] if v.get('target') else [], 'shiny', gated=v.get('need') or True,
+            stop=_sh_onward.get(u))
     # a showcase pick is an evolution promise too now (bucket 8 under the label law, audit_labels 2026-09-29): never a copy
     # another bucket will not give up -- the last copy of its form, a trophy, protected, legacy, Mighty, Adventure Effect,
     # a card holder, a legendary, a best shadow, a fused component. The XXL badge itself carries through (its point).
@@ -522,7 +528,7 @@ def evolve_advice(kept, reasons, pile):
     for u, e in _sz_best.items():                         # 4. the showcase picks
         if _SIZE_BLOCK & set(reasons.get(pad(u)) or ()):
             continue
-        put(pad(u), [e['target']], 'size')
+        put(pad(u), [e['target']], 'size', stop=e.get('stop'))
     for u, e in out.items():
         e['tags'] = [evolve_tag(e['gated'], e['gate'], e['final'])]   # ONE tag per copy (2026-11-15): no league marker beside it
     return out

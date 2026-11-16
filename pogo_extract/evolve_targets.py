@@ -118,7 +118,7 @@ def _targets(members=None, pile=None):
         tg = list(e.get('targets') or [])
         out[norm_uid(u)] = {'tags': set(e.get('tags') or []), 'fixed': tg if len(tg) == 1 else [],
                             'split': tuple(tg) if len(tg) > 1 else None, 'source': e.get('source'),
-                            'leagues': [x for x in (e.get('leagues') or []) if x in _LG]}
+                            'leagues': [x for x in (e.get('leagues') or []) if x in _LG], 'stopwhy': e.get('stop')}
     return out
 
 def advice(members=None, pile=None):
@@ -208,7 +208,10 @@ def advice(members=None, pile=None):
                 'gender': r['gender'], 'tags': sorted(e['tags']), 'leagues': list(e.get('leagues') or []), 'src': sid, 'key': key,
                 'own': sorted(_own) if tf is not tform else None, 'stop': stop, 'luck': luck, 'source': e.get('source'),
                 'onward': _onward(_cul.get(u), e, r, _floor, lambda lg, st, rk, _sh=int((r['fresh_alignment'] or 0) == 1):
-                                  _new_best(lg, st, rk, _sh)) if stop else None,
+                                  _new_best(lg, st, rk, _sh),
+                                  owned=lambda lg, st, _sh=int((r['fresh_alignment'] or 0) == 1): _owned.get((lg, st, _sh)))
+                          if stop else None,
+                'why_stop': _stop_reason(e, r, _cul.get(u)) if stop else (None, None),
                 'ivpick': tyrogue_outcomes(r['iv_atk'], r['iv_def'], r['iv_sta']) if sid == 'tyrogue' else None}
         if e['fixed']:
             for t in e['fixed']:
@@ -307,7 +310,13 @@ def lines(adv=None):
                 how = '; '.join('%s: %s' % (n_, w_) for n_, w_ in [(_nice(a['target']), a['how'])] + [
                     (_disp(*o_), ef.gate_text(o_[0], _src)) for o_ in _alts] if w_)
             if a.get('stop'):
-                what += _onward_text(a['onward']) if a.get('onward') else _stop_text(a.get('source'), a['stop'])
+                _k, _t = a.get('why_stop') or (None, None)       # the producer's own reason (2026-11-16)
+                if a.get('onward'):
+                    what += _onward_text(a['onward'])
+                elif _k == 'later':
+                    what += _onward_text({'status': 'later', 'text': _t})
+                else:
+                    what += _stop_text(a.get('source'), a['stop'], _t if _k == 'stop' else None)
         g = {1: ' ♂', 2: ' ♀'}.get(a['gender'], '') if a['src'] in ('charcadet', 'kirlia', 'snorunt') else ''
         # WHICH COPY (2026-09-30): two 76% Smolivs printed the same line, so the second read as "standing, unchanged" --
         # the IVs and CP name the copy he can find in the game (and a Dolliv still wearing the tag reads as done)
@@ -377,21 +386,147 @@ def dex_lines():
     return [l for _o, l in sorted(out)]
 
 
-def _stop_text(source, stops):
-    """What to say when the target evolves again. A shiny upgrade climbs one stage per cull (refresh_evolve_shiny names
-    the last stage itself when it can), so the next cull may send it on: never call that a STOP (2026-11-10)."""
+def _stop_text(source, stops, reason=None):
+    """What to say when the target evolves again. WITH ITS REASON (2026-11-16, Benny: "i just want everything to make sense",
+    after "why?" to a shiny Machop told "Machoke, then leave it there -- the next cull says if it goes on to Machamp"): the
+    producer's own record of why it ends there (_why_words). Without one (an older table), the old words: a shiny upgrade
+    climbs one stage per cull, so it is never called a STOP there (2026-11-10)."""
+    if reason:
+        return ', then STOP: ' + reason
     return (', then leave it there -- the next cull says if it goes on to %s' if source == 'shiny'
             else ', then STOP -- do not evolve it on to %s') % ' / '.join(stops)
 
 
-def _onward(c, e, r, floor, new_best, between=None):
+_pc = lambda iv: '%d%%' % round((iv or 0) * 100 / 45)          # an IV total as the percent the game shows
+_pcs = lambda ivs: ', '.join(_pc(x) for x in ivs)
+
+
+def _spot_words(nm, w, iv):
+    """refresh_evolve_shiny.shiny_spot's why-not for stage `nm`, said to him (iv: this copy's IV total)."""
+    k, h = w.get('kind'), list(w.get('held') or [])
+    if k == 'none':
+        return 'you keep no spare shiny %s' % nm
+    strict = all((x or 0) > (iv or 0) for x in h)
+    if k == 'looks' and not strict:
+        return 'every shiny %s spot is taken (%s: the best of each look keeps one)' % (nm, _pcs(h))
+    out = 'you keep %d %s %sshiny %s (%s)' % (len(h), 'better' if strict else 'as good or better',
+                                             'regular ' if k == 'plain' and (w.get('all') or 0) > len(h) else '', nm, _pcs(h))
+    return ('it is under your %s shiny floor and %s' % (_pc(w.get('floor')), out)) if k == 'floor' else out
+
+
+def _shiny_words(v, gate=None):
+    """The shiny ladder's verdict for the copy once it stands at its target (refresh_evolve_shiny._onward_verdict, the rule's
+    own test): ('stop', why) or ('later', when it goes on and why). gate: the game's words for a gated next step."""
+    k, iv, nx = v.get('kind'), v.get('iv'), [_nice(x) for x in v.get('next') or []]
+    at = _nice(v.get('at') or '')
+    if k == 'full' or (k == 'gated' and v.get('spot')):
+        return 'stop', _spot_words(nx[0], v['spot'], iv)
+    if k == 'trophy':                                 # the best shiny of its look at a stage never moves (2026-06-10)
+        if not v.get('n_at'):
+            return 'stop', 'it becomes your only shiny %s (each stage keeps its best shiny)' % at
+        return 'stop', 'it becomes your best shiny %s%s (each stage keeps its best shiny)' % (
+            at, ' of its look' if (v.get('top') or 0) > (iv or 0) else '')
+    if k == 'end':
+        return 'stop', 'it cannot evolve past %s' % at
+    if k == 'split':
+        sp = v.get('spots') or {}
+        open_ = [x for x in v.get('next') or [] if sp.get(x) is None]
+        if not open_:
+            return 'stop', '; '.join(_spot_words(_nice(x), sp[x], iv) for x in v.get('next') or [])
+        return 'later', 'the next cull picks its way on (a shiny spot is open at %s)' % ' / '.join(_nice(x) for x in open_)
+    if k == 'gated':
+        return 'later', 'it goes on to %s once you can (%s)' % (nx[0], gate or 'that step needs more than candy')
+    if k == 'candy':
+        return 'later', 'it goes on to %s once you have the candy (%s for that step)' % (nx[0], v.get('need') or '?')
+    if k == 'dex':
+        return 'later', 'the next cull sends it on to %s, a shiny you never registered' % nx[0]
+    if k == 'on':
+        return 'later', 'the next cull sends it on to %s: a shiny %s spot is open' % (nx[0], nx[0])
+    return None, None
+
+
+def _promise_words(why, iv):
+    """keep_policy._slot_why for each later stage the engine's promise passed over (promise_stops.json), said to him:
+    ('stop', why) or ('later', when) -- a later stage it earns but the family cannot pay for today is a wait, not a stop."""
+    later = sorted(t for t, w in why.items() if (w or {}).get('kind') == 'candy')
+    if later:
+        return 'later', 'it goes on to %s once you have the candy (a spot is open there)' % ' / '.join(_nice(t) for t in later)
+    out = []
+    for t, w in sorted(why.items()):
+        nm, k, h = _nice(t), (w or {}).get('kind'), list((w or {}).get('held') or [])
+        if k == 'full':
+            out.append('you keep %d better %s (%s)' % (len(h), nm, _pcs(h)) if h and all(x > (iv or 0) for x in h)
+                       else 'you keep %d as good or better %s (%s)' % (len(h), nm, _pcs(h)) if h and all(x >= (iv or 0) for x in h)
+                       else 'every %s spot is taken (%s)' % (nm, _pcs(h)) if h else 'as a %s it gets no spot' % nm)
+        elif k == 'floor':
+            out.append('as a %s it is under your %s floor' % (nm, _pc(w.get('floor'))))
+        elif k == 'spare':
+            out.append('as a %s it would only sit under your %s one' % (nm, _pc(w.get('best'))))
+        elif k == 'tie':
+            out.append('as a %s it would only replace an equal %s one' % (nm, _pc(w.get('iv'))))
+        elif k == 'covered':
+            out.append('as a %s a better special copy (%s) covers it' % (nm, _pc(w.get('iv'))))
+        elif k == 'branch':
+            out.append('%s is an item branch, never advised' % nm)
+    return ('stop', '; '.join(out)) if out else (None, None)
+
+
+def _size_words(why):
+    """sync_evolve_size.to_the_end's record of the next stage(s) that failed the showcase test, said to him."""
+    out = []
+    for t, w in sorted(why.items()):
+        nm, k = _nice(t), (w or {}).get('kind')
+        if k == 'beaten':
+            out.append('as a %s it would score %s, under your best one (%s)' % (nm, w.get('score'), w.get('best')))
+        elif k == 'min':
+            out.append('as a %s it would score %s, under your %s-point bar' % (nm, w.get('score'), w.get('min')))
+        elif k == 'promised':
+            out.append('as a %s it would take a spot promised to another copy' % nm)
+        elif k == 'cannot':
+            out.append('the game does not let it become a %s' % nm)
+        elif k == 'unknown':
+            out.append('its %s size score cannot be worked out' % nm)
+    return ('stop', '; '.join(out)) if out else (None, None)
+
+
+def _combup_words(c, target):
+    """A PvP comb-up ends where it plays: its row in pvp_combup_labels.json (league, rank as that stage)."""
+    if not c or c.get('target') != target or not c.get('leagues'):
+        return None, None
+    return 'stop', 'it plays %s as a %s (#%s)' % (' / '.join(_LG[x] for x in c['leagues'] if x in _LG), _nice(target), c.get('rank'))
+
+
+def _stop_reason(e, r, c):
+    """(kind, words) for where THIS copy's advice stops or waits, from its producer's own record (2026-11-16, "i just want
+    everything to make sense"): ('stop', why) / ('later', when) / (None, None) = no record (an older table): the old words.
+    e: its _targets row (source, stopwhy); r: its DB row; c: its comb-up row (pvp_combup_labels.json)."""
+    v, src = e.get('stopwhy'), e.get('source')
+    if src == 'combup':
+        return _combup_words(c, (e.get('fixed') or [None])[0])
+    if not isinstance(v, dict) or not v:
+        return None, None
+    if src == 'shiny':
+        g = None
+        if v.get('kind') == 'gated' and v.get('next'):
+            import evolvable_forms as ef
+            g = ef.gate_text(v['next'][0], v.get('at'))
+        return _shiny_words(v, g)
+    if src == 'promise':
+        return _promise_words(v, r['iv_total'])
+    if src == 'size':
+        return _size_words(v)
+    return None, None
+
+
+def _onward(c, e, r, floor, new_best, between=None, owned=None):
     """Where THIS copy goes on after the advice row's one target, or None = nothing further, the STOP stands (2026-11-15).
     A 67% Trapinch (1/14/15) was promised to the empty Vibrava stage and told 'then STOP -- do not evolve it on to Flygon'
     while it was Ultra League #5 as Flygon; he evolved it as told and the next cull's PvP comb-up sent it on. Two sources:
     its comb-up row `c` (pvp_combup_labels.json: now / gated / hold) when that ends further up the line, else its own best
     league stage (row `r`: gl_/ul_ stage + rank) when that lies further up, is inside the Best floor and would be a Best he
     keeps there (`new_best(league, stage, rank)`) -- the test pvp_combup.pick applies once the copy stands at the target
-    ('maybe': pick can still block it there). Words only: no tag, promise or keep reason reads this."""
+    ('maybe': pick can still block it there). `owned(league, stage)`: your best rank there now, said in the line ('beats').
+    Words only: no tag, promise or keep reason reads this."""
     if len(e.get('fixed') or ()) != 1:
         return None
     if between is None:
@@ -409,20 +544,32 @@ def _onward(c, e, r, floor, new_best, between=None):
     if not got:
         return None
     st = min(got, key=lambda s: (min(got[s].values()), s))
-    return {'target': st, 'leagues': sorted(got[st]), 'rank': min(got[st].values()), 'ranks': got[st], 'status': 'maybe', 'why': ''}
+    out = {'target': st, 'leagues': sorted(got[st]), 'rank': min(got[st].values()), 'ranks': got[st], 'status': 'maybe', 'why': ''}
+    if owned is not None:
+        out['beats'] = {lg: owned(lg, st) for lg in sorted(got[st])}
+    return out
 
 
 def _onward_text(o):
-    """What the line says instead of a STOP when the copy goes on (_onward): where, for which league, and when."""
+    """What the line says instead of a STOP when the copy goes on (_onward, or a producer's 'later'): where, for which
+    league, when -- and what decides it (2026-11-16: no bare "the next cull says"; 'need', 'beats', 'text')."""
+    if o.get('status') == 'later':
+        return ', then leave it there -- ' + o['text']
     lgs = (' / '.join('%s (#%s)' % (_LG[x], o['ranks'][x]) for x in o['leagues']) if o.get('ranks')
            else ' / '.join(_LG[x] for x in o.get('leagues') or []) + (' (#%s)' % o['rank'] if o.get('rank') else ''))
     tgt = _nice(o['target']) + (' for ' + lgs if lgs.strip() else '')
     if o.get('status') == 'now':
         return ', then on to %s' % tgt
     if o.get('status') == 'maybe':
-        return ', then leave it there -- the next cull says if it goes on to %s' % tgt
+        if 'beats' not in o:
+            return ', then leave it there -- the next cull sends it on to %s if it is still your best there' % tgt
+        b = [x for x in o['beats'].values() if x is not None]
+        return (', then leave it there -- the next cull sends it on to %s if it still beats your best %s there (#%s)'
+                % (tgt, _nice(o['target']), min(b)) if b
+                else ', then leave it there -- the next cull sends it on to %s: you have no %s there yet' % (tgt, _nice(o['target'])))
     why = o.get('why') or ''
-    when = ('; that step has a requirement the next cull names' if o.get('status') == 'gated'
+    when = (' once you can (%s)' % o['need'] if o.get('status') == 'gated' and o.get('need')
+            else '; that step needs more than candy' if o.get('status') == 'gated'
             else ' once you have the candy' if why == 'short on candy' else ' once you can (%s)' % why if why else ' later')
     return ', then leave it there -- it goes on to %s%s' % (tgt, when)
 
@@ -436,22 +583,41 @@ def _selfcheck():
     _nb = lambda lg, st, rk: rk < {('ul', 'flygon'): 807, ('gl', 'flygon'): 12}.get((lg, st), 10 ** 9)
     _o = _onward(None, _e, _r, 25, _nb, _bt)                                            # Great League #18 loses to your #12
     assert _o == {'target': 'flygon', 'leagues': ['ul'], 'rank': 5, 'ranks': {'ul': 5}, 'status': 'maybe', 'why': ''}, _o
-    assert _onward_text(_o) == ', then leave it there -- the next cull says if it goes on to Flygon for Ultra League (#5)'
+    assert _onward_text(_o) == ', then leave it there -- the next cull sends it on to Flygon for Ultra League (#5) if it is still your best there', _onward_text(_o)
     assert _onward(None, _e, _r, 4, _nb, _bt) is None                                   # outside the Best floor: the STOP stands
     assert _onward(None, _e, dict(_r, ul_rank=900), 25, _nb, _bt) is None               # not a Best you would keep there
     assert _onward(None, _e, dict(_r, ul_stage='vibrava', gl_stage='trapinch'), 25, _nb, _bt) is None   # nothing FURTHER up
     assert _onward(None, _e, {'gl_stage': None, 'gl_rank': None, 'ul_stage': None, 'ul_rank': None}, 25, _nb, _bt) is None
     _b = _onward(None, _e, dict(_r, gl_rank=3), 25, _nb, _bt)                           # one evolution serves both leagues
-    assert _onward_text(_b).endswith('goes on to Flygon for Great League (#3) / Ultra League (#5)'), _b
+    assert 'sends it on to Flygon for Great League (#3) / Ultra League (#5) if' in _onward_text(_b), _onward_text(_b)
     assert _onward(None, {'fixed': [], 'split': ('a', 'b')}, _r, 25, _nb, _bt) is None
     _c = {'target': 'flygon', 'leagues': ['ul'], 'rank': 5, 'status': 'hold', 'why': 'short on candy'}
     _h = _onward(_c, _e, _r, 25, _nb, _bt)                                              # its comb-up row wins: it says when
     assert _onward_text(_h) == ', then leave it there -- it goes on to Flygon for Ultra League (#5) once you have the candy', _h
     assert _onward_text(dict(_h, status='now', why='')) == ', then on to Flygon for Ultra League (#5)'
     assert _onward_text(dict(_h, why='needs Unova Stone')).endswith('once you can (needs Unova Stone)')
-    assert _onward_text(dict(_h, status='gated', why='questDisplay')).endswith('; that step has a requirement the next cull names')
+    assert _onward_text(dict(_h, status='gated', why='questDisplay')).endswith('; that step needs more than candy')
     assert all('STOP' not in _onward_text(dict(_h, status=s)) for s in ('now', 'gated', 'hold', 'maybe'))
     assert _onward(dict(_c, target='vibrava'), _e, dict(_r, ul_rank=900, gl_rank=900), 25, _nb, _bt) is None   # the row's own target
+    # WITH ITS REASON (2026-11-16, "i just want everything to make sense"): each producer's own record, in one clause
+    _mach = {'kind': 'full', 'at': 'machoke', 'next': ['machamp'], 'iv': 21,
+             'spot': {'kind': 'plain', 'held': [43, 40, 36, 29], 'all': 4}}       # the 47% shiny Machop of 13:15
+    assert _shiny_words(_mach) == ('stop', 'you keep 4 better shiny Machamp (96%, 89%, 80%, 64%)'), _shiny_words(_mach)
+    assert _stop_text('shiny', ['Machamp'], _shiny_words(_mach)[1]) == \
+        ', then STOP: you keep 4 better shiny Machamp (96%, 89%, 80%, 64%)'
+    assert _shiny_words(dict(_mach, kind='trophy', n_at=0, top=None)) == \
+        ('stop', 'it becomes your only shiny Machoke (each stage keeps its best shiny)')
+    assert _shiny_words(dict(_mach, kind='on')) == ('later', 'the next cull sends it on to Machamp: a shiny Machamp spot is open')
+    assert _shiny_words(dict(_mach, kind='end')) == ('stop', 'it cannot evolve past Machoke')
+    assert _promise_words({'flygon': {'kind': 'full', 'held': [44, 43, 43]}}, 38) == \
+        ('stop', 'you keep 3 better Flygon (98%, 96%, 96%)'), _promise_words({'flygon': {'kind': 'full', 'held': [44, 43, 43]}}, 38)
+    assert _promise_words({'flygon': {'kind': 'candy'}}, 38)[0] == 'later'
+    assert _size_words({'rhyperior': {'kind': 'beaten', 'score': 1050, 'best': 1086}}) == \
+        ('stop', 'as a Rhyperior it would score 1050, under your best one (1086)')
+    assert _onward_text({'status': 'later', 'text': 'x'}) == ', then leave it there -- x'
+    _w = _onward(None, _e, _r, 25, _nb, _bt, owned=lambda lg, st: {('ul', 'flygon'): 807}.get((lg, st)))
+    assert _onward_text(_w).endswith('if it still beats your best Flygon there (#807)'), _onward_text(_w)
+    assert _stop_reason({'source': 'promise', 'stopwhy': None}, {'iv_total': 38}, None) == (None, None)   # an older table
     tf = {'GLOOMNORMAL': {'vileplume': [['VILEPLUMENORMAL', '']], 'bellossom': [['BELLOSSOMNORMAL', '']]},
           'ODDISHNORMAL': {'gloom': [['GLOOMNORMAL', '']]},
           'KIRLIANORMAL': {'gallade': [['GALLADENORMAL', 'MALE']], 'gardevoir': [['GARDEVOIRNORMAL', '']]},
