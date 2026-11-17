@@ -1503,19 +1503,33 @@ def ballsave_skip(plan, balls, now):
         if mins <= 0:
             return [], "off: the plan's end time has passed"
         margin = float(plan.get("margin", 1.0))
+        reserve = max(0, int(plan.get("reserve", 0)))   # balls kept back (also held by the Poke Ball floor: cfg_now)
         ranked = sorted(((int(d), float(v[0]), float(v[1])) for d, v in plan["species"].items()), key=lambda x: (-x[1], x[0]))
     except (KeyError, TypeError, ValueError, IndexError, AttributeError):
         return [], "off: unreadable plan"
+    budget = balls - reserve
+    held = f" ({budget} after the {reserve} kept back)" if reserve else ""
     need, skip, cut = 0.0, [], None
     for dex, dpb, rate in ranked:
-        if need >= balls:
+        if need >= budget:
             skip.append(dex)
             cut = dpb if cut is None else cut
         need += rate * mins * margin
     if not skip:
-        return [], f"{balls} balls for {mins:.0f} min: catching everything (every species needs ~{need:.0f})"
-    return sorted(skip), (f"{balls} balls for {mins:.0f} min: leaving {len(skip)} of {len(ranked)} species alone "
+        return [], f"{balls} balls{held} for {mins:.0f} min: catching everything (every species needs ~{need:.0f})"
+    return sorted(skip), (f"{balls} balls{held} for {mins:.0f} min: leaving {len(skip)} of {len(ranked)} species alone "
                           f"(at most {cut:.0f} stardust per ball)")
+
+
+def ballsave_reserve():
+    """Poke Balls the plan keeps back (Benny 2026-11-16 19:24: "i want max star dust and all balls except 100 used by
+    9:01pm"). Added to the Poke Ball floor while a plan file is on the phone -- so no throw of any kind dips into them,
+    not before the end time and not after it. Delete the plan file to release them."""
+    p = _BS["plan"]
+    try:
+        return max(0, int(p.get("reserve", 0))) if isinstance(p, dict) else 0
+    except (TypeError, ValueError):
+        return 0
 
 
 def ballsave_now():
@@ -1554,6 +1568,9 @@ def ballsave_log(w, now):
 def cfg_now():
     c = dict(CFG)
     c["skipSp"] = ballsave_now()
+    res = ballsave_reserve()
+    if res:
+        c["floors"] = dict(CFG["floors"], **{"1": int(CFG["floors"]["1"]) + res})
     for k in FLAGS:
         c[k] = flag(k)
     c["apples"] = True   # Benny 2026-10-29: "i want anything to always be picked up" -- map items no longer wait on a switch
