@@ -38,13 +38,17 @@ PLAN = "/data/local/tmp/pogo_ballsave.json"
 GM = os.path.join(HERE, os.pardir, os.pardir, "pogo_extract", "gamemaster_pokeminers.json")
 CATCH = re.compile(r"^(\d\d):(\d\d):(\d\d) CATCH \S+ #(\d+) .*?dust=(\d+)")
 EVENT = re.compile(r"^\d\d:\d\d:\d\d (SHINY|STARPIECE|BALLSAVE (?:off|the plan ended|waiting)|NOT CATCHING|HOLD|ERR|"
-                   r"JS ERROR|install failed|attached|waiting for PoGo)")   # BALLSAVE's minute-by-minute cut is noise
+                   r"JS ERROR|install failed|attached|waiting for PoGo|!!! SAFETY HOLD|safety hold lifted|"
+                   r"paused for another tool|--- link drop|--- error)")   # BALLSAVE's minute-by-minute cut is noise
 
 
 def adb(*args, timeout=120):
     """Out of a native adb, never Git Bash's path rewriting (memory: feedback-git-bash-windows)."""
     r = subprocess.run(["adb", "-s", DEV] + list(args), capture_output=True, timeout=timeout)
-    return r.returncode, r.stdout.decode("utf-8", "replace").replace("\r", "")
+    out = r.stdout.decode("utf-8", "replace").replace("\r", "")
+    if r.returncode:   # adb says why on stderr ("device offline", "unauthorized"): keep it for the error line
+        out += r.stderr.decode("utf-8", "replace").replace("\r", "")
+    return r.returncode, out
 
 
 def epoch_of(day, hms):
@@ -117,7 +121,8 @@ def pull(tail, adb_=adb):
     rc1, led = adb_("exec-out", f"su -c 'tail -n {tail} {POGO}/spawn_ledger.jsonl'")
     rc2, log = adb_("exec-out", f"su -c 'stat -c %Y {POGO}/catch_loop.log; tail -n 40000 {POGO}/catch_loop.log'")
     if rc1 or rc2 or not led.strip():
-        raise RuntimeError(f"pull failed (ledger rc {rc1}, log rc {rc2})")
+        why = (led if rc1 else log if rc2 else "the ledger came back empty").strip()[-200:]
+        raise RuntimeError(f"pull failed (ledger rc {rc1}, log rc {rc2}): {why}")
     lines = log.splitlines()
     mtime = int(lines.pop(0)) if lines and lines[0].strip().isdigit() else None
     recs = []
@@ -166,7 +171,7 @@ def one_round(a, prior, since, out_dir, adb_=adb, now=None):
     dated = date_log(log, mtime or now)
     today = [r for r in recs if (r.get("t0") or 0) >= a.start_e * 1000]
     joined = join_dust(today, dated)
-    bare = sum(1 for r in today if r.get("r") == "caught" and r.get("d") is None)
+    bare = sum(1 for r in today if r.get("r") == "caught" and not r.get("d"))   # None, or 0: the award was not read
     allrecs = merge(prior, today)
     start = min([a.start_e] + [r["t0"] / 1000 for r in prior if r.get("t0")])
     plan, sm = bp.build(allrecs, start, a.end_e, keep=a.keep, margin=1.0,
@@ -328,6 +333,58 @@ def _selftest():
             (0, "17:00:02 BALLSAVE off: unreadable plan"), (0, "17:00:03 run 5s")]
     check("events: round lines once; the saver's cut is not one", (new_events(hist, seen2), new_events(hist, seen2)),
           (["17:00:00 SHINY Wild #10 ...", "17:00:02 BALLSAVE off: unreadable plan"], []))
+    dark = ["17:01:00 !!! SAFETY HOLD: PoGo died within 20s of our attach 2x in a row -- not attaching for 30 min",
+            "17:01:01 paused for another tool until 17:20:00 -- detached", "17:01:02 still paused (50s left)",
+            "17:01:03 --- link drop after 40s attached: gone -- re-attaching ---", "17:01:04 --- error: boom -- retry in 4s ---",
+            "17:01:05 safety hold (29 min left)"]
+    check("events: the catcher going dark is one", [ln[9:17] for ln in dark if EVENT.match(ln)], ["!!! SAFE", "paused f", "--- link", "--- erro"])
+    check("events: a run of 4 ball lines is not news", bool(EVENT.match("17:01:06 run 40s | caught=3")), False)
+    # main() against a fake phone and clock: a failed first round does not replay old lines; one failure line per 5 min;
+    # a run that never pushed a plan says so and exits 1
+    import contextlib
+    import io
+    import types
+    g = globals()
+    real = {k: g[k] for k in ("one_round", "events", "time", "shutil")}
+    day = dt.date.today()
+    clock = [epoch_of(day, "17:00:00")]
+    g.update(time=types.SimpleNamespace(time=lambda: clock[0], sleep=lambda x: clock.__setitem__(0, clock[0] + x),
+                                        strftime=time.strftime, mktime=time.mktime, localtime=time.localtime),
+             events=lambda adb_, seen: [], shutil=types.SimpleNamespace(which=lambda x: "adb"))
+    old = [(0, "16:41:00 SHINY Wild #10 odds 1:0.300"), (0, "16:40:00 BALLSAVE the plan ended: catching everything above the 50 balls kept in all")]
+    tries = {"n": 0}
+
+    def flaky(*args, **kw):
+        tries["n"] += 1
+        if tries["n"] == 1:
+            raise RuntimeError("pull failed (ledger rc 1, log rc 1): error: device offline")
+        return "a plan line", old
+
+    def dead(*args, **kw):
+        raise RuntimeError("pull failed (ledger rc 1, log rc 1): error: device unauthorized")
+    argv0 = sys.argv
+    try:
+        for name, fn in (("flaky", flaky), ("dead", dead)):
+            clock[0] = epoch_of(day, "17:00:00")
+            g["one_round"] = fn
+            sys.argv = ["ballsave_go.py", "--start", "17:00", "--end", "17:12", "--keep", "50", "--every", "5"]
+            out, code = io.StringIO(), 0
+            with contextlib.redirect_stdout(out):
+                try:
+                    main()
+                except SystemExit as ex:
+                    code = ex.code or 0
+            lines = out.getvalue().splitlines()
+            if name == "flaky":
+                check("main: a failed first try replays no old line", (sum("PHONE" in ln for ln in lines), sum("ROUND FAILED" in ln for ln in lines),
+                                                                       "done" in lines[-1], code), (0, 1, True, 0))
+            else:
+                check("main: dead all along: 3 failure lines, no 'done', exit 1",
+                      (sum("ROUND FAILED" in ln for ln in lines), "device unauthorized" in lines[0], lines[-1][9:28], code),
+                      (3, True, "NO PLAN WAS PUSHED ", 1))
+    finally:
+        g.update(real)
+        sys.argv = argv0
     return failed
 
 
@@ -371,20 +428,23 @@ def main():
         since = since or meta.get("saver_since")
     since = since or int(time.time())   # a saver going live now: its species left alone from now on
     out_dir = tempfile.mkdtemp(prefix="ballsave_")
-    seen, pushed, rounds = set(), False, 0
+    seen, pushed, primed, said = set(), False, False, ("", 0.0)
     while True:
         t0 = time.time()
-        rounds += 1
         try:
             head, dated = one_round(a, prior, since, out_dir)
             print(f"{time.strftime('%H:%M:%S')} {head}", flush=True)
             pushed = pushed or not a.dry
             for ln in new_events(dated, seen):
-                if rounds > 1:   # round 1 only marks the history; later ones print what came since the last events() poll
+                if primed:   # the first GOOD round only marks the history (review 11-16: a failed first try replayed it)
                     print(f"PHONE {ln}", flush=True)
+            primed, said = True, ("", 0.0)
         except Exception as e:   # noqa: BLE001 -- one bad round must not end a 4-hour run
-            print(f"{time.strftime('%H:%M:%S')} ROUND FAILED: {type(e).__name__}: {str(e)[:200]} -- "
-                  + ("the last plan stays in force" if pushed else "NO PLAN PUSHED YET (the phone keeps whatever it had)"), flush=True)
+            msg = (f"ROUND FAILED: {type(e).__name__}: {str(e)[:300]} -- "
+                   + ("the last plan stays in force" if pushed else "NO PLAN PUSHED YET (the phone keeps whatever it had)"))
+            if msg != said[0] or time.time() - said[1] >= 300:   # the same failure once per 5 min, not every 20 s retry
+                print(f"{time.strftime('%H:%M:%S')} {msg}", flush=True)
+                said = (msg, time.time())
             if not a.every:
                 sys.exit(1)
             if not pushed and not a.dry and time.time() < a.end_e - 60:
@@ -399,6 +459,9 @@ def main():
             except Exception:   # noqa: BLE001 -- a missed poll is caught up by the next round
                 pass
             time.sleep(15)
+    if not a.dry and not pushed:   # never "done" for a run whose plan never reached the phone
+        print(f"{time.strftime('%H:%M:%S')} NO PLAN WAS PUSHED by this run (the phone kept whatever it had)", flush=True)
+        sys.exit(1)
     if not a.dry:
         print(f"{time.strftime('%H:%M:%S')} done (the plan stays on the phone: it keeps {a.keep} balls in all until it is deleted)", flush=True)
 

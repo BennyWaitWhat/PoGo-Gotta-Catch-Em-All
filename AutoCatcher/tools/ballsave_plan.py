@@ -74,7 +74,7 @@ def build(records, start, end, keep=None, margin=1.0, bonus=None, since=None, re
     per_min = collections.defaultdict(collections.Counter)    # throwing minute -> balls per species
     tried = 0                                                  # spawns the catcher tried for: the prior's "average spawn"
     last = last_words(records, start)
-    with_d = any(r.get("r") == "caught" and r.get("d") is not None for r in last.values())
+    with_d = any(r.get("r") == "caught" and int(r.get("d") or 0) > 0 for r in last.values())   # all 0 = the award was not read
     for r in last.values():
         d, n = int(r["id"]), int(r.get("n") or 0)
         if r.get("sh"):   # a shiny gets balls whatever the plan says (SHINY LOOK): not the species' rate or its odds
@@ -181,6 +181,8 @@ def _selftest():
     rec8 = [{"k": "spawn", "e": f"z{i}", "id": 20 + i, "t0": (S + i) * 1000, "t1": (S + i + 1) * 1000, "n": 0, "r": "fled"} for i in range(3)]
     plan8, _ = build(rec8, S, S + 3600, bonus={21: 900})
     check("no ball thrown at all: ranked by the award", list(plan8["species"].items())[0], ("21", [3037.5, 0.0]))
+    _, sm9 = build([dict(r, d=0 if r.get("d") is not None else None) for r in rec], S, S + 3600)
+    check("every d is 0 (award unread): not 'from the ledger'", sm9["dust_from"], "log")
     return failed
 
 

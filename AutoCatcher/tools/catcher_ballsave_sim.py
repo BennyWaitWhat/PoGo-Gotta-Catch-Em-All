@@ -137,25 +137,52 @@ ns.update(FLAGS={}, flag=lambda k: False)
 ns["CFG"].update(floors={"1": 5, "2": 5, "3": 5})
 json.dump(dict(PLAN, end=time.time() - 60, reserve=100), open(pf, "w"))
 os.utime(pf, (time.time() + 20, time.time() + 20))
+ns["CFG"].update(mightyKeep=30)
 c = ns["cfg_now"]()
-check("reserve -> Poke Ball floor 105, end passed", (c["floors"], c["skipSp"]), ({"1": 105, "2": 5, "3": 5}, []))
-check("ended plan: no shiny look", c["peek"], False)
+check("reserve 100 pushed (JS spreads it), end passed", (c["floors"], c["reserve"], c["skipSp"]), ({"1": 5, "2": 5, "3": 5}, 100, []))
+check("ended plan: no shiny look, Mighty hold back", (c["peek"], c["mightyKeep"]), (False, 30))
 json.dump(dict(PLAN, end=time.time() + 600, keep=50), open(pf, "w"))
 os.utime(pf, (time.time() + 30, time.time() + 30))
 c = ns["cfg_now"]()
-check("live plan, keep 50: floor 40 + shiny look", (c["floors"], c["peek"]), ({"1": 40, "2": 5, "3": 5}, True))
+check("live plan, keep 50: reserve 35 + shiny look", (c["floors"], c["reserve"], c["peek"]), ({"1": 5, "2": 5, "3": 5}, 35, True))
+check("live plan: no Mighty hold (the budget counts G/U)", c["mightyKeep"], 0)
 os.remove(pf)
 c = ns["cfg_now"]()
-check("plan deleted -> floors back to 5", c["floors"], {"1": 5, "2": 5, "3": 5})
+check("plan deleted -> no reserve", (c["floors"], c["reserve"]), ({"1": 5, "2": 5, "3": 5}, 0))
+# a plan file with numbers no int() can take must not stop the 1-second loop (review 11-16: OverflowError)
+json.dump({"end": 10 ** 400, "keep": 1e999, "species": {"10": [10 ** 400, 1.0]}}, open(pf, "w"))
+os.utime(pf, (time.time() + 35, time.time() + 35))
+try:
+    c = ns["cfg_now"]()
+    check("inf in the plan: no crash", (c["reserve"], ns["_BS"]["note"]), (0, "off: unreadable plan"))
+except Exception as ex:   # noqa: BLE001
+    check("inf in the plan: no crash", repr(ex), "no exception")
+os.remove(pf)
+ns["cfg_now"]()
 # a bag short of Great Balls: the keep makes up the floor, and the saver's budget counts it too
 json.dump(dict(PLAN, end=time.time() + 100 * 60, keep=50), open(pf, "w"))
 os.utime(pf, (time.time() + 40, time.time() + 40))
 ns["BALLS"].update(usable=95, items={"1": 100, "2": 3, "3": 5})
 c = ns["cfg_now"]()
-check("short floor: 58 to spend, floors 42/5/5", (ns["_BS"]["note"][:16], c["floors"]), ("58 balls to spen", {"1": 42, "2": 5, "3": 5}))
+check("short floor: 58 to spend, reserve 35", (ns["_BS"]["note"][:16], c["reserve"]), ("58 balls to spen", 35))
 ns["SHINYFIELD"]["ok"] = False
 check("no shiny field at attach: no shiny look", ns["cfg_now"]()["peek"], False)
 ns["SHINYFIELD"]["ok"] = True
+# the attach check (session_loop): a read distrusted earlier in the run stays off; a later attach that resolves it is on
+blk = re.search(r'    mk = st.get\("mighty"\) or \{\}.*?\n    elif SHINYFIELD\["suspended"\]:\n.*?\n', src, re.S).group(0)
+att = "\n".join(ln[4:] for ln in blk.splitlines())
+said = []
+good = {"mighty": {"wildPokemon": 16, "display": 24, "flag": 40, "shiny": 32}}
+env = {"st": good, "SHINYFIELD": {"ok": True, "suspended": True}, "w": said.append}
+exec(att, env)
+check("distrusted earlier in the run: stays off", (env["SHINYFIELD"]["ok"], said[-1][:20]), (False, "SHINY LOOK stays off"))
+env = {"st": good, "SHINYFIELD": {"ok": False, "suspended": False}, "w": said.append}
+exec(att, env)
+check("resolved at a later attach: on again", env["SHINYFIELD"]["ok"], True)
+check("the attach pushes its shiny outcome either way",
+      bool(re.search(r"\n    cfg = cfg_now\(\)\n    sc\.exports_sync\.cfg\(cfg\)", src)), True)
+check("a 'SHINY LOOK suspended' line turns it off for the run",
+      bool(re.search(r'if line\.startswith\("SHINY LOOK suspended"\):[^\n]*\n\s+SHINYFIELD\.update\(ok=False, suspended=True\)', src)), True)
 # berries (Benny 11-16 22:14 "stop auto feeding berries for now"): Pinap / Razz only while pogo_berries.on says 1
 ns["CFG"].update(pinap=True, razz=True)
 c = ns["cfg_now"]()
@@ -336,9 +363,108 @@ api.set('E', {m1: Object.assign(ent(10), {st: 'open', tOpen: NOW, opens: 1, peek
 api.set('RESP', {m1: {st: 1, p: {1: 0.01, 3: 0.2}, t: NOW + 100, strong: 1, shiny: 0}});
 api.call('catchTick', NOW + 200);
 res.mightyPeek = [api.get('E.m1') !== undefined, api.get('E.m1.peek'), api.get('E.m1.mighty'), api.get('PEEKED.m1') || 0];
+// KEEP IN ALL from the LIVE bag (review 11-16): floorOf() = Python reserve_floors() on the same counts, 600 bags
+const cases = JSON.parse(fs.readFileSync(process.argv[3], 'utf8'));
+api = mk();
+res.floorOf = cases.filter(x => { api.call('applyCfg', {floors: {'1': 5, '2': 5, '3': 5}, reserve: x[3]}); api.set('ITEMC', {1: x[0], 2: x[1], 3: x[2]});
+  return [1, 2, 3].some(b => api.call('floorOf', b) !== x[4][b - 1]); }).map(x => x.slice(0, 4));
+// a new process: Python has no counts yet, the JS has them -- bag 20/25/5 = the 50 kept: no ordinary throw at all
+api.call('applyCfg', {floors: {'1': 5, '2': 5, '3': 5}, reserve: 35}); api.set('ITEMC', {1: 20, 2: 25, 3: 5});
+res.keepLive = [api.call('pickBall', {1: 0.3, 2: 0.4, 3: 0.5}, false, 0, 0)];
+api.set('ITEMC', {}); res.keepLive.push(api.call('ballOk', 1));                      // counts unread + a keep: nothing
+api.call('applyCfg', {reserve: 0}); res.keepLive.push(api.call('ballOk', 1));         // counts unread, no keep: as before
+// a shiny takes a kept Ultra: the spare Poke Ball now makes up the Ultra floor at once (not 10 s later)
+api.call('applyCfg', {reserve: 35}); api.set('ITEMC', {1: 41, 2: 5, 3: 5}); res.keepLive.push(api.call('ballOk', 1));
+api.set('ITEMC', {1: 41, 2: 5, 3: 4}); res.keepLive.push(api.call('ballOk', 1));
+// the REAL throwAt (review 11-16: the stub hid it): a shiny at the keep gets an Ultra written into the throw; a plain one none
+api = mk();
+const wrote = [];
+api.set('il', () => ({newObject: () => ({add: (off) => ({writeS32: (v) => wrote.push([off, v]), writeFloat: () => {}, writeU8: () => {}})})}));
+api.set('method', () => 'TC'); api.set('call', () => null); api.set('LASTOK', true); api.set('myPos', () => null);
+api.call('applyCfg', {floors: {'1': 5, '2': 5, '3': 5}, reserve: 35}); api.set('ITEMC', {1: 40, 2: 5, 3: 5});
+const eS = {pid: 10, cls: 'WildMapPokemon', st: 'ready', probs: {1: 0.2, 2: 0.3, 3: 0.4}, prio: false, mighty: 0, shiny: 1, att: 0};
+const eK = {pid: 774, cls: 'WildMapPokemon', st: 'ready', probs: {1: 0.3, 2: 0.4, 3: 0.5}, prio: false, mighty: 0, shiny: 0, att: 0};
+api.call('throwAt', eS, 'S', {}, NOW); api.call('throwAt', eK, 'K', {}, NOW);
+res.realThrow = [wrote.filter(w => w[0] === 0x10).map(w => w[1]), eS.st, eK.st, api.get('ITEMC[3]')];
+// the latch: 6 shinies in 200 replies is real (no latch); 6 in 58 is a wrong read (latch)
+api = mk();
+api.call('applyCfg', {catch: true, skipSp: [10], peek: true, floors: {'1': 5, '2': 5, '3': 5}, openMs: 0, maxOpen: 6, readyMs: 150, nearWait: 0});
+api.set('walk', () => {}); api.set('ITEMC', {1: 100, 2: 5, 3: 5}); api.set('openOne', () => {}); api.set('throwAt', () => {});
+const latch = (rep1) => { api.set('SHINYOFF', false); api.set('ST.shiny', 5); api.set('ST.rep1', rep1);
+  api.set('E', {L: Object.assign(ent(774), {st: 'open', tOpen: NOW, opens: 1})}); api.set('NE', 1); api.set('PEND', []); api.set('LIVE', {L: {}});
+  api.set('RESP', {L: {st: 1, p: {1: 0.5}, t: NOW + 100, strong: 0, shiny: 1}}); api.call('catchTick', NOW + 200); return api.get('SHINYOFF'); };
+res.latch = [latch(199), latch(57)];
+// a reply of ANOTHER species can never land on an open (dead in practice, kept as a guard)
+api.set('SHINYOFF', false); api.set('ST.shiny', 0);
+api.set('E', {x1: Object.assign(ent(10), {st: 'open', tOpen: NOW, opens: 1})}); api.set('NE', 1); api.set('PEND', []); api.set('LIVE', {x1: {}});
+api.set('RESP', {x1: {st: 1, p: {1: 0.5}, t: NOW + 100, strong: 0, shiny: 1, sp: 999}});
+api.call('catchTick', NOW + 200);
+res.latch.push(api.get('E.x1.st'), api.get('RESP.x1') === undefined);
+// the shiny read itself: WildPokemon -> PokemonProto -> display -> Shiny byte (wild), and a lure reply's PokemonProto
+api = mk();
+globalThis.uint64 = (v) => ({v: v});
+api.set('OFF.wPk', 0x20); api.set('OFF.pkDisp', 0x30); api.set('OFF.dShiny', 0x40); api.set('OFF.pkId', 0x50);
+api.set('readProbs', () => ({1: 0.5})); api.set('strongOf', () => 0); api.set('mightyOf', () => 0);
+const disp = (sh) => ({isNull: () => false, add: (o) => ({readU8: () => (o === 0x40 ? sh : 0)})});
+const pkP = (sp, sh) => ({isNull: () => false, add: (o) => ({readS32: () => sp, readPointer: () => (o === 0x30 ? disp(sh) : NUL)})});
+const wildP = (id, sh) => ({isNull: () => false, add: (o) => ({readU64: () => ({compare: () => 1, toString: () => id}), readPointer: () => (o === 0x20 ? pkP(0, sh) : NUL)})});
+const encOut = (id, sh) => ({add: (o) => ({readPointer: () => (o === 0x10 ? wildP(id, sh) : NUL), readS32: () => 1})});
+api.set('RESP', {});
+api.call('onEncounterOut', encOut('111', 1)); api.call('onEncounterOut', encOut('222', 0));
+res.shinyRead = [api.get('RESP')['111'].shiny, api.get('RESP')['222'].shiny];
+api.set('NWOFF', {X: {res: 1, pk: 2, cp: 3}});
+api.set('E', {a: {pid: 10, st: 'open'}}); api.set('NWQ', [{enc: 'a', t: NOW}]); api.set('LASTNW', {t: 0, sig: ''});
+api.call('onOtherEncounterOut', {add: (o) => ({readS32: () => 1, readPointer: () => (o === 2 ? pkP(10, 1) : NUL)})}, 'X');
+res.shinyRead.push(api.get('RESP.a') ? api.get('RESP.a').shiny : null);
+// walk() + the queue with no ball to spend (PEEKONLY): a spawn already looked at is left; a new one is opened for a look
+const walkSetup = (a) => {
+  a.set('call', (m, o, args) => m === 'ALL' ? a.get('COLL') : (m === 'VM' ? 1 : (m === 'PID' ? o.pid : null)));
+  a.set('M', {allPokemon: 'ALL'}); a.set('il', () => ({className: (k) => k, objClass: (o) => 'WildMapPokemon'}));
+  a.set('cstr', (x) => x); a.set('each', (c, f) => c.forEach(f)); a.set('encOf', (o) => o.enc);
+  a.set('method', (o, name) => name === 'get_VisibleOnMap' ? 'VM' : 'PID'); a.set('u8', (x) => x); a.set('s32', (x) => x);
+  a.set('spawnInfo', () => ({exp: 0, tth: 0, sp: '', lat: null, lng: null})); a.set('myPos', () => null); };
+api = mk(); walkSetup(api);
+api.call('applyCfg', {skipSp: [], peek: true}); api.set('PEEKONLY', true); api.set('PEEKED', {q1: 1});
+api.set('COLL', [{enc: 'q1', pid: 774}, {enc: 'q2', pid: 774}]);
+api.call('walk', NOW);
+res.peekOnly2 = [Object.keys(api.get('E')), api.get('OUT.led').map(r => r.e)];
+api = mk();
+api.call('applyCfg', {catch: true, skipSp: [], peek: true, floors: {'1': 40, '2': 5, '3': 5}, openMs: 0, maxOpen: 6, readyMs: 150, nearWait: 0});
+api.set('walk', () => {}); api.set('ITEMC', {1: 40, 2: 5, 3: 5});
+const op2 = []; api.set('openOne', (enc, e) => { op2.push(enc); e.st = 'open'; e.opens++; });
+api.set('E', {pa: ent(774), pb: ent(774)}); api.set('NE', 2); api.set('PEND', ['pa', 'pb']); api.set('LIVE', {pa: {}, pb: {}}); api.set('PEEKED', {pa: 1});
+api.call('catchTick', NOW);
+res.peekOnly2.push(op2.slice(), api.get('E.pa') === undefined, api.get('E.pb.peek'));
+// a distrusted shiny read (SHINYOFF): a left-alone species is left at sight again, no open for nothing
+api = mk(); walkSetup(api);
+api.call('applyCfg', {skipSp: [10], peek: true}); api.set('SHINYOFF', true);
+api.set('COLL', [{enc: 'z1', pid: 10}]);
+api.call('walk', NOW);
+res.shinyOff = [Object.keys(api.get('E')).length, api.get('OUT.led').map(r => r.r)];
+// two lure spawns of one species: one open at a time (their replies are told apart by species only); others go on
+api = mk();
+api.call('applyCfg', {catch: true, skipSp: [], peek: false, floors: {'1': 5, '2': 5, '3': 5}, openMs: 0, maxOpen: 6, readyMs: 150, nearWait: 0});
+api.set('walk', () => {}); api.set('ITEMC', {1: 100, 2: 5, 3: 5});
+const op3 = []; api.set('openOne', (enc, e, o, now) => { op3.push(enc); e.st = 'open'; e.tOpen = now; e.opens++; });
+const lure = (pid) => Object.assign(ent(pid), {cls: 'TroyDiskMapPlacePokemon'});
+api.set('E', {l1: lure(10), l2: lure(10), l3: lure(41), w1: ent(10)}); api.set('NE', 4); api.set('PEND', ['l1', 'l2', 'l3', 'w1']);
+api.set('LIVE', {l1: {}, l2: {}, l3: {}, w1: {}});
+api.call('catchTick', NOW);
+res.nwSerial = [op3.slice(), api.get('PEND')];
 console.log(JSON.stringify(res));
 """)
-r2 = subprocess.run(["node", t2, p], capture_output=True, text=True)
+import random
+rnd = random.Random(1116)
+ns["CFG"]["floors"] = {"1": 5, "2": 5, "3": 5}
+cases = []
+for _ in range(600):   # Python's reserve_floors() on random bags: the JS floorOf() must give the same floors
+    bag = {"1": rnd.choice([0, 1, 3, 5, 6, 10, 20, 35, 40, 41, 60, 100, 300]), "2": rnd.randint(0, 60), "3": rnd.randint(0, 60)}
+    rv = rnd.choice([0, 1, 10, 35, 85, 200])
+    rf = ns["reserve_floors"](rv, bag) if rv else {"1": 5, "2": 5, "3": 5}
+    cases.append([bag["1"], bag["2"], bag["3"], rv, [rf["1"], rf["2"], rf["3"]]])
+cp = os.path.join(d, "floors.json")
+json.dump(cases, open(cp, "w"))
+r2 = subprocess.run(["node", t2, p, cp], capture_output=True, text=True)
 try:
     got2 = json.loads(r2.stdout.strip() or "{}")
 except ValueError:
@@ -349,6 +475,14 @@ check("JS: in-flight poll lowers, never raises", got2.get("poll"), [40, 39, 45, 
 check("JS: shiny Mighty -> Safari, then Ultra", got2.get("mighty"), [7, 3])
 check("JS: another species' reply is not ours", got2.get("other"), [None, 10, -1])
 check("JS: a Mighty found by the look stays", got2.get("mightyPeek"), [True, 0, 1, 0])
+check("JS: floorOf = Python reserve_floors (600 bags)", got2.get("floorOf"), [])
+check("JS: keep from live counts (new process, shiny dip)", got2.get("keepLive"), [0, False, True, True, False])
+check("JS: the REAL throwAt: shiny Ultra, plain none", got2.get("realThrow"), [[3], "thrown", "ready", 4])
+check("JS: latch 6/200 no, 6/58 yes; other species' reply", got2.get("latch"), [False, True, "open", True])
+check("JS: the shiny byte read (wild x2, lure)", got2.get("shinyRead"), [1, 0, 1])
+check("JS: no ball to spend: looked-at left, new looked at", got2.get("peekOnly2"), [["q2"], ["q1"], ["pb"], True, 1])
+check("JS: distrusted shiny read: left at sight", got2.get("shinyOff"), [0, ["ballsave"]])
+check("JS: one lure open per species at a time", got2.get("nwSerial"), [["l1", "l3", "w1"], ["l2"]])
 check("JS: walk tracks a look, ledgers a looked one", got2.get("walk"), [["r1"], ["r1"], {"ballsave": 1}, [["r2", "ballsave", 0, 10]]])
 check("JS: left-alone species opened for a look", got2.get("open"), [["s1", "s2", "k1"], 1, 1, 0])
 check("JS: not shiny left; shiny kept + logged", got2.get("reply"),
