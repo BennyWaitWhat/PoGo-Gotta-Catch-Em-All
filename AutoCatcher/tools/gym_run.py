@@ -404,6 +404,7 @@ class Mover:
 BUSY = {}                                        # fort id -> smoothed share of scans that found it in battle (contest level)
 TAKEN = {}                                       # fort id -> the rest stamp of a gym we EMPTIED (its rest ends when an enemy team holds it)
 USER_SKIP = set()                                # 8-char gym ids Benny said to leave alone this run (--skip / {"skip": ...}; 11-15: Starbucks)
+DEFER = {}                                       # --defer: 8-char id -> when; a STALEMATE the last run left (other gyms first, NOT a skip)
 
 
 def rested(done, taken, scanned, enemy, now, rest=600):
@@ -473,7 +474,8 @@ def live_range(sess):
 HOP = {"list": [], "i": None, "idle": None}             # --hop: the areas to cycle, the current one, since when nothing to do (survives a re-attach)
 GREG = {"path": None, "g": {}, "dirty": False, "saved": 0.0, "raid": {}}   # --hop monitor: fid -> [lat, lng, seen on the map (1/0)]
 JUMPED = {"t": 0.0, "m": 0.0, "told": True}              # the last TELEPORT: when, how far; told = its cooldown was measured
-COOL = {"on": False, "until": 0.0, "n": 0, "last29": 0.0, "said": False}   # the server's cooldown is ON: no Battle press until `until`
+COOL = {"on": False, "until": 0.0, "n": 0, "last29": 0.0, "said": False, "ok_seen": 0.0}   # the server's cooldown is ON: no Battle press until `until`
+E29 = {"n": 0, "t1": 0.0, "until": 0.0}                  # error (29) with NO unanswered jump: the gym changed under the battle, not a cooldown
 COOL_OBS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "gym_state", "cooldown_obs.jsonl")
 
 
@@ -496,9 +498,10 @@ def cool_sign(what):
     """A cooldown sign from the server (error 29, a 0% session, a refused join on a gym with room): stop battling, wait the
     measured cooldown for this jump, then ONE check; refused again -> wait as long again as it has been since the jump."""
     now = time.time()
-    since = now - JUMPED["t"] if JUMPED["t"] else 0.0
+    fresh = bool(JUMPED["t"]) and not JUMPED["told"]       # only a jump the server has not answered yet anchors the wait
+    since = now - JUMPED["t"] if fresh else 0.0
     COOL["n"] += 1
-    m = cool_measured(JUMPED["m"]) if COOL["n"] == 1 else None
+    m = cool_measured(JUMPED["m"]) if (COOL["n"] == 1 and fresh) else None
     COOL["until"] = (JUMPED["t"] + m) if (m and JUMPED["t"] + m > now) else now + max(since, 5.0)
     COOL["on"], COOL["said"] = True, False
     say(f"  COOLDOWN sign #{COOL['n']} ({what}, {since:.0f} s after a {JUMPED['m']:.0f} m jump) -- no Battle until "
@@ -517,6 +520,44 @@ def cool_off(why):
     if COOL["on"]:
         say(f"  COOLDOWN over: {why}")
     COOL.update(on=False, n=0, said=False)
+
+
+def cool_wait():
+    """True only while a cooldown wait runs (no Battle, no jump). Once `until` is past, the next battle IS the check -- and
+    a jump is allowed again (11-16 23:36: an error 29 with no jump set the flag and nothing cleared it: no more jumps)."""
+    return COOL["on"] and time.time() < COOL["until"]
+
+
+def battles_count(fid, why, sc=None, extra=None):
+    """The server COUNTS our actions (a defender lost CP in our battle / it accepted a deploy): there is no cooldown now.
+    Measures the last jump's cooldown if the server had not answered it yet; ends a cooldown wait and an error-29 streak."""
+    held = COOL["on"] or E29["n"] > 0                       # Battle presses were held back: release them
+    E29.update(n=0, until=0.0)
+    if JUMPED["t"] and not JUMPED["told"]:
+        JUMPED["told"] = True
+        _cd = {"k": "cooldown", "t": int(time.time()), "signal": why, "jump_m": round(JUMPED["m"]),
+               "accepted_after_jump_s": round(time.time() - JUMPED["t"], 1), "fid": fid, **(extra or {})}
+        say(f"  COOLDOWN measured: {why} {_cd['accepted_after_jump_s']:.0f} s after a {_cd['jump_m']} m jump")
+        try:
+            with open(COOL_OBS, "a", encoding="utf-8") as f:
+                f.write(json.dumps(_cd) + "\n")
+        except Exception:
+            pass
+    if COOL["on"]:
+        cool_off(why)
+    if held and sc is not None:
+        try:
+            sc.exports_sync.autobattle(True)
+        except Exception:
+            pass
+
+
+def note_jump(m):
+    """A TELEPORT went out: the server's cooldown is measured from THIS jump (a finished wait / error-29 streak ends)."""
+    JUMPED.update(t=time.time(), m=m, told=False)
+    if COOL["on"]:
+        cool_off("a new jump -- its cooldown is measured from this one")
+    E29.update(n=0, until=0.0)
 
 
 def hop_area(gp):
@@ -1049,6 +1090,10 @@ def drill(fid, enemy, g, sc, a, tick, until, refresh=None, join_near=None, cmd_w
                     say(f"  (counter team: {e})")
             if _sv and _sv[1] < 4000 and dw["seen"] != round(time.time() * 1000 - _sv[1], -2):
                 dw["seen"] = round(time.time() * 1000 - _sv[1], -2)
+                _cpn = _sv[4] or 0                           # a defender LOST CP during our session = the server counts our battle
+                if (sess_t0 or g.in_battle()) and dw.get("cp") and dw.get("team") == _sv[0] and 0 < _cpn < dw["cp"] * 0.98:
+                    battles_count(fid, f"a defender lost CP in our battle ({dw['cp']} -> {_cpn} total)", sc)   # (its team refeeds it
+                dw["cp"], dw["team"] = _cpn, _sv[0]          # between rounds -- the SESSION total can stay flat: Ellis 23:31-23:41)
                 _key = (_sv[0], _sv[3], _sv[2])
                 if _key != dw["key"]:
                     _prev = dw["key"]
@@ -1093,19 +1138,8 @@ def drill(fid, enemy, g, sc, a, tick, until, refresh=None, join_near=None, cmd_w
                 + (f" (started {cps[0]}, {100 - 100 * lv[7] // cps[0]}% drained)" if len(cps) > 1 else ""))   # the user: never give up
             if len(cps) > 1 and cps[-2] > 0 and not JUMPED["told"] and JUMPED["t"]:   # the server's answer = the cooldown CHECK
                 if (cps[-2] - cps[-1]) * 100 >= 5 * cps[-2]:  # (a session that drains = the server counts our battles again)
-                    JUMPED["told"] = True
-                    cool_off("a battle session drained again")
-                    sc.exports_sync.autobattle(True)
-                    _cd = {"k": "cooldown", "t": int(time.time()), "signal": "a battle session drained again",
-                           "jump_m": round(JUMPED["m"]), "accepted_after_jump_s": round(time.time() - JUMPED["t"], 1), "fid": fid}
-                    say(f"  COOLDOWN measured: battles count again {_cd['accepted_after_jump_s']:.0f} s after a {_cd['jump_m']} m jump")
-                    try:
-                        with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "gym_state", "cooldown_obs.jsonl"),
-                                  "a", encoding="utf-8") as _cf:
-                            _cf.write(json.dumps(_cd) + "\n")
-                    except Exception:
-                        pass
-                elif cps[-1] >= cps[-2] and time.time() - JUMPED["t"] < 1800:
+                    battles_count(fid, "a battle session drained again", sc)
+                elif cps[-1] >= cps[-2] and time.time() - JUMPED["t"] < 1800:   # (no defender lost CP in the whole session)
                     cool_sign("a battle session drained 0%")
                     leave_gym(g, sc, tick)
                     say(f"  the server's cooldown: session {len(cps)} drained 0% ({time.time() - JUMPED['t']:.0f} s after a "
@@ -1211,10 +1245,24 @@ def drill(fid, enemy, g, sc, a, tick, until, refresh=None, join_near=None, cmd_w
         if opens >= 3:
             say("  the gym would not open 3 times -- giving up on it")
             return None
-        if getattr(g, "err29_at", 0.0) > COOL["last29"]:      # error (29) = the server's cooldown sign (Benny 23:28: "you keep
-            COOL["last29"] = g.err29_at                      # trying to battle and not reading the signs for a cooldown")
-            cool_sign("battle refused: error 29")
-            sc.exports_sync.autobattle(False)
+        if getattr(g, "err29_at", 0.0) > COOL["last29"]:      # error (29)
+            COOL["last29"] = g.err29_at
+            if JUMPED["t"] and not JUMPED["told"]:            # no battle has counted since OUR last jump: the server's cooldown
+                cool_sign("battle refused: error 29")         # sign (Benny 23:28: "you keep trying to battle and not reading
+                sc.exports_sync.autobattle(False)             # the signs for a cooldown")
+            else:                                            # battles HAVE counted since the last jump (or no jump): NOT a
+                _now = time.time()                           # cooldown -- the gym changed under the battle (its team fed a
+                if E29["n"] == 0:                            # defender between rounds: Ellis 23:36 + 23:40, no jump, 3-8%
+                    E29["t1"] = _now                         # drained per session). Re-open on the game's next map refresh
+                E29["n"] += 1                                # (GMO 5 s; an instant re-open after (29) crashed the game twice);
+                E29["until"] = _now + max(_now - E29["t1"], 5.0)   # again with no counted battle between: as long again
+                sc.exports_sync.autobattle(False)
+                say(f"  error 29 at {fid[:8]}, not a cooldown (battles counted since the last jump): the gym changed under the "
+                    f"battle -- {'re-opening on the next map refresh (5 s)' if E29['n'] == 1 else str(E29['n']) + ' in a row with no counted battle between: waiting as long again'}"
+                    f" until {time.strftime('%H:%M:%S', time.localtime(E29['until']))}")
+        if time.time() < E29["until"]:                       # the error-29 settle: no re-open, no Battle press
+            time.sleep(0.3)
+            continue
         if COOL["on"] and time.time() < COOL["until"]:        # no Battle press, no re-open: wait out the cooldown at the gym
             if not COOL["said"]:
                 COOL["said"] = True
@@ -1223,7 +1271,7 @@ def drill(fid, enemy, g, sc, a, tick, until, refresh=None, join_near=None, cmd_w
                     f"-- then one check")
             time.sleep(0.5)
             continue
-        if COOL["on"]:                                       # the measured time is up: ONE check (a Battle) -- its answer decides
+        if COOL["on"] or E29["n"]:                           # the wait is up: ONE check (a Battle) -- its answer decides
             sc.exports_sync.autobattle(True)
         opens += 1
         sc.exports_sync.open(fid)
@@ -1269,6 +1317,8 @@ def main():
                     help="s between the battle's attack reports (server setting 5; 0 = leave it)")
     ap.add_argument("--cmd", default=None, help="live command file (JSON, re-read when it changes): {go: fid} / {hunt: meters}")
     ap.add_argument("--skip", default="", help="gym ids (8-char prefixes, comma-separated) to leave alone for this whole run")
+    ap.add_argument("--defer", default="", help="gym ids (8-char prefixes) the last run left in a STALEMATE just before this "
+                                                "start: other gyms first, back to them when nothing else is left (its 10-min rest)")
     ap.add_argument("--join-first", default=None, help="fort id: go there first -- beat + place (enemy/empty) or join (red with room)")
     ap.add_argument("--study", default=None, help="append the feed-study JSON lines (gym readings, map flags, feed replies) here")
     ap.add_argument("--feed-zone", default=None, help="lat,lng,radius_m: feed only defenders in gyms inside this circle")
@@ -1290,6 +1340,7 @@ def main():
     ap.add_argument("--feed-hot", type=float, default=0.34, help="...or at this level when the gym was attacked in the last 5 min (the server allows ~10 berries per defender, so a buffer burns them)")
     a = ap.parse_args()
     USER_SKIP.update(x.strip()[:8] for x in a.skip.split(",") if x.strip())
+    DEFER.update({x.strip()[:8]: time.time() for x in a.defer.split(",") if x.strip()})
     enemy = [int(x) for x in a.enemy.split(",")]
     goal = [float(x) for x in a.goal.split(",")]               # a list: the next-goal switch survives a re-attach
     HOP["list"] = [tuple(float(v) for v in w.split(",")) for w in a.hop.split(";") if w.strip()] if a.hop else []
@@ -1558,15 +1609,7 @@ def _run(a, g, mv, done, t_start, enemy, goal, sess, pid, sc):
             if g.wait_for(lambda: g.autoplaced == fid, 6, tick) and \
                g.wait_for(lambda: fid in g.placed and g.autoplaced_id and g.placed[fid].get("id") == g.autoplaced_id, 17, tick):
                 if g.placed[fid].get("ok"):
-                    _cd = {"k": "cooldown", "t": int(time.time()), "jump_m": round(JUMPED["m"]), "accepted_after_jump_s":
-                           round(time.time() - JUMPED["t"], 1), "refused_for_s": round(time.time() - t_first, 1), "fid": fid}
-                    say(f"  COOLDOWN measured: the server accepted {_cd['accepted_after_jump_s']} s after a {_cd['jump_m']} m jump")
-                    try:
-                        with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "gym_state", "cooldown_obs.jsonl"),
-                                  "a", encoding="utf-8") as _cf:
-                            _cf.write(json.dumps(_cd) + "\n")
-                    except Exception:
-                        pass
+                    battles_count(fid, "the server accepted the join", sc, {"refused_for_s": round(time.time() - t_first, 1)})
                     return True
                 why = str(g.placed[fid].get("res", "no answer"))
                 if re.search(r"SameKind|AlreadyHas|Disabled|TooMany|Lockout", why):
@@ -1744,6 +1787,10 @@ def _run(a, g, mv, done, t_start, enemy, goal, sess, pid, sc):
     def tick():                                              # keep circling the current gym while waiting on it
         quick_cmds()
         feed_record()
+        _dok = getattr(g, "deploy_ok_at", 0.0)              # the server accepted a deploy (ours or his, by hand) after the
+        if _dok > max(COOL["ok_seen"], JUMPED["t"]) and (COOL["on"] or not JUMPED["told"]):   # last jump: no cooldown now
+            COOL["ok_seen"] = _dok
+            battles_count(getattr(g, "open_fid", None), "the server accepted a deploy", sc)
         if gpos_now[0] and time.time() - last_tick[0] > 2:
             last_tick[0] = time.time()
             q = ch.fix()
@@ -1870,6 +1917,10 @@ def _run(a, g, mv, done, t_start, enemy, goal, sess, pid, sc):
                 if not sv or sv[1] > 45000 or hop_area((gr[0], gr[1])) is None:
                     continue
                 live[f] = [sv[0], sv[1], gr[0], gr[1], max(0, int(GREG["raid"].get(f, 0) - _nowms)), 6 - sv[3], sv[2], sv[4], 0, 0, 0, 0]
+        for f in live:
+            if f[:8] in DEFER:                               # --defer: the stalemate the last run left -- the same rest as STALL
+                done.setdefault(f, DEFER.pop(f[:8]))
+                say(f"  {f[:8]}: left in a STALEMATE just before this start -- other gyms first, back to it when nothing else is left")
         for f in live:                                       # gyms Benny said to skip: left alone for the rest of the run (a hard rest:
             if f[:8] in USER_SKIP and done.get(f, 0) < time.time() + 3600:   # never picked, not even with nothing else to beat)
                 done[f] = time.time() + 12 * 3600
@@ -2107,7 +2158,7 @@ def _run(a, g, mv, done, t_start, enemy, goal, sess, pid, sc):
                            f"another team is attacking it; the second it falls we fight for it")
                 _undisc = [i for i in range(len(HOP["list"]))   # --monitor + --rscan: an island this run never saw on the map -> look once
                            if not any(gr[2] and hop_area((gr[0], gr[1])) == i for gr in GREG["g"].values())] if (a.monitor and a.rscan) else []
-                _gy_ready = bool(place_ids(dep)) and (dep["n"] is None or dep["n"] < a.max_deployed) and not COOL["on"]
+                _gy_ready = bool(place_ids(dep)) and (dep["n"] is None or dep["n"] < a.max_deployed) and not cool_wait()
                 _cur_i = HOP["i"] if HOP["i"] is not None else (hop_area(tuple(goal)) or 0)
                 if a.monitor and not a.rscan and not soon and not guard and _gy_ready and len(HOP["list"]) > 1 \
                         and len(HOP.setdefault("empty", set()) | {_cur_i}) < len(HOP["list"]):   # (every island empty: stay)
@@ -2117,7 +2168,7 @@ def _run(a, g, mv, done, t_start, enemy, goal, sess, pid, sc):
                     say(f">> NEXT ISLAND {_nx + 1}/{len(HOP['list'])}: nothing to beat or fill here and a Gyarados is ready -- "
                         f"teleporting to {hl:.5f},{hg:.5f}")
                     ch.api("TELEPORT", f"--ef lat {hl} --ef lng {hg}")
-                    JUMPED.update(t=time.time(), m=ch.meters(here, (hl, hg)), told=False)
+                    note_jump(ch.meters(here, (hl, hg)))
                     goal[:] = [hl, hg]
                     a.area, HOP["i"] = hr, _nx
                     mv.key, gpos_now[0], said, target, idle_anchor[0] = None, None, None, None, None
@@ -2129,7 +2180,7 @@ def _run(a, g, mv, done, t_start, enemy, goal, sess, pid, sc):
                     say(f">> LOOK: island {_undisc[0] + 1}/{len(HOP['list'])} has gyms this run never saw -- teleporting there once "
                         f"to list them (then they are watched from anywhere)")
                     ch.api("TELEPORT", f"--ef lat {hl} --ef lng {hg}")
-                    JUMPED.update(t=time.time(), m=ch.meters(here, (hl, hg)), told=False)
+                    note_jump(ch.meters(here, (hl, hg)))
                     goal[:] = [hl, hg]
                     a.area, HOP["i"] = hr, _undisc[0]
                     mv.key, gpos_now[0], said, target, idle_anchor[0] = None, None, None, None, None
@@ -2198,12 +2249,12 @@ def _run(a, g, mv, done, t_start, enemy, goal, sess, pid, sc):
                 gpos_now[0], target, said = None, None, None
                 continue
         d = ch.meters(here, gpos)
-        if d > engage and a.monitor and not g.in_battle() and not g.has("GymState") and not COOL["on"]:   # --monitor: TELEPORT onto it
+        if d > engage and a.monitor and not g.in_battle() and not g.has("GymState") and not cool_wait():   # --monitor: TELEPORT onto it
             _ji = hop_area(gpos)
             _nm = NAMES.get(fid[:8])
             say(f">> JUMP to {fid[:8]}{' (' + _nm + ')' if _nm else ''}, team {team}, {d:.0f} m -- teleporting onto it, no walking")
             ch.api("TELEPORT", f"--ef lat {gpos[0]} --ef lng {gpos[1]}")
-            JUMPED.update(t=time.time(), m=d, told=False)
+            note_jump(d)
             if _ji is not None and (abs(goal[0] - HOP["list"][_ji][0]) > 1e-6 or abs(goal[1] - HOP["list"][_ji][1]) > 1e-6):
                 hl, hg, hr = HOP["list"][_ji]                # another island: it becomes the area we watch from
                 goal[:] = [hl, hg]
