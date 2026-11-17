@@ -297,6 +297,20 @@ CALLS = []; LAST_OPEN = {fid: null, at: 0};
 TOP = 'NotificationGuiController'; PENDING = 'gymA'; PENDING_AT = 20000; openPending(21000); out.openedUnderBanner = CALLS.length;
 LAST_OPEN = {fid: null, at: 0};
 TOP = 'GymApproachGuiController'; PENDING = 'gymA'; PENDING_AT = 40000; openPending(41000); out.openedOverGymScreen = CALLS.length - out.openedUnderBanner;
+/* the gym badge popup swallows the open after a victory: open again the moment the map is back, not 12 s later */
+CALLS = []; SENT = []; PENDING = 'gymA'; PENDING_AT = 60000; LAST_OPEN = {fid: null, at: 0}; TOP = 'MainMenuGuiController'; CHAIN = 'MapExploreState';
+openPending(60100); out.badgeFirstOpen = CALLS.length;
+TOP = 'GymBadgeAwardGuiController'; openPending(61000); openPending(62000); out.badgeDuringPopup = CALLS.length;
+TOP = 'MainMenuGuiController'; openPending(63000); out.badgeRearmed = CALLS.length; openPending(63100); openPending(64000); out.badgeSecondOpen = CALLS.length;
+out.badgeTold = SENT.filter(function (m) { return m.k === 'info'; }).length;
+/* ... but never when the gym screen DID come, and never for another screen */
+CALLS = []; PENDING = 'gymA'; PENDING_AT = 80000; LAST_OPEN = {fid: null, at: 0}; TOP = 'MainMenuGuiController'; CHAIN = 'MapExploreState';
+openPending(80100); TOP = 'GymBadgeAwardGuiController'; openPending(81000);
+CHAIN = 'MapExploreState > GymRootState > GymState > GymApproachState'; TOP = 'MainMenuGuiController'; openPending(82000); openPending(82100);
+out.noRearmWhenOpened = CALLS.length;
+CALLS = []; PENDING = 'gymA'; PENDING_AT = 90000; LAST_OPEN = {fid: null, at: 0}; TOP = 'MainMenuGuiController'; CHAIN = 'MapExploreState';
+openPending(90100); TOP = 'ScreenFadeGuiController'; openPending(91000); TOP = 'MainMenuGuiController'; openPending(92000); openPending(92100);
+out.noRearmForAFade = CALLS.length;
 console.log(JSON.stringify(out));
 """
 
@@ -320,6 +334,9 @@ def hold_block(js):
     check(o["openedInHold"] == 0 and o["openedAfterHold"] == 1 and o["pendingAfterOpen"] is None, f"no re-open inside the hold, one after it: {o}")
     check(o["holdAfterToast"] == 0, "only the game's error dialog starts the hold, never another screen's text")
     check(o["openedUnderBanner"] == 1 and o["openedOverGymScreen"] == 0, f"the notification banner is the plain map; a gym screen is not: {o}")
+    check((o["badgeFirstOpen"], o["badgeDuringPopup"], o["badgeRearmed"], o["badgeSecondOpen"], o["badgeTold"]) == (1, 1, 2, 2, 1),
+          f"the gym badge popup swallowed the open: ONE more open in the very tick the map is back (not 12 s later), said once: {o}")
+    check(o["noRearmWhenOpened"] == 1 and o["noRearmForAFade"] == 1, f"no second open when the gym screen came, nor after a plain screen fade: {o}")
     check("&& now >= E29_HOLD && !ACT" in js, "the tapper's automatic Battle press must respect the error-29 hold")
     check("leaf === 'MapExploreState' && Date.now() >= E29_HOLD) { PENDING = AUTODEP.fid;" in js, "a battle that ends in error 29 must not queue a re-open")
     check(re.search(r"\n    E29_HOLD = 0; .*\n    PENDING = fid; PENDING_AT = Date\.now\(\); return \{known:", js) is not None,
@@ -563,7 +580,12 @@ def dd_checks():
     with tempfile.TemporaryDirectory() as td:
         clock = fresh(td)
         t0 = clock.t
-        check(gym_run.dd_state("auto") == (True, None) and gym_run.dd_state("off") == (False, "--direct-deploy off"), "auto = allowed, off = never")
+        check(gym_run.dd_state("auto") == (True, None) and gym_run.dd_state("off")[0] is False and "Benny's go" in gym_run.dd_state("off")[1],
+              "auto = allowed, off = never (and it says whose word it waits for)")
+        with open(gym_run.__file__, encoding="utf-8") as f:
+            src = f.read()
+        check(re.search(r'add_argument\("--direct-deploy", choices=\("auto", "on", "off"\), default="off"', src) is not None,
+              "--direct-deploy must default to OFF: direct GYM_DEPLOY requests ran in the hour before the 09-26 lockout -- his go first")
         g = gym_run.Game()
         msg(g, "ddtry")
         check(gym_run.DD["try_at"] == t0, "the announcement is recorded")
@@ -719,8 +741,28 @@ def stall_checks():
         out, ret = said(gym_run.e29_seen, g, sc, fid)
         check(ret is False and not gym_run.COOL["on"] and not gym_run.hold_on(), f"an error 29 from before our last jump is not that jump's cooldown: {out!r}")
         check(len(obs_rows()) == rows_before, "a stale error 29 writes no fake refusal into cooldown_obs.jsonl (two rows of 11-16 were such phantoms)")
+    go = gym_run.slip_go                                     # the slip-in: deploy only into the gap between the attacker's battles
+    check(go([2, 800, 0, 3, 9000], 100.0, 0.0) == (True, "the server says NOT in battle (0.8 s old reading)"), f"a fresh NOT-in-battle reading = go: {go([2, 800, 0, 3, 9000], 100.0, 0.0)}")
+    check(go([2, 800, 0, 3, 9000], 100.0, 99.0)[0] is False, "never two deploy requests within 2 s")
+    check(go([2, 800, 0, 3, 9000], 100.0, 98.0)[0] is True, "2 s after the last request a NOT-in-battle reading goes again")
+    check(go([2, 800, 1, 3, 9000], 100.0, 95.0) == (False, "the server says IN BATTLE"), "IN BATTLE = no deploy (it would be refused)")
+    check(go([2, 800, 1, 3, 9000], 100.0, 90.0) == (True, "a blind try: the server still says IN BATTLE"), "one blind try every 10 s (the flag can lag)")
+    check(go([2, 5000, 0, 3, 9000], 100.0, 95.0)[0] is False and go(None, 100.0, 95.0) == (False, "no fresh reading of the gym yet"),
+          "a stale reading or none is not a go")
+    check(go(None, 100.0, 0.0) == (True, "a blind try: no fresh reading of the gym"), "the very first try goes out at once")
+    n_in_battle, last = 0, 0.0
+    for t in range(60):                                      # the loop of force_join for one minute: a look every second
+        if go([2, 500, 1, 3, 9000], 1000.0 + t, last)[0]:
+            n_in_battle, last = n_in_battle + 1, 1000.0 + t
+    check(n_in_battle == 6, f"a gym that reads IN BATTLE for a whole minute gets one deploy per 10 s (6), not one per second: {n_in_battle}")
+    n_gap, last = 0, 0.0
+    for t in range(60):                                      # ...and one whose attacker stops for 4 s every 20 s
+        if go([2, 500, 0 if t % 20 in (12, 13, 14, 15) else 1, 3, 9000], 1000.0 + t, last)[0]:
+            n_gap, last = n_gap + 1, 1000.0 + t
+    check(n_gap >= 7, f"every gap between the attacker's battles gets a deploy in its first second (and a second one 2 s later): {n_gap}")
     if len(FAILS) == n0:
-        print("ok: an error 29 is handled once and at once; a stale one sets no hold; two in a row put the unproven member out; the wait is capped at 40 s")
+        print("ok: an error 29 is handled once and at once; a stale one sets no hold; two in a row put the unproven member out; the wait is capped at 40 s; "
+              "the slip-in deploys into the gap, not every second")
 
 
 def main():

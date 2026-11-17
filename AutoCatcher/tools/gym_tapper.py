@@ -1053,6 +1053,13 @@ function fastBattle() {                       /* the battle state's own KO -> re
   try { var v = GBS.add(O.gbsResultsDelay).readFloat(); if (v > RESULTS_DELAY) { GBS.add(O.gbsResultsDelay).writeFloat(RESULTS_DELAY); send({k: 'fastdelay', was: v}); } } catch (e) {}
 }
 function openPending(now) {
+  if (LAST_OPEN.fid && !PENDING && !/Gym(Root|Rotation)?State/.test(CHAIN)) {   /* an open of ours is in flight and no gym screen came */
+    if (TOP === 'GymBadgeAwardGuiController' && now - LAST_OPEN.at < 4000) LAST_OPEN.eaten = true;   /* the badge popup took the tap */
+    else if (LAST_OPEN.eaten && LEAF === 'MapExploreState' && (!TOP || TOP === 'MainMenuGuiController' || /Toast|^NotificationGuiController$/.test(TOP))) {
+      PENDING = LAST_OPEN.fid; PENDING_AT = now; LAST_OPEN = {fid: null, at: 0};   /* the popup is gone and the gym never opened: again, now
+         -- not after the 12 s in-flight guard (4 victories of 11-16/17 took 14-16 s to place this way: 22:31:08, 22:20:33, 22:48:46, 00:44:57) */
+      send({k: 'info', what: 'the gym badge popup swallowed the open -- opening the gym again', layout: ''}); }
+  }
   if (!PENDING) return;
   if (now < E29_HOLD) return;                 /* thrown out by error (29) a moment ago: no re-open before the next map refresh */
   if (now - PENDING_AT > 10000) { send({k: 'err', e: 'open request expired: ' + PENDING}); PENDING = null; return; }

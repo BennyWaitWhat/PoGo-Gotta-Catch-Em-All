@@ -112,7 +112,7 @@ def dd_state(mode):
     earlier crash-guard verdict, once per run); 'auto' = yes unless the crash guard turned it off -- in this run, or in an
     earlier one (direct_deploy_off.json). Returns (allowed, why not)."""
     if mode == "off":
-        return False, "--direct-deploy off"
+        return False, "--direct-deploy is off, the default: it waits for Benny's go (a request kind from before the 09-26 lockout)"
     if mode == "on" and not DD["on_done"]:
         DD["on_done"] = True                                 # (a verdict of THIS run still holds after that)
         try:
@@ -1441,6 +1441,26 @@ def hold_on():
     return cool_wait() or time.time() < E29["until"]
 
 
+SLIP_BLIND_S = 10.0                                      # slip-in: one deploy with no "NOT in battle" reading behind it, at most
+SLIP_GAP_S = 2.0                                         # this often; and never two deploy requests closer than this
+
+
+def slip_go(sv, now, last_try):
+    """Slip-in: send a deploy NOW? sv = the gym's latest reading from the tapper ([team, age ms, in battle, ...]) or None.
+    A reading under 3 s old that says NOT in battle = the gap between the attacker's battles: go (2 s after the last
+    request at the earliest). A reading that says IN BATTLE, or no fresh reading at all: only the one blind try every
+    SLIP_BLIND_S. Returns (go, why)."""
+    since = now - last_try
+    fresh = bool(sv) and len(sv) > 2 and sv[1] is not None and sv[1] < 3000
+    if fresh and not sv[2]:
+        if since >= SLIP_GAP_S:
+            return True, f"the server says NOT in battle ({sv[1] / 1000:.1f} s old reading)"
+        return False, "the last request went out under 2 s ago"
+    if since >= SLIP_BLIND_S:
+        return True, ("a blind try: the server still says IN BATTLE" if fresh else "a blind try: no fresh reading of the gym")
+    return False, ("the server says IN BATTLE" if fresh else "no fresh reading of the gym yet")
+
+
 def drill(fid, enemy, g, sc, a, tick, until, refresh=None, join_near=None, cmd_waiting=None, counters=None):
     """Beat the gym in one continuous run until it is no longer an enemy gym. Returns its final team, None (gave up),
     or ABORT (a party screen was left open over a battle -- stop everything). counters(sv): re-pick the team from the
@@ -1697,9 +1717,11 @@ def main():
     ap.add_argument("--heal-top", type=int, default=0, help="keep this many of the highest-CP attackers healed at all times (0 = never; the user's rule)")
     ap.add_argument("--one-by-one", action="store_true", help="drill the FIRST defender over and over: run away when the 2nd "
                                                                "defender's round starts and Battle again (Benny 11-16 23:58)")
-    ap.add_argument("--direct-deploy", choices=("auto", "on", "off"), default="auto",
-                    help="after a win, send the place request straight from the map (no gym screen: ~0.3 s instead of 3-8 s). auto = "
-                         "on unless its crash guard turned it off (gym_state/direct_deploy_off.json); on = try it again; off = never")
+    ap.add_argument("--direct-deploy", choices=("auto", "on", "off"), default="off",
+                    help="after a win, send the place request straight from the map (no gym screen: under 1 s instead of ~3 s). "
+                         "OFF unless Benny says go: direct GYM_DEPLOY requests were one of the things running in the hour before "
+                         "the 09-26 lockout, and it has not worked (so has not been sent) since 0.431. auto = on unless its crash "
+                         "guard turned it off (gym_state/direct_deploy_off.json); on = also forget that verdict and try again")
     ap.add_argument("--heal-batch", type=int, default=30, help="revive every fainted Pokemon once this many are fainted (0 = never)")
     ap.add_argument("--no-feed", dest="feed", action="store_false", help="never feed Golden Razz to your defenders")
     ap.add_argument("--no-battle", dest="battle", action="store_false", help="battle break: no gyms, keep moving and feeding the defenders")
@@ -2069,11 +2091,14 @@ def _run(a, g, mv, done, t_start, enemy, goal, sess, pid, sc):
         force my pokemon in this gym we're at" / "watch these lockouts and slip my pokemon in there fast ... the ppl battling
         have to stop for a moment when they complete the cycle". The server refuses red deploys while the gym is in battle
         (ErrorTeamDeployLockout, "The Gym is under attack!"), but every attacker's battle stops between rounds and sessions
-        (0.435: one server battle per defender). So: deploy, and again ~1 s after every answer (each refusal closes the gym
-        screen; the re-open is the fresh read) -- whichever request lands in a gap gets in. Every answer is logged to
-        slip_in.jsonl with the map's in-battle flag and lockouts. True = in; False = no longer possible (fell, full, ours
-        in, his screen, no stock); None = budget used (the main loop looks around, then comes back)."""
-        t_stop, n_try, last_res = time.time() + budget_s, 0, ""
+        (0.435: one server battle per defender). So WATCH the gym (its own details, read every second -- the reads the
+        drill already makes) and deploy the moment a reading says NOT in battle: that request lands in the gap. While
+        the readings say IN BATTLE no deploy goes out -- it would only be refused -- except one blind try every
+        SLIP_BLIND_S (the flag can lag); never more than one deploy request per 2 s. (The first cut sent a deploy every
+        second whatever the gym said: a stream of refused requests, on an account with the 09-26 lockout behind it.)
+        Every answer is logged to slip_in.jsonl with the readings. True = in; False = no longer possible (fell, full,
+        ours in, his screen, no stock); None = budget used (the main loop looks around, then comes back)."""
+        t_stop, n_try, last_res, last_try, told = time.time() + budget_s, 0, "", 0.0, 0.0
         refresh_deployed(every=10)
         while time.time() < t_stop:
             try:
@@ -2090,6 +2115,19 @@ def _run(a, g, mv, done, t_start, enemy, goal, sess, pid, sc):
                 return None
             if g.user_gym and g.has("GymState") and g.open_fid not in (None, fid):
                 return False                                 # his screen: never touch it
+            sv = None
+            try:
+                sc.exports_sync.scan([fid])                  # the gym's own state, fresh (a read)
+                sv = sc.exports_sync.scanned().get(fid)
+            except Exception:
+                pass
+            go, why_go = slip_go(sv, time.time(), last_try)
+            if not go:
+                if time.time() - told > 10:
+                    told = time.time()
+                    say(f"  slip-in at {fid[:8]}: {why_go} -- no deploy now, watching for the gap between their battles")
+                g.wait_for(lambda: False, 1.0, tick)
+                continue
             if not (g.open_fid == fid and g.leaf() == "GymApproachState"):
                 sc.exports_sync.open(fid)
                 if not g.wait_for(lambda: g.open_fid == fid and g.leaf() == "GymApproachState", 6, tick):
@@ -2099,7 +2137,7 @@ def _run(a, g, mv, done, t_start, enemy, goal, sess, pid, sc):
                 return False
             g.deploy_refused, g.autoplaced_id, g.autoplaced = None, None, None
             g.placed.pop(fid, None)
-            t_try = time.time()
+            t_try = last_try = time.time()
             sc.exports_sync.autodeploy(fid, place_ids(dep), True, a.team)
             n_try += 1
             got = g.wait_for(lambda: g.autoplaced == fid, 3, tick) and \
@@ -2108,7 +2146,8 @@ def _run(a, g, mv, done, t_start, enemy, goal, sess, pid, sc):
             res = "Success" if ok else (str(g.placed[fid].get("res", "")) if got else "no answer")
             try:
                 with open(SLIP_LOG, "a", encoding="utf-8") as f:
-                    f.write(json.dumps({"t": round(t_try, 2), "fid": fid[:8], "try": n_try, "ok": ok, "res": res,
+                    f.write(json.dumps({"t": round(t_try, 2), "fid": fid[:8], "try": n_try, "ok": ok, "res": res, "why": why_go,
+                                        "scan_ib": bool(sv[2]) if sv else None, "scan_age_ms": sv[1] if sv else None,
                                         "answer_s": round(time.time() - t_try, 2), "ib": lv[6] if len(lv) > 6 else None,
                                         "lock_ms": lv[8] if len(lv) > 8 else None, "team_lock_ms": lv[9] if len(lv) > 9 else None,
                                         "slots": lv[5] if len(lv) > 5 else None}) + "\n")
@@ -2128,8 +2167,8 @@ def _run(a, g, mv, done, t_start, enemy, goal, sess, pid, sc):
                 if "AlreadyHas" in res:
                     refresh_deployed(True)
                 return False
-            if res != last_res or n_try % 10 == 1:
-                say(f"  slip-in try {n_try} at {fid[:8]}: {res} -- again in 1 s (the attacker has to stop between battles)")
+            if res != last_res or n_try % 5 == 1:
+                say(f"  slip-in try {n_try} at {fid[:8]} ({why_go}): {res} -- watching for the next gap between their battles")
                 last_res = res
             g.wait_for(lambda: False, 1.0, tick)
         return None
@@ -2144,7 +2183,8 @@ def _run(a, g, mv, done, t_start, enemy, goal, sess, pid, sc):
         lv = room()
         if not lv:
             return False
-        say(f"  {fid[:8]} is red without us and has {lv[5]} free slot(s) -- joining it NOW (try, and again every second)")
+        say(f"  {fid[:8]} is red without us and has {lv[5]} free slot(s) -- joining it NOW (and again the moment the server "
+            f"says it is NOT in battle)")
         _fj = force_join(fid, budget_s=40.0)                 # 11-17 00:39: the 35 s wait for blue's lockout let Benny place first
         if _fj is not None:
             return bool(_fj)
