@@ -399,6 +399,7 @@ def fresh(td, t0=1794894000.0):
     gym_run.COOL_OBS = os.path.join(td, "cooldown_obs.jsonl")
     gym_run.PROVEN.update(ids=set(), loaded=False, path=os.path.join(td, "proven_fighters.json"))
     gym_run.TEAM_BAN.clear()
+    gym_run.CAP_LEFT.clear()
     gym_run.BAG_RO_ALL[:] = []
     gym_run.CT["cur"] = None
     gym_run.GREG["g"] = {}
@@ -708,8 +709,23 @@ def misc_checks():
             check(gym_run.place_ids(dep) == ["g1", "g2", "s1", "s2", "n1"], f"what goes in: every Gyarados (HP is read live), then the fallback: {gym_run.place_ids(dep)}")
         finally:
             gym_run.NOGYM["set"] = was
+    cb = gym_run.cap_back                                    # Avalon 11-17: 20/20 in gyms with one enemy gym still to turn red
+    live = {"A": [0, 100, 34.07, -84.27, 0, 6], "B": [0, 100, 34.07, -84.28, 0, 6], "C": [1, 100, 34.06, -84.27, 0, 5]}
+    left = {"B", "A"}
+    check(cb(left, 20, 20, live) == [] and left == {"A", "B"}, "at the cap nothing comes back; the gyms left empty are remembered")
+    check(cb(left, None, 20, live) == [] and left == {"A", "B"}, "no count read yet = nothing comes back")
+    check(cb(left, 19, 20, live) == ["A", "B"] and left == set(), f"a slot is free again: every gym left empty at the cap is next, once: {left}")
+    check(cb(left, 19, 20, live) == [], "...and only once")
+    left = {"A", "C", "Z"}                                   # C was taken by blue meanwhile, Z is not on the map right now
+    check(cb(left, 20, 20, live) == [] and left == {"A", "Z"}, f"a gym somebody took meanwhile is forgotten (it is a target by itself): {left}")
+    check(cb(left, 18, 20, live) == ["A", "Z"], "a gym the map does not show right now is kept: it is judged when it shows again")
+    with open(gym_run.__file__, encoding="utf-8") as f:
+        src = f.read()
+    check("CAP_LEFT.add(fid)" in src and "for f in cap_back(CAP_LEFT, dep[\"n\"], a.max_deployed, live):" in src,
+          "the cap branch must remember the gym it left empty, and the main loop must bring it back when a slot is free")
     if len(FAILS) == n0:
-        print("ok: the banner does not block a gym open; out of Gyarados = the highest-CP shinies first")
+        print("ok: the banner does not block a gym open; out of Gyarados = the highest-CP shinies first; a gym left empty at "
+              "the cap is filled the moment a slot is free")
 
 
 # ------------------------------------------------------------------------------------------------ 9b. the runner's error-29 handling

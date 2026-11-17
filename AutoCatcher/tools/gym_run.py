@@ -582,6 +582,7 @@ class Mover:
 BUSY = {}                                        # fort id -> smoothed share of scans that found it in battle (contest level)
 TAKEN = {}                                       # fort id -> the rest stamp of a gym we EMPTIED (its rest ends when an enemy team holds it)
 USER_SKIP = set()                                # 8-char gym ids Benny said to leave alone this run (--skip / {"skip": ...}; 11-15: Starbucks)
+CAP_LEFT = set()                                 # gyms we emptied but could not fill: every one of the 20 gym slots was in use
 
 
 def rested(done, taken, scanned, enemy, now, rest=600):
@@ -600,6 +601,22 @@ def rested(done, taken, scanned, enemy, now, rest=600):
         else:
             skip.add(f)
     return skip, back
+
+
+def cap_back(left, n, cap, live):
+    """The gyms left EMPTY at the gym cap that can be filled NOW (Avalon 11-17: 20/20 with one enemy gym still to turn red).
+    A gym somebody took meanwhile is forgotten (an enemy one is a target by itself, a red one is joined like any other);
+    the rest come back the moment one of yours came home (n < cap) -- not after the 10-minute rest of an emptied gym.
+    left = CAP_LEFT (changed in place), n = your Pokemon in gyms (None: not read yet), live = the map's gyms."""
+    for f in list(left):
+        v = live.get(f)
+        if v and v[0] != 0:
+            left.discard(f)
+    if n is None or n >= cap or not left:
+        return []
+    back = sorted(left)
+    left.clear()
+    return back
 
 
 def pick(enemy, skip, here, goal, live, detour, area_r, ok=None):
@@ -2520,6 +2537,12 @@ def _run(a, g, mv, done, t_start, enemy, goal, sess, pid, sc):
             done.pop(f, None)
             TAKEN.pop(f, None)
             say(f"  {f[:8]} is team {sv[0]} again ({sv[3]} defender(s), {sv[4]} CP) -- no rest: it is a target now")
+        for f in cap_back(CAP_LEFT, dep["n"], a.max_deployed, live):   # a slot is free again: the gym left empty at the cap is next
+            done.pop(f, None)
+            TAKEN.pop(f, None)
+            skip.discard(f)
+            say(f"  {f[:8]}{' (' + NAMES[f[:8]] + ')' if f[:8] in NAMES else ''} was left EMPTY at the cap and one of yours "
+                f"came home ({dep['n']}/{a.max_deployed} in gyms): placing there now")
         mine = {x[5] for x in dep["dp"] if len(x) > 5}
         for _lf, _lv in live.items():                        # who held each gym last (an emptied gym's same-team lockout binds only them)
             if _lv[0]:
@@ -2978,7 +3001,9 @@ def _run(a, g, mv, done, t_start, enemy, goal, sess, pid, sc):
             n = dep["n"]
             placed_ok = False
             if n is not None and n >= a.max_deployed:
-                say(f"  EMPTY -- you already have {n} Pokemon in gyms (cap {a.max_deployed}): moving on")
+                CAP_LEFT.add(fid)                            # filled the moment one of yours comes home (cap_back)
+                say(f"  EMPTY -- you already have {n} Pokemon in gyms (cap {a.max_deployed}): moving on; "
+                    f"it gets one of yours the moment a slot is free")
             else:
                 if g.deploy_open != fid and not g.wait_for(lambda: g.deploy_open == fid, 3, tick):
                     sc.exports_sync.autodeploy(None)         # disarm FIRST: never a Deploy list over a late auto-place
