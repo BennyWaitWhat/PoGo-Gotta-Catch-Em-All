@@ -448,6 +448,21 @@ function siegeLine(fid, now) {                /* long or near-continuous battles
   return on ? SIEGE_AT : 0;
 }
 var SCANQ = [], SCAN = {}, SCANREQ = {};    /* the runner's park scan: queued fort ids / verified results / requests in flight */
+/* --monitor (Benny 11-16 23:05 "actively monitor the gyms rather than waste time walking thru them all"): gyms OFF the map
+   (the other islands) are read by id + their stored coordinates -- the same request askDetails makes for our defenders'
+   gyms from anywhere. The id needs a managed string: made once per gym, kept alive by a GC handle. */
+var SNEW = f('il2cpp_string_new', 'pointer', ['pointer']), GCH = f('il2cpp_gchandle_new', 'uint32', ['pointer', 'int']),
+    GCT = f('il2cpp_gchandle_get_target', 'pointer', ['uint32']);
+var RSTR = {}, RSCANQ = [];
+var NOAUTOBATTLE = false;                     /* the server's cooldown is on (runner): no automatic Battle press on the gym screen */
+function fidStr(fid) {
+  if (!SNEW || !GCH || !GCT) return null;
+  var h = RSTR[fid];
+  if (h !== undefined) { var t = GCT(h); if (!t.isNull() && str(t) === fid) return t; }
+  var s = SNEW(Memory.allocUtf8String(fid)); if (s.isNull()) return null;
+  RSTR[fid] = GCH(s, 1);
+  return s;
+}
 function scanTick(now) {
   if (!DSVC || !M.gymDetails || !isA(DSVC, K.MapPlaceDetailsService)) return;
   for (var f in SCANREQ) {                    /* replies: the gym's TRUE state, whatever the map record says */
@@ -478,6 +493,25 @@ function scanTick(now) {
       if (pr === null || pr.isNull()) continue;
       var po = promiseOffs(pr); if (!po) continue;
       SCANREQ[fid] = {pr: pr, o: po, at: now}; inflight++;
+    } catch (e) {}
+  }
+  while (RSCANQ.length && inflight < 2) {     /* --monitor: a gym by id + coordinates (on the map or not) */
+    var rq = RSCANQ.shift(), rf = rq[0];
+    if (SCANREQ[rf]) continue;
+    try {
+      var fs2 = null, la = rq[1], ln = rq[2], mg2 = GYMS[rf];
+      if (mg2 && alive(mg2) && mg2.readPointer().equals(K.MapGym)) {
+        var fd2 = mg2.add(O.mgFort).readPointer();
+        if (!fd2.isNull()) { fs2 = fd2.add(O.fFortId).readPointer(); la = fd2.add(O.fLat).readDouble(); ln = fd2.add(O.fLng).readDouble();
+          if (str(fs2) !== rf) fs2 = null; }
+      }
+      if (!fs2) fs2 = fidStr(rf);
+      if (!fs2 || fs2.isNull()) continue;
+      LLB.writeDouble(la); LLB.add(8).writeDouble(ln); I32R.writeS32(1);
+      var pr2 = call(M.gymDetails, DSVC, 'RequestGymDetails(remote)', [fs2, LLB, EMPTY, I32R]);
+      if (pr2 === null || pr2.isNull()) continue;
+      var po2 = promiseOffs(pr2); if (!po2) continue;
+      SCANREQ[rf] = {pr: pr2, o: po2, at: now}; inflight++;
     } catch (e) {}
   }
 }
@@ -842,7 +876,7 @@ function gymScreen(now) {                     /* the gym screen: its gym's own t
         }
         /* drilling and the gym screen is back while the gym is still theirs: Battle THIS frame. Nobody can deploy into a gym that
            is in battle, so the gap between our sessions is the only window the other team gets -- keep it as short as possible */
-        if (AUTODEP && fid === AUTODEP.fid && !n && t !== MYTEAM && !IN_BATTLE && LEAF === 'GymApproachState' && !prepOpen()
+        if (AUTODEP && fid === AUTODEP.fid && !n && t !== MYTEAM && !IN_BATTLE && LEAF === 'GymApproachState' && !prepOpen() && !NOAUTOBATTLE
             && !ACT && !ST.modal && now - GO_AT > 3000 && now - (ST.autoBattleAt || 0) > 8000 && !EXPECT_PREP && alive(gui)
             && gui.add(O.guiState).readS32() === LIT.open.Open && !prepRegistered()) {
           ST.autoBattleAt = now; EXPECT_PREP = now;
@@ -1621,6 +1655,11 @@ rpc.exports = {
     var c = {}; TOPUP_BERRIES.forEach(function (nm) { if (ITEM[nm] !== undefined) c[nm] = itemCount(ITEM[nm]); });
     return {on: TOPUP_ON, reserve: TOPUP_RESERVE, berries: c}; },
   scan: function (fids) { (fids || []).forEach(function (f) { if (SCANQ.indexOf(f) < 0 && !SCANREQ[f]) SCANQ.push(f); }); return SCANQ.length; },
+  autobattle: function (on) { NOAUTOBATTLE = !on; return !NOAUTOBATTLE; },
+  rscan: function (list) { var added = 0;     /* [[fid, lat, lng], ...]: --monitor, gyms on any island */
+    (list || []).forEach(function (x) { var f0 = String(x[0]);
+      if (!SCANREQ[f0] && !RSCANQ.some(function (y) { return y[0] === f0; })) { RSCANQ.push([f0, +x[1], +x[2]]); added++; } });
+    return {queued: RSCANQ.length, added: added, il: !!(SNEW && GCH && GCT), can: !!(SNEW && GCH && GCT && DSVC && M.gymDetails)}; },
   scanned: function () { var o = {}, now = Date.now(); for (var f in SCAN) { var v = SCAN[f]; o[f] = [v.team, now - v.at, v.ib, v.n, v.cp, v.ours, v.mots, v.name || '', v.defs || []]; } return o; },
   feedcfg: function (on, at, hotAt, mate) { FEED_ON = !!on; FEED_AT = at; if (hotAt) HOT_FEED_AT = hotAt; if (mate !== undefined) MATE_ON = !!mate; return {on: FEED_ON && !!DSVC, at: FEED_AT, hot: HOT_FEED_AT}; },
   act: function (what) { ACT = what; ACT_AT = Date.now(); return {gymScreen: !!GAS, inBattle: IN_BATTLE}; },
