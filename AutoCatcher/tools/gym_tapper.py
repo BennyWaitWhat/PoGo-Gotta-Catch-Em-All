@@ -454,6 +454,7 @@ var SCANQ = [], SCAN = {}, SCANREQ = {};    /* the runner's park scan: queued fo
 var SNEW = f('il2cpp_string_new', 'pointer', ['pointer']), GCH = f('il2cpp_gchandle_new', 'uint32', ['pointer', 'int']),
     GCT = f('il2cpp_gchandle_get_target', 'pointer', ['uint32']);
 var RSTR = {}, RSCANQ = [];
+var NOAUTOBATTLE = false;                     /* the server's cooldown is on (runner): no automatic Battle press on the gym screen */
 function fidStr(fid) {
   if (!SNEW || !GCH || !GCT) return null;
   var h = RSTR[fid];
@@ -875,7 +876,7 @@ function gymScreen(now) {                     /* the gym screen: its gym's own t
         }
         /* drilling and the gym screen is back while the gym is still theirs: Battle THIS frame. Nobody can deploy into a gym that
            is in battle, so the gap between our sessions is the only window the other team gets -- keep it as short as possible */
-        if (AUTODEP && fid === AUTODEP.fid && !n && t !== MYTEAM && !IN_BATTLE && LEAF === 'GymApproachState' && !prepOpen()
+        if (AUTODEP && fid === AUTODEP.fid && !n && t !== MYTEAM && !IN_BATTLE && LEAF === 'GymApproachState' && !prepOpen() && !NOAUTOBATTLE
             && !ACT && !ST.modal && now - GO_AT > 3000 && now - (ST.autoBattleAt || 0) > 8000 && !EXPECT_PREP && alive(gui)
             && gui.add(O.guiState).readS32() === LIT.open.Open && !prepRegistered()) {
           ST.autoBattleAt = now; EXPECT_PREP = now;
@@ -1654,6 +1655,7 @@ rpc.exports = {
     var c = {}; TOPUP_BERRIES.forEach(function (nm) { if (ITEM[nm] !== undefined) c[nm] = itemCount(ITEM[nm]); });
     return {on: TOPUP_ON, reserve: TOPUP_RESERVE, berries: c}; },
   scan: function (fids) { (fids || []).forEach(function (f) { if (SCANQ.indexOf(f) < 0 && !SCANREQ[f]) SCANQ.push(f); }); return SCANQ.length; },
+  autobattle: function (on) { NOAUTOBATTLE = !on; return !NOAUTOBATTLE; },
   rscan: function (list) { var added = 0;     /* [[fid, lat, lng], ...]: --monitor, gyms on any island */
     (list || []).forEach(function (x) { var f0 = String(x[0]);
       if (!SCANREQ[f0] && !RSCANQ.some(function (y) { return y[0] === f0; })) { RSCANQ.push([f0, +x[1], +x[2]]); added++; } });
