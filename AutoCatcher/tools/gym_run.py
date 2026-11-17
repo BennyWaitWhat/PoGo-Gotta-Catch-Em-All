@@ -1870,6 +1870,32 @@ def main():
             time.sleep(10)
 
 
+ATTACHED = [0]                                           # attaches of THIS process: on a re-attach a stop in the inbox is OURS
+STOP_ASKED = [False]                                     # a {"stop": true} was read: it outlives a lost game connection
+
+
+def stop_waiting(inbox):
+    """A stop for THIS runner that must outlive a lost game connection: one read before the connection dropped, or one that
+    came into the inbox while the game was away. (11-17 03:38: gym_restart.sh's stop sat in the inbox during the re-attach
+    wait; the fresh session threw it away as 'a stop meant for the last runner', the script gave up after 150 s, and the old
+    code walked Benny for three more minutes.) Removes the stop files it finds."""
+    found = STOP_ASKED[0]
+    if inbox and os.path.isdir(inbox):
+        for n in sorted(os.listdir(inbox)):
+            p = os.path.join(inbox, n)
+            try:
+                if not n.endswith(".json") or n.startswith("."):
+                    continue
+                with open(p, encoding="utf-8") as f:
+                    c = json.load(f)
+                if isinstance(c, dict) and c.get("stop"):
+                    os.remove(p)
+                    found = True
+            except Exception:
+                pass
+    return found
+
+
 def dd_said(why):
     if why:
         say(f"  !! direct deploy OFF from here on: {why}. The gym screen places again (as in every run before 11-17). "
@@ -1878,13 +1904,21 @@ def dd_said(why):
 
 def run(a, g, mv, done, t_start, enemy, goal):
     """One attached session: attach, install, then walk/battle until the time is up or a STOP."""
+    _inbox = os.path.join(os.path.dirname(a.cmd), "runner_inbox") if a.cmd else None
+    if ATTACHED[0] and stop_waiting(_inbox):                 # a RE-attach with a stop behind it: do not wait for the game at all
+        say("  COMMAND stop: it was asked before / while the game connection was down -- not attaching again; stopped")
+        return
     pg.wait_ready_to_attach(timeout_s=300, min_age_s=45)
+    if ATTACHED[0] and stop_waiting(_inbox):                 # ...or it came in during that wait: no attach just to stop
+        say("  COMMAND stop: it came in while the runner waited for the game -- not attaching again; stopped")
+        return
     pg.busy_acquire = lambda *_a, **_k: None                 # the marker is advisory: get_session must never wait / refuse (phone_mark)
     sess, pid = pg.get_session()
     sc = sess.create_script(gt.JS)
     sc.on("message", g.on_msg)
     sess.on("detached", lambda *args: (setattr(g, "detached", True), DD.__setitem__("gone_at", time.time())))
     sc.load()
+    ATTACHED[0] += 1
     try:
         return _run(a, g, mv, done, t_start, enemy, goal, sess, pid, sc)
     finally:                                                 # never leave a second tapper hooked on a re-attach
@@ -2393,6 +2427,7 @@ def _run(a, g, mv, done, t_start, enemy, goal, sess, pid, sc):
             cmd_st["mtime"] = os.path.getmtime(a.cmd)
             try:
                 cmdq.append(json.load(open(a.cmd, encoding="utf-8")) or {})
+                STOP_ASKED[0] = STOP_ASKED[0] or bool(cmdq[-1].get("stop"))
             except Exception as _e:
                 say(f"  !! command file unreadable ({_e}) -- that command is LOST (writers: one file per command in {inbox})")
         try:
@@ -2412,6 +2447,7 @@ def _run(a, g, mv, done, t_start, enemy, goal, sess, pid, sc):
                 pass
             if _c:
                 cmdq.append(_c)
+                STOP_ASKED[0] = STOP_ASKED[0] or bool(isinstance(_c, dict) and _c.get("stop"))   # (kept across a lost connection)
 
     def quick_cmds():                                        # buddy / topup commands: handled at once, even mid-drill
         pull()

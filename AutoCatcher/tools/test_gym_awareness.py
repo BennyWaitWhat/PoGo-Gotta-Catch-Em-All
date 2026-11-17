@@ -801,6 +801,29 @@ def misc_checks():
     g.on_msg({"type": "send", "payload": {"k": "says", "gui": "GlobalErrorController", "text": "The Gym battle has ended! (30)"}}, None)
     check(getattr(g, "err29_at", 0.0) > 0, "Game: error (30) is handed to the error-29 handling (hold before the next Battle)")
 
+    # a stop outlives a lost game connection (03:38: the re-attach threw the restart script's stop away; 3 more minutes of walking)
+    was_stop, was_att = gym_run.STOP_ASKED[0], gym_run.ATTACHED[0]
+    try:
+        with tempfile.TemporaryDirectory() as td:
+            gym_run.STOP_ASKED[0] = False
+            with open(os.path.join(td, "1_lap.json"), "w", encoding="utf-8") as f:
+                f.write('{"lap": true}')
+            check(gym_run.stop_waiting(td) is False and os.listdir(td) == ["1_lap.json"], "no stop in the inbox: nothing is waiting, other commands stay")
+            with open(os.path.join(td, "2_restart_stop.json"), "w", encoding="utf-8") as f:
+                f.write('{"stop": true}')
+            with open(os.path.join(td, ".3_half.json"), "w", encoding="utf-8") as f:
+                f.write('{"stop": true}')
+            check(gym_run.stop_waiting(td) is True, "a stop that came into the inbox while the game was away is found")
+            check(sorted(os.listdir(td)) == [".3_half.json", "1_lap.json"], "...and taken out of the inbox (a half-written dot-file is not read)")
+            check(gym_run.stop_waiting(td) is False, "...once")
+            gym_run.STOP_ASKED[0] = True
+            check(gym_run.stop_waiting(td) is True and gym_run.stop_waiting(None) is True, "a stop read BEFORE the connection dropped still stands")
+    finally:
+        gym_run.STOP_ASKED[0], gym_run.ATTACHED[0] = was_stop, was_att
+    check(src.count("if ATTACHED[0] and stop_waiting(_inbox):") == 2 and src.index("if ATTACHED[0] and stop_waiting(_inbox):") < src.index("sess, pid = pg.get_session()"),
+          "run(): on a re-attach a waiting stop ends the runner BEFORE it attaches again (checked before and after the wait for the game)")
+    check("ATTACHED[0] += 1" in src and src.count("STOP_ASKED[0] = STOP_ASKED[0] or") == 2, "every stop that is read is remembered; attaches are counted")
+
     # the gym report at the 20/20 cap: an empty gym is the plan there, not a miss
     r0 = {"fid": "X" * 32, "t0": 100.0, "first": 104.0, "battles": 1, "won": 1, "empty": 0, "giveups": 0, "stays": 0, "e29": 0,
           "victory": 112.0, "placed": None}
