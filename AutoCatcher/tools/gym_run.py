@@ -1015,8 +1015,16 @@ def _run(a, g, mv, done, t_start, enemy, goal, sess, pid, sc):
     def retry_lockout(fid):                                  # refused for the finisher's deploy window: wait it out, place again
         lv = sc.exports_sync.teams().get(fid) or []
         wait = min(30.0, (lv[8] / 1000.0 if len(lv) > 8 and lv[8] else 5.0) + 0.3)
-        say(f"  deploy lockout (the finisher's window) -- trying again in {wait:.1f} s")
-        g.wait_for(lambda: False, wait, tick)
+        say(f"  deploy lockout (the finisher's window) -- trying again in {wait:.1f} s (at once if a team places)")
+        t_end = time.time() + wait
+        while time.time() < t_end:                           # Benny 11-16: the moment ANOTHER team places, battle it (it has 1 defender)
+            try:
+                _tm = (sc.exports_sync.teams().get(fid) or [None])[0]
+            except Exception:
+                _tm = None
+            if _tm not in (0, None):
+                return False                                 # somebody placed: the placement loop below sees the new team at once
+            g.wait_for(lambda: False, 0.5, tick)
         if not (g.open_fid == fid and g.gym_team == 0 and g.leaf() == "GymApproachState"):
             return False
         g.deploy_refused, g.autoplaced_id = None, None
@@ -1542,7 +1550,7 @@ def _run(a, g, mv, done, t_start, enemy, goal, sess, pid, sc):
                 if not (g.open_fid == fid and g.leaf() == "GymApproachState"):
                     sc.exports_sync.open(fid)
                     g.wait_for(lambda: g.open_fid == fid and g.leaf() == "GymApproachState", 10, tick)
-        placed_ok = False
+        placed_ok, retake = False, False
         if final == 0:                                       # empty: you can leave a Pokemon (unless at the cap)
             n = dep["n"]
             placed_ok = False
@@ -1603,7 +1611,8 @@ def _run(a, g, mv, done, t_start, enemy, goal, sess, pid, sc):
                             else:
                                 say(f"  another red player filled it first (your gym count is still {n2 if n2 is not None else '?'}) -- moving on")
                         else:
-                            say(f"  team {now_team} took it first -- moving on")
+                            say(f"  team {now_team} took it first -- battling it NOW while it has 1 defender (Benny: before their teammates add theirs)")
+                            retake = True
                         break
                     time.sleep(1)
                 else:
@@ -1620,6 +1629,10 @@ def _run(a, g, mv, done, t_start, enemy, goal, sess, pid, sc):
             if _lv and _lv[0] == a.team and len(_lv) > 5 and _lv[5] > 0:
                 done.pop(fid, None)
                 TAKEN.pop(fid, None)
+        if retake:                                           # another team got in first: no rest, this gym is drilled NEXT
+            done.pop(fid, None)
+            TAKEN.pop(fid, None)
+            a.join_first, first_done[0] = fid, False
         sc.exports_sync.autodeploy(None)                     # disarm only now: the whole placement step is over
         g.autoplaced = None
         if g.deploy_refused and g.deploy_refused[0] == fid and re.search(r"SameKind|AlreadyHas|Disabled", g.deploy_refused[1]):
