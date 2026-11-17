@@ -59,6 +59,8 @@ jobs:
           python AutoCatcher/tools/catcher_why_sim.py
           python AutoCatcher/tools/catcher_ballsave_sim.py
           python AutoCatcher/tools/deploy_sim.py
+          python AutoCatcher/tools/ballsave_plan.py --selftest
+          python AutoCatcher/tools/ballsave_go.py --selftest
 
       - name: Safety guards hold
         working-directory: pogo_extract

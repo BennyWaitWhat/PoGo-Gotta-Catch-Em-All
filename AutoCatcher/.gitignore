@@ -77,3 +77,6 @@ system/map/*.pkl
 system/map/*.db
 system/map/enums.json
 system/map/routes/unspun_*
+
+# ball-saver shower data (ballsave_go.py --save-prior): spawn records with positions -- never committed
+system/analysis/showers/
