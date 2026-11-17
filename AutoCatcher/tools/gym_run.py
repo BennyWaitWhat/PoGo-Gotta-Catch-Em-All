@@ -123,6 +123,7 @@ class Game:
         self.graph_stale = False                             # the live-graph tripwire fired: stop cleanly
         self.buddy_f = None                                  # the buddy session's replies (buddy_out.jsonl next to the command file)
         self.progress_at, self.opened_at, self.user_gym = time.time(), 0.0, False
+        self.his_gym = None                                  # (fid, when, why): the gym YOUR own deploy was refused at -- ours to get
 
     def on_msg(self, m, _d):
         if m.get("type") != "send":
@@ -293,6 +294,12 @@ class Game:
             say(f"    deploy result: {p['res']}")
             if p.get("ok"):                                  # the game's own reply: a Pokemon of yours went in (by hand or auto-place)
                 self.deploy_ok_at = time.time()
+                if self.his_gym and self.his_gym[0] == self.open_fid:
+                    self.his_gym = None
+            elif self.user_gym and self.open_fid and not self.autoplaced:   # YOUR deploy was refused (11-17 00:27, Benny: "try putting
+                self.his_gym = (self.open_fid, time.time(), str(p.get("res")))   # a gyarados into the gym im at"): that gym is ours to get
+                say(f"    your deploy into {self.open_fid[:8]} was refused ({p.get('res')}) -- the runner takes it over for you: it stands "
+                    f"at that gym, joins the moment the server lets red in, and fights for it if it falls")
             if not p.get("ok") and self.autoplaced:        # the game said no: end the wait now, with the reason
                 self.placed[self.autoplaced] = {"ok": False, "id": self.autoplaced_id, "res": p["res"]}
                 self.deploy_refused = (self.autoplaced, p["res"])
@@ -509,24 +516,36 @@ def cool_measured(jump_m):
     return min(longer) if longer else (max(s for m, s in obs) if obs else None)
 
 
+LAST_ACT = {"t": 0.0}                                    # the last action the server COUNTED (a defender lost CP to us / a deploy)
+COOL_RETRY_S = 8.0                                       # the crash guard after an error 29 (an instant re-open crashed the game
+                                                         # twice, 11-16 22:03 / 22:37) -- a safety bound, NOT a cooldown guess
+
+
 def cool_sign(what):
-    """A cooldown sign from the server (error 29, a 0% session, a refused join on a gym with room): stop battling, wait the
-    measured cooldown for this jump, then ONE check; refused again -> wait as long again as it has been since the jump."""
+    """A cooldown sign from the server (error 29 right after a jump, a refused join on a gym with room): that battle did not
+    count. Ask the server again after the crash guard -- every answer brackets the REAL cooldown, and the first counted
+    battle ends the wait. Benny 11-17 00:36: "figure out the exact cooldown to permit you to go asap" / "DUDE BATTLE
+    ALREADY": the table wait (106 s after a 302 m jump, 283 s after 2.2 km) sat out time his own battle proved was over --
+    it counted 65 s after the 2.2 km jump, ours were refused at 33 s and 52 s and we would have waited until 104 s."""
     now = time.time()
-    fresh = bool(JUMPED["t"]) and not JUMPED["told"]       # only a jump the server has not answered yet anchors the wait
+    fresh = bool(JUMPED["t"]) and not JUMPED["told"]       # only a jump the server has not answered yet anchors the bracket
     since = now - JUMPED["t"] if fresh else 0.0
     COOL["n"] += 1
-    m = cool_measured(JUMPED["m"]) if (COOL["n"] == 1 and fresh) else None
-    COOL["until"] = (JUMPED["t"] + m) if (m and JUMPED["t"] + m > now) else now + max(since, 5.0)
+    COOL["until"] = now + COOL_RETRY_S
     COOL["on"], COOL["said"] = True, False
-    say(f"  COOLDOWN sign #{COOL['n']} ({what}, {since:.0f} s after a {JUMPED['m']:.0f} m jump) -- no Battle until "
-        f"{time.strftime('%H:%M:%S', time.localtime(COOL['until']))}"
-        + (f" (measured cooldown {m:.0f} s for a jump this long)" if m else " (as long again as since the jump)")
-        + ", then ONE check")
+    if fresh:
+        JUMPED["refused_s"] = max(JUMPED.get("refused_s") or 0.0, since)
+    _act = (now - LAST_ACT["t"]) if LAST_ACT["t"] else None
+    say(f"  COOLDOWN sign #{COOL['n']} ({what}, {since:.0f} s after a {JUMPED['m']:.0f} m jump"
+        + (f", {_act:.0f} s after our last counted action" if _act is not None else "")
+        + f") -- asking the server again at {time.strftime('%H:%M:%S', time.localtime(COOL['until']))} "
+          f"({COOL_RETRY_S:.0f} s crash guard; no table wait -- its answer decides)")
     try:
         with open(COOL_OBS, "a", encoding="utf-8") as f:
             f.write(json.dumps({"k": "cooldown_refused", "t": int(now), "what": what, "jump_m": round(JUMPED["m"]),
-                                "refused_at_s": round(since, 1)}) + "\n")
+                                "refused_at_s": round(since, 1),
+                                "since_last_action_s": round(_act, 1) if _act is not None else None,
+                                "jumped_after_action_s": JUMPED.get("act_gap")}) + "\n")
     except Exception:
         pass
 
@@ -548,11 +567,15 @@ def battles_count(fid, why, sc=None, extra=None):
     Measures the last jump's cooldown if the server had not answered it yet; ends a cooldown wait and an error-29 streak."""
     held = COOL["on"] or E29["n"] > 0                       # Battle presses were held back: release them
     E29.update(n=0, until=0.0)
+    LAST_ACT["t"] = time.time()
     if JUMPED["t"] and not JUMPED["told"]:
         JUMPED["told"] = True
         _cd = {"k": "cooldown", "t": int(time.time()), "signal": why, "jump_m": round(JUMPED["m"]),
-               "accepted_after_jump_s": round(time.time() - JUMPED["t"], 1), "fid": fid, **(extra or {})}
-        say(f"  COOLDOWN measured: {why} {_cd['accepted_after_jump_s']:.0f} s after a {_cd['jump_m']} m jump")
+               "accepted_after_jump_s": round(time.time() - JUMPED["t"], 1), "refused_last_s": JUMPED.get("refused_s") or None,
+               "jumped_after_action_s": JUMPED.get("act_gap"), "fid": fid, **(extra or {})}
+        say(f"  COOLDOWN measured: {why} {_cd['accepted_after_jump_s']:.0f} s after a {_cd['jump_m']} m jump"
+            + (f" -- the real cooldown lies between {_cd['refused_last_s']:.0f} s (refused) and {_cd['accepted_after_jump_s']:.0f} s"
+               if _cd["refused_last_s"] else ""))
         try:
             with open(COOL_OBS, "a", encoding="utf-8") as f:
                 f.write(json.dumps(_cd) + "\n")
@@ -569,7 +592,9 @@ def battles_count(fid, why, sc=None, extra=None):
 
 def note_jump(m):
     """A TELEPORT went out: the server's cooldown is measured from THIS jump (a finished wait / error-29 streak ends)."""
-    JUMPED.update(t=time.time(), m=m, told=False)
+    JUMPED.update(t=time.time(), m=m, told=False, refused_s=0.0,
+                  act_gap=round(time.time() - LAST_ACT["t"], 1) if LAST_ACT["t"] else None)   # (the cooldown may run from the last
+                                                         # counted action, not the jump: logged with every answer to find out)
     if COOL["on"]:
         cool_off("a new jump -- its cooldown is measured from this one")
     E29.update(n=0, until=0.0)
@@ -643,7 +668,8 @@ def placement_fallback(dep):
 def place_ids(dep):
     """What goes into a gym, in order: shiny Gyarados at full HP, then the fallback. The tapper takes the first one that is
     at full HP and not in a gym, so an emptied gym never waits for a hand."""
-    return ([x[0] for x in dep["gy"] if x[2] >= x[3]] + [x[0] for x in dep.get("fb", [])])[:16]
+    return ([x[0] for x in dep["gy"]] + [x[0] for x in dep.get("fb", [])])[:16]   # (all Gyarados: the tapper reads HP LIVE --
+                                                             # one revived a second ago goes in, never a fallback for a stale read)
 
 
 def pick_areas(enemy, skip, here, live, areas, ok=None):
@@ -1492,13 +1518,27 @@ def _run(a, g, mv, done, t_start, enemy, goal, sess, pid, sc):
     target, said = None, None
     dep = {"n": None, "at": 0.0, "gy": [], "ro": [], "dp": [], "fa": [], "fb": []}   # deployed, Gyarados, roster, defenders, fainted -- OFF the critical path
 
-    def refresh_deployed(force=False):
-        if force or dep["n"] is None or time.time() - dep["at"] > 600:
+    def refresh_deployed(force=False, every=600):
+        """The live bag: which gyms hold one of yours (`mine`), the placement stock, the roster. Every 10 min, after each
+        placement, and every `every` s while idle -- 11-17 00:27: a Gyarados knocked out of a gym still counted as "in it"
+        for up to 10 min, so that gym was never joined ("you need a lot more situational awareness")."""
+        if force or dep["n"] is None or time.time() - dep["at"] > every:
+            _was = (dep["n"], sorted(str(x[5]) for x in dep["dp"] if len(x) > 5),
+                    sorted(str(x[0]) for x in dep["gy"] if x[2] >= x[3]))
+            _quiet = not force and every < 600 and dep["n"] is not None   # the idle re-read speaks only when something changed
             try:
                 dep["n"], dep["gy"], dep["ro"], dep["dp"], dep["fa"] = bag_status(sess, sc)
                 dep["at"] = time.time()
+                if _quiet and _was == (dep["n"], sorted(str(x[5]) for x in dep["dp"] if len(x) > 5),
+                                       sorted(str(x[0]) for x in dep["gy"] if x[2] >= x[3])):
+                    return
+                if _quiet:
+                    _gone = sorted(set(_was[1]) - {str(x[5]) for x in dep["dp"] if len(x) > 5})
+                    if _gone:
+                        say("  CAME HOME: yours left " + ", ".join(f"{f[:8]}{' (' + NAMES[f[:8]] + ')' if f[:8] in NAMES else ''}" for f in _gone)
+                            + " -- those gyms can be joined or retaken again")
                 dep["fb"] = placement_fallback(dep)            # no healthy Gyarados: these go in, never an open gym
-                top = ", ".join(f"{cp}{'' if hp >= mx else ' (hurt)'}" for _, cp, hp, mx in dep["gy"][:5])
+                top = ", ".join(f"{cp}{'' if hp >= mx else (' (fainted)' if hp <= 0 else ' (hurt)')}" for _, cp, hp, mx in dep["gy"][:5])
                 say(f"  your Pokemon in gyms right now: {dep['n']}/{a.max_deployed}; shiny Gyarados ready to place (CP): {top} (live bag)")
                 if dep["fb"]:
                     say("  if no Gyarados is at full HP, these go in at once (never a gym left open): " + ", ".join(f"{x[4]} {x[1]}" for x in dep["fb"][:5]))
@@ -1508,7 +1548,12 @@ def _run(a, g, mv, done, t_start, enemy, goal, sess, pid, sc):
                 nfa = len(dep["fa"])
                 batch = [x[0] for x in dep["fa"]] if a.heal_batch and nfa >= a.heal_batch and not g.batch_active else []   # none until 30 fainted
                 g.names.update({x[0]: f"{x[2]} {x[1]}" for x in dep["fa"]})
-                rr = sc.exports_sync.roster(roster_ids(dep), a.heal_top, batch, [x[0] for x in dep["gy"]])   # this gym's counters first
+                gyfix = [x[0] for x in dep["gy"] if x[2] < x[3]] if a.heal_top else []   # 11-17 00:30: three shiny Gyarados knocked out
+                if gyfix:                                    # of gyms waited for the 30-fainted batch, and the next gym got a
+                    say(f"  reviving + healing {len(gyfix)} shiny Gyarados back from gyms now, so they can be placed: "   # 1470 Gyarados
+                        + ", ".join(f"{cp} ({hp}/{mx} HP)" for _, cp, hp, mx in dep["gy"] if hp < mx))   # ("revive now", --heal-top)
+                rr = sc.exports_sync.roster(roster_ids(dep), a.heal_top, batch + [x for x in gyfix if x not in batch],
+                                            [x[0] for x in dep["gy"]])   # this gym's counters first
                 up = ([x for x in dep["ro"] if x[2] * 2 >= x[3]] + [x for x in dep["ro"] if 0 < x[2] and x[2] * 2 < x[3]])[:6]
                 say(f"  attack team = {'best rank' if RANK['score'] else 'highest CP'} with HP left, no Slaking, no Regigigas, no placement Gyarados: "
                     + ", ".join(f"{x[4]} {x[1]}{'' if x[2] >= x[3] else f' ({x[2]}/{x[3]} HP)'}" for x in up)
@@ -2169,7 +2214,18 @@ def _run(a, g, mv, done, t_start, enemy, goal, sess, pid, sc):
                 say(f"target {target[0][:8]} team {target[2]}, {ch.meters(here, target[1]):.0f} m away")
         if not target:                                       # nothing to beat right now: keep moving
             gpos_now[0] = None
-            refresh_deployed()                               # (only every 15 min; the walk keeps going meanwhile)
+            refresh_deployed(every=30)                       # idle: which gyms still hold yours, read live (a knocked-out one = a
+                                                             # gym to join or retake), and the Gyarados back from gyms get revived
+            if not HOP.get("ready", True):                   # (11-17 00:32: "map NOT ready" after a jump read as "nothing here" --
+                if any(v[1] < 5000 and ch.meters((v[2], v[3]), goal) <= a.area for v in live.values()) \
+                        or time.time() - HOP.get("landed", 0.0) > 60:   # three island jumps in 21 s; the 60 s is only a give-up bound)
+                    HOP["ready"] = True
+                else:
+                    if said != "landing":
+                        say("  waiting for this island's gyms to show on the game's map -- no second jump on an empty map")
+                        said = "landing"
+                    time.sleep(1)
+                    continue
             if ch.meters(here, goal) > a.area:
                 mv.travel(goal, here)
                 msg = "no enemy gym on the way yet -- walking toward the goal"
@@ -2177,10 +2233,15 @@ def _run(a, g, mv, done, t_start, enemy, goal, sess, pid, sc):
                 soon = [(v[4], fid, (v[2], v[3])) for fid, v in live.items()          # a non-red gym whose raid ends soon:
                         if v[0] in enemy + [0] and 0 < v[4] <= a.prewait * 60000        # wait ON it, battle the second it ends
                         and ch.meters((v[2], v[3]), goal) <= a.area and fid not in skip]
-                guard = sorted((ch.meters(here, (v[2], v[3])), f) for f, v in live.items()   # a red gym being drained by another
+                _hg = g.his_gym[0] if (g.his_gym and time.time() - g.his_gym[1] < 1800) else None
+                guard = sorted(((f != _hg, f in mine, (6 - v[5]) if len(v) > 5 and v[5] >= 0 else 6, ch.meters(here, (v[2], v[3]))), f)
+                               for f, v in live.items()                                             # a red gym being drained by another
                                if v[0] == a.team and f not in skip and not v[4]                     # team: stand at it -- the moment it
                                and ch.meters((v[2], v[3]), goal) <= a.area                          # falls we are in range to fight for
-                               and ((len(v) > 6 and v[6]) or (len(v) > 9 and v[9] > 0)))           # it (11-16 22:35, the ferry gym)
+                               and ((len(v) > 6 and v[6]) or (len(v) > 9 and v[9] > 0)))           # it (11-16 22:35, the ferry gym).
+                # Which one (11-17 00:27, "a lot more situational awareness"): the gym YOUR deploy was refused at first, then one
+                # with NONE of yours (the moment the attack ends we join it -- one with yours gives us nothing), then the one
+                # closest to falling (fewest defenders), then the nearest. 00:27 it stood at 8e12222d while 951dc951 fell.
                 if soon:
                     left, sfid, spos = min(soon)
                     gpos_now[0] = None
@@ -2189,8 +2250,11 @@ def _run(a, g, mv, done, t_start, enemy, goal, sess, pid, sc):
                 elif guard:
                     gf = guard[0][1]
                     mv.orbit((live[gf][2], live[gf][3]), here, r=orbit_r)
-                    msg = (f"in the goal area, nothing to beat -- standing by red {gf[:8]}{' (' + NAMES[gf[:8]] + ')' if gf[:8] in NAMES else ''}: "
-                           f"another team is attacking it; the second it falls we fight for it")
+                    _gw = ("you tried to place here" if gf == _hg else "yours is in it" if gf in mine
+                           else "none of yours in it: we join the moment the attack ends")
+                    msg = (f"in the goal area, nothing to beat -- standing by red {gf[:8]}{' (' + NAMES[gf[:8]] + ')' if gf[:8] in NAMES else ''} "
+                           f"({_gw}): another team is attacking it; the second it falls we fight for it"
+                           + (f" [{len(guard) - 1} more red gym(s) under attack]" if len(guard) > 1 else ""))
                 _undisc = [i for i in range(len(HOP["list"]))   # --monitor + --rscan: an island this run never saw on the map -> look once
                            if not any(gr[2] and hop_area((gr[0], gr[1])) == i for gr in GREG["g"].values())] if (a.monitor and a.rscan) else []
                 _gy_ready = bool(place_ids(dep)) and (dep["n"] is None or dep["n"] < a.max_deployed) and not cool_wait()
@@ -2208,7 +2272,7 @@ def _run(a, g, mv, done, t_start, enemy, goal, sess, pid, sc):
                     a.area, HOP["i"] = hr, _nx
                     mv.key, gpos_now[0], said, target, idle_anchor[0] = None, None, None, None, None
                     STATS["area_t0"] = time.time()
-                    _land(hl, hg, hr)
+                    HOP["ready"], HOP["landed"] = _land(hl, hg, hr), time.time()   # not ready = wait for its map, never hop on
                     continue
                 if a.monitor and _undisc and not soon and not guard and HOP["i"] != _undisc[0]:
                     hl, hg, hr = HOP["list"][_undisc[0]]
