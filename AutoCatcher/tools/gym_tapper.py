@@ -223,7 +223,7 @@ function buddyId() {                          /* the current buddy, from the gam
         var bid = bp.add(bo.BuddyPokemonId).readU64().toString(); BUDDY.id = bid !== '0' ? bid : null; } } } catch (e) {}
   return BUDDY.id;
 }
-function pickTeam(n) {                        /* highest CP first among >= half HP, then any HP left; never a fainted one -- the BUDDY last */
+function pickTeam(n) {                        /* roster order (attack rank) among >= half HP, then any HP left; never a fainted one -- the BUDDY last */
   var o = protoOffs(), full = [], part = [], low = [], bud = buddyId();
   for (var i = 0; i < ROSTER.length && full.length < n; i++) {
     try {
@@ -234,7 +234,7 @@ function pickTeam(n) {                        /* highest CP first among >= half 
       if (hp * 2 >= mx) full.push(t); else low.push(t);   /* >= half HP: ranked purely by CP (a 5629 at 82% beats a 4000 at 100%) */
     } catch (e) {}
   }
-  var t = full.concat(part, low).slice(0, n); t.sort(function (a, b) { return b.cp - a.cp; });
+  var t = full.concat(part, low).slice(0, n);   /* roster order = the runner's attack rank (CP order when there is no rank file) */
   if (bud) { try { var bp = liveProto(bud);
       if (bp && usable(bp, o)) { t = t.slice(0, n - 1); t.push({p: bp, id: bud, cp: bp.add(o.cp).readS32(), buddy: true}); } } catch (e) {} }
   return t;
@@ -504,21 +504,36 @@ function topUpReply(now) {                    /* every frame: the top-up's reply
   send({k: 'feed', what: 'topupresult', fid: TOPUP.fid, res: rn, ok: good, n: TOPUP_N, sdx: sdx});
   TOPUP = null;
 }                            /* two feeds in the same instant: the server answers the 2nd with ErrorTooFast */
-function feedNow(id, d, me, now) {            /* ONE Golden Razz on OUR defender, remote or not */
+var FEED_FALLBACK = ['RazzBerry', 'NanabBerry', 'PinapBerry'];   /* no Golden Razz: Razz, then Nanab, then Pinap -- never Silver Pinap, the top-up reserve does not apply */
+function fallbackBerry(me) {
+  for (var i = 0; i < FEED_FALLBACK.length; i++) {
+    var nm = FEED_FALLBACK[i], it = ITEM[nm]; if (it === undefined) continue;
+    var c = itemCount(it); if (c <= 0) continue;
+    if (me && me.food && me.food[it] !== undefined && !(me.food[it] > 0.001)) continue;   /* the game says this berry would add nothing now */
+    return {it: it, nm: nm, c: c};
+  }
+  return null;
+}
+function berryCounts() { var o = {}; FEED_FALLBACK.forEach(function (nm) { if (ITEM[nm] !== undefined) o[nm] = itemCount(ITEM[nm]); }); return o; }
+function feedNow(id, d, me, now) {            /* ONE Golden Razz (or, with none left, one regular berry) on OUR defender, remote or not */
   if (now - FEED_LAST < 1500) { d.nextAt = now + 800; return; }
-  var have = itemCount(ITEM.GoldenRazzBerry);
-  if (have <= 0) { if (now - FEED_EMPTY > 600000) { FEED_EMPTY = now; send({k: 'feed', what: 'none', id: id, fid: d.fid, mot: me.mot}); } return; }
+  var have = itemCount(ITEM.GoldenRazzBerry), fitem = ITEM.GoldenRazzBerry, fname = 'GoldenRazzBerry';
+  if (have <= 0) {
+    var fb = fallbackBerry(me);
+    if (!fb) { if (now - FEED_EMPTY > 600000) { FEED_EMPTY = now; send({k: 'feed', what: 'none', id: id, fid: d.fid, mot: me.mot, berries: berryCounts()}); } return; }
+    fitem = fb.it; fname = fb.nm; have = fb.c;
+  }
   var p = liveProto(id); if (!p) return;
   var fs = p.add(protoOffs().deployedFortId).readPointer(); if (!str(fs) || str(fs) !== d.fid) return;
-  I32G.writeS32(ITEM.GoldenRazzBerry); U64G.writeU64(new UInt64(String(id)));
+  I32G.writeS32(fitem); U64G.writeU64(new UInt64(String(id)));
   if (!isA(IBAG, K.ItemBagImpl)) return;
-  FEED_LAST = now; FEEDLOG.push(now);
+  FEED_LAST = now; FEEDLOG.push(now); d.fedBerry = fname;
   d.tsBefore = GRAPH && GRAPH.inv ? invTs(GRAPH.inv) : -1;   /* the live-graph tripwire's baseline */
   var fr = call(M.feed, IBAG, 'UseItemOnGymDefender', [I32G, U64G, fs]);
   d.fedAt = now; d.fedMot = me.mot; d.nextAt = now + 6000;
   /* a details reply whose gym state (LastModifiedMs) predates this feed is the server's cache, not news */
   if (fr !== null && !fr.isNull()) { var po = promiseOffs(fr); if (po) d.fr = {pr: fr, o: po, at: now}; }
-  send({k: 'feed', what: 'fed', id: id, fid: d.fid, mot: me.mot, cp: me.cp, ok: fr !== null, left: have - 1});
+  send({k: 'feed', what: 'fed', id: id, fid: d.fid, mot: me.mot, cp: me.cp, ok: fr !== null, left: have - 1, berry: fname, berries: fname === 'GoldenRazzBerry' ? null : berryCounts()});
   study({src: 'feed', who: 'own', fid: d.fid, id: id.slice(-6), mot: me.mot, map: mapRec(d.fid, now), quietFor: d.quietAt ? now - d.quietAt : -1});
 }
 var STUDY = false;                          /* --study: the game's own freshness signals, one record per event */
@@ -612,11 +627,11 @@ function feedTick(now) {
           var rn = res === null ? (fr && fr.err ? fr.err : 'no reply') : String(LIT.feedResName[res] || res), good = /success/i.test(rn), after = null;
           if (good) { d.await = now; d.okAt = d.fedAt || now;                /* no second berry until a reading confirms this one (gym info is cached server-side) */
             try { var gs = readStatus(fr.val.add(O.gfoStatus).readPointer()), mine = gs && gs.list.filter(function (x) { return x.id === id; })[0];
-              if (mine) { after = mine.mot; if (mine.mot > (d.fedMot !== undefined ? d.fedMot : FEED_AT) + 0.05) d.await = 0; else { d.await = 0; d.okAt = 0; good = false; rn = 'Success but not applied (gym in battle)'; } d.mot = mine.mot; } } catch (e) {} }
+              if (mine) { after = mine.mot; if (mine.mot > (d.fedMot !== undefined ? d.fedMot : FEED_AT) + (d.fedBerry && d.fedBerry !== 'GoldenRazzBerry' ? 0.01 : 0.05)) d.await = 0; else { d.await = 0; d.okAt = 0; good = false; rn = 'Success but not applied (gym in battle)'; } d.mot = mine.mot; } } catch (e) {} }
           var sdx = null; try { if (fr && fr.val && !fr.val.isNull() && O.gfoDust >= 0) sdx = [fr.val.add(O.gfoDust).readS32(), fr.val.add(O.gfoXp).readS32()]; } catch (e) {}
           if (good && GRAPH && GRAPH.inv && !GWATCH && d.tsBefore > 0) GWATCH = {at: now, ts: d.tsBefore};
           if (good) { d.okList = (d.okList || []).concat([now]).slice(-3);
-            if (d.okList.length >= 3 && now - d.okList[0] < 300000 && itemCount(ITEM.GoldenRazzBerry) <= FUTILE_BELOW) {
+            if (d.okList.length >= 3 && now - d.okList[0] < 300000 && itemCount(ITEM.GoldenRazzBerry) > 0 && itemCount(ITEM.GoldenRazzBerry) <= FUTILE_BELOW) {   /* (no pause when on regular berries: a defender at risk beats saving them) */
               FUTILE_UNTIL[id] = now + 600000; d.okList = [];
               send({k: 'feed', what: 'futile', id: id, fid: d.fid, span: now - (d.okList0 || now), left: itemCount(ITEM.GoldenRazzBerry)}); } }
           send({k: 'feed', what: 'result', id: id, fid: d.fid, res: rn, ok: good, after: after, sdx: sdx});
