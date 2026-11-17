@@ -156,6 +156,14 @@ check("short floor: 58 to spend, floors 42/5/5", (ns["_BS"]["note"][:16], c["flo
 ns["SHINYFIELD"]["ok"] = False
 check("no shiny field at attach: no shiny look", ns["cfg_now"]()["peek"], False)
 ns["SHINYFIELD"]["ok"] = True
+# berries (Benny 11-16 22:14 "stop auto feeding berries for now"): Pinap / Razz only while pogo_berries.on says 1
+ns["CFG"].update(pinap=True, razz=True)
+c = ns["cfg_now"]()
+check("berries switch off/missing: no Pinap, no Razz", (c["pinap"], c["razz"]), (False, False))
+ns.update(FLAGS={"berries": "/x"}, flag=lambda k: k == "berries")
+c = ns["cfg_now"]()
+check("berries switch on: as configured", (c["pinap"], c["razz"], ns["CFG"]["pinap"]), (True, True, True))
+ns.update(FLAGS={}, flag=lambda k: False)
 # why no ball is thrown (the app shows it): the plan's balls IN ALL, and a shiny's promise only while it can keep it
 ns["CFG"].update(mightyKeep=30)
 ns["flag"] = lambda k: k == "catch"

@@ -33,7 +33,9 @@ AN = os.path.join(ROOT, "system", "analysis", "pokemod")
 LOG = os.path.join(AN, "catch_loop.log")
 LEDGER = os.path.join(AN, "spawn_ledger.jsonl")   # one line per spawn (k=spawn) and per avatar fix (k=pos): tools/yield_report.py
 STATE_FILE = "/data/local/tmp/pogo_state.txt"      # read by the AutoCatcher app
-FLAGS = {k: f"/data/local/tmp/pogo_{k}.on" for k in ("catch", "spin", "tap", "perfect", "apples")}
+FLAGS = {k: f"/data/local/tmp/pogo_{k}.on" for k in ("catch", "spin", "tap", "perfect", "apples", "berries")}
+# berries: Pinap / Razz in encounters only while pogo_berries.on holds "1" (Benny 2026-11-16 22:14: "i also want you to stop
+# auto feeding berries for now" -- off since; no switch in the app: on again = adb su -c 'echo 1 > /data/local/tmp/pogo_berries.on')
 # BALL-SAVER plan (AutoCatcher/tools/ballsave_go.py builds + pushes it; delete it = catch everything again): see ballsave_skip()
 BALLSAVE_FILE = "/data/local/tmp/pogo_ballsave.json"
 COLD_AGE_S = 12      # attach once PoGo is this old; install() then retries every 3 s until the map has loaded.
@@ -1720,6 +1722,8 @@ def cfg_now():
     c["peek"] = plan_live(time.time()) and SHINYFIELD["ok"]   # SHINY LOOK (Benny 11-16: "catch all shinies regardless")
     for k in FLAGS:
         c[k] = flag(k)
+    if not c.get("berries"):   # no Pinap, no Razz -- not for a Mighty or a shiny either (FLAGS: berries)
+        c["pinap"] = c["razz"] = False
     c["apples"] = True   # Benny 2026-10-29: "i want anything to always be picked up" -- map items no longer wait on a switch
     if c.get("abBlockS") and c.get("abKey"):
         c[c["abKey"]] = c["abArms"][int(time.time() // c["abBlockS"]) % 2]
