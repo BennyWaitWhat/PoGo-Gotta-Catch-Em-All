@@ -33,8 +33,10 @@ AN = os.path.join(ROOT, "system", "analysis", "pokemod")
 LOG = os.path.join(AN, "catch_loop.log")
 LEDGER = os.path.join(AN, "spawn_ledger.jsonl")   # one line per spawn (k=spawn) and per avatar fix (k=pos): tools/yield_report.py
 STATE_FILE = "/data/local/tmp/pogo_state.txt"      # read by the AutoCatcher app
-FLAGS = {k: f"/data/local/tmp/pogo_{k}.on" for k in ("catch", "spin", "tap", "perfect", "apples")}
-# BALL-SAVER plan (AutoCatcher/tools/ballsave_plan.py writes it; delete it = catch everything again): see ballsave_skip()
+FLAGS = {k: f"/data/local/tmp/pogo_{k}.on" for k in ("catch", "spin", "tap", "perfect", "apples", "berries")}
+# berries: Pinap / Razz in encounters only while pogo_berries.on holds "1" (Benny 2026-11-16 22:14: "i also want you to stop
+# auto feeding berries for now" -- off since; no switch in the app: on again = adb su -c 'echo 1 > /data/local/tmp/pogo_berries.on')
+# BALL-SAVER plan (AutoCatcher/tools/ballsave_go.py builds + pushes it; delete it = catch everything again): see ballsave_skip()
 BALLSAVE_FILE = "/data/local/tmp/pogo_ballsave.json"
 COLD_AGE_S = 12      # attach once PoGo is this old; install() then retries every 3 s until the map has loaded.
                      # (30 s was for the old catcher's heavy RPC-thread setup; this one does metadata + one lookup.)
@@ -249,7 +251,7 @@ function encOf(o) { var r = call(method(o, 'get_EncounterId', 0), o, []); return
 var K = {}, M = {}, OFF = {}, PBT_VT = false;
 var CFG = {catch: false, spin: false, tap: false, perfect: false, apples: false, appleSpecies: {}, openMs: 667, maxOpen: 6, nearWait: 0, nearM: 55, readyMs: 150, thresh: 0.28,
            ballOrder: [2, 1, 3], floors: {1: 5, 2: 5, 3: 5}, pinap: true, pinapFloor: 20, razz: true, razzFloor: 5, razzThresh: 0.45, mightyP: 0.02, mightyKeep: 30, mightyMin: 30,
-           legendary: {}, priority: {}, order: 'fifo', skipSp: {}};
+           legendary: {}, priority: {}, order: 'fifo', skipSp: {}, peek: false, reserve: 0, mightyBalls: 30};
 var S = {ready: false, stale: 'first attach', nextLookup: 0, tries: 0, msvc: NULL, ib: NULL, avatar: NULL, ps: NULL};
 /* STALE MAP (2026-09-24 22:27-22:46: 20 min of vis=0 while attached, 3 Pokemon the second it re-attached). The game
    can rebuild its map -- a new MapPlaceDirectoryService, a new map camera -- and the objects found at attach then read
@@ -261,7 +263,7 @@ var E = {}, NE = 0, DONE = {}, DONEQ = [], PEND = [], NWQ = [], RESP = {}, REQQ 
 var ITEMC = {}, LASTWORK = 0, LASTWALK = 0, LASTOPEN = 0, LASTPOLL = 0, VIS = 0;
 var HOLD = 0, HOLDWHY = '', FLEESTREAK = 0, LASTCATCHMS = 0;
 var ST = {caught: 0, fled: 0, esc: 0, miss: 0, err: 0, manual: 0, opened: 0, thrown: 0, dust: 0, candy: 0, xp: 0,
-          fedPinap: 0, fedRazz: 0, holds: 0, skip: {}, errs: 0, mSeen: 0, mCaught: 0, mFled: 0, safari: 0};
+          fedPinap: 0, fedRazz: 0, holds: 0, skip: {}, errs: 0, mSeen: 0, mCaught: 0, mFled: 0, safari: 0, shiny: 0, peeked: 0, rep1: 0};
 var SPIN = {next: 0, total: 0, inRange: 0, cooling: 0, spins: 0, ok: 0, xp: 0, items: 0, fail: {}}, SPUN = {}, SPINNER_OFF = -1, SPINM = {};
 var OUT = {log: [], done: [], tap: [], revealed: [], led: [], pos: []};
 var WALK_MS = 400, BERRY_MS = 800, RETHROW_MS = 900;   /* reply -> first throw = CFG.readyMs */
@@ -381,17 +383,42 @@ function onGetPlayerOut(s) {   /* any thread: memory reads only */
 }
 
 /* ---------------- items ---------------- */
+/* IN FLIGHT (2026-11-16 20:59): throwAt() takes a ball off ITEMC at once, but the bag the 3 s poll reads still counts a
+   ball until the server answers the throw. The poll put it back, and two more throws went out at the floor: the 50-ball
+   reserve ended at 48. While a throw of that ball is in the air the poll may lower a count, never raise it. */
+function inflight(b) {   /* answered within ~10 s or retired (NORESULT); an older one -- catch switched off mid-throw -- no longer counts */
+  var n = 0, now = Date.now();
+  for (var k in E) if (E[k].st === 'thrown' && E[k].ball === b && now - (E[k].tThrow || 0) < 12000) n++;
+  return n;
+}
 function pollCounts() {
   var ids = CFG.apples ? POLL_IDS.concat(APPLE_IDS) : POLL_IDS;
-  for (var i = 0; i < ids.length; i++) { var v = s32(call(M.itemCount, S.ib, [i32arg(ids[i])])); if (v >= 0) ITEMC[ids[i]] = v; }
+  for (var i = 0; i < ids.length; i++) {
+    var id = ids[i], v = s32(call(M.itemCount, S.ib, [i32arg(id)])); if (v < 0) continue;
+    if ((id <= 3 || id === 7) && ITEMC[id] !== undefined && v > ITEMC[id] && inflight(id) > 0) continue;
+    ITEMC[id] = v;
+  }
 }
 function have(item, floor) { var c = ITEMC[item]; return c !== undefined && c > floor; }
 var MLAST = 0;   /* when the last Mighty Pokemon answered an encounter (ours or opened by hand) */
 function mightyAround() { return MLAST > 0 && Date.now() - MLAST < CFG.mightyMin * 60000; }
 function keepFor(floor) { return mightyAround() ? Math.max(floor, CFG.mightyKeep) : floor; }   /* THE MIGHTY RESERVE */
-function ballOk(b, plain) {   /* plain = the standing floor only (priority species); else Great / Ultra also keep the Mighty reserve */
-  var c = ITEMC[b]; if (c === undefined) return b === 1;
-  var f = CFG.floors[b] || 0; return c > ((plain || b === 1) ? f : keepFor(f));
+/* KEEP N IN ALL (the ball-saver plan's "keep"; Benny 2026-11-16: "keep going until you have 50 balls left"): CFG.reserve
+   balls held on top of the standing floors, spread over the bag AS IT IS NOW -- Poke first, then Great, then Ultra, and a
+   standing floor the bag is short of made up -- so no ordinary throw takes the bag under the keep. Python's
+   reserve_floors() does the same for its report, but from counts it reads every 10 s; floors pushed from there were wrong
+   for a new process's first 10 s and for 10 s after a shiny took a kept Great or Ultra (review 11-16). */
+function floorOf(b) {
+  if (!CFG.reserve) return CFG.floors[b] || 0;
+  var fl = [0, CFG.floors[1] || 0, CFG.floors[2] || 0, CFG.floors[3] || 0], left = CFG.reserve, k, take;
+  for (k = 1; k <= 3; k++) { if (ITEMC[k] === undefined) return Infinity; left += Math.max(0, fl[k] - ITEMC[k]); }
+  for (k = 1; k <= 3; k++) { take = Math.min(left, Math.max(0, ITEMC[k] - fl[k])); fl[k] += take; left -= take; }
+  fl[1] += left;
+  return fl[b];
+}
+function ballOk(b, plain) {   /* plain = no Mighty reserve (priority species); the plan's keep holds for both (a shiny / Mighty skip ballOk) */
+  var c = ITEMC[b]; if (c === undefined) return b === 1 && !CFG.reserve;
+  var f = floorOf(b); return c > ((plain || b === 1 || !mightyAround()) ? f : Math.max(f, CFG.mightyBalls));   /* Great / Ultra */
 }
 /* MIGHTY (see CFG "mightyP"): the best odds among Safari / Ultra / Great / Poke that the bag holds (no reserve) and the
    server lists. SAFARI_OFF: a Safari throw the server did not answer or refused -> none for 5 min (a Mighty then gets Ultra). */
@@ -402,9 +429,20 @@ function mightyOf(r, pid) {   /* r = an encounter reply {p, strong, sp}: is this
   if (r.sp > 0 && r.sp !== pid) return 0;   /* a non-wild reply matched to another species: not this one's odds */
   return (r.strong || (r.p && r.p[1] !== undefined && r.p[1] < CFG.mightyP)) ? 1 : 0;
 }
-function pickBall(pr, prio, mighty) {
+/* SHINY (Benny 2026-11-16 20:51: "when in these kinds of star dust modes, you need to catch all shinies regardless"):
+   the best odds among Ultra / Great / Poke the bag holds, below every floor and the ball-saver's reserve too. */
+function shinyBall(pr) {
+  var b, best = 0, bp = -1;
+  for (b = 3; b >= 1; b--) {   /* ties and missing odds: the stronger ball */
+    if (!(ITEMC[b] > 0)) continue;
+    var p = (pr && pr[b] !== undefined) ? pr[b] : -0.5;
+    if (p > bp) { bp = p; best = b; }
+  }
+  return best;
+}
+function pickBall(pr, prio, mighty, shiny) {
   var b, i, o = CFG.ballOrder;
-  if (mighty && pr) {
+  if (mighty && pr) {   /* first: it already ignores the floors, and only it may use a Safari Ball (a shiny Mighty too) */
     var mb = 0, mp = -1;
     for (i = 0; i < MIGHTY_BALLS.length; i++) {
       b = MIGHTY_BALLS[i]; if (b === 7 && Date.now() < SAFARI_OFF) continue;
@@ -412,6 +450,7 @@ function pickBall(pr, prio, mighty) {
     }
     if (mb) return mb;
   }
+  if (shiny) { var sb = shinyBall(pr); if (sb) return sb; }
   if (prio) { for (b = 3; b >= 1; b--) if (ballOk(b, true)) return b; return 0; }
   if (pr) {
     for (i = 0; i < o.length; i++) { b = o[i]; if (ballOk(b) && pr[b] !== undefined && pr[b] >= CFG.thresh) return b; }
@@ -423,8 +462,9 @@ function pickBall(pr, prio, mighty) {
 }
 function berryFor(e) {
   if (!M.useItem) return 0;
-  var b = pickBall(e.probs, e.prio, e.mighty), p = (e.probs && b && e.probs[b] !== undefined) ? e.probs[b] : -1;
-  if (CFG.razz && p >= 0 && p < CFG.razzThresh && have(701, e.mighty ? 0 : keepFor(CFG.razzFloor))) return 701;
+  var b = pickBall(e.probs, e.prio, e.mighty, e.shiny), p = (e.probs && b && e.probs[b] !== undefined) ? e.probs[b] : -1;
+  if (!b) return 0;   /* no ball may be thrown: a berry now would only be fed again every 5.8 s (review 11-16: the Pinap loop) */
+  if (CFG.razz && p >= 0 && p < CFG.razzThresh && have(701, (e.mighty || e.shiny) ? 0 : keepFor(CFG.razzFloor))) return 701;
   if (CFG.pinap && have(705, CFG.pinapFloor)) return 705;
   return 0;
 }
@@ -435,13 +475,23 @@ var FINAL = {caught: 1, fled: 1, legendary: 1, maxthrows: 1, catcherr: 1};
 /* BALL-SAVER (Benny 2026-11-16 meteor shower, spins refused): CFG.skipSp = the species the Python side's plan leaves
    alone right now (the least stardust per ball while the balls cannot cover every species until the plan's end).
    Looked at again after 20 s, so a species comes back the moment the plan keeps it. Each spawn is counted once. */
-var SAVED = {}, NSAVED = 0;
-function ballsave(enc, now) {
+/* SHINY LOOK (Benny 2026-11-16 20:51: "when in these kinds of star dust modes, you need to catch all shinies regardless"):
+   the map never says shiny -- only the encounter reply does. So while a plan is on the phone (CFG.peek) a spawn of a
+   left-alone species is still OPENED (no ball spent): shiny -> caught with any ball (shinyBall), else left alone and
+   remembered in PEEKED, so it is not opened again. PEEKONLY: no ball may be spent at all (the reserve) but some are
+   left -> every spawn is opened the same way, and only a shiny gets a ball. */
+var SAVED = {}, NSAVED = 0, PEEKED = {}, NPEEKED = 0, PEEKONLY = false, SHINYOFF = false;
+function peekOn() { return !!CFG.peek && !SHINYOFF; }   /* a suspended shiny read finds no shiny: stop opening spawns for it */
+function ballsave(enc, now, pid, cls) {
   var e = E[enc];
   if (e) { ledgerEnd(e, enc, 'ballsave', now); delete E[enc]; NE--; }
-  if (!SAVED[enc]) { SAVED[enc] = 1; bump(ST.skip, 'ballsave'); if (++NSAVED > 5000) { SAVED = {}; NSAVED = 0; } }
+  if (!SAVED[enc]) {
+    SAVED[enc] = 1; bump(ST.skip, 'ballsave'); if (++NSAVED > 5000) { SAVED = {}; NSAVED = 0; }
+    if (!e && pid !== undefined) ledgerSaved(enc, pid, cls, now);   /* left alone at first sight: its one ledger record */
+  }
   COOL[enc] = now + 20000;
 }
+function peeked(enc) { PEEKED[enc] = 1; if (++NPEEKED > 5000) { PEEKED = {}; NPEEKED = 0; } ST.peeked = (ST.peeked || 0) + 1; }
 function finish(enc, why) {
   if (E[enc]) { ledgerEnd(E[enc], enc, why, Date.now()); delete E[enc]; NE--; }
   if (why && why !== 'caught') bump(ST.skip, why);
@@ -497,7 +547,15 @@ function ledgerEnd(e, enc, why, now) {
                 lat: (e.lat !== null && e.lat !== undefined) ? +e.lat.toFixed(6) : null, lng: (e.lng !== null && e.lng !== undefined) ? +e.lng.toFixed(6) : null,
                 exp: e.exp || null, tx: e.tx || null, tth: e.tth, d0: e.d0, dT: e.dT === undefined ? null : e.dT, d1: (me && e.lat !== null) ? Math.round(meters(me.lat, me.lng, e.lat, e.lng)) : null,
                 tO: e.tO || null, tR: e.tR || null, rs: e.rs, tT: e.tT || null, tC: e.tC || null, n: e.att, opens: e.opens,
-                b: e.ball || null, pr: p, m: e.mighty ? 1 : 0, ord: CFG.order, om: CFG.openMs, nw: CFG.nearWait, nwt: e.nwait || 0, rm: CFG.readyMs, r: why, t1: now});
+                b: e.ball || null, pr: p, m: e.mighty ? 1 : 0, ord: CFG.order, om: CFG.openMs, nw: CFG.nearWait, nwt: e.nwait || 0, rm: CFG.readyMs, r: why, t1: now,
+                d: e.dust === undefined ? null : e.dust, sh: e.shiny ? 1 : 0, pk: e.peek ? 1 : 0});   /* d = the catch's stardust: the ball-saver plan reads it */
+  } catch (x) { ST.errs++; }
+}
+function ledgerSaved(enc, pid, cls, now) {   /* a spawn the ball-saver left alone without opening it: same keys, nothing measured */
+  try {
+    OUT.led.push({e: enc, id: pid, c: String(cls || '').replace('MapPokemon', '').replace('MapPlacePokemon', ''), sp: null, t0: now, ls: now, lat: null, lng: null,
+                  exp: null, tx: null, tth: null, d0: null, dT: null, d1: null, tO: null, tR: null, rs: null, tT: null, tC: null, n: 0, opens: 0,
+                  b: null, pr: null, m: 0, ord: CFG.order, om: CFG.openMs, nw: CFG.nearWait, nwt: 0, rm: CFG.readyMs, r: 'ballsave', t1: now, d: null, sh: 0, pk: 0});
   } catch (x) { ST.errs++; }
 }
 /* DESPAWN-FIRST (an A/B arm, Benny 2026-11-07): open the queue soonest-to-despawn first. Under 1.5 s left (the median
@@ -567,7 +625,8 @@ function walk(now) {
     }
     var pid = s32(call(method(o, 'get_PokemonId', 0), o, []));
     if (CFG.legendary[pid]) { c[4]++; finish(enc, 'legendary'); return; }
-    if (CFG.skipSp[pid] && !appleMon) { c[4]++; LASTVIS = now; ballsave(enc, now); return; }   /* apple reveals: the game opens their screen itself */
+    if (CFG.skipSp[pid] && !appleMon && (!peekOn() || PEEKED[enc])) { c[4]++; LASTVIS = now; ballsave(enc, now, pid, cls); return; }   /* apple reveals: the game opens their screen itself */
+    if (PEEKONLY && PEEKED[enc] && !appleMon) { c[4]++; LASTVIS = now; ballsave(enc, now, pid, cls); return; }   /* looked at already: not shiny */
     LIVE[enc] = o; vis++; c[1]++;
     e = E[enc] = {pid: pid, cls: cls, prio: !!CFG.priority[pid], st: 'new', seen: now, att: 0, opens: 0, berry: 0, apple: appleMon};
     var si = spawnInfo(o);
@@ -590,6 +649,12 @@ function due(now) {   /* anything that needs a fresh pointer this tick? (cheap: 
    walk() binds it to the encounter id within 0.4 s: GOENC. Keyed by pointer alone, a pooled object handed the next hidden
    apple Pokemon a stale "opened" -- throws at an encounter the game never opened: 64 duds, 8 dropped in 15 min (09-30). */
 var OPENING = false, GAMEOPEN = {}, GOENC = {};
+function nwOpen(pid) {   /* a non-wild reply (lure, incense) carries no encounter id, only its species: one such open per species
+                            at a time, or two of one species could swap replies -- the shiny left alone, the plain one given a kept ball
+                            (review 11-16) */
+  for (var k in E) if (E[k].st === 'open' && E[k].cls !== WILD && E[k].pid === pid) return true;
+  return false;
+}
 function openOne(enc, e, o, now) {
   OPENING = true;
   try { call(method(o, 'SendEncounterRequest', 0), o, []); } finally { OPENING = false; }
@@ -604,7 +669,7 @@ function feed(e, o, item) {
   if (item === 705) ST.fedPinap++; else ST.fedRazz++;
 }
 function throwAt(e, enc, o, now) {
-  var ball = pickBall(e.probs, e.prio, e.mighty);
+  var ball = pickBall(e.probs, e.prio, e.mighty, e.shiny);
   if (!ball) { e.st = 'ready'; e.due = now + 5000; bump(ST.skip, 'noballs'); return; }
   if (ball === 7) ST.safari++;
   var pb = il().newObject(K.PokeballThrow);
@@ -623,11 +688,12 @@ function outcome(e, enc, r, now) {
   e.tC = r.t || now;
   var p =(e.probs && e.probs[e.ball] !== undefined) ? e.probs[e.ball] : -1;
   var line = e.cls.replace('MapPokemon', '').replace('MapPlacePokemon', '') + ' #' + e.pid + ' ball=' + e.ball + ' p=' + (p < 0 ? '?' : p.toFixed(2)) +
-             ' att=' + e.att + ' berry=' + (e.fedWith || 0) + ' ' + ((now - e.tOpen) / 1000).toFixed(1) + 's' + (e.apple ? ' [apple]' : '') + (e.mighty ? ' [mighty]' : '');
+             ' att=' + e.att + ' berry=' + (e.fedWith || 0) + ' ' + ((now - e.tOpen) / 1000).toFixed(1) + 's' + (e.apple ? ' [apple]' : '') + (e.mighty ? ' [mighty]' : '') +
+             (e.shiny ? ' [shiny]' : '');
   if (e.mighty && r.st === 1) ST.mCaught++; else if (e.mighty && r.st === 3) ST.mFled++;
   if (r.st === 1) {
     ST.caught++; FLEESTREAK = 0; LASTCATCHMS = now - e.tOpen;
-    ST.dust += r.dust; ST.candy += r.candy; ST.xp += r.xp;
+    ST.dust += r.dust; ST.candy += r.candy; ST.xp += r.xp; e.dust = r.dust;
     log('CATCH ' + line + ' dust=' + r.dust + ' candy=' + r.candy);
     finish(enc, 'caught');
   } else if (r.st === 3) {
@@ -638,7 +704,7 @@ function outcome(e, enc, r, now) {
     finish(enc, 'fled');
   } else if (r.st === 2 || r.st === 4) {
     if (r.st === 2) ST.esc++; else ST.miss++;
-    if (e.att < (e.prio ? 60 : 12)) { e.st = 'ready'; e.due = now + RETHROW_MS; } else finish(enc, 'maxthrows');
+    if (e.att < ((e.prio || e.shiny) ? 60 : 12)) { e.st = 'ready'; e.due = now + RETHROW_MS; } else finish(enc, 'maxthrows');
   } else {
     ST.err++; log('CATCHERR ' + r.st + ' ' + line);
     /* a refused Safari Ball is not this Pokemon's end: throw again with the next best ball */
@@ -659,13 +725,18 @@ function catchTick(now) {
   var inflight = 0, appleInflight = false;
   for (enc in E) if (E[enc].st === 'thrown') { inflight++; if (E[enc].apple) appleInflight = true; }
   var anyBall = ballOk(1) || ballOk(2, true) || ballOk(3, true) || ITEMC[7] > 0;   /* any throw at all possible (a Mighty may use what ordinary spawns may not) */
-  if (!anyBall && fresh && now >= HOLD && PEND.length) { HOLD = now + 30000; HOLDWHY = 'out of balls (at the floors)'; ST.holds++; log('HOLD 30s: ' + HOLDWHY); holding = true; }
+  PEEKONLY = !anyBall && peekOn() && (ITEMC[1] > 0 || ITEMC[2] > 0 || ITEMC[3] > 0);   /* SHINY LOOK with no ball to spend */
+  if (!anyBall && !PEEKONLY && fresh && now >= HOLD && PEND.length) { HOLD = now + 30000; HOLDWHY = 'out of balls (at the floors)'; ST.holds++; log('HOLD 30s: ' + HOLDWHY); holding = true; }
   if (CFG.order === 'despawn' && PEND.length > 1 && !holding) despawnFirst(now);
   for (var tries = PEND.length; tries > 0 && !holding && now - LASTOPEN >= CFG.openMs && n < CFG.maxOpen; tries--) {
     enc = PEND.shift(); e = E[enc]; if (!e || e.st !== 'new') continue;
-    if (CFG.skipSp[e.pid] && !e.apple) { ballsave(enc, now); continue; }   /* queued before the plan dropped its species */
+    var drop = CFG.skipSp[e.pid] && !e.apple;   /* queued before the plan dropped its species */
+    if (drop && (!peekOn() || PEEKED[enc])) { ballsave(enc, now); continue; }
+    if (PEEKONLY && PEEKED[enc] && !e.apple) { ballsave(enc, now); continue; }
+    e.peek = (!e.apple && ((drop && peekOn()) || PEEKONLY)) ? 1 : 0;   /* SHINY LOOK: opened only to see whether it is shiny */
     o = LIVE[enc];
     if ((e.retryAt && now < e.retryAt) || !o) { PEND.push(enc); continue; }
+    if (!e.apple && e.cls !== WILD && nwOpen(e.pid)) { PEND.push(enc); continue; }   /* its reply would be told apart by species only */
     if (e.apple) {
       /* APPLE POKEMON (2026-09-29): the game opens a revealed Pokemon's encounter by itself ~3 s after the reveal. A throw
          before that is a dud (49 in 7 min). Wait for the game's own SendEncounterRequest on this object, then throw;
@@ -691,11 +762,31 @@ function catchTick(now) {
     if (e.st === 'open') {
       var r = RESP[enc];
       if (r && r.t < e.tOpen - 100) { delete RESP[enc]; r = null; }   /* an older answer: your own manual encounter */
+      if (r && r.sp > 0 && r.sp !== e.pid) { delete RESP[enc]; r = null; }   /* another species' reply: not this one's odds or shininess */
       if (r) {
         delete RESP[enc]; e.tR = e.tR || r.t; e.rs = r.st;
         if (e.apple) log('APPLEOPEN #' + e.pid + ' enc=' + enc + ' reply status=' + r.st);
         if (r.st === 1) {
           e.probs = r.p; e.st = 'ready'; e.due = now + CFG.readyMs; e.mighty = mightyOf(r, e.pid);
+          ST.rep1++;
+          /* a wrong field read would call every Pokemon shiny and spend the kept balls: more than 1 in 10 is not real
+             (Community Day odds are 1 in 25) -> stop trusting it for this attach */
+          if (r.shiny && !SHINYOFF && ST.shiny >= 5 && (ST.shiny + 1) / ST.rep1 > 0.10) {
+            SHINYOFF = true; log('SHINY LOOK suspended: ' + (ST.shiny + 1) + ' of ' + ST.rep1 + ' replies said shiny -- the shiny field read must be wrong');
+          }
+          e.shiny = (r.shiny && !SHINYOFF) ? 1 : 0;
+          if (e.shiny && !e.slog) {   /* one line per shiny: what the ball-saver would have done, the odds, the ball it gets */
+            e.slog = 1; ST.shiny = (ST.shiny || 0) + 1;
+            log('SHINY ' + e.cls.replace('MapPokemon', '').replace('MapPlacePokemon', '') + ' #' + e.pid + ' odds ' + oddsStr(r.p) +
+                (e.peek ? ' -- left alone by the ball-saver, caught anyway' : '') + ' | bag P=' + ITEMC[1] + ' G=' + ITEMC[2] + ' U=' + ITEMC[3] +
+                ' -> ball ' + pickBall(e.probs, e.prio, e.mighty, 1));
+          }
+          if (e.peek && !e.shiny) {
+            /* looked: not shiny -> left alone. A Mighty one stays: the look found it, and Mighty Pokemon get their own balls */
+            if (!e.mighty && (CFG.skipSp[e.pid] || PEEKONLY)) { peeked(enc); ballsave(enc, now); continue; }   /* the list decides, not
+               the look: a look in flight when the shiny read is distrusted (SHINYOFF) stays left alone (review 11-16) */
+            e.peek = 0;   /* the plan keeps its species again, balls came back, or a Mighty: caught as usual */
+          }
           if (e.mighty && !e.mlog) {   /* one line per Mighty: the flag, the odds the server gave per ball, what the bag holds */
             e.mlog = 1; ST.mSeen++; MLAST = now;
             log('MIGHTY ' + e.cls.replace('MapPokemon', '').replace('MapPlacePokemon', '') + ' #' + e.pid + ' flag=' + (r.strong ? 1 : 0) + ' odds ' + oddsStr(r.p) +
@@ -767,6 +858,12 @@ function strongOf(pk) {   /* PokemonProto -> PokemonDisplayProto.IsStrongPokemon
     var d = pk.add(OFF.pkDisp).readPointer(); return (!d.isNull() && d.add(OFF.dStrong).readU8()) ? 1 : 0;
   } catch (e) { return 0; }
 }
+function shinyOf(pk) {   /* PokemonProto -> PokemonDisplayProto.Shiny: the encounter reply tells it, the map never does */
+  try {
+    if (!(OFF.pkDisp >= 0) || !(OFF.dShiny >= 0) || !pk || pk.isNull()) return 0;
+    var d = pk.add(OFF.pkDisp).readPointer(); return (!d.isNull() && d.add(OFF.dShiny).readU8()) ? 1 : 0;
+  } catch (e) { return 0; }
+}
 /* a Mighty answered an encounter (any thread: no game call). Starts / extends THE MIGHTY RESERVE. A reply to an open
    that is not the catcher's gets its line here (the catcher's own get theirs, with the ball chosen, in catchTick):
    with Auto-Catch off that is how the odds stay visible. Live 11-15 15:09-15:12, 4 Mighty (Incense and Wild): each
@@ -782,7 +879,7 @@ function onEncounterOut(s) {   /* EncounterOutProto: status @0x1c, WildPokemon @
   var pk = s.add(0x10).readPointer(); if (pk.isNull()) return;
   var ev = pk.add(0x10).readU64(); if (ev.compare(uint64(0)) === 0) return;
   var est = s.add(0x1c).readS32(); if (est === 0) return;   /* status not set yet: a half-filled object */
-  var wp = OFF.wPk >= 0 ? pk.add(OFF.wPk).readPointer() : NULL, r = {st: est, p: readProbs(s.add(0x20).readPointer()), t: Date.now(), strong: strongOf(wp)};
+  var wp = OFF.wPk >= 0 ? pk.add(OFF.wPk).readPointer() : NULL, r = {st: est, p: readProbs(s.add(0x20).readPointer()), t: Date.now(), strong: strongOf(wp), shiny: shinyOf(wp)};
   RESP[ev.toString()] = r;
   if (est === 1 && mightyOf(r, 0)) mightySeen(ev.toString(), r, 'Wild', (OFF.pkId >= 0 && !wp.isNull()) ? wp.add(OFF.pkId).readS32() : 0);
   return true;
@@ -794,16 +891,18 @@ function onEncounterOut(s) {   /* EncounterOutProto: status @0x1c, WildPokemon @
 var NWOFF = {};   /* proto class name -> {res, pk, cp} */
 function onOtherEncounterOut(s, pn) {
   var o = NWOFF[pn] || {res: 0x10, pk: -1, cp: 0x20}, now = Date.now();
-  var st = s.add(o.res).readS32(), p = readProbs(s.add(o.cp).readPointer()), sp = -1, strong = 0;
-  if (o.pk >= 0 && OFF.pkId >= 0) { try { var pk = s.add(o.pk).readPointer(); if (!pk.isNull()) { sp = pk.add(OFF.pkId).readS32(); strong = strongOf(pk); } } catch (e) {} }
-  var sig = pn + '|' + st + '|' + sp + '|' + JSON.stringify(p);
+  var st = s.add(o.res).readS32(), p = readProbs(s.add(o.cp).readPointer()), sp = -1, strong = 0, shiny = 0;
+  if (o.pk >= 0 && OFF.pkId >= 0) { try { var pk = s.add(o.pk).readPointer(); if (!pk.isNull()) { sp = pk.add(OFF.pkId).readS32(); strong = strongOf(pk); shiny = shinyOf(pk); } } catch (e) {} }
+  var sig = pn + '|' + st + '|' + sp + '|' + shiny + '|' + JSON.stringify(p);
   if (sig === LASTNW.sig && now - LASTNW.t < 300) return;   /* same reply through a second MergeFrom overload */
   LASTNW = {sig: sig, t: now};
   var i, best = -1;
   for (i = NWQ.length - 1; i >= 0; i--) { var q = NWQ[i], e = E[q.enc]; if (now - q.t > 10000 || !e || e.st !== 'open' || RESP[q.enc]) NWQ.splice(i, 1); }
   for (i = 0; i < NWQ.length && best < 0; i++) if (sp > 0 && E[NWQ[i].enc].pid === sp) best = i;
-  if (best < 0 && NWQ.length) best = 0;
-  var nr = {st: st, p: p, t: now, strong: strong, sp: sp};
+  /* species unknown -> the oldest open. A KNOWN species no open of ours matches = someone else's encounter (a tap,
+     Pokemod reading stats): handing it to another open gave that one wrong odds -- and with SHINY LOOK a wrong shininess */
+  if (best < 0 && NWQ.length && sp <= 0) best = 0;
+  var nr = {st: st, p: p, t: now, strong: strong, sp: sp, shiny: shiny};
   if (st === 1 && mightyOf(nr, sp)) mightySeen(best >= 0 ? NWQ[best].enc : '', nr, pn.replace('EncounterOutProto', ''), sp);
   if (best >= 0) { RESP[NWQ[best].enc] = nr; NWQ.splice(best, 1); }
   return true;
@@ -1194,7 +1293,7 @@ function pump(self) {
 
 function applyCfg(c) {
   if (!c) return;
-  ['catch', 'spin', 'tap', 'perfect', 'apples', 'openMs', 'maxOpen', 'nearWait', 'nearM', 'readyMs', 'thresh', 'ballOrder', 'pinap', 'pinapFloor', 'razz', 'razzFloor', 'razzThresh', 'order', 'mightyP', 'mightyKeep', 'mightyMin'].forEach(function (k) { if (c[k] !== undefined) CFG[k] = c[k]; });
+  ['catch', 'spin', 'tap', 'perfect', 'apples', 'openMs', 'maxOpen', 'nearWait', 'nearM', 'readyMs', 'thresh', 'ballOrder', 'pinap', 'pinapFloor', 'razz', 'razzFloor', 'razzThresh', 'order', 'mightyP', 'mightyKeep', 'mightyMin', 'peek', 'reserve', 'mightyBalls'].forEach(function (k) { if (c[k] !== undefined) CFG[k] = c[k]; });
   if (c.floors) CFG.floors = {1: c.floors['1'], 2: c.floors['2'], 3: c.floors['3']};
   if (c.legendary) { CFG.legendary = {}; c.legendary.forEach(function (d) { CFG.legendary[d] = 1; }); }
   if (c.priority) { CFG.priority = {}; c.priority.forEach(function (d) { CFG.priority[d] = 1; }); }
@@ -1283,9 +1382,10 @@ rpc.exports = {
     OFF.pkDisp = PKP ? off1(PKP, ['PokemonDisplay', 'pokemonDisplay_']) : -1;
     if (OFF.pkDisp < 0 && PKP) OFF.pkDisp = byType(PKP, 'mdisp', /(^|\.)PokemonDisplayProto$/);
     OFF.dStrong = MK.PokemonDisplayProto ? off1(MK.PokemonDisplayProto, ['IsStrongPokemon', 'isStrongPokemon_']) : -1;
+    OFF.dShiny = MK.PokemonDisplayProto ? off1(MK.PokemonDisplayProto, ['Shiny', 'shiny_']) : -1;   /* SHINY LOOK */
     OFF.wPk = MK.WildPokemonProto ? off1(MK.WildPokemonProto, ['Pokemon', 'pokemon_']) : -1;
     if (OFF.wPk < 0 && MK.WildPokemonProto) OFF.wPk = byType(MK.WildPokemonProto, 'mwpk', /(^|\.)PokemonProto$/);
-    st.mighty = {wildPokemon: OFF.wPk, display: OFF.pkDisp, flag: OFF.dStrong};
+    st.mighty = {wildPokemon: OFF.wPk, display: OFF.pkDisp, flag: OFF.dStrong, shiny: OFF.dShiny};
     st.otherTypes = [];
     outs.forEach(function (x) {
       var nm = x[0], kl = x[1];
@@ -1475,8 +1575,31 @@ def cur_pos():
     return f"{m.group(1)},{m.group(2)}" if m else None
 
 
-BALLS = {"usable": None}              # Poke + Great + Ultra above their floors, from the last stats read (every 10 s)
+BALLS = {"usable": None, "items": {}}  # Poke + Great + Ultra above their floors, and the bag counts, from the last stats read (10 s)
+SHINYFIELD = {"ok": True, "suspended": False}   # the shiny read resolved at attach and not distrusted (else SHINY LOOK opens for nothing)
 _BS = {"mtime": None, "plan": None, "note": "off"}
+SPIN_WHY = ("spins are being refused", "the daily spin limit")   # why_idle()'s spin parts: logged as NOT SPINNING
+SP = {"on": False, "off": False, "since": None, "bare": 0}
+
+
+def starpiece_seen(line, w):
+    """STAR PIECE (2026-11-16: it ran out 18:47-19:09 and nobody saw it -- 227 catches paid a third less, ~64K stardust).
+    A catch WITH one pays an award that is not a multiple of 25 (337, 412, 3037, 2287 ...); WITHOUT one, a multiple
+    (225, 275, 2025, 2525 ...) -- 7,400 catches checked. Two bare catches in a row after one with it = it ran out; one
+    STARPIECE line per change. Silent until a catch has paid with one (no Star Piece at all is not news)."""
+    m = re.search(r"(?:^|\s)CATCH \S+ #\d+ .*?dust=(\d+)", line)   # drain() hands the JS lines over without a time
+    if not m or int(m.group(1)) < 100:
+        return
+    if int(m.group(1)) % 25:
+        SP["bare"] = 0
+        if SP["off"]:
+            w("STARPIECE on again: catches pay the Star Piece's 1.5x")
+        SP.update(on=True, off=False, since=None)
+    elif SP["on"] and not SP["off"]:
+        SP["bare"] += 1
+        if SP["bare"] >= 2:
+            SP.update(off=True, since=time.strftime("%H:%M:%S"))
+            w("STARPIECE off: 2 catches in a row paid without a Star Piece (a third less stardust until the next one)")
 
 
 def usable_balls(items):
@@ -1500,15 +1623,17 @@ def ballsave_skip(plan, balls, now):
         if balls is None:
             return [], "waiting for the ball count"
         mins = (float(plan["end"]) - now) / 60.0
+        reserve = plan_reserve(plan)   # balls kept back on top of the floors (held by the Poke Ball floor: cfg_now)
+        kept = reserve + sum(int(v) for v in CFG["floors"].values())
         if mins <= 0:
-            return [], "off: the plan's end time has passed"
+            return [], (f"the plan ended: catching everything above the {kept} balls kept in all" if reserve
+                        else "off: the plan's end time has passed")
         margin = float(plan.get("margin", 1.0))
-        reserve = max(0, int(plan.get("reserve", 0)))   # balls kept back (also held by the Poke Ball floor: cfg_now)
         ranked = sorted(((int(d), float(v[0]), float(v[1])) for d, v in plan["species"].items()), key=lambda x: (-x[1], x[0]))
-    except (KeyError, TypeError, ValueError, IndexError, AttributeError):
+    except (KeyError, TypeError, ValueError, IndexError, AttributeError, OverflowError):
         return [], "off: unreadable plan"
     budget = balls - reserve
-    held = f" ({budget} after the {reserve} kept back)" if reserve else ""
+    head = f"{max(0, budget)} balls to spend for {mins:.0f} min, {kept} kept in all" if reserve else f"{balls} balls for {mins:.0f} min"
     need, skip, cut = 0.0, [], None
     for dex, dpb, rate in ranked:
         if need >= budget:
@@ -1516,20 +1641,61 @@ def ballsave_skip(plan, balls, now):
             cut = dpb if cut is None else cut
         need += rate * mins * margin
     if not skip:
-        return [], f"{balls} balls{held} for {mins:.0f} min: catching everything (every species needs ~{need:.0f})"
-    return sorted(skip), (f"{balls} balls{held} for {mins:.0f} min: leaving {len(skip)} of {len(ranked)} species alone "
-                          f"(at most {cut:.0f} stardust per ball)")
+        return [], f"{head}: catching everything (every species needs ~{need:.0f})"
+    return sorted(skip), f"{head}: leaving {len(skip)} of {len(ranked)} species alone (at most {cut:.0f} stardust per ball)"
+
+
+def plan_reserve(plan):
+    """Balls a plan keeps back ON TOP of the catcher's own floors. "keep": N = N balls in all (Benny 2026-11-16: "you can
+    keep just 50 balls" -- the floors' 5 Poke + 5 Great + 5 Ultra count toward it; the older "reserve": 50 left 65);
+    "reserve": N = N on top of the floors (plans written before 11-17)."""
+    if not isinstance(plan, dict):
+        return 0
+    try:
+        if plan.get("keep") is not None:
+            return max(0, int(plan["keep"]) - sum(int(v) for v in CFG["floors"].values()))
+        return max(0, int(plan.get("reserve", 0)))
+    except (TypeError, ValueError, OverflowError):   # OverflowError: int(inf) from a "keep": 1e999
+        return 0
+
+
+def plan_live(now):
+    """A readable plan whose end time has not passed: the window of a stardust mode (SHINY LOOK runs only inside it)."""
+    p = _BS["plan"]
+    try:
+        return isinstance(p, dict) and not p.get("bad") and isinstance(p.get("species"), dict) and float(p["end"]) > now
+    except (KeyError, TypeError, ValueError, OverflowError):
+        return False
+
+
+def floor_short(items):
+    """Balls the standing floors cannot hold because the bag has fewer of that type (3 Great Balls under a floor of 5 = 2)."""
+    if items.get("1") is None:
+        return 0
+    return sum(max(0, int(CFG["floors"][k]) - int(items.get(k) or 0)) for k in ("1", "2", "3"))
+
+
+def reserve_floors(res, items):
+    """The floors that hold `res` balls back on top of the standing ones, spread over the bag as it is: Poke Balls first,
+    then Great, then Ultra (review 11-16: on the Poke floor alone, a bag short of Poke Balls let Great and Ultra run down
+    to 5 and fewer than "keep" were left). A standing floor the bag is short of is made up the same way, so "keep 50"
+    leaves 50. Counts not read yet -> all on the Poke floor."""
+    fl = {k: int(CFG["floors"][k]) for k in ("1", "2", "3")}
+    out, left = dict(fl), int(res) + floor_short(items)
+    for k in ("1", "2", "3"):
+        take = min(left, max(0, int(items.get(k) or 0) - fl[k]))
+        out[k] += take
+        left -= take
+    out["1"] += left
+    return out
 
 
 def ballsave_reserve():
-    """Poke Balls the plan keeps back (Benny 2026-11-16 19:24: "i want max star dust and all balls except 100 used by
-    9:01pm"). Added to the Poke Ball floor while a plan file is on the phone -- so no throw of any kind dips into them,
-    not before the end time and not after it. Delete the plan file to release them."""
-    p = _BS["plan"]
-    try:
-        return max(0, int(p.get("reserve", 0))) if isinstance(p, dict) else 0
-    except (TypeError, ValueError):
-        return 0
+    """Poke Balls the plan keeps back on top of the floors (Benny 2026-11-16 19:24: "i want max star dust and all balls
+    except 100 used by 9:01pm"; 20:48 "keep going until you have 50 balls left"). Added to the Poke Ball floor while a
+    plan file is on the phone -- so no throw dips into them (a shiny's excepted: SHINY LOOK), not before the end time and
+    not after it. Delete the plan file to release them."""
+    return plan_reserve(_BS["plan"])
 
 
 def ballsave_now():
@@ -1547,7 +1713,10 @@ def ballsave_now():
             except (OSError, ValueError):
                 plan = {"bad": 1}
         _BS.update(mtime=m, plan=plan)
-    skip, _BS["note"] = ballsave_skip(_BS["plan"], BALLS["usable"], time.time())
+    balls = BALLS["usable"]
+    if balls is not None and plan_reserve(_BS["plan"]):   # the reserve also makes up a short floor (reserve_floors)
+        balls -= floor_short(BALLS.get("items") or {})
+    skip, _BS["note"] = ballsave_skip(_BS["plan"], balls, time.time())
     keep = set(CFG.get("priority") or [])          # Gimmighoul / Galarian birds: never left alone
     return [d for d in skip if d not in keep]
 
@@ -1557,7 +1726,8 @@ def ballsave_log(w, now):
     catching everything / leaving species alone), and at most one a minute while only the cut moves. Silent on days with
     no plan file. (Review 11-16: a bad plan file and a re-attach were silent; the cut flapped ~3 lines a minute.)"""
     note = _BS["note"]
-    kind = "leaving" if " leaving " in note else ("all" if "catching everything" in note else note)
+    kind = ("ended" if note.startswith("the plan ended") else "leaving" if " leaving " in note
+            else "all" if "catching everything" in note else note)
     if _BS["mtime"] is None and _BS.get("lkind") in (None, "off"):
         return
     if kind != _BS.get("lkind") or (note != _BS.get("lnote") and now - _BS.get("lt", 0) >= 60):
@@ -1568,11 +1738,16 @@ def ballsave_log(w, now):
 def cfg_now():
     c = dict(CFG)
     c["skipSp"] = ballsave_now()
-    res = ballsave_reserve()
-    if res:
-        c["floors"] = dict(CFG["floors"], **{"1": int(CFG["floors"]["1"]) + res})
+    c["reserve"] = ballsave_reserve()   # the JS spreads it over the live bag (floorOf); reserve_floors() is the same sum
+    live = plan_live(time.time())
+    c["peek"] = live and SHINYFIELD["ok"]   # SHINY LOOK (Benny 11-16: "catch all shinies regardless")
+    # The Mighty hold on Great/Ultra (ballOk): none while a plan spends the bag -- its budget counts them, and a Mighty still
+    # gets any ball. The Razz kept for a Mighty (berryFor: mightyKeep) stays as it is (review 11-16).
+    c["mightyBalls"] = 0 if live else c["mightyKeep"]
     for k in FLAGS:
         c[k] = flag(k)
+    if not c.get("berries"):   # no Pinap, no Razz -- not for a Mighty or a shiny either (FLAGS: berries)
+        c["pinap"] = c["razz"] = False
     c["apples"] = True   # Benny 2026-10-29: "i want anything to always be picked up" -- map items no longer wait on a switch
     if c.get("abBlockS") and c.get("abKey"):
         c[c["abKey"]] = c["abArms"][int(time.time() // c["abBlockS"]) % 2]
@@ -1721,6 +1896,36 @@ def why_idle(hist, stt, catch_on, spin_on):
     return "; ".join(parts)
 
 
+def balls_why(it, stt):
+    """Why no ball is thrown, from the bag (the app shows it under the switches): the ball-saver's kept balls, the floors,
+    the Mighty reserve, or the JS hold. '' = balls are not the reason."""
+    fl = CFG["floors"]
+    balls = [it.get(k, -1) for k in ("1", "2", "3")]
+    res = ballsave_reserve()
+    rf = reserve_floors(res, it) if res else None
+    if rf and all(0 <= n <= rf[k] for n, k in zip(balls, ("1", "2", "3"))):   # at the plan's floors: nothing left to spend
+        kept, have = res + sum(int(v) for v in fl.values()), sum(max(0, n) for n in balls)
+        return ((f"keeping the last {kept} balls (the ball-saver's plan)" if have >= kept
+                 else f"holding the last {have} balls (the ball-saver's plan keeps {kept})")
+                + f": {balls[0]} Poke, {balls[1]} Great, {balls[2]} Ultra left"
+                + (" -- a shiny still gets one" if plan_live(time.time()) and flag("catch") and SHINYFIELD["ok"] else ""))
+    if all(0 <= n <= fl[k] for n, k in zip(balls, ("1", "2", "3"))):   # every ball type at its floor: no throw is allowed
+        return (f"out of balls: {balls[0]} Poke, {balls[1]} Great, {balls[2]} Ultra left "
+                f"(it saves the last {fl['1']}/{fl['2']}/{fl['3']} for you)")
+    if stt.get("mightyOn") and 0 <= balls[0] <= fl["1"] and not plan_live(time.time()):   # (a live plan holds no Mighty reserve)
+        return (f"out of Poke Balls: the {max(balls[1], 0)} Great and {max(balls[2], 0)} Ultra left are kept for Mighty Pokemon "
+                f"(the last {CFG['mightyKeep']} of each while they are around)")
+    return stt["holdWhy"] if stt["hold"] else ""
+
+
+def starpiece_why(why, now):
+    """A Star Piece that ran out while a plan runs leads the why (the app shows it under the switches); it never hides a
+    catching problem, only a spin one."""
+    if SP["off"] and plan_live(now) and (not why or why.startswith(SPIN_WHY)):
+        return f"the Star Piece ran out at {SP['since']}: catches pay a third less stardust" + (f"; {why}" if why else "")
+    return why
+
+
 def report(w, stt, t0, base):
     st, it, sp = stt["st"], stt["items"], stt["spin"]
     mins = max((time.time() - t0) / 60.0, 1e-6)
@@ -1732,6 +1937,7 @@ def report(w, stt, t0, base):
       f"| spins={sp['ok']} stops={sp['total']}/{sp['inRange']}/{sp['cooling']} | skip={st['skip']} errs={st['errs']}"
       + (f" | mighty {st.get('mCaught', 0)} caught / {st.get('mFled', 0)} fled of {st.get('mSeen', 0)}, Safari thrown {st.get('safari', 0)}"
          if st.get("mSeen") else "")
+      + (f" | shiny {st.get('shiny', 0)} seen, {st.get('peeked', 0)} looked at and left" if st.get("shiny") or st.get("peeked") else "")
       + (f" | HOLD {stt['hold']}s: {stt['holdWhy']}" if stt["hold"] else "")
       + apple_part(stt, it) + limit_part(stt, base, w)
       + (f" | spinfail={sp['fail']}" if sp["fail"] else ""))
@@ -1771,16 +1977,7 @@ def report(w, stt, t0, base):
                   f"parse method (the build before 2026-11-10 13:52 caught nothing in this state)")
             base.update(mva=enc_all, mvm=enc_mf)
         base.update(minute=minute, mc=c, mf=st["fled"], md=st["dust"], mo=st["opened"], mt=st["thrown"], ms=srv, mse=sen)
-    fl = CFG["floors"]
-    balls = [it.get(k, -1) for k in ("1", "2", "3")]
-    if all(0 <= n <= fl[k] for n, k in zip(balls, ("1", "2", "3"))):   # every ball type at its floor: no throw is allowed
-        why = (f"out of balls: {balls[0]} Poke, {balls[1]} Great, {balls[2]} Ultra left "
-               f"(it saves the last {fl['1']}/{fl['2']}/{fl['3']} for you)")
-    elif stt.get("mightyOn") and 0 <= balls[0] <= fl["1"]:   # only the Mighty reserve is left: ordinary spawns wait for Poke Balls
-        why = (f"out of Poke Balls: the {max(balls[1], 0)} Great and {max(balls[2], 0)} Ultra left are kept for Mighty Pokemon "
-               f"(the last {CFG['mightyKeep']} of each while they are around)")
-    else:
-        why = stt["holdWhy"] if stt["hold"] else ""
+    why = balls_why(it, stt)
     via = stt.get("via") or {}
     hist = base.setdefault("hist", deque(maxlen=12))
     hist.append((time.time(), stt["frame"], st["opened"], st["thrown"], c,
@@ -1793,10 +1990,12 @@ def report(w, stt, t0, base):
         if kind != base.get("whykind"):
             base["whykind"] = kind
             if why and not why.startswith("no Pokemon"):
-                w(f"NOT CATCHING: {why}")
+                # spins alone are not a catching problem (11-16: "NOT CATCHING: spins are being refused" while it caught 5-7/min)
+                w(f"{'NOT SPINNING' if why.startswith(SPIN_WHY) else 'NOT CATCHING'}: {why}")
     else:
         base["whykind"] = ""
-    state(why, f"caught={c} fled={st['fled']} spins={sp['ok']} xp={sp['xp']} items={sp['items']} "
+    why = starpiece_why(why, time.time())
+    state(why,f"caught={c} fled={st['fled']} spins={sp['ok']} xp={sp['xp']} items={sp['items']} "
                f"ready={max(0, sp['inRange'] - sp['cooling'])} cooling={sp['cooling']}")
 
 
@@ -1856,8 +2055,16 @@ def session_loop(w, done_ids, base):
       f"award={st.get('award')} bag={st.get('bag', 'ItemBag')} berries={st.get('berries')} tap={st.get('tap')} apples={st.get('apples')} mighty={st.get('mighty')}")
     if not st.get("award"):
         w(f"award fields: catchOut=[{st.get('catchOutFields')}] award=[{st.get('awardFields')}]")
+    mk = st.get("mighty") or {}   # shinyOf() reads WildPokemon -> PokemonProto.display -> PokemonDisplayProto.Shiny
+    lost = [k for k in ("wildPokemon", "display", "shiny") if not (isinstance(mk.get(k), int) and mk[k] >= 0)]
+    SHINYFIELD["ok"] = not lost and not SHINYFIELD["suspended"]
+    if lost:
+        w(f"SHINY LOOK off: {', '.join(lost)} offset not found -- skipped species stay unopened (a shiny of one can be missed)")
+    elif SHINYFIELD["suspended"]:
+        w("SHINY LOOK stays off: its shiny read was distrusted earlier in this run (SHINY LOOK suspended)")
     t0 = time.time()
     cfg = cfg_now()
+    sc.exports_sync.cfg(cfg)   # the install ran before this attach's shiny check: push its outcome either way
     if cfg.get("abKey"):   # the arm in force from the start (a restart mid-block logs no flip)
         w(f"A/B {cfg['abKey']}={cfg[cfg['abKey']]} (block of {cfg.get('abBlockS')} s, at start)")
     last_rep, last_frame, idle = 0, None, 0
@@ -1875,6 +2082,9 @@ def session_loop(w, done_ids, base):
         d = sc.exports_sync.drain()
         for line in d["log"]:
             w(line)
+            starpiece_seen(line, w)
+            if line.startswith("SHINY LOOK suspended"):   # off for the rest of this run: a re-attach must not trust the read again
+                SHINYFIELD.update(ok=False, suspended=True)
         if d.get("led") or d.get("pos"):
             ledger_write(d.get("led") or [], d.get("pos") or [], pid)
         done_ids.extend(d["done"])
@@ -1891,6 +2101,7 @@ def session_loop(w, done_ids, base):
             u = usable_balls(stt.get("items") or {})
             if u is not None:          # the first read after an attach has no item counts yet: keep the last known count
                 BALLS["usable"] = u
+                BALLS["items"] = stt.get("items") or {}   # reserve_floors spreads the plan's reserve over what is in the bag
             if stt["ready"]:
                 report(w, stt, t0, base)
             else:
