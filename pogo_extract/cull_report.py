@@ -1098,7 +1098,8 @@ def main():
         _cn = {norm(u) for u in C}
         _built, _seed = set(_js.get('built') or ()), _js.get('seed')
         _evo = {norm(u) for u, s in origin.items() if s}                    # the copies you evolved this pass
-        _series = [x for x in (_js.get('series') or []) if isinstance(x, dict) and x.get('walk') != cur_stamp][-JOB_SERIES_MAX:]
+        _series = [x for x in (_js.get('series') or [])       # a record without a size is the first version's: not this chart's
+                   if isinstance(x, dict) and 'n' in x and x.get('walk') != cur_stamp][-JOB_SERIES_MAX:]
         # the record first: a failure in the scoring below never loses this pass's evolutions or the rules in force
         _jobs_state = {'stamp': _stamp or _was, 'stamp_prev': _was, 'seed': _seed,
                        'built': sorted(b for b in _built | _evo if b in _cn), 'series': _series}
@@ -1113,10 +1114,9 @@ def main():
         else:
             _jx = job_context(_gm['pokemon'])
             _res = job_pass(P, C, prev_pile, pile_set, origin, _built, _jx, _moved)
-            _lim, _lb = job_limits(_series)
-            out.extend(job_lines(_res, _lim, _lb, job_namer(P, C, _jx, stg), '%s -> %s' % (_hm(prev_stamp), _cur_hm)))
-            _jobs_state['series'] = (_series + [{'walk': cur_stamp, 'g': [_res['jobs'][j]['gain'] for j in JOBS],
-                                                 'l': [_res['jobs'][j]['loss'] for j in JOBS]}])[-JOB_SERIES_MAX:]
+            out.extend(job_lines(_res, job_chart(_series), job_namer(P, C, _jx, stg), '%s -> %s' % (_hm(prev_stamp), _cur_hm)))
+            _jobs_state['series'] = (_series + [{'walk': cur_stamp, 'n': _res['n'], 'g': [_res['jobs'][j]['rg'] for j in JOBS],
+                                                 'l': [_res['jobs'][j]['rl'] for j in JOBS]}])[-JOB_SERIES_MAX:]
         out.append('')
     except Exception as e:
         out.extend(['(did your collection get better: not computed -- %s: %s)' % (type(e).__name__, e), ''])
@@ -1557,16 +1557,33 @@ def power_up_block(C, pile_set, why, name):
 # gained, only in the old one lost, a higher quality up, a lower one down. So a swap of equal copies or a label move changes
 # nothing; a better copy raises a quality; a lost copy loses an item. Battlers count tier steps (#1 = 3, #2-5 = 2, #6-25 = 1),
 # every other job one per item. The definitions, his words and actions behind each, and the backtest: PR "bag value line".
+# REAL OR NOT (2026-11-17, replaces the first version's XmR chart over a job's whole change: its phase-1 cleaning threw away up
+# to 16% of the passes, called a loss seen in 12 of 73 passes "normal none", and once an account's own passes took over it
+# fired on 43% of them, e.g. "Pokedex +1: real (gained 1, normal up to 0)"; and a batch of his own evolutions was either
+# hidden or flagged by a fluke). A job's change is real when
+#   * YOU did it -- a power-up, an evolution, a trade, a release moved an item of it: a deliberate act is never noise, also
+#     when its gains and losses cancel (a trophy evolved into the next stage is one item lost, one gained);
+#   * A RULE CHANGE did it;
+#   * ROUTINE catching and culling (catches, the cull's pile, re-read data) moved it more than a control chart allows for a
+#     pass of that size. The chart is a Laney u'-chart: the routine gains (and losses) per copy that arrived or changed, so a
+#     5-minute pass and an overnight one are judged alike; its spread is never tighter than a plain count's.
 JOBS = ('battlers', 'trophies', 'pokedex', 'trade', 'projects')
 JOB_NAME = {'battlers': 'Battlers', 'trophies': 'Trophies', 'pokedex': 'Pokedex', 'trade': 'Trade stock', 'projects': 'Projects'}
-# the normal range until 20 passes of this account are on record: the XmR upper limits (gains, losses) of the 73 recorded passes
-# 10-29 -> 11-15 (the backtest); from the 20th pass on, the limits come from the account's own passes
-JOB_SEED_LIMITS = {'battlers': (3.2, 0.0), 'trophies': (5.0, 0.0), 'pokedex': (8.3, 0.0), 'trade': (22.4, 6.1), 'projects': (18.0, 2.1)}
-JOB_SERIES_MIN, JOB_SERIES_MAX = 20, 500
-# the order of the steps: his actions first (power-ups, evolutions, catches, his releases of kept copies), then the cull's pile
-# as the rules of the LAST report would have built it, then the rule change (the same as replaying the old rules on the new bag)
-JOB_STEPS = (('reread', 'data the walk read anew'), ('power-up', 'your power-ups'), ('evolve', 'your evolutions'),
-             ('catch', 'your catches'), ('release', 'your releases'), ('cull', "the cull's pile"), ('rule', 'the rule change'))
+# the order of the steps: his actions first (power-ups, evolutions, catches, the copies that ARRIVED already built -- a trade,
+# a catch he powered up before the walk --, his releases of kept copies), then the cull's pile as the rules of the LAST report
+# would have built it, then the rule change (the same as replaying the old rules on the new bag)
+JOB_STEPS = (('reread', 're-read data'), ('power-up', 'your power-ups'), ('evolve', 'your evolutions'),
+             ('catch', 'your catches'), ('build', 'your trades and new builds'), ('release', 'your releases'),
+             ('cull', "the cull's pile"), ('rule', 'the rule change'))
+JOB_YOURS, JOB_ROUTINE = ('power-up', 'evolve', 'build', 'release'), ('reread', 'catch', 'cull')
+# the routine chart's memory before an account has JOB_SERIES_MIN passes of its own: the backtest's 119 recorded passes with a
+# size, 10-29 -> 11-16 -- the copies that arrived or changed in them, each job's routine (gains, losses) summed over them, and
+# each side's sigma_z. An account's own passes are added to these, and replace them at JOB_SERIES_MIN (the last JOB_SERIES_MAX
+# count).
+JOB_SEED_N = 4402
+JOB_SEED_X = {'battlers': (122, 1), 'trophies': (144, 0), 'pokedex': (130, 3), 'trade': (569, 135), 'projects': (2, 64)}
+JOB_SEED_SZ = {'battlers': (1.0, 1.0), 'trophies': (1.0, 1.0), 'pokedex': (1.0, 1.0), 'trade': (1.34, 1.0), 'projects': (1.0, 1.0)}
+JOB_SERIES_MIN, JOB_SERIES_MAX, JOB_SIGMA_MIN = 100, 500, 20
 # what a power-up, a second move, a purification, a trade, a buddy walk or an evolution moves: a row that keeps all of these is
 # a copy you did not touch
 JOB_TOUCH = ('pokemon_id', 'form', 'fresh_form', 'level', 'cp', 'move1', 'move2', 'move3', 'fresh_alignment', 'is_lucky',
@@ -1664,6 +1681,12 @@ def _job_band(r, own, X):
     return next((lg for lg, cap in zip(('LC', 'GL', 'UL'), X.caps) if r['cp'] <= cap < nxt), None)
 
 
+def _job_invest(r):
+    """a copy you put something into: powered up, a second move, purified, traded to you, buddy-walked or mega-evolved"""
+    return bool(r['is_powered_up'] or (r['move3'] or 0) or r['fresh_alignment'] == 2 or r['is_traded']
+                or (r.get('buddy_km_walked') or 0) > 0 or (r.get('mega_Points') or 0) > 0)
+
+
 def _job_contrib(r, X):
     """What ONE copy gives the five jobs before pooling, or None for a copy held inside a fused Kyurem (no job of its own)."""
     if r.get('is_component'):
@@ -1728,8 +1751,7 @@ def _job_contrib(r, X):
     bd = _job_band(r, own, X) if ivs == (15, 15, 15) else None
     return {'max': mx, 'kind': k, 'look': lk, 'iv': tot, 'cp': r['cp'] or 0, 'hundo': ivs == (15, 15, 15), 'nuid': norm(r['uid_hex']),
             'band': ('band', own, bd) if bd else None,
-            'invest': bool(r['is_powered_up'] or (r['move3'] or 0) or r['fresh_alignment'] == 2 or r['is_traded']
-                           or (r.get('buddy_km_walked') or 0) > 0 or (r.get('mega_Points') or 0) > 0),
+            'invest': _job_invest(r),
             # 4. Trade stock reads: a regular copy (tradable, not a trophy) and a spare shiny
             'reg': (r['fresh_alignment'] != 1 and not r['is_traded'] and r['pokemon_id'] not in X.mythical
                     and tot not in (0, 45) and not r['fresh_shiny']),
@@ -1821,7 +1843,10 @@ def job_pass(P, C, prev_pile, pile, origin, built, X, rule_moved=False):
     """One pass, step by step. P / C: the two walks' rows by uid; prev_pile: the last report's pile (norm uids); pile: this pass's
     pile (uids of C); origin: {uid of C that is new: the row it evolved from, or None}; built: the copies you evolved before
     this pass (norm uids); rule_moved: the engine or keep_config stamp moved since the last report.
-    -> {'its': [(step, items)], 'jobs': {job: {'parts', 'gain', 'loss', 'net' (= the steps added up)}}, 'flips', 'built'}"""
+    A copy that ARRIVED already built (a trade, a catch you powered up before the walk) is your doing, not a routine catch, and
+    it is counted even when the cull piles it at once: the pile never takes a copy you put something into without a line.
+    -> {'its': [(step, items)], 'jobs': {job: {'parts', 'net' (= the steps added up), 'rg' / 'rl' (what the routine steps
+    gained / lost)}}, 'flips', 'built', 'n' (the copies that arrived or that you changed: the size of the pass)}"""
     cache = {}
     S0 = {u: r for u, r in P.items() if norm(u) not in prev_pile}           # what the last pass kept
     cols = lambda r: tuple(map(r.get, JOB_COLS))
@@ -1833,54 +1858,65 @@ def job_pass(P, C, prev_pile, pile, origin, built, X, rule_moved=False):
     evolved = [u for u, s in origin.items() if s]
     A2 = {u: r for u, r in A1.items() if u not in srcs}
     A2.update((u, C[u]) for u in evolved)                                   # your evolutions
+    new = [u for u, s in origin.items() if not s]
     A3 = dict(A2)
-    A3.update((u, C[u]) for u, s in origin.items() if not s and u not in pile)   # catches, hatches, trades the cull kept
-    A4 = {u: r for u, r in A3.items() if u in C}                            # your releases of copies the last pass kept
+    A3.update((u, C[u]) for u in new if u not in pile and not _job_invest(C[u]))   # catches and hatches the cull kept
+    A3b = dict(A3)
+    A3b.update((u, C[u]) for u in new if _job_invest(C[u]))                 # the ones that arrived built: yours, piled or not
+    A4 = {u: r for u, r in A3b.items() if u in C}                           # your releases of copies the last pass kept
     S3 = {u: A4.get(u) or r for u, r in C.items() if u not in pile}         # this pass's kept set
     flips, unflips = job_rule_flips(P, C, prev_pile, pile, origin, X) if rule_moved else (set(), set())
     old = {u: r for u, r in S3.items() if u not in unflips}                 # ... as the last report's rules would keep it
     old.update((u, A4.get(u) or C[u]) for u in flips)
     built1 = set(built) | {norm(u) for u in evolved}
     seq = [('start', S0, built), ('reread', A0, built), ('power-up', A1, built), ('evolve', A2, built1), ('catch', A3, built1),
-           ('release', A4, built1), ('cull', old, built1), ('rule', S3, built1)]
+           ('build', A3b, built1), ('release', A4, built1), ('cull', old, built1), ('rule', S3, built1)]
     its = []
     for i, (n, s, b) in enumerate(seq):                  # a step that moved no copy keeps the items it was handed
         same = i and len(s) == len(seq[i - 1][1]) and all(seq[i - 1][1].get(u) is r for u, r in s.items())
         its.append((n, its[-1][1] if same else job_items(s.values(), b, X, cache)))
-    out = {'its': its, 'jobs': {}, 'flips': (flips, unflips), 'built': built1}
+    tch = lambda r: tuple(map(r.get, JOB_TOUCH))
+    n = len(origin) + sum(1 for u, r in C.items() if u in P and tch(P[u]) != tch(r))
+    out = {'its': its, 'jobs': {}, 'flips': (flips, unflips), 'built': built1, 'n': n}
     for j in JOBS:
         parts = {its[i][0]: job_score(its[i - 1][1][j], its[i][1][j], j) for i in range(1, len(its))}
-        out['jobs'][j] = {'parts': parts, 'gain': sum(v for v in parts.values() if v > 0),
-                          'loss': -sum(v for v in parts.values() if v < 0), 'net': sum(parts.values())}
+        out['jobs'][j] = {'parts': parts, 'net': sum(parts.values()),
+                          'rg': sum(parts[s] for s in JOB_ROUTINE if parts[s] > 0),
+                          'rl': -sum(parts[s] for s in JOB_ROUTINE if parts[s] < 0)}
     return out
 
 
-def job_xmr(xs, rounds=10):
-    """XmR (individuals) chart over one series, phase-1 cleaned: points above the upper limit are dropped and the limit is
-    recomputed until it holds. -> (centre, upper limit)"""
-    pts = list(xs)
-    for _ in range(rounds):
-        if len(pts) < 3:
-            break
-        m = sum(pts) / len(pts)
-        mr = [abs(pts[i] - pts[i - 1]) for i in range(1, len(pts))]
-        keep = [p for p in pts if p <= m + 2.66 * sum(mr) / len(mr)]
-        if len(keep) == len(pts):
-            break
-        pts = keep
-    m = sum(pts) / len(pts) if pts else 0.0
-    mr = [abs(pts[i] - pts[i - 1]) for i in range(1, len(pts))] or [0]
-    return m, m + 2.66 * sum(mr) / len(mr)
+def job_chart(series):
+    """The routine chart (Laney u'). series: this account's recorded passes, oldest first -- {'n': the copies that arrived or
+    changed, 'g' / 'l': each job's routine gains / losses, JOBS order}; a record of another shape is not counted. Until
+    JOB_SERIES_MIN of them are on record the backtest's recorded passes (JOB_SEED_*) are counted with them.
+    -> {job: ((rate per copy, sigma_z) of the routine gains, the same of the routine losses)}; sigma_z -- how much wider than a
+    plain count the job runs, from the median moving range of the z-scores -- is never under 1."""
+    ok = lambda s: (isinstance(s, dict) and isinstance(s.get('n'), int) and s['n'] > 0
+                    and all(isinstance(s.get(k), list) and len(s[k]) == len(JOBS) for k in 'gl'))
+    own = [s for s in series if ok(s)][-JOB_SERIES_MAX:]
+    seed = len(own) < JOB_SERIES_MIN
+    N = sum(s['n'] for s in own) + (JOB_SEED_N if seed else 0)
+    out = {}
+    for i, j in enumerate(JOBS):
+        sides = []
+        for k, side in enumerate('gl'):
+            rate = (sum(s[side][i] for s in own) + (JOB_SEED_X[j][k] if seed else 0)) / N if N else 0.0
+            sz = JOB_SEED_SZ[j][k]
+            if len(own) >= JOB_SIGMA_MIN and rate:
+                z = [(s[side][i] - rate * s['n']) / (rate * s['n']) ** 0.5 for s in own]
+                mr = sorted(abs(z[t] - z[t - 1]) for t in range(1, len(z)))
+                h = len(mr) // 2
+                sz = max(1.0, (mr[h] if len(mr) % 2 else (mr[h - 1] + mr[h]) / 2) / 0.954)
+            sides.append((rate, sz))
+        out[j] = tuple(sides)
+    return out
 
 
-def job_limits(series):
-    """({job: (gain limit, loss limit)}, the words for its basis): from this account's recorded passes ({'g': [...], 'l': [...]}
-    per pass, JOBS order); the backtest's limits until JOB_SERIES_MIN passes are on record"""
-    if len(series) < JOB_SERIES_MIN:
-        return dict(JOB_SEED_LIMITS), "the 73 passes of 10-29 to 11-15 (yours take over at %d recorded, %d so far)" % (
-            JOB_SERIES_MIN, len(series))
-    return ({j: (job_xmr([s['g'][i] for s in series])[1], job_xmr([s['l'][i] for s in series])[1]) for i, j in enumerate(JOBS)},
-            'your last %d passes' % len(series))
+def job_ucl(rate, sz, n):
+    """the chart's upper limit for a pass of n copies: the count it expects plus three sigmas -- 0 when it never happens"""
+    m = rate * n
+    return m + 3 * sz * m ** 0.5 if m > 0 else 0.0
 
 
 def job_namer(P, C, X, stg=None):
@@ -1933,14 +1969,14 @@ def job_namer(P, C, X, stg=None):
             return kname(key[1:3])
         if t == 'look':                                  # the plain look is a look too: say so, or it reads as the species
             return lname(key[1:]) if lname(key[1:]) != kname(key[1:3]) else 'plain ' + kname(key[1:3])
-        if t == 'align':
-            return '%s %s' % ({1: 'shadow', 2: 'purified'}.get(key[3], ''), kname(key[1:3]))
+        if t == 'align':                                 # not the look's words: both move when a shadow arrives
+            return '%s in the %s dex' % (kname(key[1:3]), {1: 'shadow', 2: 'purified'}.get(key[3], ''))
         if t == 'best':
             return 'best %s %s' % (kname(key[1:3]), v)
         if t in ('backup', 'trade'):
             return '%s %s %s' % (kname(key[1:3]), 'backup' if t == 'backup' else 'trade copy', v)
-        if t == 'rt_shiny':
-            return 'spare shiny %s %s' % (lname(key[1:]), v)
+        if t == 'rt_shiny':                              # the look's own words say shiny
+            return 'spare %s %s' % (lname(key[1:]), v)
         if t == 'band':
             return 'hundo %s built for %s' % (stg(key[1]), key[2])
         if t == 'built':
@@ -1957,36 +1993,51 @@ def job_namer(P, C, X, stg=None):
     return name
 
 
-def job_lines(res, limits, basis, name, walks, show=3):
-    """The block: one line per job outside its normal range (gains or losses above the chart's upper limit), naming what moved
-    and who moved it; the jobs inside it on one line. A pass where nothing real changed: one line."""
-    real, quiet = [], []
-    words = dict(JOB_STEPS)
-    num = lambda x: ('%.1f' % x).rstrip('0').rstrip('.')
+def job_lines(res, chart, name, walks, show=3):
+    """The block. The first words answer the question; then one line per job whose change is real -- you did it, a rule change
+    did it (a step that moved an item, whatever its total), or routine catching and culling moved more than the chart
+    (job_chart) allows for a pass of this size -- naming what moved and who moved it; the other jobs share one line. A pass
+    where nothing real changed: one line."""
+    words, n = dict(JOB_STEPS), res['n']
+    steps = list(zip(res['its'], res['its'][1:]))
+    usual = lambda lim: 'normal is %s for %d new or changed Pokemon' % ('none' if lim < 1 else 'up to %d' % int(lim), n)
+    real, quiet, better, worse = [], [], [], []
     for j in JOBS:
         v = res['jobs'][j]
-        gu, lu = limits[j]
-        if v['gain'] > gu or v['loss'] > lu:
-            bits = []
-            for (_s0, a), (st, b) in zip(res['its'], res['its'][1:]):
-                g, l, u, d = job_diff(a[j], b[j])
-                named = ([name(k, None, b[j][k]) for k in g] + [name(k, a[j][k], b[j][k]) for k in u]
-                         + ['lost ' + name(k, a[j][k]) for k in l] + [name(k, a[j][k], b[j][k]) for k in d])
-                if named:
-                    bits.append('%s %+d -- %s%s' % (words[st], v['parts'][st], ', '.join(named[:show]),
-                                                    ' and %d more' % (len(named) - show) if len(named) > show else ''))
-            why = [('gained %d, normal up to %s' % (v['gain'], num(gu))) if v['gain'] > gu else None,
-                   ('lost %d, normal %s' % (v['loss'], 'none' if lu < 1 else 'up to ' + num(lu))) if v['loss'] > lu else None]
-            real.append('- **%s %+d: real** (%s): %s.' % (JOB_NAME[j], v['net'], '; '.join(w for w in why if w),
-                                                          '; '.join(bits) or 'no item moved'))
-        else:
+        (ug, sg), (ul, sl) = chart[j]
+        lg, ll = job_ucl(ug, sg, n), job_ucl(ul, sl, n)
+        moved = {st for (_s0, a), (st, b) in steps if a[j] is not b[j] and a[j] != b[j]}
+        why = (['your doing'] if moved.intersection(JOB_YOURS) else []) + (['a rule change'] if 'rule' in moved else [])
+        if v['rg'] > lg:
+            why.append('unusual: %d gained, %s' % (v['rg'], usual(lg)))
+        if v['rl'] > ll:
+            why.append('unusual: %d lost, %s' % (v['rl'], usual(ll)))
+        if not why:
             quiet.append('%s %+d%s' % (JOB_NAME[j], v['net'], ' (%s)' % ', '.join(
                 '%s %+d' % (w, v['parts'][st]) for st, w in JOB_STEPS if v['parts'].get(st)) if any(v['parts'].values()) else ''))
+            continue
+        bits = []
+        for (_s0, a), (st, b) in steps:
+            g, l, u, d = job_diff(a[j], b[j])
+            g.sort(key=lambda k: k[0] != 'band')         # a built hundo is two items: name its band before its build
+            l.sort(key=lambda k: k[0] != 'band')
+            up = [name(k, None, b[j][k]) for k in g] + [name(k, a[j][k], b[j][k]) for k in u]
+            down = ['lost ' + name(k, a[j][k]) for k in l] + [name(k, a[j][k], b[j][k]) for k in d]
+            named = down + up if v['parts'][st] < 0 else up + down       # a step that cost you names its losses first
+            if named:
+                bits.append('%s %+d -- %s%s' % (words[st], v['parts'][st], ', '.join(named[:show]),
+                                                ' and %d more' % (len(named) - show) if len(named) > show else ''))
+        real.append('- **%s %+d: real** (%s): %s.' % (JOB_NAME[j], v['net'], '; '.join(why), '; '.join(bits) or 'no item moved'))
+        if v['net']:
+            (better if v['net'] > 0 else worse).append('%s %+d' % (JOB_NAME[j], v['net']))
+    head = '**Did your collection get better?**'
     if not real:
-        return ['**Did your collection get better?** Nothing real changed (walk %s): %s -- all inside the normal range of %s.'
-                % (walks, ', '.join(quiet), basis)]
-    return (['**Did your collection get better?** (walk %s; real = outside the normal range of %s)' % (walks, basis)] + real
-            + (['- Inside the normal range: %s.' % ', '.join(quiet)] if quiet else []))
+        return ['%s Nothing real changed (walk %s): %s -- routine catching and culling, inside its normal range.'
+                % (head, walks, ', '.join(quiet))]
+    verdict = ('Mixed: better %s; worse %s' % (', '.join(better), ', '.join(worse)) if better and worse
+               else 'Yes: ' + ', '.join(better) if better else 'No: ' + ', '.join(worse) if worse else 'No net change')
+    return (['%s %s (walk %s).' % (head, verdict, walks)] + real
+            + (['- Routine, inside its normal range: %s.' % ', '.join(quiet)] if quiet else []))
 
 
 def _job_sig_rows(path):
@@ -2173,8 +2224,8 @@ def _selftest():
 
 def _job_selftest():
     """The five jobs on synthetic rows (no game data): an equal swap and a label move score zero; each cause lands on its own
-    step; a copy you built never leaves for free; a rule flip goes to the rule; a catch piled at once moves nothing; the chart,
-    the printed line and the evolved-copies seed (a WAL snapshot too) say what they should."""
+    step; a copy you built never leaves for free; a rule flip goes to the rule; a catch piled at once moves nothing, a trade
+    piled at once does; the chart, the printed line and the evolved-copies seed (a WAL snapshot too) say what they should."""
     import types, gzip as _gz, cpm_table, pvp_iv_rule as _pv
     X = types.SimpleNamespace(
         bs={'pikachu': {'atk': 112, 'def': 96, 'hp': 111}, 'raichu': {'atk': 193, 'def': 151, 'hp': 155},
@@ -2216,7 +2267,8 @@ def _job_selftest():
     P2, C2 = bag(a1, a3, b1, b2), bag(a1, e1, b1, dict(b2, is_powered_up=1, level=25.0, cp=700))
     r2 = run(P2, C2, pile=['b1'])
     assert (part(r2, 'projects', 'evolve'), part(r2, 'projects', 'power-up'), part(r2, 'projects', 'cull')) == (1, 1, -1), r2['jobs']['projects']
-    assert r2['jobs']['projects']['gain'] == 2 and r2['jobs']['projects']['loss'] == 1 and r2['jobs']['projects']['net'] == 1
+    assert r2['jobs']['projects']['net'] == 1 and (r2['jobs']['projects']['rg'], r2['jobs']['projects']['rl']) == (0, 1), 'the pile is routine'
+    assert r2['n'] == 2, 'the size of the pass: one copy arrived (the Raichu), one changed (the Eevee)'
     assert part(r2, 'pokedex', 'evolve') == 3 and 'e1' in r2['built'], 'Raichu: a kind, a look and a best IV; e1 is yours now'
     # 3. a rule flip: a1 untouched, nothing new in its family, now piled -> the rule change, not the cull (and the cull without one)
     r3 = run(bag(a1, b2), bag(a1, b2), pile=['a1'], rule=True)
@@ -2228,24 +2280,64 @@ def _job_selftest():
     # 4. a catch piled at once never held a job
     r4 = run(bag(a1), bag(a1, mk('f1', 'Pikachu', 25, (15, 15, 15))), pile=['f1'])
     assert all(not any(v['parts'].values()) for v in r4['jobs'].values()), r4['jobs']
-    # 5. the chart, the limits and the line
-    assert job_xmr([0, 0, 0, 0, 10]) == (0.0, 0.0) and job_xmr([2, 4, 2, 4])[1] > 4
-    assert job_limits([])[0] == JOB_SEED_LIMITS and '0 so far' in job_limits([])[1]
-    z = [{'g': [0] * 5, 'l': [0] * 5}] * JOB_SERIES_MIN
-    assert job_limits(z) == ({j: (0.0, 0.0) for j in JOBS}, 'your last %d passes' % JOB_SERIES_MIN)
+    # 4b. a copy that ARRIVES built -- a trade, a catch you powered up before the walk -- is your doing, never the routine
+    #     chart's to judge; and the cull cannot pile it at once without a line (2026-11-15: a trade went to the pile unseen)
+    t1 = mk('f2', 'Eevee', 133, (9, 7, 8), is_traded=1, creation_date='2026-11-16T12:00:00Z')
+    r4b = run(bag(a1), bag(a1, t1))
+    assert (part(r4b, 'projects', 'build'), part(r4b, 'pokedex', 'build'), part(r4b, 'pokedex', 'catch')) == (1, 3, 0), r4b['jobs']
+    assert r4b['jobs']['projects']['rg'] == 0 == r4b['jobs']['pokedex']['rg'], 'a trade is not a routine catch'
+    r4c = run(bag(a1, b1), bag(a1, b1, t1), pile=['f2'])
+    assert (part(r4c, 'projects', 'build'), part(r4c, 'projects', 'cull'), r4c['jobs']['projects']['net']) == (1, -1, 0), r4c['jobs']['projects']
+    assert all(not any(v['parts'].values()) for j, v in r4c['jobs'].items() if j != 'projects'), 'a worse Eevee: nothing else moved'
+    # 5. the routine chart: sized to the pass, never tighter than a plain count; a loss that is rare but regular is not "none"
+    assert job_chart([])['trade'] == ((JOB_SEED_X['trade'][0] / JOB_SEED_N, JOB_SEED_SZ['trade'][0]),
+                                      (JOB_SEED_X['trade'][1] / JOB_SEED_N, JOB_SEED_SZ['trade'][1]))
+    assert job_ucl(0.0, 1.0, 50) == 0 and job_ucl(0.02, 1.0, 0) == 0 and job_ucl(0.02, 1.0, 400) > job_ucl(0.02, 1.0, 40) > 1
+    own = [{'walk': 'w%d' % t, 'n': 30, 'g': [0, 0, 0, 3, 0], 'l': [0, 0, int(t % 7 == 0), 0, 0]} for t in range(JOB_SERIES_MIN)]
+    ch = job_chart(own + [{'walk': 'the first version', 'g': [9] * 5, 'l': [9] * 5}, 'junk', {'n': 0, 'g': [9] * 5, 'l': [9] * 5}])
+    assert ch['trade'][0] == (0.1, 1.0) and ch['battlers'] == ((0.0, 1.0), (0.0, 1.0)), 'its own passes only; the odd records left out'
+    assert 1 < job_ucl(*ch['pokedex'][1], 30) < 2, 'a loss seen in 1 pass of 7 is routine; two in one pass are not'
+    assert job_ucl(*ch['pokedex'][1], 2) < 1, 'the same loss in a pass of 2 copies is not routine'
+    assert job_chart([dict(s, g=[0, 0, 0, 3 + 40 * (t % 2), 0]) for t, s in enumerate(own)])['trade'][0][1] > 3, 'a job that swings gets wider limits'
+    assert job_chart(own[:JOB_SIGMA_MIN])['trade'][0][0] == (JOB_SEED_X['trade'][0] + 3 * JOB_SIGMA_MIN) / (JOB_SEED_N + 30 * JOB_SIGMA_MIN), \
+        'under %d passes of its own: counted with the backtest' % JOB_SERIES_MIN
     name = job_namer(P2, C2, X)
     assert name(('slot', 'gl', 'raichu'), None, 3) == 'Raichu GL #1' and name(('best', 25, 0), 30, 42) == 'best Pikachu 67% -> 93%'
     assert name(('built', 'b1')) == 'Eevee 14/14/14 CP 1,200 (powered up)', name(('built', 'b1'))
     assert name(('look', 25, 0, False, 0, 0, 0, 0, 0, 0)) == 'plain Pikachu' and name(('xxl', 'FAMILY_PIKACHU'), None, 1080) == 'XXL Pikachu line 1,080 pts'
     assert name(('built', 'e1')) == 'Raichu 12/12/12 CP 900 (you evolved it)', name(('built', 'e1'))
-    q = job_lines(r1, JOB_SEED_LIMITS, 'B', name, '10:00 -> 10:05')
-    assert len(q) == 1 and q[0].startswith('**Did your collection get better?** Nothing real changed (walk 10:00 -> 10:05): Battlers +0,'), q
-    lim = dict({j: (99, 99) for j in JOBS}, projects=(0, 0))
-    ln = job_lines(r2, lim, 'B', name, '10:00 -> 10:05')
-    assert ln[1].startswith('- **Projects +1: real** (gained 2, normal up to 0; lost 1, normal none): your power-ups +1 -- Eevee 5/5/5 CP 700 (powered up); '), ln
-    assert 'your evolutions +1 -- Raichu 12/12/12 CP 900 (you evolved it)' in ln[1] and 'the cull' in ln[1] and '-1 -- lost Eevee 14/14/14' in ln[1], ln
-    assert ln[2] == ("- Inside the normal range: Battlers +0, Trophies +0, Pokedex +2 (your evolutions +3, the cull's pile -1), "
-                     "Trade stock -2 (your evolutions -1, the cull's pile -1)."), ln   # the 14/14/14 Eevee was its best and its backup
+    assert name(('rt_shiny', 25, 0, True, 0, 0, 0, 0, 0, 0), 1, 2) == 'spare shiny Pikachu x1 -> x2', 'one "shiny", not two'
+    assert name(('align', 25, 0, 1)) == 'Pikachu in the shadow dex' and name(('look', 25, 0, False, 1, 0, 0, 0, 0, 0)) == 'shadow Pikachu'
+    # the block: real = you did it, a rule change did it, or routine catching and culling moved more than the chart allows
+    wide, tight = {j: ((1.0, 1.0), (1.0, 1.0)) for j in JOBS}, {j: ((0.0, 1.0), (0.0, 1.0)) for j in JOBS}
+    head = '**Did your collection get better?** '
+    assert job_lines(r1, tight, name, '10:00 -> 10:05') == [
+        head + 'Nothing real changed (walk 10:00 -> 10:05): Battlers +0, Trophies +0, Pokedex +0, Trade stock +0, Projects +0 '
+        '-- routine catching and culling, inside its normal range.'], 'an equal swap and a label move: one line, whatever the chart'
+    ln = job_lines(r2, wide, name, '10:00 -> 10:05')
+    assert ln[0] == head + 'Mixed: better Pokedex +2, Projects +1; worse Trade stock -2 (walk 10:00 -> 10:05).', ln[0]
+    assert ln[3] == ("- **Projects +1: real** (your doing): your power-ups +1 -- Eevee 5/5/5 CP 700 (powered up); your evolutions +1 "
+                     "-- Raichu 12/12/12 CP 900 (you evolved it); the cull's pile -1 -- lost Eevee 14/14/14 CP 1,200 (powered up)."), ln[3]
+    assert ln[2].startswith('- **Trade stock -2: real** (your doing): your evolutions -1 -- lost ') and len(ln) == 5, ln   # its losses first
+    assert ln[4] == '- Routine, inside its normal range: Battlers +0, Trophies +0.', ln[4]
+    assert '(your doing; unusual: 1 lost, normal is none for 2 new or changed Pokemon)' in job_lines(r2, tight, name, '10:00 -> 10:05')[3]
+    l3 = job_lines(r3, wide, name, '10:00 -> 10:05')
+    assert l3[0] == head + 'No: Pokedex -3 (walk 10:00 -> 10:05).' and l3[1].startswith('- **Pokedex -3: real** (a rule change): the rule change -3 -- lost '), l3
+    r5 = run(bag(a1), bag(a1, b2))                       # a catch the cull keeps: routine, unless the chart says it never happens
+    assert job_lines(r5, wide, name, '10:00 -> 10:05')[0].startswith(head + 'Nothing real changed') and r5['jobs']['pokedex']['rg'] == 3
+    l5 = job_lines(r5, tight, name, '10:00 -> 10:05')
+    assert l5[0] == head + 'Yes: Pokedex +3 (walk 10:00 -> 10:05).', l5[0]
+    assert l5[1].startswith('- **Pokedex +3: real** (unusual: 3 gained, normal is none for 1 new or changed Pokemon): your catches +3 -- '), l5[1]
+    e2 = mk('e2', 'Raichu', 26, (0, 15, 15), creation_date=c1['creation_date'], cp=900, gl_chain_ranks='raichu:1(100.00%)')
+    r6 = run(bag(a1, c1), bag(a1, e2))     # your 0/15/15 Pikachu, evolved: the trophy moved to the next stage -- a total of zero
+    assert r6['jobs']['trophies']['parts']['evolve'] == 0 and r6['jobs']['trophies']['net'] == 0
+    l6 = job_lines(r6, wide, job_namer(bag(a1, c1), bag(a1, e2), X), '10:00 -> 10:05')
+    assert '- **Trophies +0: real** (your doing): your evolutions +0 -- 0/15/15 Raichu, lost 0/15/15 Pikachu.' in l6, l6
+    l4 = job_lines(r4c, wide, job_namer(bag(a1, b1), bag(a1, b1, t1), X), '10:00 -> 10:05')   # the trade the cull piled at once
+    assert l4 == [head + 'No net change (walk 10:00 -> 10:05).',
+                  "- **Projects +0: real** (your doing): your trades and new builds +1 -- Eevee 9/7/8 CP 500 (traded); "
+                  "the cull's pile -1 -- lost Eevee 9/7/8 CP 500 (traded).",
+                  '- Routine, inside its normal range: Battlers +0, Trophies +0, Pokedex +0, Trade stock +0.'], l4
     # 6. a band is filled whoever holds it, and each copy you built is its own item: equal plain copies move nothing, whatever the uids
     cpv = lambda i: int((193 + 15) * (151 + 15) ** 0.5 * (155 + 15) ** 0.5 * cpm_table.CPM[i] ** 2 / 10)
     li = next(i for i in range(len(cpm_table.CPM) - 1) if cpv(i) <= 500 < cpv(i + 1))
