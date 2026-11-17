@@ -228,7 +228,11 @@ class Game:
             if w == "mot":
                 say(f"    defender {nm} at {fid}: motivation {p['mot']:.0%} (CP {p['cp']}){' -- UNDER ATTACK' if p.get('inBattle') else ''}")
             elif w == "fed":
-                say(f"    GOLDEN RAZZ -> {nm} at {fid} (motivation was {p['mot']:.0%}, CP {p['cp']}){'' if p['ok'] else ' -- the call threw'}; {p['left']} left")
+                if p.get("berry") and p["berry"] != "GoldenRazzBerry":
+                    say(f"    NO GOLDEN RAZZ -> fed a {p['berry']} to {nm} at {fid} (motivation was {p['mot']:.0%}, CP {p['cp']})"
+                        f"{'' if p['ok'] else ' -- the call threw'}; {p['left']} {p['berry']} left (bag: {p.get('berries')})")
+                else:
+                    say(f"    GOLDEN RAZZ -> {nm} at {fid} (motivation was {p['mot']:.0%}, CP {p['cp']}){'' if p['ok'] else ' -- the call threw'}; {p['left']} left")
             elif w == "topup":
                 STATS["topups"] = STATS.get("topups", 0) + 1
                 say(f"    BERRY MASTER top-up: a {p['berry']} to {'YOUR' if p.get('mine') else 'a teammate'} defender at {fid} "
@@ -264,7 +268,7 @@ class Game:
             elif w == "home":
                 say(f"    {nm} came home from {fid}")
             elif w == "none":
-                say(f"    !! {nm} at {fid} is at {p['mot']:.0%} motivation but you have NO Golden Razz left")
+                say(f"    !! {nm} at {fid} is at {p['mot']:.0%} motivation but you have NO Golden Razz and no Razz/Nanab/Pinap berry left (bag: {p.get('berries')})")
             else:
                 say(f"    feeder: {p}")
         elif k == "pickcall":                                # a place-handler candidate ran (learning which one places)
@@ -455,14 +459,57 @@ def live_range(sess):
         s.unload()
 
 
+RANK = {"path": None, "mtime": None, "score": {}}       # attack_rank.json: PokemonProto.id (decimal string) -> score
+BAG_RO_ALL = []                                          # every fighter of the last bag walk (a rank reload re-sorts these, no new walk)
+
+
+def rank_load(path, first=False):
+    """Read the attack rank file (Benny's ranking of his best attackers) when its mtime changed. True = a new ranking is in use.
+    No file = the old order, highest CP first (said once at startup)."""
+    RANK["path"] = path
+    try:
+        mt = os.path.getmtime(path) if path else None
+    except OSError:
+        mt = None
+    if mt is None:
+        had = bool(RANK["score"])
+        if first or had:
+            say(f"  attack rank: no {os.path.basename(path) if path else 'attack_rank.json'} -- the attack team is the highest CP, as before")
+        RANK["mtime"], RANK["score"] = None, {}
+        return had
+    if mt == RANK["mtime"]:
+        return False
+    try:
+        rows = json.load(open(path, encoding="utf-8")).get("rank") or []
+        RANK["score"] = {str(r["id"]): float(r.get("score", 0)) for r in rows if r.get("id") is not None}
+        RANK["mtime"] = mt
+        say(f"  attack rank: {len(RANK['score'])} Pokemon ranked from {os.path.basename(path)} -- they fight first, best score first; the rest by CP")
+        return True
+    except Exception as e:
+        RANK["mtime"] = mt                               # do not retry a broken file every second; keep the last good ranking
+        say(f"  !! attack rank file unreadable ({e}) -- keeping the previous order")
+        return False
+
+
+def rank_sort(rows):
+    """Ranked ids first (score high to low), then everyone else by CP -- the sort comes BEFORE any cut."""
+    sc_ = RANK["score"]
+    return sorted(rows, key=lambda x: (0, -sc_[x[0]], -x[1]) if x[0] in sc_ else (1, 0, -x[1]))
+
+
+def rank_say(ro):
+    sc_ = RANK["score"]
+    say("  attack roster, top 6 by rank: " + (", ".join(f"{x[4]} CP {x[1]}" + (f" (score {sc_[x[0]]:g})" if x[0] in sc_ else " (unranked)") for x in ro[:6]) or "none"))
+
+
 def bag_status(sess, tapper=None):
     """One live bag walk (C-only instance lookup, safe with the tapper attached): (your deployed count, your shiny
     Gyarados not in a gym, highest CP first, as [(id, cp, hp, maxhp)], the attack roster highest CP first as
-    [(id, cp, hp, maxhp, name)] -- everything that can fight except Slaking and the shiny Gyarados kept for placing).
+    [(id, cp, hp, maxhp, name)] -- everything that can fight except Slaking, Regigigas and the shiny Gyarados kept for placing; ranked first when attack_rank.json exists).
     Species ids and names from the live enum."""
     import dump_game_limits as dl
     js = dl.JS.split("rpc.exports = {")[0] + r"""
-var PO = null, GY = -1, DO = null, SLAKING = -1, NAMES = {};
+var PO = null, GY = -1, DO = null, SLAKING = -1, REGI = -1, NAMES = {};
 var CFN = f('il2cpp_class_from_name', 'pointer', ['pointer', 'pointer', 'pointer']);
 function byName(ns, name) {                   /* exact-name lookup per image -- never a walk over every class (that crashed PoGo twice) */
   var sp = Memory.alloc(PS), a = IL.asms(IL.domain(), sp), n = sp.readU32(), nsp = Memory.allocUtf8String(ns), nmp = Memory.allocUtf8String(name);
@@ -479,8 +526,8 @@ function setup() {
   var it = Memory.alloc(PS), fd; it.writePointer(NULL);
   while ((fd = CGF(k, it)) && !fd.isNull()) { var fn = cs(FGN(fd)); if (fn === 'value__') continue;
     var b = Memory.alloc(8); b.writeS64(0); SGV(fd, b); var v = b.readS32(); NAMES[v] = fn.replace(/^V\d+Pokemon/, '');
-    if (fn === 'V0130PokemonGyarados') GY = v; if (fn === 'V0289PokemonSlaking') SLAKING = v; }
-  if (GY < 0 || SLAKING < 0) throw new Error('Gyarados / Slaking id not found in the live enum');
+    if (fn === 'V0130PokemonGyarados') GY = v; if (fn === 'V0289PokemonSlaking') SLAKING = v; if (fn === 'V0486PokemonRegigigas') REGI = v; }
+  if (GY < 0 || SLAKING < 0 || REGI < 0) throw new Error('Gyarados / Slaking / Regigigas id not found in the live enum');
 }
 rpc.exports = {
   scan: function (ptrs) {
@@ -494,9 +541,8 @@ rpc.exports = {
       var row = [p.add(PO.id).readU64().toString(), p.add(PO.cp).readS32(), p.add(PO.stamina).readS32(), p.add(PO.maxStamina).readS32(), NAMES[sp] || String(sp)];
       if (row[2] <= 0 && row[3] > 0) fa.push([row[0], row[1], row[4]]);
       if (sp === GY && shiny) gy.push(row.slice(0, 4));              /* the placement stock */
-      else if (sp !== SLAKING) ro.push(row); });
-    ro.sort(function (x, y) { return y[1] - x[1]; });
-    return {dep: dep, gy: gy, ro: ro.slice(0, 80), dp: dp, fa: fa};
+      else if (sp !== SLAKING && sp !== REGI) ro.push(row); });
+    return {dep: dep, gy: gy, ro: ro, dp: dp, fa: fa};   /* all of them: Python ranks, THEN cuts to 80 */
   }
 };"""
     s = sess.create_script(js)
@@ -517,7 +563,8 @@ rpc.exports = {
             dp += r["dp"]
             fa += r["fa"]
         gy.sort(key=lambda x: -x[1])
-        ro.sort(key=lambda x: -x[1])
+        BAG_RO_ALL[:] = ro
+        ro = rank_sort(ro)
         fa.sort(key=lambda x: -x[1])
         return dep, gy, ro[:80], dp, fa
     finally:
@@ -930,7 +977,7 @@ def _run(a, g, mv, done, t_start, enemy, goal, sess, pid, sc):
                 g.names.update({x[0]: f"{x[2]} {x[1]}" for x in dep["fa"]})
                 rr = sc.exports_sync.roster([x[0] for x in dep["ro"]], a.heal_top, batch, [x[0] for x in dep["gy"]])
                 up = ([x for x in dep["ro"] if x[2] * 2 >= x[3]] + [x for x in dep["ro"] if 0 < x[2] and x[2] * 2 < x[3]])[:6]
-                say("  attack team = highest CP with HP left, no Slaking, no placement Gyarados: "
+                say(f"  attack team = {'best rank' if RANK['score'] else 'highest CP'} with HP left, no Slaking, no Regigigas, no placement Gyarados: "
                     + ", ".join(f"{x[4]} {x[1]}{'' if x[2] >= x[3] else f' ({x[2]}/{x[3]} HP)'}" for x in up)
                     + ("" if rr.get("live") else "  [!! bag not readable live -- the game's own team is used]"))
                 if batch:
@@ -955,7 +1002,9 @@ def _run(a, g, mv, done, t_start, enemy, goal, sess, pid, sc):
                         f"{a.feed_at:.0%} motivation or less ({a.feed_hot:.0%} while a gym is under attack)" + ("" if fd.get("live") else "  [!! feeder not available]"))
             except Exception as e:
                 say(f"  could not read your bag live ({e})")
+    rank_load(os.path.join(os.path.dirname(a.cmd), "attack_rank.json") if a.cmd else None, first=True)
     refresh_deployed(True)
+    rank_say(dep["ro"])
 
     ROUTE = [tuple(float(v) for v in w.split(",")) for w in a.route.split(";")] if a.route else []
     route_i = [0 if a.start_lap_at is None else a.start_lap_at]
@@ -966,8 +1015,16 @@ def _run(a, g, mv, done, t_start, enemy, goal, sess, pid, sc):
     def retry_lockout(fid):                                  # refused for the finisher's deploy window: wait it out, place again
         lv = sc.exports_sync.teams().get(fid) or []
         wait = min(30.0, (lv[8] / 1000.0 if len(lv) > 8 and lv[8] else 5.0) + 0.3)
-        say(f"  deploy lockout (the finisher's window) -- trying again in {wait:.1f} s")
-        g.wait_for(lambda: False, wait, tick)
+        say(f"  deploy lockout (the finisher's window) -- trying again in {wait:.1f} s (at once if a team places)")
+        t_end = time.time() + wait
+        while time.time() < t_end:                           # Benny 11-16: the moment ANOTHER team places, battle it (it has 1 defender)
+            try:
+                _tm = (sc.exports_sync.teams().get(fid) or [None])[0]
+            except Exception:
+                _tm = None
+            if _tm not in (0, None):
+                return False                                 # somebody placed: the placement loop below sees the new team at once
+            g.wait_for(lambda: False, 0.5, tick)
         if not (g.open_fid == fid and g.gym_team == 0 and g.leaf() == "GymApproachState"):
             return False
         g.deploy_refused, g.autoplaced_id = None, None
@@ -976,6 +1033,56 @@ def _run(a, g, mv, done, t_start, enemy, goal, sess, pid, sc):
         if not g.wait_for(lambda: fid in g.placed and g.autoplaced_id and g.placed[fid].get("id") == g.autoplaced_id, 20, tick):
             return False
         return bool(g.placed[fid].get("ok"))
+
+    def join_after_loss(fid):                                # a gym we fought for turned red without us and still has room: JOIN it
+        def room():
+            try:
+                lv = sc.exports_sync.teams().get(fid)
+            except Exception:
+                return None
+            return lv if (lv and lv[0] == a.team and len(lv) > 5 and lv[5] > 0 and (dep["n"] is None or dep["n"] < a.max_deployed)) else None
+        lv = room()
+        if not lv:
+            return False
+        say(f"  {fid[:8]} is red without us and has {lv[5]} free slot(s) -- staying to join it with a Gyarados")
+        t0 = time.time()
+        while time.time() - t0 < 35:                         # its same-team deploy lockout (v[9]) must run out first
+            lv = room()
+            if not lv:
+                say("  the gym filled up while we waited -- moving on")
+                return False
+            if not (len(lv) > 9 and lv[9] > 0):
+                break
+            if int(time.time() - t0) % 10 == 0:
+                say(f"  waiting out the deploy lockout ({time.time() - t0:.0f} s of 35)")
+            g.wait_for(lambda: False, 1.0, tick)
+        else:
+            say("  the lockout did not end within 35 s -- trying anyway")
+        for _try in range(2):
+            if not room():
+                return False
+            g.deploy_refused, g.autoplaced_id, g.autoplaced = None, None, None
+            g.placed.pop(fid, None)
+            sc.exports_sync.autodeploy(fid, [x[0] for x in dep["gy"][:12]], True, a.team)
+            if not (g.open_fid == fid and g.leaf() == "GymApproachState"):
+                sc.exports_sync.open(fid)
+                g.wait_for(lambda: g.open_fid == fid and g.leaf() == "GymApproachState", 10, tick)
+            if g.wait_for(lambda: g.autoplaced == fid, 6, tick) and                g.wait_for(lambda: fid in g.placed and g.autoplaced_id and g.placed[fid].get("id") == g.autoplaced_id, 17, tick)                and g.placed[fid].get("ok"):
+                dep["n"] = (dep["n"] or 0) + 1
+                STATS["placed"] += 1
+                say(f"  you joined {fid[:8]} with {g.names.get(g.placed[fid]['id'], 'a Pokemon') if hasattr(g, 'names') else 'a Pokemon'} "
+                    f"({dep['n']}/{a.max_deployed} in gyms now) -- next gym")
+                return True
+            if g.deploy_refused and g.deploy_refused[0] == fid and re.search(r"SameKind|AlreadyHas|Disabled", g.deploy_refused[1]):
+                say(f"  a Gyarados cannot go into {fid[:8]} ({g.deploy_refused[1]}) -- moving on")
+                return False
+            if g.deploy_refused and "Lockout" in g.deploy_refused[1]:
+                say("  still locked out -- waiting once more")
+                g.wait_for(lambda: False, 8.0, tick)
+                continue
+            break
+        say(f"  could not join {fid[:8]} -- moving on")
+        return False
 
     def batch_check():                                       # the user's rule: no heals until 30 fainted, then ALL of them at once
         n, ids = g.fainted
@@ -1017,6 +1124,13 @@ def _run(a, g, mv, done, t_start, enemy, goal, sess, pid, sc):
     gpos_now = [None]
 
     def pull():                                              # new commands -> cmdq in arrival order; each file read ONCE, then removed
+        if RANK["path"] and rank_load(RANK["path"]) and BAG_RO_ALL:    # attack_rank.json changed: re-sort the last walk, hand the tapper the new roster
+            dep["ro"] = rank_sort(BAG_RO_ALL)[:80]
+            try:
+                sc.exports_sync.roster([x[0] for x in dep["ro"]], a.heal_top, [], [x[0] for x in dep["gy"]])
+            except Exception as e:
+                say(f"  (new attack rank not handed to the tapper: {e})")
+            rank_say(dep["ro"])
         if not a.cmd:
             return
         if os.path.exists(a.cmd) and os.path.getmtime(a.cmd) != cmd_st["mtime"]:   # the old single file (the buddy session, until it moves)
@@ -1436,7 +1550,7 @@ def _run(a, g, mv, done, t_start, enemy, goal, sess, pid, sc):
                 if not (g.open_fid == fid and g.leaf() == "GymApproachState"):
                     sc.exports_sync.open(fid)
                     g.wait_for(lambda: g.open_fid == fid and g.leaf() == "GymApproachState", 10, tick)
-        placed_ok = False
+        placed_ok, retake = False, False
         if final == 0:                                       # empty: you can leave a Pokemon (unless at the cap)
             n = dep["n"]
             placed_ok = False
@@ -1497,12 +1611,28 @@ def _run(a, g, mv, done, t_start, enemy, goal, sess, pid, sc):
                             else:
                                 say(f"  another red player filled it first (your gym count is still {n2 if n2 is not None else '?'}) -- moving on")
                         else:
-                            say(f"  team {now_team} took it first -- moving on")
+                            say(f"  team {now_team} took it first -- battling it NOW while it has 1 defender (Benny: before their teammates add theirs)")
+                            retake = True
                         break
                     time.sleep(1)
                 else:
                     if not placed_ok and not friendly:
                         say("  no placement seen -- moving on")
+        if not placed_ok and not friendly and final in (0, a.team) and join_after_loss(fid):
+            placed_ok, final = True, 0                          # we got in (the placed count is already taken)
+        elif not placed_ok and not friendly and final in (0, a.team):
+            try:
+                _lv = sc.exports_sync.teams().get(fid)
+            except Exception:
+                _lv = None
+            #  not in: never leave a gym with room rested -- it is judged again at once
+            if _lv and _lv[0] == a.team and len(_lv) > 5 and _lv[5] > 0:
+                done.pop(fid, None)
+                TAKEN.pop(fid, None)
+        if retake:                                           # another team got in first: no rest, this gym is drilled NEXT
+            done.pop(fid, None)
+            TAKEN.pop(fid, None)
+            a.join_first, first_done[0] = fid, False
         sc.exports_sync.autodeploy(None)                     # disarm only now: the whole placement step is over
         g.autoplaced = None
         if g.deploy_refused and g.deploy_refused[0] == fid and re.search(r"SameKind|AlreadyHas|Disabled", g.deploy_refused[1]):
