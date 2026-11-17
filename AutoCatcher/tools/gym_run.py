@@ -653,7 +653,7 @@ GREG = {"path": None, "g": {}, "dirty": False, "saved": 0.0, "raid": {}}   # --h
 JUMPED = {"t": 0.0, "m": 0.0, "told": True}              # the last TELEPORT: when, how far; told = its cooldown was measured
                                                          # (+ t0 / n / sum_m / max_m / act_m / act_gap: the whole unanswered chain)
 COOL = {"on": False, "until": 0.0, "n": 0, "last29": 0.0, "said": False, "ok_seen": 0.0}   # the server's cooldown is ON: no Battle press until `until`
-E29 = {"n": 0, "t1": 0.0, "until": 0.0}                  # error (29) with NO unanswered jump: the gym changed under the battle, not a cooldown
+E29 = {"n": 0, "t1": 0.0, "until": 0.0, "last": 0.0}     # error (29) with NO unanswered jump: the gym changed under the battle, not a cooldown
 COOL_OBS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "gym_state", "cooldown_obs.jsonl")
 
 
@@ -734,13 +734,17 @@ LAST_ACT = {"t": 0.0, "pos": None}                       # the last action the s
                                                          # when, and where (the gym) -- the cooldown runs from THERE, not from a jump
 
 
+JUMP_CHAIN_S = 600.0                                     # an unanswered jump older than this starts no chain: an hour of idle hops
+                                                         # is not "one cooldown" (a label for the log, never a wait)
+
+
 def jump_chain(prev, now, m, to=None, act=None, meters=None):
     """The jump record after one more TELEPORT (pure: note_jump stores it). Jumps the server has not answered yet are ONE
     chain -- the cooldown is not the last short jump's. 11-17 00:25: an island hop of 2.2 km and, 30 s later, 74 m onto the
     gym was written down as 'refused 10 s / accepted 117 s after a 74 m jump'. t0 / n / sum_m / max_m describe the whole
     chain, refused_s (seconds after t0) survives the chain; act_gap = seconds since the server last counted an action of
     ours, act_m = metres from that action's gym to this landing (None: not known)."""
-    chained = bool(prev.get("t")) and not prev.get("told", True)
+    chained = bool(prev.get("t")) and not prev.get("told", True) and now - prev["t"] <= JUMP_CHAIN_S
     act = act or {}
     rec = {"t": now, "m": m, "told": False, "to": tuple(to) if to else None,
            "t0": (prev.get("t0") or prev["t"]) if chained else now,
@@ -748,7 +752,8 @@ def jump_chain(prev, now, m, to=None, act=None, meters=None):
            "sum_m": (prev.get("sum_m") or prev.get("m") or 0.0) + m if chained else m,
            "max_m": max(prev.get("max_m") or prev.get("m") or 0.0, m) if chained else m,
            "refused_s": (prev.get("refused_s") or 0.0) if chained else 0.0,
-           "act_gap": round(now - act["t"], 1) if act.get("t") else None, "act_m": None}
+           "act_gap": prev.get("act_gap") if chained else (round(now - act["t"], 1) if act.get("t") else None),   # (the FIRST
+           "act_m": None}                                    # jump's gap; act_m below = the landing we stand on NOW)
     if act.get("pos") and to and meters:
         try:
             rec["act_m"] = round(meters(tuple(act["pos"]), tuple(to)))
@@ -1391,6 +1396,12 @@ def autobattle(sc, g, on):
     sc.exports_sync.autobattle(bool(on))
 
 
+E29_FRESH_S = 15.0                                       # an error 29 older than this was not shown to THIS drill loop (its longest
+                                                         # single wait is 12 s) -- a staleness bound on a flag, not a wait
+E29_ROW_S = 120.0                                        # two refusals further apart than this are not "in a row" (a refused
+                                                         # battle + the longest hold + the re-open is ~50 s) -- a bound, not a wait
+
+
 def e29_seen(g, sc, fid):
     """The game said "The Gym battle has already been completed! (29)" since the last look: decide what it means -- once,
     and from ANY place in the drill loop. It used to be read only on the plain map; the tapper re-opened the gym 2 s after
@@ -1402,25 +1413,23 @@ def e29_seen(g, sc, fid):
     if at <= COOL["last29"]:
         return False
     COOL["last29"] = at
-    if getattr(g, "start_at", 0.0) > at or at < JUMPED["t"]:
-        say(f"  (error 29 from {time.time() - at:.0f} s ago: a battle round started or we jumped since -- no hold for it)")
-        return False
+    _age = time.time() - at
+    if getattr(g, "start_at", 0.0) > at or at < JUMPED["t"] or _age > E29_FRESH_S:
+        say(f"  (error 29 from {_age:.0f} s ago: "            # (older than any wait of this loop = it was shown while no
+            f"{'not from this drill' if _age > E29_FRESH_S else 'a battle round started or we jumped since'} -- no hold for it)")   # drill ran:
+        return False                                         # Benny's own battle, or one that ended as the gym emptied)
     _nm = getattr(g, "names", {})
     if JUMPED["t"] and not JUMPED["told"]:                # no battle has counted since OUR last jump: the server's cooldown
         cool_sign("battle refused: error 29")             # sign (Benny 23:28: "you keep trying to battle and not reading
-        autobattle(sc, g, False)                          # the signs for a cooldown")
-        _sus = team_suspects(getattr(g, "last_team", None)) if COOL["n"] >= 4 else []
-        if _sus:                                         # 4 refusals after one jump AND members no counted battle ever saw
-            team_ban(_sus, f"{COOL['n']} battles refused in a row at {fid[:8]} after a jump; never in a counted battle", sc)
-            say(f"  {COOL['n']} refusals in a row: also taking the unproven members out of every team for this run: "
-                + ", ".join(_nm.get(i, i) for i in _sus))
-        return True
-    _now = time.time()                                   # battles HAVE counted since the last jump (or no jump): NOT a
-    if E29["n"] == 0:                                    # cooldown -- the gym changed under the battle (its team fed a
-        E29["t1"] = _now                                 # defender between rounds: Ellis 23:36 + 23:40, no jump, 3-8%
-    E29["n"] += 1                                        # drained per session). Re-open on the game's next map refresh
-    _sus = team_suspects(getattr(g, "last_team", None)) if E29["n"] >= 2 else []   # (GMO 5 s; an instant re-open after (29)
-    autobattle(sc, g, False)                             # crashed the game twice)
+        autobattle(sc, g, False)                          # the signs for a cooldown"). NO ban here: an ordinary cooldown
+        return True                                       # refuses 8-35 battles in a row at the 8 s re-ask, and a ban of the
+    _now = time.time()                                    # never-proven members would empty the roster jump by jump (review)
+    if E29["n"] == 0 or _now - E29.get("last", 0.0) > E29_ROW_S:   # battles HAVE counted since the last jump (or no jump): NOT a
+        E29["n"], E29["t1"] = 0, _now                    # cooldown -- the gym changed under the battle (its team fed a
+    E29["n"] += 1                                        # defender between rounds: Ellis 23:36 + 23:40, no jump, 3-8%
+    E29["last"] = _now                                   # drained per session). "In a row" = no counted battle between
+    _sus = team_suspects(getattr(g, "last_team", None)) if E29["n"] >= 2 else []   # them AND under E29_ROW_S apart.
+    autobattle(sc, g, False)                             # (an instant re-open after (29) crashed the game twice)
     if _sus:                                             # twice running, no jump: the six are the suspect (the fused Zekrom,
         team_ban(_sus, f"{E29['n']} battles refused in a row at {fid[:8]} with no jump; never in a counted battle", sc)   # 11-17)
         E29["until"] = _now + 5.0
@@ -1584,6 +1593,11 @@ def drill(fid, enemy, g, sc, a, tick, until, refresh=None, join_near=None, cmd_w
         if g.has("GymState"):
             if g.open_fid and g.open_fid != fid and not g.prep:
                 if g.user_gym:                               # HIS gym screen (he opened another gym): never Back out of it
+                    if cmd_waiting and cmd_waiting():        # (a stop / go / hunt must not wait behind his screen: the drill
+                        sc.exports_sync.autodeploy(None)     # steps aside, his screen stays as it is)
+                        g.armed = False
+                        say(f"  a new command is waiting -- leaving the drill of {fid[:8]} (your gym screen stays open)")
+                        return DETOUR
                     if time.time() - his_said > 30:          # (11-16 23:30:58 and 11-17 00:17:19: the drill pressed Back on him
                         his_said = time.time()               # one second after he opened his own gym -- his rule: never touch it)
                         say(f"  you have another gym open ({g.open_fid[:8]}) -- the drill of {fid[:8]} waits next to it; "

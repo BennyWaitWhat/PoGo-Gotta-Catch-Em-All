@@ -18,11 +18,15 @@ runs under node against mock Pokemon records.   python test_gym_awareness.py   (
   8. the banner over the map does not block a gym open; the placement fallback = highest-CP shinies first, never a
      legendary, never one of the attackers;
   9. error 29 ("The Gym battle has already been completed!"): the tapper neither re-opens the gym nor presses Battle
-     for 5 s (the REAL openPending / screenText under node); the runner handles one error once and at once, sets no
-     hold for a stale one (the phantom holds of 11-17 00:25 / 00:30), bans the never-proven member after two in a row,
-     never waits past 40 s; every name the tapper script reads is declared somewhere (a typo would throw on the phone).
+     for 5 s, and an open() the runner asks for inside that hold is queued, never a way around it (the REAL openPending /
+     screenText / open under node); the runner handles one error once and at once, sets no hold for a stale one (a round
+     start or a jump since, or older than 15 s -- the phantom holds of 11-17 00:25 / 00:30), bans the never-proven member
+     after two in a row with NO jump (never after a jump: a cooldown refuses dozens), never waits past 40 s, and starts a
+     new streak after 2 min; the battle six is filled with picks that are neither fused nor banned first; every name the
+     tapper script reads is declared somewhere (a typo would throw on the phone).
 """
 import contextlib
+import importlib.util
 import io
 import json
 import os
@@ -34,9 +38,7 @@ import tempfile
 import time as _time
 import types
 
-try:
-    import frida  # noqa: F401
-except ImportError:                                          # CI / the offline sandbox: nothing here ever attaches
+if importlib.util.find_spec("frida") is None:                # CI / the offline sandbox: nothing here ever attaches
     sys.modules["frida"] = types.ModuleType("frida")
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
@@ -113,11 +115,17 @@ def script_text(js):
     check("directdeploy: function (on) { DD_ON = !!on;" in js, "the directdeploy() export (the runner's switch) is missing")
     res = js_fn(js, "ddResolve")
     check(res.index("if (!DD_ON) return null;") < res.index("DD_TRY++"), "ddResolve() must refuse before any reflection call while the switch is off")
-    check("if (!DD_ON || !DD_OK" in js_fn(js, "directDeploy"), "directDeploy() must refuse while the switch is off")
+    dd = js_fn(js, "directDeploy")
+    check("if (!DD_ON || !DD_OK" in dd, "directDeploy() must refuse while the switch is off")
+    check("ddResolve(" not in dd and "var mi = DD_SEND;" in dd,
+          "directDeploy() must never build the request sender itself: only ddTick does, after its announcement (the crash guard reads it)")
     tick = js_fn(js, "ddTick")
     check("send({k: 'ddtry'})" in tick and tick.index("send({k: 'ddtry'})") < tick.index("ddResolve()"),
           "ddTick must announce ('ddtry') before it builds the request sender")
     check("now - DD_ANN > 400" in tick, "the build must come a moment AFTER its announcement (the message must leave the game first)")
+    check("} else DD_ANN = 0;" in tick, "an announcement must not outlive the plain map: leaving it before the build means announcing again")
+    callers = re.findall(r"(?<!function )\bddResolve\(", re.sub(r"/\*.*?\*/", "", js, flags=re.S))
+    check(len(callers) == 1, f"ddResolve() must have exactly ONE caller (ddTick, after its announcement): {len(callers)} call sites")
     check("send({k: 'ddarmed'" in js, "a victory that arms a direct deploy must say so ('ddarmed') before the call")
     check("send({k: 'ddsend', ok: !!DD_SEND" in res, "ddResolve() must report READY / NOT available ('ddsend')")
     check("!/Toast|^NotificationGuiController$/.test(TOP)" in js, "the tapper's gym open must not wait for the notification banner")
@@ -195,7 +203,8 @@ def free_names(js):
         r = subprocess.run([NODE, "--expose-internals", q, p, FRIDA_GLOBALS], capture_output=True, text=True)
         out = (r.stdout or "").strip()
         if out == "SKIP" or r.returncode != 0:
-            print("ok: (undeclared-name scan skipped: this node has no internal parser" + (f": {(r.stderr or '').strip()[:200]}" if r.returncode else "") + ")")
+            print("SKIP: the undeclared-name scan did NOT run -- this node has no internal parser"
+                  + (f": {(r.stderr or '').strip()[:200]}" if r.returncode else "") + " (a typo in the tapper script would go unseen here)")
             return
         free = json.loads(out.splitlines()[-1])
         check(not free, "the tapper script reads names that are declared nowhere (they throw on the phone when that line runs): "
@@ -311,6 +320,26 @@ out.noRearmWhenOpened = CALLS.length;
 CALLS = []; PENDING = 'gymA'; PENDING_AT = 90000; LAST_OPEN = {fid: null, at: 0}; TOP = 'MainMenuGuiController'; CHAIN = 'MapExploreState';
 openPending(90100); TOP = 'ScreenFadeGuiController'; openPending(91000); TOP = 'MainMenuGuiController'; openPending(92000); openPending(92100);
 out.noRearmForAFade = CALLS.length;
+/* the runner's own open() inside the hold is QUEUED until the hold ends -- it never cancels the hold, it never expires meanwhile */
+CALLS = []; PENDING = null; LAST_OPEN = {fid: null, at: 0}; TOP = 'MainMenuGuiController'; CHAIN = 'MapExploreState';
+var T = Date.now(); E29_HOLD = T + 5000;
+var r1 = openExport('gymA'); out.heldAnswer = r1.held; out.holdKept = E29_HOLD === T + 5000; out.queued = PENDING;
+openPending(T + 100); openPending(T + 4900); out.openedInsideHold = CALLS.length;
+openPending(T + 5001); out.openedWhenHoldEnded = CALLS.length;
+E29_HOLD = 0; var r2 = openExport('gymA'); out.notHeldAnswer = r2.held;
+CHAIN = 'MapExploreState > GymRootState > GymState'; out.busyAnswer = openExport('gymA').busy === true;
+/* the battle hook's fill-in: the game's own picks that are a fused part or banned go in only if the six would stay short */
+function fill(mineIds, origRecs, len) { var o = OFFS, have = {}, out = [];
+  mineIds.forEach(function (id) { have[id] = 1; out.push(LIVE[id]); });
+  var orig = origRecs;
+  FILL_BLOCK
+  return out.map(function (q) { return q.o.id; }); }
+function rec(o) { var r = new Rec(o); r.isNull = function () { return false; }; LIVE[o.id] = r; return r; }
+var NUL = {isNull: function () { return true; }};
+var a = rec({id: 'a'}), b = rec({id: 'b'}), c = rec({id: 'c'}), d = rec({id: 'd'}), e = rec({id: 'e'}), f6 = rec({id: 'f'}), g7 = rec({id: 'g'}), zk = rec({id: 'zek', comp: 1});
+BANNED = {e: 1};
+out.fillClean = fill(['a', 'b', 'c'], [a, zk, d, e, f6, g7], 6);
+out.fillShort = fill(['a', 'b'], [a, zk, e, NUL, NUL, NUL], 6);
 console.log(JSON.stringify(out));
 """
 
@@ -320,7 +349,15 @@ def hold_block(js):
     m = re.search(r"\nvar E29_HOLD = 0, E29_GUARD_MS = (\d+);", js)
     if not check(m is not None, "var E29_HOLD / E29_GUARD_MS is gone from the tapper script"):
         return
-    src = "\n".join([HOLD_MOCK, f"var E29_HOLD = 0, E29_GUARD_MS = {m.group(1)};", js_fn(js, "openPending"), js_fn(js, "screenText"), HOLD_RUN])
+    ex = re.search(r"\n  open: (function \(fid\) \{.*?\}),\n  pickname:", js, re.S)
+    a = js.find("[true, false].forEach(function (clean) {")
+    b = js.find("}); });", a)
+    if not check(ex is not None and a > 0 and b > a, "the open() export or the battle hook's fill-in changed shape: the test cannot find them"):
+        return
+    pick_bits = "\n".join([PICK_MOCK.replace("var M = {isMega: null}, K = {};", "M.isMega = null;").replace("function str(p) { return p ? String(p) : ''; }", ""),
+                           js_fn(js, "fusedPart"), "var BANNED = {};"])
+    src = "\n".join([HOLD_MOCK, f"var E29_HOLD = 0, E29_GUARD_MS = {m.group(1)};", js_fn(js, "openPending"), js_fn(js, "screenText"),
+                     "var openExport = " + ex.group(1) + ";", pick_bits, HOLD_RUN.replace("FILL_BLOCK", js[a:b + len("}); });")])])
     with tempfile.TemporaryDirectory() as td:
         p = os.path.join(td, "hold.js")
         with open(p, "w", encoding="utf-8") as f:
@@ -339,10 +376,14 @@ def hold_block(js):
     check(o["noRearmWhenOpened"] == 1 and o["noRearmForAFade"] == 1, f"no second open when the gym screen came, nor after a plain screen fade: {o}")
     check("&& now >= E29_HOLD && !ACT" in js, "the tapper's automatic Battle press must respect the error-29 hold")
     check("leaf === 'MapExploreState' && Date.now() >= E29_HOLD) { PENDING = AUTODEP.fid;" in js, "a battle that ends in error 29 must not queue a re-open")
-    check(re.search(r"\n    E29_HOLD = 0; .*\n    PENDING = fid; PENDING_AT = Date\.now\(\); return \{known:", js) is not None,
-          "the runner's own open() must end the hold (its wait has run)")
+    check((o["heldAnswer"], o["holdKept"], o["queued"], o["openedInsideHold"], o["openedWhenHoldEnded"], o["notHeldAnswer"], o["busyAnswer"]) ==
+          (True, True, "gymA", 0, 1, False, True),
+          f"an open() from the runner inside the hold is queued, never cancels it, and goes out the tick the hold ends: {o}")
+    check(o["fillClean"] == ["a", "b", "c", "d", "f", "g"], f"the battle six is filled with the game's picks that are neither fused nor banned: {o['fillClean']}")
+    check(o["fillShort"] == ["a", "b", "zek", "e"], f"only if the six would stay short do the others go in -- never a hole, never one twice: {o['fillShort']}")
     if len(FAILS) == n0:
-        print("ok: after error 29 the tapper neither re-opens nor presses Battle for 5 s; the runner's open ends the hold; the banner does not block")
+        print("ok: after error 29 the tapper neither re-opens nor presses Battle for 5 s; the runner's own open is queued until the hold ends; "
+              "the banner does not block; the badge popup gets one re-open; the six is filled with clean picks first")
 
 
 # ------------------------------------------------------------------------------------------------ helpers for 3-9
@@ -353,7 +394,7 @@ def fresh(td, t0=1794894000.0):
     gym_run.JUMPED.clear()
     gym_run.JUMPED.update(t=0.0, m=0.0, told=True)
     gym_run.COOL.update(on=False, until=0.0, n=0, last29=0.0, said=False, ok_seen=0.0)
-    gym_run.E29.update(n=0, t1=0.0, until=0.0)
+    gym_run.E29.update(n=0, t1=0.0, until=0.0, last=0.0)
     gym_run.LAST_ACT.update(t=0.0, pos=None)
     gym_run.COOL_OBS = os.path.join(td, "cooldown_obs.jsonl")
     gym_run.PROVEN.update(ids=set(), loaded=False, path=os.path.join(td, "proven_fighters.json"))
@@ -399,6 +440,13 @@ def jump_checks():
     j2 = gym_run.jump_chain(j1, 130.0, 74, (40.6893, -74.0447), {"t": 90.0, "pos": (40.6978, -74.0413)}, flat)
     check((j2["n"], j2["sum_m"], j2["max_m"], j2["t0"], j2["m"], j2["refused_s"]) == (2, 2268, 2194, 100.0, 74, 12.5),
           f"a second jump before the server answered the first stays in ONE chain (and keeps its refusals): {j2}")
+    check(j2["act_gap"] == 10.0 and j2["act_m"] == flat((40.6978, -74.0413), (40.6893, -74.0447)),
+          f"a chain keeps the FIRST jump's gap to the last counted action; the metres are to the landing we stand on now: {j2}")
+    j_old = gym_run.jump_chain(j2, 130.0 + gym_run.JUMP_CHAIN_S + 1, 50, None, {"t": 90.0}, flat)
+    check(gym_run.JUMP_CHAIN_S == 600.0 and (j_old["n"], j_old["sum_m"], j_old["refused_s"]) == (1, 50, 0.0),
+          f"an unanswered jump older than 10 min starts no chain (an hour of idle hops is not one cooldown): {j_old}")
+    j_edge = gym_run.jump_chain(j2, 130.0 + gym_run.JUMP_CHAIN_S, 50, None, {"t": 90.0}, flat)
+    check(j_edge["n"] == 3 and j_edge["t0"] == 100.0, f"...and one inside the 10 min still belongs to it: {j_edge}")
     j2["told"] = True
     j3 = gym_run.jump_chain(j2, 400.0, 163, None, {"t": 0.0}, flat)
     check((j3["n"], j3["sum_m"], j3["max_m"], j3["t0"], j3["refused_s"], j3["act_gap"], j3["act_m"]) == (1, 163, 163, 400.0, 0.0, None, None),
@@ -443,8 +491,10 @@ def jump_checks():
             check(rows[1]["refused_at_s"] == 60.0, f"the second refusal, 60 s after the hop: {rows[1]}")
             check((acc["jump_m"], acc["chain_n"], acc["chain_m"], acc["accepted_after_jump_s"], acc["refused_last_s"], acc["since_last_action_s"]) ==
                   (2194, 2, 2268, 147.0, 60.0, 157.0), f"the measured row: {acc}")
-            check(acc["from_last_action_m"] is not None and 900 < acc["from_last_action_m"] < 1100 and acc["jumped_after_action_s"] == 40.0,
-                  f"the landing's distance from the last counted action (Ellis -> Liberty, ~1 km): {acc}")
+            check(acc["from_last_action_m"] is not None and 900 < acc["from_last_action_m"] < 1100 and acc["jumped_after_action_s"] == 10.0
+                  and ref["jumped_after_action_s"] == 10.0,
+                  f"the landing's distance from the last counted action (Ellis -> Liberty, ~1 km); the chain left 10 s after it (the hop, "
+                  f"not the 74 m jump 40 s after): {acc}")
         check("COOLDOWN measured" in out and "147 s after 2 jumps" in out and "between 60 s (refused) and 147 s" in out, f"the measured line: {out!r}")
         check("COOLDOWN over" in out and not gym_run.COOL["on"] and gym_run.JUMPED["told"], "the first counted battle ends the wait")
         check(("autobattle", True) in sc.calls, "Battle presses held back by the wait are released")
@@ -692,10 +742,23 @@ def stall_checks():
         g.err29_at = clock.t
         out, ret = said(gym_run.e29_seen, g, sc, fid)
         check(gym_run.E29["n"] == 2 and gym_run.E29["until"] == clock.t + 26.0 and not gym_run.TEAM_BAN, f"2 in a row, all proven: wait as long again: {out!r}")
-        clock.t = t0 + 300
+        clock.t = t0 + 100                                   # a third, 70 s after the second: 96 s since the first -> 40 s, the cap
         g.err29_at = clock.t
         said(gym_run.e29_seen, g, sc, fid)
-        check(gym_run.E29["until"] == clock.t + 40.0, "the error-29 wait never grows past 40 s (00:59: the doubling had reached 2 min 47 s)")
+        check(gym_run.E29["n"] == 3 and gym_run.E29["until"] == clock.t + 40.0,
+              f"the error-29 wait never grows past 40 s (00:59: the doubling had reached 2 min 47 s): {gym_run.E29}")
+        clock.t = t0 + 100 + gym_run.E29_ROW_S + 1           # one more, over 2 min after the last: not "in a row" -- a new first
+        g.err29_at = clock.t
+        out, ret = said(gym_run.e29_seen, g, sc, fid)
+        check(gym_run.E29_ROW_S == 120.0 and gym_run.E29["n"] == 1 and gym_run.E29["until"] == clock.t + 5.0 and "re-opening on the next map refresh (5 s)" in out,
+              f"a refusal more than 2 min after the last one starts a new streak (5 s, no 40 s wait, no ban): {gym_run.E29} {out!r}")
+        clock.t += gym_run.E29_ROW_S                         # exactly 2 min later still counts as in a row
+        g.err29_at = clock.t
+        said(gym_run.e29_seen, g, sc, fid)
+        check(gym_run.E29["n"] == 2 and gym_run.E29["until"] == clock.t + 40.0, f"exactly 2 min apart is still in a row: {gym_run.E29}")
+        said(gym_run.battles_count, fid, "a defender lost CP in our battle (100 -> 90 total)", sc)
+        check(gym_run.E29["n"] == 0 and not gym_run.hold_on() and sc.calls[-1] == ("autobattle", True),
+              f"a counted battle ends the streak and its hold, and gives the tapper its Battle press back: {sc.calls[-3:]}")
 
         clock = fresh(td, t0 + 1000)                         # the fused-Zekrom case: 2 in a row, an unproven member
         t1 = clock.t
@@ -723,6 +786,45 @@ def stall_checks():
               f"error 29 after an unanswered jump = the server's cooldown: re-ask after the 8 s guard: {out!r}")
 
         check([r["k"] for r in obs_rows()] == ["cooldown_refused"], f"that real refusal is the one row in cooldown_obs.jsonl: {obs_rows()}")
+        g.last_team, g.names = ["1", "2", "777", "888"], {"777": "Zacian 5629", "888": "Rayquaza 4336"}   # nobody proven yet in this run
+        for i in range(34):                                  # an ordinary cooldown: 35 refusals in a row at the 8 s re-ask
+            clock.t += 8.5
+            g.err29_at = clock.t
+            out, ret = said(gym_run.e29_seen, g, sc, fid)
+        check(ret is True and gym_run.COOL["n"] == 35 and "COOLDOWN sign #35" in out, f"every refusal after the jump is a cooldown sign: {out!r}")
+        check(not gym_run.TEAM_BAN and gym_run.E29["n"] == 0 and not [c for c in sc.calls if c[0] == "ban"],
+              f"refusals after an unanswered jump NEVER ban a team member, however many (a cooldown refuses 8-35 battles in a row): {gym_run.TEAM_BAN}")
+
+        clock = fresh(td, t0 + 2500)                         # how old an error 29 may be: the drill's longest single wait is 12 s
+        t25 = clock.t
+        g, sc = gym_run.Game(), FakeTapper()
+        g.err29_at = t25
+        clock.t = t25 + gym_run.E29_FRESH_S                  # exactly 15 s old: still this drill's
+        out, ret = said(gym_run.e29_seen, g, sc, fid)
+        check(gym_run.E29_FRESH_S == 15.0 and ret is True and gym_run.hold_on(), f"an error 29 seen within 15 s is handled: {out!r}")
+        clock = fresh(td, t0 + 2700)
+        t27 = clock.t
+        g, sc = gym_run.Game(), FakeTapper()
+        g.err29_at = t27
+        clock.t = t27 + gym_run.E29_FRESH_S + 0.1            # no round start, no jump since -- only its age
+        out, ret = said(gym_run.e29_seen, g, sc, fid)
+        check(ret is False and not gym_run.hold_on() and gym_run.E29["n"] == 0 and sc.calls == [] and "not from this drill" in out,
+              f"an error 29 older than 15 s was not shown to this drill (his own battle, or one that ended as the gym emptied): no hold: {out!r}")
+        check(said(gym_run.e29_seen, g, sc, fid) == ("", False), "...and it is not looked at again")
+        g.err29_at = clock.t                                 # 4 s old, but we jumped since: that jump's cooldown it is not
+        clock.t += 2
+        said(gym_run.note_jump, 163, (40.6899, -74.0455))
+        clock.t += 2
+        out, ret = said(gym_run.e29_seen, g, sc, fid)
+        check(ret is False and not gym_run.COOL["on"] and "a battle round started or we jumped since" in out,
+              f"a 4 s old error 29 from BEFORE our last jump is not that jump's cooldown: {out!r}")
+        g.err29_at = clock.t                                 # 3 s old, but a round started since
+        clock.t += 1
+        g.start_at = clock.t
+        clock.t += 2
+        out, ret = said(gym_run.e29_seen, g, sc, fid)
+        check(ret is False and not gym_run.hold_on() and "a battle round started or we jumped since" in out,
+              f"a 3 s old error 29 that a round start has overtaken sets no hold: {out!r}")
         clock = fresh(td, t0 + 3000)                         # stale flags are history (the phantom holds of 00:25:29 / 00:30:09)
         t3 = clock.t
         rows_before = len(obs_rows())

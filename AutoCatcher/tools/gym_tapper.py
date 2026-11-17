@@ -369,7 +369,8 @@ function ddResolve() {
 }
 function directDeploy(fid, pick, now) {       /* the gym screen's own GYM_DEPLOY request, sent from the map */
   if (!DD_ON || !DD_OK || !LASTPOS || !OBJNEW || !WB || !isA(DSVC, K.MapPlaceDetailsService)) return false;
-  var mi = ddResolve();
+  var mi = DD_SEND;                           /* built ONLY by ddTick, after its announcement: a build here would run with nothing
+                                                 announced, and the runner's crash guard would be blind to it (review 11-17) */
   if (!mi || !Process.findRangeByAddress(mi) || cs(MGNM(mi)) !== 'Send' || !MCLS(mi).equals(K.RpcHandlerExt)) {
     if (!ST.ddTold) { ST.ddTold = true; send({k: 'err', e: 'direct deploy: no checked Send<GymDeployOutProto> -- the gym screen places'}); }
     return false; }
@@ -389,11 +390,13 @@ function directDeploy(fid, pick, now) {       /* the gym screen's own GYM_DEPLOY
   return true;
 }
 function ddTick(now) {                        /* after a drilled gym's VICTORY: scan it every 0.5 s, deploy the moment the server says EMPTY */
-  if (DD_ON && DD_OK && !DD_SEND && !DD_TRY && !IN_BATTLE && LEAF === 'MapExploreState' && now - MAP_SINCE > 1500) {   /* once, on the plain
-                                                 map, long before the first victory needs it */
-    if (!DD_ANN) { DD_ANN = now; send({k: 'ddtry'}); }   /* announced 0.4 s BEFORE the reflection calls: a game that closes on them is
-                                                            told apart, and the runner keeps direct deploy off from then on */
-    else if (now - DD_ANN > 400) ddResolve();
+  if (DD_ON && DD_OK && !DD_SEND && !DD_TRY) {
+    if (!IN_BATTLE && LEAF === 'MapExploreState' && now - MAP_SINCE > 1500) {   /* once, on the plain map, long before the first
+                                                 victory needs it */
+      if (!DD_ANN) { DD_ANN = now; send({k: 'ddtry'}); }   /* announced 0.4 s BEFORE the reflection calls: a game that closes on them
+                                                              is told apart, and the runner keeps direct deploy off from then on */
+      else if (now - DD_ANN > 400) ddResolve();
+    } else DD_ANN = 0;                        /* left the plain map before the build: announce again (the guard counts from the LAST one) */
   }
   if (DDEP) {
     var r = promiseRead(DDEP); if (r === null && now - DDEP.at < 15000) return;
@@ -529,7 +532,7 @@ var NOAUTOBATTLE = false;                     /* the server's cooldown is on (ru
 var E29_HOLD = 0, E29_GUARD_MS = 5000;        /* "The Gym battle has already been completed! (29)": the game throws us out of the gym; for one
      map refresh (5 s) this script neither re-opens the gym nor presses Battle. The runner's hold could not win that race -- the re-open
      came 2-3 s after the kick with Battle in the same second (11-16 22:37: five (29)s 8-12 s apart, then the game died; 11-17 00:33: a
-     Battle 4 s into the runner's hold). The runner's own open() ends the hold: it decides when the next check goes out. */
+     Battle 4 s into the runner's hold). It binds every caller: an open() asked for inside the hold is queued until it ends. */
 function fidStr(fid) {
   if (!SNEW || !GCH || !GCT) return null;
   var h = RSTR[fid];
@@ -1685,7 +1688,10 @@ rpc.exports = {
         var out = TEAMP.filter(function (t) { try { return t.p.readPointer().equals(K.PokemonProto) && t.p.add(o.id).readU64().toString() === t.id && usable(t.p, o); } catch (e) { return false; } })
           .slice(0, len).map(function (t) { have[t.id] = 1; return t.p; });
         var mine = out.length;
-        orig.forEach(function (q) { if (out.length < len && !q.isNull() && !have[q.add(o.id).readU64().toString()]) out.push(q); });   /* short: the game's own picks fill in */
+        [true, false].forEach(function (clean) {   /* short: the game's own picks fill in -- first those that are neither a fused part nor
+             banned by the runner; only if the six is still short, the rest (never a hole or the same Pokemon twice) */
+          orig.forEach(function (q) { if (out.length >= len || q.isNull()) return; var qid = q.add(o.id).readU64().toString();
+            if (have[qid] || (clean && (BANNED[qid] || fusedPart(q, o)))) return; have[qid] = 1; out.push(q); }); });
         for (var j = 0; j < out.length; j++) { if (WB) WB(arr, base.add(j * PS), out[j]); else base.add(j * PS).writePointer(out[j]); }
         ACTIVE = {}; ACTIVE_AT = now; out.forEach(function (q) { ACTIVE[q.add(o.id).readU64().toString()] = 1; });
         TEAMP = null;
@@ -1756,8 +1762,9 @@ rpc.exports = {
   },
   stab: function (cfg) { return loadStab(cfg); },   /* the client game master's same-type multiplier + typing table, handed over by the runner (gym_tapper.stab_config) */
   open: function (fid) { if (/GymRootState|GymRotationState/.test(CHAIN)) return {known: !!GYMS[fid], busy: true};   /* a gym is opening/open */
-    E29_HOLD = 0;                            /* the runner's own open ends the error-29 hold: its wait has run */
-    PENDING = fid; PENDING_AT = Date.now(); return {known: !!GYMS[fid]}; },
+    PENDING = fid; PENDING_AT = Math.max(Date.now(), E29_HOLD);   /* inside the error-29 hold the open is QUEUED, not refused: it goes
+       out the tick the hold ends (the hold binds every caller -- a join from the main loop too) and does not expire meanwhile */
+    return {known: !!GYMS[fid], held: Date.now() < E29_HOLD}; },
   pickname: function (name) {                /* a place handler learned in an earlier run (gym_state/pick_handler.json): only one of this shape */
     var hit = null; (LIT.pickCands || []).forEach(function (m, i) { if (LIT.pickNames[i] === name) hit = m; });
     if (hit) { M.pickHandler = hit; M.pickName = name; LIT.pickWhy = 'learned from a placement in an earlier run'; }
