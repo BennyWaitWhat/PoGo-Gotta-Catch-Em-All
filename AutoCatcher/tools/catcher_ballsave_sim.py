@@ -140,12 +140,12 @@ os.utime(pf, (time.time() + 20, time.time() + 20))
 ns["CFG"].update(mightyKeep=30)
 c = ns["cfg_now"]()
 check("reserve 100 pushed (JS spreads it), end passed", (c["floors"], c["reserve"], c["skipSp"]), ({"1": 5, "2": 5, "3": 5}, 100, []))
-check("ended plan: no shiny look, Mighty hold back", (c["peek"], c["mightyKeep"]), (False, 30))
+check("ended plan: no shiny look, Mighty hold back", (c["peek"], c["mightyBalls"], c["mightyKeep"]), (False, 30, 30))
 json.dump(dict(PLAN, end=time.time() + 600, keep=50), open(pf, "w"))
 os.utime(pf, (time.time() + 30, time.time() + 30))
 c = ns["cfg_now"]()
 check("live plan, keep 50: reserve 35 + shiny look", (c["floors"], c["reserve"], c["peek"]), ({"1": 5, "2": 5, "3": 5}, 35, True))
-check("live plan: no Mighty hold (the budget counts G/U)", c["mightyKeep"], 0)
+check("live plan: no Mighty ball hold; Razz hold kept", (c["mightyBalls"], c["mightyKeep"]), (0, 30))
 os.remove(pf)
 c = ns["cfg_now"]()
 check("plan deleted -> no reserve", (c["floors"], c["reserve"]), ({"1": 5, "2": 5, "3": 5}, 0))
@@ -202,6 +202,9 @@ check("a shiny took one: holding 49 of 50", bw({"1": 39, "2": 5, "3": 5}),
 check("Great Balls above the keep: no why", (bw({"1": 40, "2": 9, "3": 5}), bw({"1": 60, "2": 5, "3": 5})), ("", ""))
 ns["flag"] = lambda k: False
 check("catch off: no shiny promise", bw({"1": 40, "2": 5, "3": 5}).endswith("Ultra left"), True)
+check("live plan: no 'kept for Mighty' line (no hold then)",
+      ns["balls_why"]({"1": 3, "2": 40, "3": 40}, {"hold": 0, "holdWhy": "", "mightyOn": True}), "")
+check("cfg_now: Mighty ball hold 0 live, Razz hold kept", (ns["cfg_now"]()["mightyBalls"], ns["cfg_now"]()["mightyKeep"]), (0, 30))
 ns["SP"].update(on=True, off=True, since="20:45:57")
 spw = lambda why: ns["starpiece_why"](why, time.time())
 check("Star Piece out + spins refused: both", spw("spins are being refused by the server (6 in a row)"),
@@ -451,6 +454,45 @@ api.set('E', {l1: lure(10), l2: lure(10), l3: lure(41), w1: ent(10)}); api.set('
 api.set('LIVE', {l1: {}, l2: {}, l3: {}, w1: {}});
 api.call('catchTick', NOW);
 res.nwSerial = [op3.slice(), api.get('PEND')];
+// a wild open of a species never holds back a lure of it (wild replies carry the encounter id)
+api.set('E', {w0: Object.assign(ent(10), {st: 'open', tOpen: NOW, opens: 1}), l9: lure(10)}); api.set('NE', 2); api.set('PEND', ['l9']);
+api.set('LIVE', {w0: {}, l9: {}}); op3.length = 0;
+api.call('catchTick', NOW + 50);
+res.nwSerial.push(op3.slice());
+// SHINYOFF inside catchTick (review 11-16, round 2): at the keep nothing is opened for a look (a HOLD instead); a queued
+// left-alone spawn is left; looks already in flight when the read is distrusted stay left alone (the list decides)
+api = mk();
+api.call('applyCfg', {catch: true, skipSp: [10], peek: true, floors: {'1': 5, '2': 5, '3': 5}, reserve: 35, openMs: 0, maxOpen: 6, readyMs: 150, nearWait: 0});
+api.set('walk', () => {}); api.set('ITEMC', {1: 40, 2: 5, 3: 5}); api.set('SHINYOFF', true);
+const op4 = [], th4 = [];
+api.set('openOne', (enc, e) => { op4.push(enc); e.st = 'open'; e.opens++; }); api.set('throwAt', (e) => { th4.push(e.pid); e.st = 'thrown'; });
+api.set('E', {h1: ent(774)}); api.set('NE', 1); api.set('PEND', ['h1']); api.set('LIVE', {h1: {}}); api.set('HOLD', 0);
+api.call('catchTick', NOW);
+res.shinyOffTick = [api.get('PEEKONLY'), api.get('HOLD') > NOW, op4.slice()];
+api.set('ITEMC', {1: 100, 2: 5, 3: 5}); api.set('HOLD', 0);
+api.set('E', {q9: ent(10)}); api.set('NE', 1); api.set('PEND', ['q9']); api.set('LIVE', {q9: {}});
+api.call('catchTick', NOW + 31000);
+res.shinyOffTick.push(op4.slice(), api.get('E.q9') === undefined);
+api = mk();
+api.call('applyCfg', {catch: true, skipSp: [10], peek: true, floors: {'1': 5, '2': 5, '3': 5}, reserve: 35, openMs: 0, maxOpen: 6, readyMs: 0, nearWait: 0});
+api.set('walk', () => {}); api.set('ITEMC', {1: 100, 2: 5, 3: 5}); api.set('ST.shiny', 5); api.set('ST.rep1', 50); api.set('OUT.log', []);
+const th5 = []; api.set('openOne', () => {}); api.set('throwAt', (e) => { th5.push(e.pid); e.st = 'thrown'; });
+const look = () => Object.assign(ent(10), {st: 'open', tOpen: NOW, opens: 1, peek: 1});
+api.set('E', {f1: look(), f2: look(), f3: look()}); api.set('NE', 3); api.set('PEND', []); api.set('LIVE', {f1: {}, f2: {}, f3: {}});
+api.set('RESP', {f1: {st: 1, p: {1: 0.5}, t: NOW + 100, strong: 0, shiny: 1}, f2: {st: 1, p: {1: 0.5}, t: NOW + 100, strong: 0, shiny: 0},
+                 f3: {st: 1, p: {1: 0.5}, t: NOW + 100, strong: 0, shiny: 0}});
+api.call('catchTick', NOW + 200); api.call('catchTick', NOW + 1500);
+res.latchInFlight = [api.get('SHINYOFF'), th5.slice(), api.get('ST.skip.ballsave')];
+// counts read for some ball types only: with a keep, nothing ordinary is thrown
+api.call('applyCfg', {reserve: 35}); api.set('ITEMC', {1: 100}); res.latchInFlight.push(api.call('ballOk', 1));
+// the Mighty hold: Great/Ultra only (ballOk, 0 while a plan runs); the Razz kept for a Mighty stays (berryFor)
+api = mk();
+api.set('M', {useItem: 'U'}); api.set('MLAST', NOW - 60000);
+api.call('applyCfg', {floors: {'1': 5, '2': 5, '3': 5}, reserve: 0, mightyKeep: 30, mightyBalls: 0, razz: true, razzFloor: 5, razzThresh: 0.45, pinap: false});
+api.set('ITEMC', {1: 0, 2: 20, 3: 20, 701: 20});
+res.mightyHold = [api.call('ballOk', 2), api.call('berryFor', {probs: {2: 0.3}, prio: false, mighty: 0, shiny: 0})];
+api.call('applyCfg', {mightyBalls: 30});
+res.mightyHold.push(api.call('ballOk', 2));
 console.log(JSON.stringify(res));
 """)
 import random
@@ -482,7 +524,10 @@ check("JS: latch 6/200 no, 6/58 yes; other species' reply", got2.get("latch"), [
 check("JS: the shiny byte read (wild x2, lure)", got2.get("shinyRead"), [1, 0, 1])
 check("JS: no ball to spend: looked-at left, new looked at", got2.get("peekOnly2"), [["q2"], ["q1"], ["pb"], True, 1])
 check("JS: distrusted shiny read: left at sight", got2.get("shinyOff"), [0, ["ballsave"]])
-check("JS: one lure open per species at a time", got2.get("nwSerial"), [["l1", "l3", "w1"], ["l2"]])
+check("JS: one lure open per species at a time", got2.get("nwSerial"), [["l1", "l3", "w1"], ["l2"], ["l9"]])
+check("JS: SHINYOFF: hold at the keep, queued one left", got2.get("shinyOffTick"), [False, True, [], [], True])
+check("JS: looks in flight at the latch: no throw", got2.get("latchInFlight"), [True, [], 3, False])
+check("JS: Mighty hold on G/U only; its Razz kept", got2.get("mightyHold"), [True, 0, False])
 check("JS: walk tracks a look, ledgers a looked one", got2.get("walk"), [["r1"], ["r1"], {"ballsave": 1}, [["r2", "ballsave", 0, 10]]])
 check("JS: left-alone species opened for a look", got2.get("open"), [["s1", "s2", "k1"], 1, 1, 0])
 check("JS: not shiny left; shiny kept + logged", got2.get("reply"),

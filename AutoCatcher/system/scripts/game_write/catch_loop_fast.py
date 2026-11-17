@@ -251,7 +251,7 @@ function encOf(o) { var r = call(method(o, 'get_EncounterId', 0), o, []); return
 var K = {}, M = {}, OFF = {}, PBT_VT = false;
 var CFG = {catch: false, spin: false, tap: false, perfect: false, apples: false, appleSpecies: {}, openMs: 667, maxOpen: 6, nearWait: 0, nearM: 55, readyMs: 150, thresh: 0.28,
            ballOrder: [2, 1, 3], floors: {1: 5, 2: 5, 3: 5}, pinap: true, pinapFloor: 20, razz: true, razzFloor: 5, razzThresh: 0.45, mightyP: 0.02, mightyKeep: 30, mightyMin: 30,
-           legendary: {}, priority: {}, order: 'fifo', skipSp: {}, peek: false, reserve: 0};
+           legendary: {}, priority: {}, order: 'fifo', skipSp: {}, peek: false, reserve: 0, mightyBalls: 30};
 var S = {ready: false, stale: 'first attach', nextLookup: 0, tries: 0, msvc: NULL, ib: NULL, avatar: NULL, ps: NULL};
 /* STALE MAP (2026-09-24 22:27-22:46: 20 min of vis=0 while attached, 3 Pokemon the second it re-attached). The game
    can rebuild its map -- a new MapPlaceDirectoryService, a new map camera -- and the objects found at attach then read
@@ -418,7 +418,7 @@ function floorOf(b) {
 }
 function ballOk(b, plain) {   /* plain = no Mighty reserve (priority species); the plan's keep holds for both (a shiny / Mighty skip ballOk) */
   var c = ITEMC[b]; if (c === undefined) return b === 1 && !CFG.reserve;
-  var f = floorOf(b); return c > ((plain || b === 1) ? f : keepFor(f));
+  var f = floorOf(b); return c > ((plain || b === 1 || !mightyAround()) ? f : Math.max(f, CFG.mightyBalls));   /* Great / Ultra */
 }
 /* MIGHTY (see CFG "mightyP"): the best odds among Safari / Ultra / Great / Poke that the bag holds (no reserve) and the
    server lists. SAFARI_OFF: a Safari throw the server did not answer or refused -> none for 5 min (a Mighty then gets Ultra). */
@@ -783,7 +783,8 @@ function catchTick(now) {
           }
           if (e.peek && !e.shiny) {
             /* looked: not shiny -> left alone. A Mighty one stays: the look found it, and Mighty Pokemon get their own balls */
-            if (!e.mighty && ((CFG.skipSp[e.pid] && peekOn()) || PEEKONLY)) { peeked(enc); ballsave(enc, now); continue; }
+            if (!e.mighty && (CFG.skipSp[e.pid] || PEEKONLY)) { peeked(enc); ballsave(enc, now); continue; }   /* the list decides, not
+               the look: a look in flight when the shiny read is distrusted (SHINYOFF) stays left alone (review 11-16) */
             e.peek = 0;   /* the plan keeps its species again, balls came back, or a Mighty: caught as usual */
           }
           if (e.mighty && !e.mlog) {   /* one line per Mighty: the flag, the odds the server gave per ball, what the bag holds */
@@ -1292,7 +1293,7 @@ function pump(self) {
 
 function applyCfg(c) {
   if (!c) return;
-  ['catch', 'spin', 'tap', 'perfect', 'apples', 'openMs', 'maxOpen', 'nearWait', 'nearM', 'readyMs', 'thresh', 'ballOrder', 'pinap', 'pinapFloor', 'razz', 'razzFloor', 'razzThresh', 'order', 'mightyP', 'mightyKeep', 'mightyMin', 'peek', 'reserve'].forEach(function (k) { if (c[k] !== undefined) CFG[k] = c[k]; });
+  ['catch', 'spin', 'tap', 'perfect', 'apples', 'openMs', 'maxOpen', 'nearWait', 'nearM', 'readyMs', 'thresh', 'ballOrder', 'pinap', 'pinapFloor', 'razz', 'razzFloor', 'razzThresh', 'order', 'mightyP', 'mightyKeep', 'mightyMin', 'peek', 'reserve', 'mightyBalls'].forEach(function (k) { if (c[k] !== undefined) CFG[k] = c[k]; });
   if (c.floors) CFG.floors = {1: c.floors['1'], 2: c.floors['2'], 3: c.floors['3']};
   if (c.legendary) { CFG.legendary = {}; c.legendary.forEach(function (d) { CFG.legendary[d] = 1; }); }
   if (c.priority) { CFG.priority = {}; c.priority.forEach(function (d) { CFG.priority[d] = 1; }); }
@@ -1740,8 +1741,9 @@ def cfg_now():
     c["reserve"] = ballsave_reserve()   # the JS spreads it over the live bag (floorOf); reserve_floors() is the same sum
     live = plan_live(time.time())
     c["peek"] = live and SHINYFIELD["ok"]   # SHINY LOOK (Benny 11-16: "catch all shinies regardless")
-    if live:   # no Mighty hold on Great/Ultra while a plan spends the bag (a Mighty still gets any ball): the budget counts them
-        c["mightyKeep"] = 0
+    # The Mighty hold on Great/Ultra (ballOk): none while a plan spends the bag -- its budget counts them, and a Mighty still
+    # gets any ball. The Razz kept for a Mighty (berryFor: mightyKeep) stays as it is (review 11-16).
+    c["mightyBalls"] = 0 if live else c["mightyKeep"]
     for k in FLAGS:
         c[k] = flag(k)
     if not c.get("berries"):   # no Pinap, no Razz -- not for a Mighty or a shiny either (FLAGS: berries)

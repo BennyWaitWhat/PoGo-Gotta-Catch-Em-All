@@ -224,7 +224,7 @@ def save_prior(a, adb_=adb):
     json.dump({"start": a.start_e, "end": a.end_e, "saver_since": a.since_e, "made": time.strftime("%Y-%m-%d %H:%M:%S"),
                "records": len(win), "joined": joined}, open(os.path.join(a.save_prior, "meta.json"), "w", encoding="utf-8"), indent=1)
     caught = sum(1 for r in win if r.get("r") == "caught")
-    with_d = sum(1 for r in win if r.get("r") == "caught" and r.get("d") is not None)
+    with_d = sum(1 for r in win if r.get("r") == "caught" and int(r.get("d") or 0) > 0)   # 0 = the award was not read
     print(f"saved {len(win)} spawn records ({caught} caught, {with_d} with their stardust) to {a.save_prior}")
 
 
