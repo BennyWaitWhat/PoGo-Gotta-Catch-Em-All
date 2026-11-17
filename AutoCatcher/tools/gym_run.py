@@ -336,6 +336,7 @@ class Game:
             say(f"    (give-up prompt OK button, for a native press: {p.get('pbN')} x {p.get('pbCls')} {p.get('pb')} | "
                 f"container {p.get('bc')} | {p.get('err')})")
         elif k == "items":
+            self.items = dict(p["c"])
             say(f"    healing items in the bag: {p['c']}")
         elif k == "outcome":
             self.outcomes[p["v"]] = self.outcomes.get(p["v"], 0) + 1
@@ -517,6 +518,8 @@ def cool_measured(jump_m):
 
 
 LAST_ACT = {"t": 0.0}                                    # the last action the server COUNTED (a defender lost CP to us / a deploy)
+LAST_TEAM = {}                                           # fid -> the last non-empty team seen on the map (who held an emptied gym)
+SLIP_LOG = os.path.join(os.path.dirname(os.path.abspath(__file__)), "gym_state", "slip_in.jsonl")
 COOL_RETRY_S = 8.0                                       # the crash guard after an error 29 (an instant re-open crashed the game
                                                          # twice, 11-16 22:03 / 22:37) -- a safety bound, NOT a cooldown guess
 
@@ -659,10 +662,10 @@ def placement_fallback(dep):
     never one of the top 18 attackers (rank order) or this gym's counter team."""
     bad = _nogym_species()
     keep = {x[0] for x in dep["ro"][:18]} | set(((CT.get("cur") or {}).get("ids") or [])[:12])
-    rows = [x for x in dep["ro"] if x[3] > 0 and x[2] >= x[3] and x[0] not in keep
+    rows = [x for x in (BAG_RO_ALL or dep["ro"]) if x[3] > 0 and x[2] >= x[3] and x[0] not in keep
             and re.sub(r"[^a-z0-9]", "", str(x[4]).lower()) not in bad]
-    rows.sort(key=lambda x: -x[1])
-    return rows[:12]
+    rows.sort(key=lambda x: (not (len(x) > 5 and x[5]), -x[1]))   # Benny 11-17 00:41: "if out of gyarados, use highest cp
+    return rows[:12]                                         # shinies" -- every shiny first (whole bag), highest CP first
 
 
 def place_ids(dep):
@@ -1013,7 +1016,7 @@ rpc.exports = {
       var row = [p.add(PO.id).readU64().toString(), p.add(PO.cp).readS32(), p.add(PO.stamina).readS32(), p.add(PO.maxStamina).readS32(), NAMES[sp] || String(sp)];
       if (row[2] <= 0 && row[3] > 0) fa.push([row[0], row[1], row[4]]);
       if (sp === GY && shiny) gy.push(row.slice(0, 4));              /* the placement stock */
-      else if (sp !== SLAKING && sp !== REGI) ro.push(row); });
+      else if (sp !== SLAKING && sp !== REGI) ro.push(row.concat([shiny ? 1 : 0])); });   /* [5] shiny: the placement fallback */
     return {dep: dep, gy: gy, ro: ro, dp: dp, fa: fa};   /* all of them: Python ranks, THEN cuts to 80 */
   }
 };"""
@@ -1548,10 +1551,17 @@ def _run(a, g, mv, done, t_start, enemy, goal, sess, pid, sc):
                 nfa = len(dep["fa"])
                 batch = [x[0] for x in dep["fa"]] if a.heal_batch and nfa >= a.heal_batch and not g.batch_active else []   # none until 30 fainted
                 g.names.update({x[0]: f"{x[2]} {x[1]}" for x in dep["fa"]})
-                gyfix = [x[0] for x in dep["gy"] if x[2] < x[3]] if a.heal_top else []   # 11-17 00:30: three shiny Gyarados knocked out
-                if gyfix:                                    # of gyms waited for the 30-fainted batch, and the next gym got a
-                    say(f"  reviving + healing {len(gyfix)} shiny Gyarados back from gyms now, so they can be placed: "   # 1470 Gyarados
-                        + ", ".join(f"{cp} ({hp}/{mx} HP)" for _, cp, hp, mx in dep["gy"] if hp < mx))   # ("revive now", --heal-top)
+                _its = getattr(g, "items", None) or {}
+                _rev = _its.get("MaxRevive", 1) + _its.get("Revive", 0)   # (unknown until the tapper's first item read: assume some)
+                gyfix = [x[0] for x in dep["gy"] if x[2] < x[3] and (x[2] > 0 or _rev > 0)] if a.heal_top else []   # 11-17 00:30:
+                if gyfix:                                    # three shiny Gyarados knocked out of gyms waited for the 30-fainted
+                    say(f"  reviving + healing {len(gyfix)} shiny Gyarados back from gyms now, so they can be placed: "   # batch
+                        + ", ".join(f"{cp} ({hp}/{mx} HP)" for _id, cp, hp, mx in dep["gy"] if _id in gyfix))   # (--heal-top)
+                _dead = [x for x in dep["gy"] if x[2] <= 0 < x[3]]
+                if _dead and _rev <= 0 and not getattr(g, "norev_said", False):
+                    g.norev_said = True
+                    say(f"  !! NO REVIVES in the bag: {len(_dead)} fainted shiny Gyarados ({', '.join(str(x[1]) for x in _dead)}) wait -- "
+                        f"your highest-CP shinies go in instead")
                 rr = sc.exports_sync.roster(roster_ids(dep), a.heal_top, batch + [x for x in gyfix if x not in batch],
                                             [x[0] for x in dep["gy"]])   # this gym's counters first
                 up = ([x for x in dep["ro"] if x[2] * 2 >= x[3]] + [x for x in dep["ro"] if 0 < x[2] and x[2] * 2 < x[3]])[:6]
@@ -1604,7 +1614,8 @@ def _run(a, g, mv, done, t_start, enemy, goal, sess, pid, sc):
             except Exception:
                 lv = []
             fin = lv[8] / 1000.0 if len(lv) > 8 and lv[8] else 0.0
-            own = lv[9] / 1000.0 if len(lv) > 9 and lv[9] else 0.0
+            own = lv[9] / 1000.0 if len(lv) > 9 and lv[9] and LAST_TEAM.get(fid) == a.team else 0.0   # the SAME-team lockout binds
+            # only the team that held it -- 11-17 00:39 it waited 60 s on blue's lockout at 9c126dbd and Benny placed by hand 25 s in
             wait = min(60.0, max(fin, own, 2.0 if tries else 0.0) + 0.3)
             why = "your team is locked out of it after losing it" if own >= fin and own > 0 else "the finisher's window"
             say(f"  deploy lockout ({why}) -- try {tries + 2} in {wait:.1f} s (at once if a team places)")
@@ -1685,6 +1696,76 @@ def _run(a, g, mv, done, t_start, enemy, goal, sess, pid, sc):
                 why = "no answer"
         return False
 
+    def force_join(fid, budget_s=25.0):
+        """Slip a Pokemon into a red gym with room while another team attacks it. Benny 11-17 00:42-00:44: "figure out how to
+        force my pokemon in this gym we're at" / "watch these lockouts and slip my pokemon in there fast ... the ppl battling
+        have to stop for a moment when they complete the cycle". The server refuses red deploys while the gym is in battle
+        (ErrorTeamDeployLockout, "The Gym is under attack!"), but every attacker's battle stops between rounds and sessions
+        (0.435: one server battle per defender). So: deploy, and again ~1 s after every answer (each refusal closes the gym
+        screen; the re-open is the fresh read) -- whichever request lands in a gap gets in. Every answer is logged to
+        slip_in.jsonl with the map's in-battle flag and lockouts. True = in; False = no longer possible (fell, full, ours
+        in, his screen, no stock); None = budget used (the main loop looks around, then comes back)."""
+        t_stop, n_try, last_res = time.time() + budget_s, 0, ""
+        refresh_deployed(every=10)
+        while time.time() < t_stop:
+            try:
+                lv = sc.exports_sync.teams().get(fid) or []
+            except Exception:
+                lv = []
+            if not lv or lv[0] != a.team:
+                return False                                 # it fell / turned: the main loop fights for it
+            if len(lv) > 5 and lv[5] <= 0:
+                return False                                 # full
+            if fid in {x[5] for x in dep["dp"] if len(x) > 5} or (dep["n"] is not None and dep["n"] >= a.max_deployed):
+                return False
+            if not place_ids(dep) or stop_req[0] or g.in_battle():
+                return None
+            if g.user_gym and g.has("GymState") and g.open_fid not in (None, fid):
+                return False                                 # his screen: never touch it
+            if not (g.open_fid == fid and g.leaf() == "GymApproachState"):
+                sc.exports_sync.open(fid)
+                if not g.wait_for(lambda: g.open_fid == fid and g.leaf() == "GymApproachState", 6, tick):
+                    g.wait_for(lambda: False, 1.0, tick)
+                    continue
+            if g.gym_team not in (None, a.team):
+                return False
+            g.deploy_refused, g.autoplaced_id, g.autoplaced = None, None, None
+            g.placed.pop(fid, None)
+            t_try = time.time()
+            sc.exports_sync.autodeploy(fid, place_ids(dep), True, a.team)
+            n_try += 1
+            got = g.wait_for(lambda: g.autoplaced == fid, 3, tick) and \
+                g.wait_for(lambda: fid in g.placed and g.autoplaced_id and g.placed[fid].get("id") == g.autoplaced_id, 6, tick)
+            ok = bool(got and g.placed[fid].get("ok"))
+            res = "Success" if ok else (str(g.placed[fid].get("res", "")) if got else "no answer")
+            try:
+                with open(SLIP_LOG, "a", encoding="utf-8") as f:
+                    f.write(json.dumps({"t": round(t_try, 2), "fid": fid[:8], "try": n_try, "ok": ok, "res": res,
+                                        "answer_s": round(time.time() - t_try, 2), "ib": lv[6] if len(lv) > 6 else None,
+                                        "lock_ms": lv[8] if len(lv) > 8 else None, "team_lock_ms": lv[9] if len(lv) > 9 else None,
+                                        "slots": lv[5] if len(lv) > 5 else None}) + "\n")
+            except Exception:
+                pass
+            if ok:
+                dep["n"] = (dep["n"] or 0) + 1
+                STATS["placed"] += 1
+                STATS["joins"] = STATS.get("joins", 0) + 1
+                LAST_ACT["t"] = time.time()
+                say(f"  SLIPPED IN: {g.names.get(g.placed[fid]['id'], 'a Pokemon') if hasattr(g, 'names') else 'a Pokemon'} is in "
+                    f"{fid[:8]}{' (' + NAMES[fid[:8]] + ')' if fid[:8] in NAMES else ''} on try {n_try} -- {dep['n']}/{a.max_deployed} in gyms")
+                refresh_deployed(True)
+                return True
+            if re.search(r"SameKind|AlreadyHas|Disabled|TooMany|IsFull|NotInRange|OutOfRange", res):
+                say(f"  slip-in at {fid[:8]} stopped: {res}")
+                if "AlreadyHas" in res:
+                    refresh_deployed(True)
+                return False
+            if res != last_res or n_try % 10 == 1:
+                say(f"  slip-in try {n_try} at {fid[:8]}: {res} -- again in 1 s (the attacker has to stop between battles)")
+                last_res = res
+            g.wait_for(lambda: False, 1.0, tick)
+        return None
+
     def join_after_loss(fid):                                # a gym we fought for turned red without us and still has room: JOIN it
         def room():
             try:
@@ -1695,7 +1776,10 @@ def _run(a, g, mv, done, t_start, enemy, goal, sess, pid, sc):
         lv = room()
         if not lv:
             return False
-        say(f"  {fid[:8]} is red without us and has {lv[5]} free slot(s) -- staying to join it with a Gyarados")
+        say(f"  {fid[:8]} is red without us and has {lv[5]} free slot(s) -- joining it NOW (try, and again every second)")
+        _fj = force_join(fid, budget_s=40.0)                 # 11-17 00:39: the 35 s wait for blue's lockout let Benny place first
+        if _fj is not None:
+            return bool(_fj)
         t0 = time.time()
         while time.time() - t0 < 35:                         # its same-team deploy lockout (v[9]) must run out first
             lv = room()
@@ -2011,6 +2095,9 @@ def _run(a, g, mv, done, t_start, enemy, goal, sess, pid, sc):
             TAKEN.pop(f, None)
             say(f"  {f[:8]} is team {sv[0]} again ({sv[3]} defender(s), {sv[4]} CP) -- no rest: it is a target now")
         mine = {x[5] for x in dep["dp"] if len(x) > 5}
+        for _lf, _lv in live.items():                        # who held each gym last (an emptied gym's same-team lockout binds only them)
+            if _lv[0]:
+                LAST_TEAM[_lf] = _lv[0]
 
         def slot(f, v):                                  # OUR team's gym with a free slot and none of ours: join it, no battle
             return (a.autoplace and v[0] == a.team and len(v) > 5 and v[5] > 0 and f not in mine
@@ -2255,6 +2342,16 @@ def _run(a, g, mv, done, t_start, enemy, goal, sess, pid, sc):
                     msg = (f"in the goal area, nothing to beat -- standing by red {gf[:8]}{' (' + NAMES[gf[:8]] + ')' if gf[:8] in NAMES else ''} "
                            f"({_gw}): another team is attacking it; the second it falls we fight for it"
                            + (f" [{len(guard) - 1} more red gym(s) under attack]" if len(guard) > 1 else ""))
+                    if gf not in mine and len(live[gf]) > 5 and live[gf][5] > 0 and not g.in_battle() \
+                            and ch.meters(here, (live[gf][2], live[gf][3])) <= engage \
+                            and (dep["n"] is None or dep["n"] < a.max_deployed) and not (g.user_gym and g.has("GymState")):
+                        if msg != said:                      # room and none of yours: slip one in between the attacker's battles
+                            say(msg)
+                            said = msg
+                        if force_join(gf) is not None:
+                            said = None
+                        time.sleep(0.3)
+                        continue
                 _undisc = [i for i in range(len(HOP["list"]))   # --monitor + --rscan: an island this run never saw on the map -> look once
                            if not any(gr[2] and hop_area((gr[0], gr[1])) == i for gr in GREG["g"].values())] if (a.monitor and a.rscan) else []
                 _gy_ready = bool(place_ids(dep)) and (dep["n"] is None or dep["n"] < a.max_deployed) and not cool_wait()
