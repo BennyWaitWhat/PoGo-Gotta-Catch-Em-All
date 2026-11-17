@@ -194,6 +194,7 @@ class Game:
             self.deploy_open = p.get("fid")
             say("    Deploy opened the instant the gym emptied -- pick your Pokemon")
         elif k == "team":
+            self.last_team = list(p.get("ids") or [])        # the six that fight this session (the session record reads it)
             nm = getattr(self, "names", {})
             fill = len(p["ids"]) - p["mine"]
             say(f"    battle team: {', '.join(nm.get(i, str(c)) for i, c in zip(p['ids'], p['cps']))}"
@@ -307,6 +308,9 @@ class Game:
                 f"(a restart picks the live graph)")
         elif k == "says":
             say(f"    GAME SAYS ({p['gui']}): {p['text']}")
+            if p.get("gui") == "GlobalErrorController" and "(29)" in str(p.get("text")):
+                self.err29_at = time.time()                  # "The Gym battle has already been completed! (29)": the game died 3-5 s
+                                                             # after a re-open + Battle right behind it, twice on 11-16 (22:03, 22:37)
         elif k == "items":
             say(f"    healing items in the bag: {p['c']}")
         elif k == "outcome":
@@ -502,6 +506,249 @@ def rank_say(ro):
     say("  attack roster, top 6 by rank: " + (", ".join(f"{x[4]} CP {x[1]}" + (f" (score {sc_[x[0]]:g})" if x[0] in sc_ else " (unranked)") for x in ro[:6]) or "none"))
 
 
+# ---- counter team (Benny 2026-11-16: "put the top 3 selection of my team to be the most effect and fastest") ----
+# Every ranked attacker in the bag is scored against THIS gym's defenders -- their real species, moves and CP now, from the
+# gym's own details -- and the tapper's pickTeam takes the first six usable in that order (the buddy keeps slot 6).
+# Per defender: ER = (DPS^3 x TDO)^(1/4), DPS = cycle DPS with type effectiveness + same-type bonus (its better charged move:
+# the tapper fires the strongest), TDO = DPS x its HP / the defender's DPS on it. The gym score weights each defender by
+# its HP, the first three in battle order (oldest placed first) twice: they meet the top three. Mechanics used: defenders
+# have doubled HP and fight with the CP their motivation leaves them (all stats scaled alike), a fast move every
+# duration + 2 s, 1 energy per 2 HP lost (game master BATTLE_SETTINGS).
+GM_DIR = os.path.join(os.path.dirname(os.path.dirname(HERE)), "pogo_extract")
+TYPES18 = ["NORMAL", "FIGHTING", "FLYING", "POISON", "GROUND", "ROCK", "BUG", "GHOST", "STEEL", "FIRE", "WATER", "GRASS",
+           "ELECTRIC", "PSYCHIC", "ICE", "DRAGON", "DARK", "FAIRY"]
+TIDX = {t: i for i, t in enumerate(TYPES18)}
+CT = {"ok": None, "mv_id": {}, "mv_nm": {}, "ps_form": {}, "ps_base": {}, "ps_dex": {}, "chart": {}, "cpm": [], "stab": 1.2,
+      "sh_atk": 1.2, "sh_def": 0.8333333, "epl": 0.5, "forms": {}, "att": {}, "att_mtime": None, "cur": None}
+
+
+def _norm(s):
+    return re.sub(r"[^a-z0-9]", "", str(s or "").lower())
+
+
+def ct_load():
+    """The game master tables, once (~1 s): moves, typings + base stats, the type chart, CP multipliers, battle settings."""
+    if CT["ok"] is not None:
+        return CT["ok"]
+    try:
+        gm = json.load(open(os.path.join(GM_DIR, "gamemaster_pokeminers.json"), encoding="utf-8"))
+        CT["forms"] = json.load(open(os.path.join(GM_DIR, "form_enum.json"), encoding="utf-8"))
+        for t in gm:
+            tid, d = t.get("templateId", ""), t.get("data") or {}
+            m = re.match(r"V(\d+)_MOVE_", tid)
+            if m and "moveSettings" in d:
+                ms = d["moveSettings"]
+                mv = (float(ms.get("power") or 0), int(ms.get("energyDelta") or 0), (ms.get("durationMs") or 1000) / 1000.0,
+                      str(ms.get("pokemonType", "")).replace("POKEMON_TYPE_", ""), str(ms.get("movementId", tid)))
+                CT["mv_id"][int(m.group(1))] = mv
+                CT["mv_nm"][mv[4]] = mv
+                continue
+            m = re.match(r"V(\d+)_POKEMON_", tid)
+            if m and "pokemonSettings" in d:
+                ps = d["pokemonSettings"]
+                st = ps.get("stats") or {}
+                if not st.get("baseAttack"):
+                    continue
+                v = (st["baseAttack"], st.get("baseDefense") or 1, st.get("baseStamina") or 1,
+                     tuple(x.replace("POKEMON_TYPE_", "") for x in (ps.get("type"), ps.get("type2")) if x),
+                     str(ps.get("pokemonId", "?")).replace("_", " ").title())
+                dex = int(m.group(1))
+                if ps.get("form"):
+                    CT["ps_form"][_norm(ps["form"])] = v
+                    CT["ps_dex"].setdefault(dex, v)
+                else:
+                    CT["ps_base"][_norm(ps.get("pokemonId"))] = v
+                    CT["ps_dex"][dex] = v
+                continue
+            if tid.startswith("POKEMON_TYPE_") and "typeEffective" in d:
+                te = d["typeEffective"]
+                CT["chart"][str(te.get("attackType", "")).replace("POKEMON_TYPE_", "")] = list(te.get("attackScalar") or [])
+            elif tid == "PLAYER_LEVEL_SETTINGS":
+                CT["cpm"] = list((d.get("playerLevel") or {}).get("cpMultiplier") or [])
+            elif tid == "BATTLE_SETTINGS":
+                b = d.get("battleSettings") or {}
+                CT["stab"] = float(b.get("sameTypeAttackBonusMultiplier", 1.2))
+                CT["sh_atk"] = float(b.get("shadowPokemonAttackBonusMultiplier", 1.2))
+                CT["sh_def"] = float(b.get("shadowPokemonDefenseBonusMultiplier", 0.8333333))
+                CT["epl"] = float(b.get("energyDeltaPerHealthLost", 0.5))
+        CT["ok"] = bool(CT["mv_id"] and len(CT["chart"]) >= 18 and CT["cpm"])
+        if not CT["ok"]:
+            say("  !! counter team off: the game master is missing moves / the type chart / CP multipliers -- attack rank order")
+    except Exception as e:
+        CT["ok"] = False
+        say(f"  !! counter team off: the game master did not load ({e}) -- the attack rank order is used")
+    return CT["ok"]
+
+
+def ct_cpm(level):
+    c = CT["cpm"]
+    try:
+        lv = float(level)
+    except (TypeError, ValueError):
+        return 0.0
+    i = int(lv)
+    if not c or i < 1:
+        return 0.0
+    if i >= len(c):
+        return c[-1]
+    if lv == i:
+        return c[i - 1]
+    return math.sqrt((c[i - 1] ** 2 + c[i] ** 2) / 2)    # a half level
+
+
+def ct_eff(mtype, dtypes):
+    row = CT["chart"].get(mtype)
+    e = 1.0
+    if row:
+        for t in dtypes:
+            if t in TIDX:
+                e *= row[TIDX[t]]
+    return e
+
+
+def ct_attackers():
+    """Battle numbers for every ranked attacker (attack_rank.json rows: species, form, level, IVs, shadow, its moves)."""
+    if CT["att"] and CT["att_mtime"] == RANK["mtime"]:
+        return CT["att"]
+    att = {}
+    try:
+        rows = json.load(open(RANK["path"], encoding="utf-8")).get("rank") or []
+    except Exception:
+        rows = []
+    for r in rows:
+        fm = str(r.get("form") or "")
+        ps = CT["ps_form"].get(_norm(fm)) if fm not in ("", "Unset") else None
+        ps = ps or CT["ps_base"].get(_norm(r.get("species")))
+        fast = CT["mv_nm"].get(str(r.get("fast")))
+        chs = [c for c in (CT["mv_nm"].get(str(x)) for x in (r.get("charged") or [])) if c and c[1] < 0]
+        cpm = ct_cpm(r.get("level"))
+        if not ps or not fast or fast[1] <= 0 or not chs or not cpm or r.get("id") is None:
+            continue
+        iv = list(r.get("iv") or [0, 0, 0]) + [0, 0, 0]
+        sh = bool(r.get("shadow"))
+        att[str(r["id"])] = {"atk": (ps[0] + iv[0]) * cpm * (CT["sh_atk"] if sh else 1.0),
+                             "def": (ps[1] + iv[1]) * cpm * (CT["sh_def"] if sh else 1.0),
+                             "hp": max(1, math.floor((ps[2] + iv[2]) * cpm)), "types": ps[3], "fast": fast, "ch": chs,
+                             "name": str(r.get("species") or ps[4]), "cp": r.get("cp", 0)}
+    CT["att"], CT["att_mtime"] = att, RANK["mtime"]
+    return att
+
+
+def ct_defender(x):
+    """One live defender [dex, form, move1, move2, CP now, CP placed, cpm, ivA, ivD, ivS, placed ms, motivation %] -> numbers."""
+    try:
+        dex, form, m1, m2, cp, cpm = int(x[0]), int(x[1]), int(x[2]), int(x[3]), int(x[4]), float(x[6])
+        iv = [max(0, int(v)) for v in x[7:10]]
+    except (TypeError, ValueError, IndexError):
+        return None
+    fn = str(CT["forms"].get(str(form), ""))
+    ps = CT["ps_form"].get(_norm(fn)) if fn not in ("", "Unset") else None
+    ps = ps or CT["ps_dex"].get(dex)
+    if not ps or cp <= 0 or len(iv) < 3:
+        return None
+    a_, d_, s_ = ps[0] + iv[0], ps[1] + iv[1], ps[2] + iv[2]
+    if cpm <= 0:                                         # no level read: the one that gives its CP now
+        cpm, k = math.sqrt(10.0 * cp / (a_ * math.sqrt(d_ * s_))), 1.0
+    else:                                                # its motivation (and IVs the gym may hide): every stat scaled alike
+        k = max(0.3, min(1.6, math.sqrt(cp / max(10.0, a_ * math.sqrt(d_ * s_) * cpm * cpm / 10.0))))
+    return {"atk": a_ * cpm * k, "def": d_ * cpm * k, "hp": 2.0 * s_ * cpm * k, "types": ps[3], "fast": CT["mv_id"].get(m1),
+            "ch": CT["mv_id"].get(m2), "name": ps[4], "cp": cp}
+
+
+def ct_dmg(mv, atk, dfn, atypes, dtypes):
+    return math.floor(0.5 * mv[0] * atk / dfn * (CT["stab"] if mv[3] in atypes else 1.0) * ct_eff(mv[3], dtypes)) + 1
+
+
+def ct_vs(A, D):
+    """Attacker A against defender D -> (ER, DPS, best effectiveness of its moves)."""
+    fd, fdur, fen = ct_dmg(A["fast"], A["atk"], D["def"], A["types"], D["types"]), A["fast"][2], A["fast"][1]
+    dps, use = 0.0, None
+    for c in A["ch"]:
+        n = math.ceil(-c[1] / fen)
+        v = (n * fd + ct_dmg(c, A["atk"], D["def"], A["types"], D["types"])) / (n * fdur + c[2])
+        if v > dps:
+            dps, use = v, c
+    if dps <= 0:
+        return 0.0, 0.0, 1.0
+    inc = 10.0                                           # the defender's DPS on it (unknown moves: a middling 10)
+    if D["fast"] and D["fast"][2] > 0:
+        per = D["fast"][2] + 2.0
+        inc = ct_dmg(D["fast"], D["atk"], A["def"], D["types"], A["types"]) / per
+        if D["ch"] and D["ch"][1] < 0:
+            rate = max(0.1, max(0, D["fast"][1]) / per + CT["epl"] * dps)
+            inc += ct_dmg(D["ch"], D["atk"], A["def"], D["types"], A["types"]) / (-D["ch"][1] / rate + D["ch"][2])
+    tdo = dps * A["hp"] / max(inc, 0.5)
+    return (dps ** 3 * tdo) ** 0.25, dps, max(ct_eff(A["fast"][3], D["types"]), ct_eff(use[3], D["types"]))
+
+
+def ct_score(A, Ds):
+    num = den = dsum = 0.0
+    se = 0
+    for i, D in enumerate(Ds):
+        w = D["hp"] * (2.0 if i < 3 else 1.0)
+        er, dps, eff = ct_vs(A, D)
+        num, den, dsum = num + w * er, den + w, dsum + w * dps
+        se += eff > 1.01
+    return (num / den, dsum / den, se) if den else (0.0, 0.0, 0)
+
+
+def _mv_short(mv):
+    return str(mv[4]).replace("_FAST", "").replace("_", " ").title()
+
+
+def roster_ids(dep, head=None):
+    """What the tapper picks the six from: this gym's counters first (once its defenders are known), then the WHOLE rank
+    order (the faint scan / batch revive reads the roster too -- nothing of it is cut)."""
+    base = [x[0] for x in dep["ro"]]
+    head = head if head is not None else (CT["cur"]["ids"] if CT["cur"] else [])
+    seen = set(head)
+    return list(head) + [i for i in base if i not in seen]
+
+
+def counter_push(fid, sv, sc, dep, a, g):
+    """sv = scanned()[fid]; sv[8] = its defenders. Re-ranks only when they changed (or every 2 min); True = handed over."""
+    defs = sv[8] if sv and len(sv) > 8 else None
+    if not defs or not RANK["path"] or not ct_load():
+        return False
+    sig = (fid, tuple((x[0], x[1], x[2], x[3], int(x[4]) // 250) for x in defs if len(x) > 4))
+    cur = CT["cur"]
+    if cur and cur["sig"] == sig and time.time() - cur["at"] < 120:
+        return False
+    att = ct_attackers()
+    Ds = [d for d in (ct_defender(x) for x in sorted(defs, key=lambda x: x[10] if len(x) > 10 and x[10] else 0)) if d]
+    if not Ds or not att:
+        return False
+    bag = {r[0]: r for r in BAG_RO_ALL}
+    scored = []
+    for aid, A in att.items():
+        r = bag.get(aid)
+        if r is None or r[2] <= 0:                       # not in the bag now (in a gym, released) / fainted at the last walk
+            continue
+        s, dps, se = ct_score(A, Ds)
+        scored.append((s, dps, aid, se))
+    if not scored:
+        return False
+    scored.sort(key=lambda x: (-x[0], -x[1]))
+    ids = [x[2] for x in scored[:60]]
+    was = cur["ids"][:5] if cur and cur["fid"] == fid else None
+    try:
+        sc.exports_sync.roster(roster_ids(dep, ids), a.heal_top, [], [x[0] for x in dep["gy"]])
+    except Exception as e:                               # not recorded: the next reading tries again
+        say(f"  !! counter team not handed over ({e})")
+        return False
+    CT["cur"] = {"fid": fid, "sig": sig, "ids": ids, "at": time.time()}
+    if ids[:5] != was:
+        say(f"  COUNTERS vs {fid[:8]} -- defenders, oldest first: " + ", ".join(f"{D['name']} {D['cp']}" for D in Ds))
+        say("    top 5, fastest vs THESE defenders: " + "; ".join(
+            f"{att[x[2]]['name']} {att[x[2]]['cp']} [{_mv_short(att[x[2]]['fast'])} / {' + '.join(_mv_short(c) for c in att[x[2]]['ch'])}] "
+            f"ER {x[0]:.1f}, DPS {x[1]:.1f}, super-effective on {x[3]}/{len(Ds)}" for x in scored[:5]))
+        if g.study_f:
+            g.study_f.write(json.dumps({"k": "study", "src": "counters", "t": int(time.time() * 1000), "fid": fid, "defs": defs,
+                                        "top": [[x[2], round(x[0], 2), round(x[1], 2), x[3]] for x in scored[:12]]}) + "\n")
+            g.study_f.flush()
+    return True
+
+
 def bag_status(sess, tapper=None):
     """One live bag walk (C-only instance lookup, safe with the tapper attached): (your deployed count, your shiny
     Gyarados not in a gym, highest CP first, as [(id, cp, hp, maxhp)], the attack roster highest CP first as
@@ -629,11 +876,13 @@ def leave_gym(g, sc, tick):
     return not g.has("GymState")
 
 
-def drill(fid, enemy, g, sc, a, tick, until, refresh=None, join_near=None, cmd_waiting=None):
+def drill(fid, enemy, g, sc, a, tick, until, refresh=None, join_near=None, cmd_waiting=None, counters=None):
     """Beat the gym in one continuous run until it is no longer an enemy gym. Returns its final team, None (gave up),
-    or ABORT (a party screen was left open over a battle -- stop everything)."""
+    or ABORT (a party screen was left open over a battle -- stop everything). counters(sv): re-pick the team from the
+    gym's latest defenders before the next session."""
     opens = misses = backs = go_misses = hangs = 0
     noreport, live_at, lv, odd_since = None, 0.0, None, None
+    sess_t0 = None                                       # when the session in progress started (the session record)
     last_end, cps = g.ends.get(fid, 0), []               # the gym's total CP at each session end: is it moving?
     leaving = None                                       # STALL / DETOUR: finish the battle in progress, then leave
     dw = {"at": 0.0, "key": None, "seen": 0.0}               # drill watch: the gym's own state every 2 s
@@ -652,6 +901,11 @@ def drill(fid, enemy, g, sc, a, tick, until, refresh=None, join_near=None, cmd_w
             dw["at"] = time.time()
             sc.exports_sync.scan([fid])
             _sv = sc.exports_sync.scanned().get(fid)
+            if counters and _sv and _sv[1] < 4000:          # the next session's six: the counters to the defenders left NOW
+                try:
+                    counters(_sv)
+                except Exception as e:
+                    say(f"  (counter team: {e})")
             if _sv and _sv[1] < 4000 and dw["seen"] != round(time.time() * 1000 - _sv[1], -2):
                 dw["seen"] = round(time.time() * 1000 - _sv[1], -2)
                 _key = (_sv[0], _sv[3], _sv[2])
@@ -667,6 +921,7 @@ def drill(fid, enemy, g, sc, a, tick, until, refresh=None, join_near=None, cmd_w
                                                     "team": _sv[0], "n": _sv[3], "cp": _sv[4], "ib": _sv[2], "added": _added,
                                                     "client": "battle" if g.in_battle() else g.leaf()}) + "\n")
         if g.in_battle():                                    # the tick is fighting; watch that the battle MOVES
+            sess_t0 = sess_t0 or time.time()
             if refresh and g.fainted_new:                    # the phone counted the fainted after the last battle
                 g.fainted_new = False
                 refresh()
@@ -695,6 +950,15 @@ def drill(fid, enemy, g, sc, a, tick, until, refresh=None, join_near=None, cmd_w
             cps.append(lv[7])
             say(f"    progress: session {len(cps)} ended with the gym at {lv[7]} total CP"
                 + (f" (started {cps[0]}, {100 - 100 * lv[7] // cps[0]}% drained)" if len(cps) > 1 else ""))   # the user: never give up
+            if g.study_f:                                    # learn from every session: who fought, how long, how much it drained
+                _cur = CT["cur"]
+                g.study_f.write(json.dumps({"k": "study", "src": "session", "t": int(time.time() * 1000), "fid": fid, "n": len(cps),
+                                            "cp_after": lv[7], "cp_before": cps[-2] if len(cps) > 1 else None,
+                                            "secs": round(time.time() - sess_t0, 1) if sess_t0 else None,
+                                            "team": getattr(g, "last_team", None),
+                                            "counters": _cur["ids"][:6] if _cur and _cur["fid"] == fid else None}) + "\n")
+                g.study_f.flush()
+            sess_t0 = None
             if len(cps) >= 8:                                # ...but make sure progress is being made
                 lo = min(cps)
                 since = len(cps) - 1 - max(i for i, c in enumerate(cps) if c == lo)
@@ -787,6 +1051,12 @@ def drill(fid, enemy, g, sc, a, tick, until, refresh=None, join_near=None, cmd_w
         if opens >= 3:
             say("  the gym would not open 3 times -- giving up on it")
             return None
+        _e29 = time.time() - getattr(g, "err29_at", 0.0)
+        if _e29 < 8:                                         # error (29) just now: let the game settle before re-opening
+            if _e29 < 0.5:
+                say("  'battle already completed (29)' -- 8 s before the gym is opened again (the game crashed twice re-opening at once)")
+            time.sleep(0.3)
+            continue
         opens += 1
         sc.exports_sync.open(fid)
         if not g.wait_for(lambda: g.has("GymState"), 12, tick):
@@ -825,6 +1095,7 @@ def main():
     ap.add_argument("--start-lap-at", type=int, default=None, help="start inside a lap, at this --route waypoint index")
     ap.add_argument("--no-feed-mate", dest="feed_mate", action="store_false", help="do not also feed the strongest teammate in your gyms")
     ap.add_argument("--topup", action="store_true", help="Berry Master: regular berries to defenders in quiet gaps (never golden)")
+    ap.add_argument("--no-topup", dest="topup", action="store_false", help="no Berry Master top-ups (overrides an earlier --topup)")
     ap.add_argument("--topup-reserve", type=int, default=30, help="keep at least this many of each regular berry")
     ap.add_argument("--attack-report", type=float, default=3.0,   # Benny 2026-09-30 ("Maybe middle ground?"): 3 s, was 1.5 -- 20 reports/min instead of 40
                     help="s between the battle's attack reports (server setting 5; 0 = leave it)")
@@ -975,7 +1246,7 @@ def _run(a, g, mv, done, t_start, enemy, goal, sess, pid, sc):
                 nfa = len(dep["fa"])
                 batch = [x[0] for x in dep["fa"]] if a.heal_batch and nfa >= a.heal_batch and not g.batch_active else []   # none until 30 fainted
                 g.names.update({x[0]: f"{x[2]} {x[1]}" for x in dep["fa"]})
-                rr = sc.exports_sync.roster([x[0] for x in dep["ro"]], a.heal_top, batch, [x[0] for x in dep["gy"]])
+                rr = sc.exports_sync.roster(roster_ids(dep), a.heal_top, batch, [x[0] for x in dep["gy"]])   # this gym's counters first
                 up = ([x for x in dep["ro"] if x[2] * 2 >= x[3]] + [x for x in dep["ro"] if 0 < x[2] and x[2] * 2 < x[3]])[:6]
                 say(f"  attack team = {'best rank' if RANK['score'] else 'highest CP'} with HP left, no Slaking, no Regigigas, no placement Gyarados: "
                     + ", ".join(f"{x[4]} {x[1]}{'' if x[2] >= x[3] else f' ({x[2]}/{x[3]} HP)'}" for x in up)
@@ -1012,27 +1283,52 @@ def _run(a, g, mv, done, t_start, enemy, goal, sess, pid, sc):
     if ROUTE:
         say(f"  route of {len(ROUTE)} waypoints, {sum(ch.meters(x, y) for x, y in zip(ROUTE, ROUTE[1:])) / 1000:.1f} km, at {a.speed} km/h")
 
-    def retry_lockout(fid):                                  # refused for the finisher's deploy window: wait it out, place again
-        lv = sc.exports_sync.teams().get(fid) or []
-        wait = min(30.0, (lv[8] / 1000.0 if len(lv) > 8 and lv[8] else 5.0) + 0.3)
-        say(f"  deploy lockout (the finisher's window) -- trying again in {wait:.1f} s (at once if a team places)")
-        t_end = time.time() + wait
-        while time.time() < t_end:                           # Benny 11-16: the moment ANOTHER team places, battle it (it has 1 defender)
+    def retry_lockout(fid):                                  # refused for a deploy lockout: wait it out, place again -- until it lands
+        """Two lockouts refuse a deploy on a gym that was just emptied: the finisher's window (ErrorFortDeployLockout, "Battle
+        winners have priority", ~23-30 s) and OUR team's lockout on a gym it just lost (ErrorTeamDeployLockout, "The Gym is
+        under attack! Try again later."). 11-16 22:35, the Ellis Island ferry gym: refused twice 23 s apart, then Deploy was
+        opened by hand and blue placed Walrein at 22:36:09 (Benny: "thats a common situation id like you to figure out").
+        Wait for BOTH map lockouts ([8] finisher, [9] same team), try again, and keep at it for up to 3 min while the gym
+        stays empty. The moment another team places, return False: the caller battles it NOW (1 defender)."""
+        t_stop, tries = time.time() + 180, 0
+        while time.time() < t_stop:
             try:
-                _tm = (sc.exports_sync.teams().get(fid) or [None])[0]
+                lv = sc.exports_sync.teams().get(fid) or []
             except Exception:
-                _tm = None
-            if _tm not in (0, None):
-                return False                                 # somebody placed: the placement loop below sees the new team at once
-            g.wait_for(lambda: False, 0.5, tick)
-        if not (g.open_fid == fid and g.gym_team == 0 and g.leaf() == "GymApproachState"):
-            return False
-        g.deploy_refused, g.autoplaced_id = None, None
-        g.placed.pop(fid, None)
-        sc.exports_sync.autodeploy(fid, [x[0] for x in dep["gy"][:12]], False, a.team)
-        if not g.wait_for(lambda: fid in g.placed and g.autoplaced_id and g.placed[fid].get("id") == g.autoplaced_id, 20, tick):
-            return False
-        return bool(g.placed[fid].get("ok"))
+                lv = []
+            fin = lv[8] / 1000.0 if len(lv) > 8 and lv[8] else 0.0
+            own = lv[9] / 1000.0 if len(lv) > 9 and lv[9] else 0.0
+            wait = min(60.0, max(fin, own, 2.0 if tries else 0.0) + 0.3)
+            why = "your team is locked out of it after losing it" if own >= fin and own > 0 else "the finisher's window"
+            say(f"  deploy lockout ({why}) -- try {tries + 2} in {wait:.1f} s (at once if a team places)")
+            t_end = time.time() + wait
+            while time.time() < t_end:                       # Benny 11-16: the moment ANOTHER team places, battle it (it has 1 defender)
+                try:
+                    _tm = (sc.exports_sync.teams().get(fid) or [None])[0]
+                except Exception:
+                    _tm = None
+                if _tm not in (0, None):
+                    sc.exports_sync.scan([fid])              # its new defender: the counter team is picked before the Battle
+                    return False                             # somebody placed: the placement loop below sees the new team at once
+                g.wait_for(lambda: False, 0.5, tick)
+            if not (g.open_fid == fid and g.leaf() == "GymApproachState"):
+                sc.exports_sync.open(fid)                    # the gym screen closed meanwhile: open it again
+                if not g.wait_for(lambda: g.open_fid == fid and g.leaf() == "GymApproachState", 8, tick):
+                    return False
+            if g.gym_team not in (0, None):
+                return False
+            g.deploy_refused, g.autoplaced_id = None, None
+            g.placed.pop(fid, None)
+            sc.exports_sync.autodeploy(fid, [x[0] for x in dep["gy"][:12]], False, a.team)
+            if not g.wait_for(lambda: fid in g.placed and g.autoplaced_id and g.placed[fid].get("id") == g.autoplaced_id, 20, tick):
+                return False
+            if g.placed[fid].get("ok"):
+                return True
+            if "Lockout" not in str(g.placed[fid].get("res", "")):
+                return False                                 # refused for another reason: no use waiting
+            tries += 1
+        say("  still locked out after 3 min -- moving on (it is judged again at once)")
+        return False
 
     def join_after_loss(fid):                                # a gym we fought for turned red without us and still has room: JOIN it
         def room():
@@ -1089,7 +1385,7 @@ def _run(a, g, mv, done, t_start, enemy, goal, sess, pid, sc):
         dep["nfa"] = n
         if a.heal_batch and n >= a.heal_batch and dep["ro"] and not g.batch_active:
             g.batch_active = True
-            sc.exports_sync.roster([x[0] for x in dep["ro"]], a.heal_top, ids, [x[0] for x in dep["gy"]])
+            sc.exports_sync.roster(roster_ids(dep), a.heal_top, ids, [x[0] for x in dep["gy"]])
             STATS["batches"] = STATS.get("batches", 0) + 1
             say(f"  {n} fainted (batch at {a.heal_batch}) -- reviving ALL of them now, one Max Revive each")
     if g.has("GymState") and not a.adopt:                    # open at start = the previous runner's gym: leave it after this battle
@@ -1127,7 +1423,9 @@ def _run(a, g, mv, done, t_start, enemy, goal, sess, pid, sc):
         if RANK["path"] and rank_load(RANK["path"]) and BAG_RO_ALL:    # attack_rank.json changed: re-sort the last walk, hand the tapper the new roster
             dep["ro"] = rank_sort(BAG_RO_ALL)[:80]
             try:
-                sc.exports_sync.roster([x[0] for x in dep["ro"]], a.heal_top, [], [x[0] for x in dep["gy"]])
+                if CT["cur"]:
+                    CT["cur"]["at"] = 0                      # a new ranking: the counters are re-scored at the next reading
+                sc.exports_sync.roster(roster_ids(dep), a.heal_top, [], [x[0] for x in dep["gy"]])
             except Exception as e:
                 say(f"  (new attack rank not handed to the tapper: {e})")
             rank_say(dep["ro"])
@@ -1167,7 +1465,8 @@ def _run(a, g, mv, done, t_start, enemy, goal, sess, pid, sc):
                     _r = sc.exports_sync.buddy(_c[0], _c[1] if len(_c) > 1 else None)
                 say(f"  COMMAND buddy: {_q['buddy']} queued -- {_r}")
             if "topup" in _q:
-                _tu = sc.exports_sync.topup(bool(_q["topup"]), a.topup_reserve)
+                a.topup = bool(_q["topup"])                  # kept across a re-attach (see the inbox command)
+                _tu = sc.exports_sync.topup(a.topup, a.topup_reserve)
                 say(f"  COMMAND topup: {'ON' if _tu.get('on') else 'OFF'}")
 
     def urgent_cmd():                                        # a queued command that should end a drill
@@ -1234,8 +1533,10 @@ def _run(a, g, mv, done, t_start, enemy, goal, sess, pid, sc):
                 NAMES[f[:8]] = sv[7]
             if f in live and sv[1] < 30000:
                 verified.add(f)
-            if f in live and sv[1] < 45000:
-                v = live[f]
+            if f in live and sv[1] < 45000 and not (len(live[f]) > 10 and live[f][10]
+                                                    and live[f][10] > time.time() * 1000 - sv[1] + 2000):
+                v = live[f]                                  # (never over a map record that changed AFTER this scan -- 11-16 22:36:
+                                                             # a 34 s old "empty" scan hid blue's new Walrein: "drill it (team 0)")
                 if (v[0], 6 - sv[3]) != (sv[0], v[5]) and scan_said.get(f) != (sv[0], sv[3]):
                     scan_said[f] = (sv[0], sv[3])
                     say(f"    scan {f[:8]}: team {sv[0]}, {sv[3]} defender(s), {sv[4]} CP now{' (in battle)' if sv[2] else ''}"
@@ -1308,8 +1609,16 @@ def _run(a, g, mv, done, t_start, enemy, goal, sess, pid, sc):
                 if target and target[0][:8] in USER_SKIP:
                     target = None
                 say(f"  COMMAND skip: {sorted(USER_SKIP)} left alone for the rest of this run -- the nearest other gym next")
+            if "feed" in _cmd:                               # {"feed": false}: no berries to defenders (Golden Razz + the regular fallback)
+                a.feed = bool(_cmd["feed"])
+                if not hasattr(a, "feed_mate0"):
+                    a.feed_mate0 = a.feed_mate               # the start setting: feeding back ON restores it
+                a.feed_mate = a.feed_mate0 and a.feed
+                _fc = sc.exports_sync.feedcfg(a.feed, a.feed_at, a.feed_hot, a.feed_mate)
+                say(f"  COMMAND feed: {'ON' if a.feed else 'OFF'} -- berries to your defenders {'on' if a.feed else 'stopped'} ({_fc})")
             if "topup" in _cmd:
-                _tu = sc.exports_sync.topup(bool(_cmd["topup"]), a.topup_reserve)
+                a.topup = bool(_cmd["topup"])                # kept: a re-attach after a game crash re-installs with THIS (11-16 22:38 it came back ON)
+                _tu = sc.exports_sync.topup(a.topup, a.topup_reserve)
                 say(f"  COMMAND topup: {'ON' if _tu.get('on') else 'OFF'} (keeping {a.topup_reserve} of each; bag {_tu.get('berries')})")
             if _cmd.get("hunt"):
                 _hr = float(_cmd["hunt"])
@@ -1440,6 +1749,9 @@ def _run(a, g, mv, done, t_start, enemy, goal, sess, pid, sc):
                 said = "break"
             time.sleep(2)
             continue
+        if cmd_st["hunt"] and target is None and not g.in_battle():   # Benny 11-16 "find an easy gym": the hunt verifies gyms for ~5 s --
+            g.wait_for(lambda: False, 0.3, tick)                       # wait for ITS pick; never grab the nearest gym meanwhile
+            continue
         tv = live.get(target[0]) if target else None
         if target is None or target[0] in skip or not tv or tv[4] or not (tv[0] in enemy + [0] or slot(target[0], tv)):
             target, _was_resting = pick_any(enemy, skip, done, here, goal, live, a.detour, a.area, slot, time.time())   # an empty gym: straight to Deploy
@@ -1459,11 +1771,20 @@ def _run(a, g, mv, done, t_start, enemy, goal, sess, pid, sc):
                 soon = [(v[4], fid, (v[2], v[3])) for fid, v in live.items()          # a non-red gym whose raid ends soon:
                         if v[0] in enemy + [0] and 0 < v[4] <= a.prewait * 60000        # wait ON it, battle the second it ends
                         and ch.meters((v[2], v[3]), goal) <= a.area and fid not in skip]
+                guard = sorted((ch.meters(here, (v[2], v[3])), f) for f, v in live.items()   # a red gym being drained by another
+                               if v[0] == a.team and f not in skip and not v[4]                     # team: stand at it -- the moment it
+                               and ch.meters((v[2], v[3]), goal) <= a.area                          # falls we are in range to fight for
+                               and ((len(v) > 6 and v[6]) or (len(v) > 9 and v[9] > 0)))           # it (11-16 22:35, the ferry gym)
                 if soon:
                     left, sfid, spos = min(soon)
                     gpos_now[0] = None
                     mv.orbit(spos, here, r=orbit_r)
                     msg = f"in the goal area, nothing to beat now -- circling {sfid[:8]}, its raid ends in {left / 60000:.1f} min"
+                elif guard:
+                    gf = guard[0][1]
+                    mv.orbit((live[gf][2], live[gf][3]), here, r=orbit_r)
+                    msg = (f"in the goal area, nothing to beat -- standing by red {gf[:8]}{' (' + NAMES[gf[:8]] + ')' if gf[:8] in NAMES else ''}: "
+                           f"another team is attacking it; the second it falls we fight for it")
                 else:
                     ring = sorted([(v[2], v[3]) for v in live.values() if ch.meters((v[2], v[3]), goal) <= a.area],
                                   key=lambda q: math.atan2((q[1] - goal[1]) * math.cos(math.radians(goal[0])), q[0] - goal[0]))
@@ -1495,6 +1816,13 @@ def _run(a, g, mv, done, t_start, enemy, goal, sess, pid, sc):
             gpos_now[0] = None
             mv.travel(gpos, here)
             said = None
+            if team in enemy and d < 700:                    # its defenders pick the team (counters): read them while we walk
+                try:                                         # (the target's own 5 s re-scan above -- no extra server request)
+                    _cv = sc.exports_sync.scanned().get(fid)
+                    if _cv and _cv[1] < 15000:
+                        counter_push(fid, _cv, sc, dep, a, g)
+                except Exception as e:
+                    say(f"  (counter team: {e})")
             time.sleep(2)
             continue
         gpos_now[0] = gpos
@@ -1524,8 +1852,26 @@ def _run(a, g, mv, done, t_start, enemy, goal, sess, pid, sc):
                               if f != cur and f not in skip and v[1] < 60000 and not v[4] and not (len(v) > 6 and v[6])
                               and slot(f, v) and ch.meters(q[:2], (v[2], v[3])) <= engage)
                 return near[0][1] if near else None
+            try:                                             # the counter team for THIS gym before its first Battle press:
+                _cv = sc.exports_sync.scanned().get(fid)     # no fresh reading yet (a start right next to it, 11-16 22:29: the
+                _lt = (live.get(fid) or [team])[0]           # (the map's team NOW: a retake target can still read 0 in `team`)
+                if (team in enemy or _lt in enemy) and not (_cv and _cv[1] < 8000 and len(_cv) > 8 and _cv[8]):   # picks landed 1 s after the
+                    sc.exports_sync.scan([fid])              # team) -> ask, <= 2.5 s. Never for an EMPTY gym: that is a race
+                    _t = time.time()
+                    while time.time() - _t < 2.5:
+                        g.wait_for(lambda: False, 0.25, tick)
+                        _cv = sc.exports_sync.scanned().get(fid)
+                        if _cv and _cv[1] < 3000 and len(_cv) > 8 and (_cv[8] or not _cv[3]):
+                            break
+                _ok = bool(_cv and _cv[1] < 30000) and counter_push(fid, _cv, sc, dep, a, g)
+                if not _ok and CT["cur"] and CT["cur"]["fid"] != fid:   # no counters for this gym: never another gym's
+                    CT["cur"] = None
+                    sc.exports_sync.roster(roster_ids(dep), a.heal_top, [], [x[0] for x in dep["gy"]])
+            except Exception as e:
+                say(f"  (counter team: {e})")
             final = drill(fid, enemy, g, sc, a, tick, time.time() + a.gym_minutes * 60, refresh=batch_check, join_near=None,
-                          cmd_waiting=urgent_cmd)            # join_near=None: Benny 11-15 "drill and finish" -- a red gym with room
+                          cmd_waiting=urgent_cmd,            # join_near=None: Benny 11-15 "drill and finish" -- a red gym with room
+                          counters=lambda sv, _f=fid: counter_push(_f, sv, sc, dep, a, g))
                                                              # is filled BETWEEN gyms (passing), never by leaving one mid-drill
         if final in (STALL, DETOUR):                         # left mid-drill on purpose: no placement step here
             g.autoplaced = None
@@ -1613,6 +1959,10 @@ def _run(a, g, mv, done, t_start, enemy, goal, sess, pid, sc):
                         else:
                             say(f"  team {now_team} took it first -- battling it NOW while it has 1 defender (Benny: before their teammates add theirs)")
                             retake = True
+                            try:
+                                sc.exports_sync.scan([fid])  # its new defender: the counters are picked before the Battle press
+                            except Exception:
+                                pass
                         break
                     time.sleep(1)
                 else:

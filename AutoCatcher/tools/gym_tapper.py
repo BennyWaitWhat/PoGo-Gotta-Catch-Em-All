@@ -365,6 +365,22 @@ function promiseRead(q) {                     /* null = still pending */
   if (!q.pr.add(q.o.done).readU8()) return null;
   return {val: q.pr.add(q.o.val).readPointer()};
 }
+function defInfo(p) {                         /* a defender's species, form, moves, level and IVs: what the runner picks the counter team against */
+  var r = {dex: 0, form: 0, m1: 0, m2: 0, cpm: 0, iv: null};
+  if (p.isNull()) return r;
+  try {                                       /* never throws: a failed read leaves zeros, the gym reading itself goes on */
+    var o = protoOffs(), dp = dispOffs();
+    if (o.pokemonId !== undefined) r.dex = p.add(o.pokemonId).readS32();
+    if (o.move1 !== undefined) r.m1 = p.add(o.move1).readS32();
+    if (o.move2 !== undefined) r.m2 = p.add(o.move2).readS32();
+    if (o.cpMultiplier !== undefined) r.cpm = p.add(o.cpMultiplier).readFloat() + (o.additionalCpMultiplier !== undefined ? p.add(o.additionalCpMultiplier).readFloat() : 0);
+    if (o.individualAttack !== undefined && o.individualDefense !== undefined && o.individualStamina !== undefined)
+      r.iv = [p.add(o.individualAttack).readS32(), p.add(o.individualDefense).readS32(), p.add(o.individualStamina).readS32()];
+    var disp = o.pokemonDisplay !== undefined ? p.add(o.pokemonDisplay).readPointer() : NULL;
+    if (!disp.isNull() && dp.form >= 0) r.form = disp.add(dp.form).readS32();
+  } catch (e) {}
+  return r;
+}
 function readDefenders(mpd) {                 /* MapPlaceDetails -> {fid, team, inBattle, list: [{id, mot, cp}]} -- plain reads */
   if (mpd.isNull() || !mpd.readPointer().equals(K.MapPlaceDetails)) return null;
   var gd = mpd.add(O.mpdGym).readPointer(); if (gd.isNull()) return null;
@@ -389,9 +405,11 @@ function readStatus(st) {                     /* GymStatusAndDefendersProto -> {
           if (fv.isNull()) continue;
           var fit = fv.add(O.fvItem).readS32(), fmot = fv.add(O.fvMot).readFloat(); food[fit] = fmot;
           if (fit === ITEM.GoldenRazzBerry) gold = fmot; } } } catch (e) {}
+    var px = defInfo(p);
     out.list.push({id: p.isNull() ? '' : p.add(idOff).readU64().toString(), mot: mp.add(O.mpMot).readDouble(), cp: mp.add(O.mpCp).readS32(),
       max: O.mpCpDep >= 0 ? mp.add(O.mpCpDep).readS32() : 0, gold: gold, cd: cd, food: food,
-      dms: O.mpDeploy >= 0 ? Number(mp.add(O.mpDeploy).readS64()) : 0, bv: O.mpBerry >= 0 ? mp.add(O.mpBerry).readFloat() : -1});
+      dms: O.mpDeploy >= 0 ? Number(mp.add(O.mpDeploy).readS64()) : 0, bv: O.mpBerry >= 0 ? mp.add(O.mpBerry).readFloat() : -1,
+      dex: px.dex, form: px.form, m1: px.m1, m2: px.m2, cpm: px.cpm, iv: px.iv});
   }
   return out;
 }
@@ -443,7 +461,9 @@ function scanTick(now) {
       gymSeen(f, g.inBattle, now);
       var gnm = ''; try { if (O.mpdName !== undefined) gnm = str(r.val.add(O.mpdName).readPointer()) || ''; } catch (e) {}
       SCAN[f] = {team: g.team, ib: g.inBattle ? 1 : 0, n: g.list.length, cp: cp, ours: ours, at: now, name: gnm,
-                 mots: g.list.map(function (x) { return Math.round(x.mot * 100); })};
+                 mots: g.list.map(function (x) { return Math.round(x.mot * 100); }),
+                 defs: g.list.map(function (x) { var iv = x.iv || [-1, -1, -1];   /* the counter team's input: who defends, with what */
+                   return [x.dex, x.form, x.m1, x.m2, x.cp, x.max, Math.round((x.cpm || 0) * 1e5) / 1e5, iv[0], iv[1], iv[2], x.dms, Math.round(x.mot * 100)]; })};
     } catch (e) { delete SCANREQ[f]; }
   }
   var inflight = Object.keys(SCANREQ).length;
@@ -1601,7 +1621,7 @@ rpc.exports = {
     var c = {}; TOPUP_BERRIES.forEach(function (nm) { if (ITEM[nm] !== undefined) c[nm] = itemCount(ITEM[nm]); });
     return {on: TOPUP_ON, reserve: TOPUP_RESERVE, berries: c}; },
   scan: function (fids) { (fids || []).forEach(function (f) { if (SCANQ.indexOf(f) < 0 && !SCANREQ[f]) SCANQ.push(f); }); return SCANQ.length; },
-  scanned: function () { var o = {}, now = Date.now(); for (var f in SCAN) { var v = SCAN[f]; o[f] = [v.team, now - v.at, v.ib, v.n, v.cp, v.ours, v.mots, v.name || '']; } return o; },
+  scanned: function () { var o = {}, now = Date.now(); for (var f in SCAN) { var v = SCAN[f]; o[f] = [v.team, now - v.at, v.ib, v.n, v.cp, v.ours, v.mots, v.name || '', v.defs || []]; } return o; },
   feedcfg: function (on, at, hotAt, mate) { FEED_ON = !!on; FEED_AT = at; if (hotAt) HOT_FEED_AT = hotAt; if (mate !== undefined) MATE_ON = !!mate; return {on: FEED_ON && !!DSVC, at: FEED_AT, hot: HOT_FEED_AT}; },
   act: function (what) { ACT = what; ACT_AT = Date.now(); return {gymScreen: !!GAS, inBattle: IN_BATTLE}; },
   teams: function () { var now = Date.now(), o = {}; for (var k in GTEAM) { var v = GTEAM[k]; o[k] = [v[0], now - v[1], v[2], v[3], Math.max(0, v[4] - now), v[5], v[6], v[7], Math.max(0, (v[8] || 0) - now), Math.max(0, (v[9] || 0) - now), v[11] || 0]; } return o; },   /* [7] total CP, [8] lockout ms left, [9] team lockout ms left */
