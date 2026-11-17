@@ -17,6 +17,7 @@ import re
 import math
 import os
 import sys
+import threading
 import time
 
 import frida
@@ -31,6 +32,7 @@ import pogo_il2cpp as pg  # noqa: E402
 BATTLE_STATES = ("GymBattleLauncherStateShim", "GymBattleState", "GymBattleIntroState", "GymBattleResultsState")
 ABORT = "abort"
 STALL, DETOUR = "stall", "detour"                # drill exits: no progress (skip it a while) / a red gym with room first (come back)
+OBO_OK_TAP = "input tap 640 1432"                # one-by-one: OK on "Are you sure you want to give up?" (1280x2856 screen, 11-17 00:00)
 
 
 class Detached(Exception):
@@ -159,7 +161,7 @@ class Game:
             self.progress_at = time.time()
         elif k == "start":
             self.round, self.last_act, self.progress_at = True, time.time(), time.time()
-            say("    round start")
+            say(f"    round start{' ' + str(p['n']) if p.get('n') else ''}")
         elif k == "end":
             self.round = self.battle = False
             if self.open_fid:
@@ -314,6 +316,18 @@ class Game:
             if p.get("gui") == "GlobalErrorController" and "(29)" in str(p.get("text")):
                 self.err29_at = time.time()                  # "The Gym battle has already been completed! (29)": the game died 3-5 s
                                                              # after a re-open + Battle right behind it, twice on 11-16 (22:03, 22:37)
+        elif k == "mdopen":                                  # a ModalDialog is fully Open (the game's own GUI state)
+            _ran = getattr(self, "obo_ran", 0.0)
+            if time.time() - _ran < 8 and getattr(self, "obo_ok", 0.0) < _ran:   # OUR one-by-one run-away's give-up prompt:
+                self.obo_ok = self.obo_last_tap = time.time()   # OK with ONE tap, once it is Open (11-17 00:00: 30 run-aways
+                self.obo_taps = 1                            # piled up the prompt; a tap while it was opening missed)
+                threading.Thread(target=ch.adb, args=(OBO_OK_TAP,), daemon=True).start()
+                say(f"    one-by-one: OK on the give-up prompt (tap 1, {p.get('ms')} ms after it appeared)")
+        elif k == "sbmethods":
+            say(f"    (run-away button methods: {p.get('m') or p.get('err')})")
+        elif k == "mdfields":
+            say(f"    (give-up prompt OK button, for a native press: {p.get('pbN')} x {p.get('pbCls')} {p.get('pb')} | "
+                f"container {p.get('bc')} | {p.get('err')})")
         elif k == "items":
             say(f"    healing items in the bag: {p['c']}")
         elif k == "outcome":
@@ -329,6 +343,8 @@ class Game:
         elif k in ("err", "exc", "opened", "continued", "pressed", "dismissed"):
             if k == "opened":
                 self.opened_at = time.time()
+            if k == "pressed" and str(p.get("what", "")).startswith("RunAway (one-by-one"):
+                self.obo_ran, self.obo_retry = time.time(), False
             if k != "pressed" or p.get("what") not in ("GO",):
                 say(f"    [{k}] {dict((a, b) for a, b in p.items() if a != 'k')}")
         elif k != "go":                                      # (go = the GO press, already logged as [pressed])
@@ -404,7 +420,6 @@ class Mover:
 BUSY = {}                                        # fort id -> smoothed share of scans that found it in battle (contest level)
 TAKEN = {}                                       # fort id -> the rest stamp of a gym we EMPTIED (its rest ends when an enemy team holds it)
 USER_SKIP = set()                                # 8-char gym ids Benny said to leave alone this run (--skip / {"skip": ...}; 11-15: Starbucks)
-DEFER = {}                                       # --defer: 8-char id -> when; a STALEMATE the last run left (other gyms first, NOT a skip)
 
 
 def rested(done, taken, scanned, enemy, now, rest=600):
@@ -898,14 +913,16 @@ def counter_push(fid, sv, sc, dep, a, g):
         return False
     att = ct_attackers()
     Ds = [d for d in (ct_defender(x) for x in sorted(defs, key=lambda x: x[10] if len(x) > 10 and x[10] else 0)) if d]
+    if getattr(a, "one_by_one", False):                  # one-by-one: only the FIRST defender is ever fought
+        Ds = Ds[:1]
     if not Ds or not att:
         return False
     bag = {r[0]: r for r in BAG_RO_ALL}
     scored = []
     for aid, A in att.items():
         r = bag.get(aid)
-        if r is None or r[2] <= 0:                       # not in the bag now (in a gym, released) / fainted at the last walk
-            continue
+        if r is None or (r[2] <= 0 and not a.heal_top):  # not in the bag now (in a gym, released) / fainted at the last walk
+            continue                                     # (--heal-top: the fainted best stay on top -- they get revived)
         s, dps, se = ct_score(A, Ds)
         scored.append((s, dps, aid, se))
     if not scored:
@@ -1093,7 +1110,11 @@ def drill(fid, enemy, g, sc, a, tick, until, refresh=None, join_near=None, cmd_w
                 _cpn = _sv[4] or 0                           # a defender LOST CP during our session = the server counts our battle
                 if (sess_t0 or g.in_battle()) and dw.get("cp") and dw.get("team") == _sv[0] and 0 < _cpn < dw["cp"] * 0.98:
                     battles_count(fid, f"a defender lost CP in our battle ({dw['cp']} -> {_cpn} total)", sc)   # (its team refeeds it
-                dw["cp"], dw["team"] = _cpn, _sv[0]          # between rounds -- the SESSION total can stay flat: Ellis 23:31-23:41)
+                if a.one_by_one and g.in_battle() and dw.get("team") == _sv[0] and dw.get("n") and _sv[3] < dw["n"]:
+                    _k = sc.exports_sync.obokeep()           # one-by-one: the first defender was KNOCKED OUT -- the next round's
+                    say(f"    one-by-one: a defender was knocked out ({dw['n']} -> {_sv[3]}) -- "   # defender is the new first:
+                        f"{'staying in for the new first one' if _k else 'too late for this battle'}")   # no exit (Benny 00:08)
+                dw["cp"], dw["team"], dw["n"] = _cpn, _sv[0], _sv[3]   # (the SESSION total can stay flat: Ellis 23:31-23:41)
                 _key = (_sv[0], _sv[3], _sv[2])
                 if _key != dw["key"]:
                     _prev = dw["key"]
@@ -1156,10 +1177,9 @@ def drill(fid, enemy, g, sc, a, tick, until, refresh=None, join_near=None, cmd_w
             if len(cps) >= 8:                                # ...but make sure progress is being made
                 lo = min(cps)
                 since = len(cps) - 1 - max(i for i, c in enumerate(cps) if c == lo)
-                if since >= 6 and cps[-1] > lo * 1.3:
-                    leaving = STALL
-                    say(f"  STALEMATE at {fid[:8]}: {since} sessions without a new low (lowest {lo}, now {cps[-1]} CP) -- its team "
-                        f"feeds/refills it faster than we drain it; other gyms first, back to it when nothing else is left")
+                if since >= 6 and cps[-1] > lo * 1.3 and since % 6 == 0:   # no leaving: Benny 11-16 23:48 answered the old
+                    say(f"  no new low at {fid[:8]} in {since} sessions (lowest {lo}, now {cps[-1]} CP) -- its team feeds/refills "
+                        f"it between our rounds; drilling on (\"keep drilling\": their berry quota runs out first)")   # STALEMATE line: "keep drilling"
             if not leaving and cmd_waiting and cmd_waiting():   # a live command (go / hunt) is waiting: it decides now
                 leaving = DETOUR
                 say(f"  a new command is waiting -- leaving {fid[:8]} after this session")
@@ -1303,6 +1323,8 @@ def main():
     ap.add_argument("--prewait", type=float, default=5, help="minutes: wait on a non-red gym whose raid ends within this")
     ap.add_argument("--no-autoplace", dest="autoplace", action="store_false", help="open Deploy for you instead of placing a shiny Gyarados")
     ap.add_argument("--heal-top", type=int, default=0, help="keep this many of the highest-CP attackers healed at all times (0 = never; the user's rule)")
+    ap.add_argument("--one-by-one", action="store_true", help="drill the FIRST defender over and over: run away when the 2nd "
+                                                               "defender's round starts and Battle again (Benny 11-16 23:58)")
     ap.add_argument("--heal-batch", type=int, default=30, help="revive every fainted Pokemon once this many are fainted (0 = never)")
     ap.add_argument("--no-feed", dest="feed", action="store_false", help="never feed Golden Razz to your defenders")
     ap.add_argument("--no-battle", dest="battle", action="store_false", help="battle break: no gyms, keep moving and feeding the defenders")
@@ -1317,8 +1339,6 @@ def main():
                     help="s between the battle's attack reports (server setting 5; 0 = leave it)")
     ap.add_argument("--cmd", default=None, help="live command file (JSON, re-read when it changes): {go: fid} / {hunt: meters}")
     ap.add_argument("--skip", default="", help="gym ids (8-char prefixes, comma-separated) to leave alone for this whole run")
-    ap.add_argument("--defer", default="", help="gym ids (8-char prefixes) the last run left in a STALEMATE just before this "
-                                                "start: other gyms first, back to them when nothing else is left (its 10-min rest)")
     ap.add_argument("--join-first", default=None, help="fort id: go there first -- beat + place (enemy/empty) or join (red with room)")
     ap.add_argument("--study", default=None, help="append the feed-study JSON lines (gym readings, map flags, feed replies) here")
     ap.add_argument("--feed-zone", default=None, help="lat,lng,radius_m: feed only defenders in gyms inside this circle")
@@ -1340,7 +1360,6 @@ def main():
     ap.add_argument("--feed-hot", type=float, default=0.34, help="...or at this level when the gym was attacked in the last 5 min (the server allows ~10 berries per defender, so a buffer burns them)")
     a = ap.parse_args()
     USER_SKIP.update(x.strip()[:8] for x in a.skip.split(",") if x.strip())
-    DEFER.update({x.strip()[:8]: time.time() for x in a.defer.split(",") if x.strip()})
     enemy = [int(x) for x in a.enemy.split(",")]
     goal = [float(x) for x in a.goal.split(",")]               # a list: the next-goal switch survives a re-attach
     HOP["list"] = [tuple(float(v) for v in w.split(",")) for w in a.hop.split(";") if w.strip()] if a.hop else []
@@ -1450,6 +1469,9 @@ def _run(a, g, mv, done, t_start, enemy, goal, sess, pid, sc):
             say(f"  (contest seed skipped: {e})")
     if a.attack_report > 0:                                  # shorter 'not in battle' windows after each knockout
         say(f"  battle attack reports every {a.attack_report} s instead of 5: {sc.exports_sync.fastreport(a.attack_report)}")
+    if a.one_by_one:                                         # Benny 11-16 23:58: "drill at the first one over and over"
+        say(f"  ONE-BY-ONE mode {'ON' if sc.exports_sync.onebyone(True) else 'NOT SET'}: beat the first defender, run away at the "
+            f"2nd defender's round, Battle again -- the counters are picked against the first defender only")
     if a.topup:
         _tu = sc.exports_sync.topup(True, a.topup_reserve)
         say(f"  Berry Master top-ups ON: regular berries only, quiet gaps only, keeping {a.topup_reserve} of each -- in the bag: {_tu.get('berries')}")
@@ -1787,6 +1809,23 @@ def _run(a, g, mv, done, t_start, enemy, goal, sess, pid, sc):
     def tick():                                              # keep circling the current gym while waiting on it
         quick_cmds()
         feed_record()
+        _oran = getattr(g, "obo_ran", 0.0)
+        if a.one_by_one and g.top == "ModalDialog" and 1.0 < time.time() - _oran < 8 and getattr(g, "obo_ok", 0.0) < _oran:
+            g.obo_ok = g.obo_last_tap = time.time()          # our run-away's prompt is up and no Open signal came: tap now
+            g.obo_taps = 1
+            threading.Thread(target=ch.adb, args=(OBO_OK_TAP,), daemon=True).start()
+            say("    one-by-one: OK on the give-up prompt (tap 1, no Open signal -- fallback)")
+        if a.one_by_one and g.top == "ModalDialog" and getattr(g, "obo_ok", 0.0) > getattr(g, "obo_ran", 0.0):
+            _w = time.time() - getattr(g, "obo_last_tap", 0.0)   # the give-up prompt is still up after our tap: another
+            if _w > 0.8 and getattr(g, "obo_taps", 1) < 3:      # tap 0.8 s later (a tap on a closed prompt only lands on
+                g.obo_taps = getattr(g, "obo_taps", 1) + 1      # the battle = one fast attack), 3 at most, never another run-away
+                g.obo_last_tap = time.time()
+                threading.Thread(target=ch.adb, args=(OBO_OK_TAP,), daemon=True).start()
+                say(f"    one-by-one: the give-up prompt is still up -- tap {g.obo_taps} on OK")
+            elif _w > 2 and getattr(g, "obo_taps", 1) >= 3:
+                a.one_by_one = False
+                sc.exports_sync.onebyone(False)
+                say("  !! one-by-one OFF: the give-up prompt stayed up after 3 taps -- normal battles from here; the prompt is yours")
         _dok = getattr(g, "deploy_ok_at", 0.0)              # the server accepted a deploy (ours or his, by hand) after the
         if _dok > max(COOL["ok_seen"], JUMPED["t"]) and (COOL["on"] or not JUMPED["told"]):   # last jump: no cooldown now
             COOL["ok_seen"] = _dok
@@ -1917,10 +1956,6 @@ def _run(a, g, mv, done, t_start, enemy, goal, sess, pid, sc):
                 if not sv or sv[1] > 45000 or hop_area((gr[0], gr[1])) is None:
                     continue
                 live[f] = [sv[0], sv[1], gr[0], gr[1], max(0, int(GREG["raid"].get(f, 0) - _nowms)), 6 - sv[3], sv[2], sv[4], 0, 0, 0, 0]
-        for f in live:
-            if f[:8] in DEFER:                               # --defer: the stalemate the last run left -- the same rest as STALL
-                done.setdefault(f, DEFER.pop(f[:8]))
-                say(f"  {f[:8]}: left in a STALEMATE just before this start -- other gyms first, back to it when nothing else is left")
         for f in live:                                       # gyms Benny said to skip: left alone for the rest of the run (a hard rest:
             if f[:8] in USER_SKIP and done.get(f, 0) < time.time() + 3600:   # never picked, not even with nothing else to beat)
                 done[f] = time.time() + 12 * 3600
