@@ -1095,26 +1095,29 @@ def main():
             _stamp = None
         _was = _js.get('stamp_prev') if saved.get('walk') == cur_stamp and not unsynced else _js.get('stamp')
         _moved = bool(_stamp and _was and None not in _stamp and None not in _was and list(_was) != _stamp)
-        _jx = job_context(_gm['pokemon'])
+        _cn = {norm(u) for u in C}
         _built, _seed = set(_js.get('built') or ()), _js.get('seed')
+        _evo = {norm(u) for u, s in origin.items() if s}                    # the copies you evolved this pass
+        _series = [x for x in (_js.get('series') or []) if isinstance(x, dict) and x.get('walk') != cur_stamp][-JOB_SERIES_MAX:]
+        # the record first: a failure in the scoring below never loses this pass's evolutions or the rules in force
+        _jobs_state = {'stamp': _stamp or _was, 'stamp_prev': _was, 'seed': _seed,
+                       'built': sorted(b for b in _built | _evo if b in _cn), 'series': _series}
         if _seed != 'all':                               # the copies you evolved before this record began, a slice a pass
             _more, _seed = job_seed_built(snaps, _seed or prev_stamp, budget=0.25)
             _built |= _more
-        _series = [x for x in (_js.get('series') or []) if x.get('walk') != cur_stamp][-JOB_SERIES_MAX:]
-        if _first:
-            out.append('**Did your collection get better?** First report for this account -- nothing to compare yet.')
-            _res = None
+            _jobs_state.update(seed=_seed, built=sorted(b for b in _built | _evo if b in _cn))
+        if _first or state.get('walk') != prev_stamp:
+            # the two piles must belong to the two walks: the first report, or the last report's walk is gone from disk
+            out.append('**Did your collection get better?** Not measured this pass: %s.' % (
+                'first report for this account' if _first else "the last report's walk is not on disk, so its pile has no walk to pair with"))
         else:
+            _jx = job_context(_gm['pokemon'])
             _res = job_pass(P, C, prev_pile, pile_set, origin, _built, _jx, _moved)
             _lim, _lb = job_limits(_series)
             out.extend(job_lines(_res, _lim, _lb, job_namer(P, C, _jx, stg), '%s -> %s' % (_hm(prev_stamp), _cur_hm)))
-            _built = _res['built']
-            _series.append({'walk': cur_stamp, 'g': [_res['jobs'][j]['gain'] for j in JOBS],
-                            'l': [_res['jobs'][j]['loss'] for j in JOBS]})
+            _jobs_state['series'] = (_series + [{'walk': cur_stamp, 'g': [_res['jobs'][j]['gain'] for j in JOBS],
+                                                 'l': [_res['jobs'][j]['loss'] for j in JOBS]}])[-JOB_SERIES_MAX:]
         out.append('')
-        _cn = {norm(u) for u in C}
-        _jobs_state = {'stamp': _stamp, 'stamp_prev': _was, 'seed': _seed, 'built': sorted(b for b in _built if b in _cn),
-                       'series': _series[-JOB_SERIES_MAX:]}
     except Exception as e:
         out.extend(['(did your collection get better: not computed -- %s: %s)' % (type(e).__name__, e), ''])
     out.append('**What improved** (%s)' % _basis)
@@ -1574,6 +1577,14 @@ JOB_COLS = JOB_TOUCH + ('species_name', 'iv_atk', 'iv_def', 'iv_sta', 'iv_total'
 _JX = None
 
 
+def _job_move_name(name):
+    """a move as pvpoke spells an elite move: no _FAST suffix, one name per multi-type family (detect_legacy's own rules:
+    the walk says COUNTER_FAST / HIDDEN_POWER_FAST / TECHNO_BLAST_WATER, pvpoke COUNTER / HIDDEN_POWER_FIRE / TECHNO_BLAST_DOUSE)"""
+    import detect_legacy
+    name = str(name or '')
+    return detect_legacy.canon_move(name[:-5] if name.endswith('_FAST') else name)
+
+
 def job_context(gm=None):
     """What the five jobs read, loaded once: pvpoke's game master (base stats, families, legacy moves, dex numbers; `gm` = its
     'pokemon' list when the caller has it already), its GL / UL / ML lists, the form names (a '<Species>Normal' form is the
@@ -1582,8 +1593,10 @@ def job_context(gm=None):
     if _JX is None:
         import types, cpm_table, size_line, pvp_iv_rule as pv
         from references import LEGENDARY_IDS, MYTHICAL_IDS, ULTRA_BEAST_IDS, PARADOX_IDS
+        import detect_legacy
         ld = lambda *p: json.load(open(os.path.join(ROOT, *p), encoding='utf-8'))
         gm = gm if gm is not None else ld('pvpoke_gamemaster.json')['pokemon']
+        _never = frozenset(detect_legacy.NEVER_LEGACY)       # Return / Frustration are never legacy (his 11-03 fix)
         bs = {q['speciesId']: q.get('baseStats', {}) for q in gm}
         lists = {}
         for lg, cap in (('gl', 1500), ('ul', 2500), ('ml', 10000)):
@@ -1595,7 +1608,7 @@ def job_context(gm=None):
             ids = [x['speciesId'] for x in ok]
             lists[lg] = (frozenset(ids[:len(ids) // 2]), frozenset(ids), frozenset(ids[:300]))
         try:
-            mv = {int(k): v for k, v in ld('move_id_to_name.json').items()}
+            mv = {int(k): _job_move_name(v) for k, v in ld('move_id_to_name.json').items()}
         except (OSError, ValueError):
             mv = {}
         try:
@@ -1606,11 +1619,12 @@ def job_context(gm=None):
         _JX = types.SimpleNamespace(
             bs=bs, lists=lists, moves=mv, gender_look=glook, dex={q['speciesId']: q.get('dex') for q in gm},
             family={q['speciesId']: (q.get('family') or {}).get('id') or q['speciesId'] for q in gm},
-            elite={q['speciesId']: frozenset(q.get('eliteMoves') or ()) for q in gm},
+            elite={q['speciesId']: frozenset(_job_move_name(x) for x in (q.get('eliteMoves') or ())) - _never for q in gm},
             normal={int(k) for k, v in ld('form_enum.json').items() if str(v).lower().endswith('normal')},
             roster=LEGENDARY_IDS | MYTHICAL_IDS | ULTRA_BEAST_IDS | PARADOX_IDS, mythical=frozenset(MYTHICAL_IDS),
             pvid=pv.pvid, chain=pv.chain_stage_ranks, maxcp=lambda st: pv.maxcp(st, bs),
             fits=lambda r, st, cap: pv.fits(r, st, cap, bs), margin=pv.VIABILITY_MARGIN, cpm=cpm_table.CPM,
+            caps=(cpm_table.LL_CAP, cpm_table.GL_CAP, cpm_table.UL_CAP), l50=cpm_table.LEVEL_50_IDX,
             points=size_line.showcase_points)
     return _JX
 
@@ -1639,11 +1653,11 @@ def _job_band(r, own, X):
     if not b or not r['cp'] or r['level'] is None:
         return None
     i = int(round((r['level'] - 1) * 2))
-    if i >= min(98, len(X.cpm) - 1):
+    if i >= min(X.l50, len(X.cpm) - 1):
         return 'ML'
     m = X.cpm[min(i + 1, len(X.cpm) - 1)]
     nxt = int(((b['atk'] + 15) * (b['def'] + 15) ** 0.5 * (b['hp'] + 15) ** 0.5 * m * m) / 10)
-    return next((lg for lg, cap in (('LC', 500), ('GL', 1500), ('UL', 2500)) if r['cp'] <= cap < nxt), None)
+    return next((lg for lg, cap in zip(('LC', 'GL', 'UL'), X.caps) if r['cp'] <= cap < nxt), None)
 
 
 def _job_contrib(r, X):
@@ -1656,7 +1670,7 @@ def _job_contrib(r, X):
     k, lk = _job_kind(r, X), _job_look(r, X)
     mx = []
     slot = lambda st, lg: st + '_shadow' if sh and (st + '_shadow') in X.lists[lg][1] else st
-    cap = {'gl': 1500, 'ul': 2500, 'ml': None}
+    cap = {'gl': X.caps[1], 'ul': X.caps[2], 'ml': None}
     plays = lambda st, lg: cap[lg] is None or (X.maxcp(st) > cap[lg] + X.margin and X.fits(r, st, cap[lg]))
     # 1. Battlers: a (league, stage) slot at its best tier -- #1-5 only at a stage in the top half of pvpoke's list (11-16),
     #    #6-25 at a stage in its top 300 (11-11 "P2") -- for a copy that can play there; READY = its own stage, in the league's
@@ -1669,8 +1683,7 @@ def _job_contrib(r, X):
             if not (ss in X.lists[lg][0] if rk <= 5 else ss in X.lists[lg][2]) or not plays(st, lg):
                 continue
             mx.append(('battlers', ('slot', lg, ss), 3 if rk == 1 else 2 if rk <= 5 else 1))
-            if st == own and (r['move3'] or 0) and ((lg == 'gl' and 1400 <= (r['cp'] or 0) <= 1500)
-                                                     or (lg == 'ul' and 2400 <= (r['cp'] or 0) <= 2500)
+            if st == own and (r['move3'] or 0) and ((cap[lg] and cap[lg] - 100 <= (r['cp'] or 0) <= cap[lg])   # his 1400 / 2400
                                                      or (lg == 'ml' and (r['level'] or 0) >= 40)):
                 mx.append(('battlers', ('ready', lg, ss), 1))
     # 2. Trophies: one item per look / kind / slot -- a second copy of the same thing adds nothing
@@ -1706,7 +1719,8 @@ def _job_contrib(r, X):
     mx += [('pokedex', ('kind',) + k, 1), ('pokedex', ('look',) + lk, 1), ('pokedex', ('best',) + k, tot)]
     if r['fresh_alignment'] in (1, 2):
         mx.append(('pokedex', ('align',) + k + (r['fresh_alignment'],), 1))
-    # 5. Projects: a hundo at the top of a league band is that band's build; any other copy you put something into is a build
+    # 5. Projects: a hundo at the top of a league band fills that band (whoever holds it); every copy you put something into is
+    #    a build of its own -- so a plain duplicate never counts and a copy you built never leaves for free, whatever the uids
     bd = _job_band(r, own, X) if ivs == (15, 15, 15) else None
     return {'max': mx, 'kind': k, 'look': lk, 'iv': tot, 'cp': r['cp'] or 0, 'hundo': ivs == (15, 15, 15), 'nuid': norm(r['uid_hex']),
             'band': ('band', own, bd) if bd else None,
@@ -1735,9 +1749,9 @@ def job_items(rows, built, X, cache=None):
             d = J[j]
             if q > d.get(key, -1):
                 d[key] = q
-        if c['band'] and c['band'] not in Pj:
+        if c['band']:
             Pj[c['band']] = 1
-        elif c['invest'] or c['nuid'] in built:
+        if c['invest'] or c['nuid'] in built:
             Pj[('built', r['uid_hex'])] = 1
         by_kind.setdefault(c['kind'], []).append(c)
         if c['shiny']:
@@ -1752,7 +1766,8 @@ def job_items(rows, built, X, cache=None):
         if len(reg) > start + 1:
             T[('trade',) + k] = reg[start + 1]['iv']
     for lk, cs in shiny.items():                         # spare shinies past the best two of a look, for Remote Trade
-        spare = [c for c in sorted(cs, key=lambda c: (-c['iv'], -c['cp']))[2:] if c['spare']]
+        spare = [c for c in sorted(cs, key=lambda c: (-c['iv'], -c['cp'], c['spare']))[2:] if c['spare']]   # equal copies: the
+        #                                                                         ones that cannot be traded fill your best two
         if spare:
             T[('rt_shiny',) + lk] = len(spare)
     return J
@@ -1905,15 +1920,15 @@ def job_namer(P, C, X, stg=None):
             return '%s %s' % ('lucky' if t == 'lucky' else 'Mighty', kname(key[1:3]))
         if t == 'legend':
             return '%s%s%s %s' % ('shiny ' if key[3] else '', {1: 'shadow ', 2: 'purified '}.get(key[4], ''), kname(key[1:3]), v)
-        if t == 'xxl':
-            return 'XXL %s line %s' % (stg(key[1]), v)
+        if t == 'xxl':                                   # pvpoke names a line FAMILY_<FIRST STAGE>
+            return 'XXL %s line %s' % (stg(key[1][7:].lower() if str(key[1]).startswith('FAMILY_') else key[1]), v)
         if t == 'legacy':
             r = rep.get(('pid', key[1]))
             return 'legacy move ' + (species_label(r) if r else 'dex #%s' % key[1])
         if t == 'kind':
             return kname(key[1:3])
-        if t == 'look':
-            return lname(key[1:])
+        if t == 'look':                                  # the plain look is a look too: say so, or it reads as the species
+            return lname(key[1:]) if lname(key[1:]) != kname(key[1:3]) else 'plain ' + kname(key[1:3])
         if t == 'align':
             return '%s %s' % ({1: 'shadow', 2: 'purified'}.get(key[3], ''), kname(key[1:3]))
         if t == 'best':
@@ -1986,20 +2001,28 @@ def _job_sig_rows(path):
 
 
 def job_seed_built(snaps, upto, budget=0.4):
-    """The copies you evolved BEFORE this record began, from the walk snapshots on disk, newest pairs first, for at most
-    `budget` seconds a pass. -> (norm uids, the oldest stamp reached -- 'all' once the oldest snapshot is done)"""
+    """The copies you evolved BEFORE this record began, from the walk snapshots on disk, newest pairs first: at least one pair
+    a pass, then more while `budget` seconds last. An unreadable snapshot is skipped (the next pair spans it).
+    -> (norm uids, the stamp to resume from -- 'all' once the oldest snapshot is done)"""
     import time as _t
     st = [s for s in snaps if s <= upto]
-    found, t0 = set(), _t.time()
-    if len(st) < 2:
-        return found, 'all'
-    i, newer = len(st) - 1, _job_sig_rows(snaps[st[-1]])
-    while i > 0 and _t.time() - t0 < budget:
-        older = _job_sig_rows(snaps[st[i - 1]])
+    found, i, newer = set(), len(st) - 1, None
+    while i >= 0 and newer is None:                      # the newest readable snapshot at or before `upto`
+        try:
+            newer = _job_sig_rows(snaps[st[i]])
+        except Exception:
+            i -= 1
+    t0, j, done = _t.time(), i - 1, False
+    while j >= 0 and (not done or _t.time() - t0 < budget):
+        try:
+            older = _job_sig_rows(snaps[st[j]])
+        except Exception:
+            j -= 1
+            continue
         gone = {v for u, v in older.items() if u not in newer}
         found |= {norm(u) for u, v in newer.items() if u not in older and v in gone}
-        newer, i = older, i - 1
-    return found, ('all' if i == 0 else st[i])
+        newer, i, j, done = older, j, j - 1, True
+    return found, ('all' if j < 0 else st[i])
 
 
 def _selftest():
@@ -2150,7 +2173,8 @@ def _job_selftest():
         lists={lg: (frozenset({'raichu'}), frozenset({'raichu', 'pikachu'}), frozenset({'raichu', 'pikachu'})) for lg in ('gl', 'ul', 'ml')},
         moves={}, gender_look=set(), dex={}, family={'pikachu': 'pikachu', 'raichu': 'pikachu', 'eevee': 'eevee'}, elite={},
         normal=set(), roster=set(), mythical=frozenset(), pvid=lambda n, f: n.lower(), chain=_pv.chain_stage_ranks,
-        maxcp=lambda st: 3000, fits=lambda r, st, cap: (r['cp'] or 0) <= cap, margin=-101, cpm=cpm_table.CPM, points=lambda r: None)
+        maxcp=lambda st: 3000, fits=lambda r, st, cap: (r['cp'] or 0) <= cap, margin=-101, cpm=cpm_table.CPM, points=lambda r: None,
+        caps=(cpm_table.LL_CAP, cpm_table.GL_CAP, cpm_table.UL_CAP), l50=cpm_table.LEVEL_50_IDX)
 
     def mk(uid, sp, pid, ivs, **kw):
         r = dict(uid_hex=uid, species_name=sp, pokemon_id=pid, form=0, fresh_form=0, iv_atk=ivs[0], iv_def=ivs[1], iv_sta=ivs[2],
@@ -2203,6 +2227,7 @@ def _job_selftest():
     name = job_namer(P2, C2, X)
     assert name(('slot', 'gl', 'raichu'), None, 3) == 'Raichu GL #1' and name(('best', 25, 0), 30, 42) == 'best Pikachu 67% -> 93%'
     assert name(('built', 'b1')) == 'Eevee 14/14/14 CP 1,200 (powered up)', name(('built', 'b1'))
+    assert name(('look', 25, 0, False, 0, 0, 0, 0, 0, 0)) == 'plain Pikachu' and name(('xxl', 'FAMILY_PIKACHU'), None, 1080) == 'XXL Pikachu line 1,080 pts'
     assert name(('built', 'e1')) == 'Raichu 12/12/12 CP 900 (you evolved it)', name(('built', 'e1'))
     q = job_lines(r1, JOB_SEED_LIMITS, 'B', name, '10:00 -> 10:05')
     assert len(q) == 1 and q[0].startswith('**Did your collection get better?** Nothing real changed (walk 10:00 -> 10:05): Battlers +0,'), q
@@ -2212,7 +2237,19 @@ def _job_selftest():
     assert 'your evolutions +1 -- Raichu 12/12/12 CP 900 (you evolved it)' in ln[1] and 'the cull' in ln[1] and '-1 -- lost Eevee 14/14/14' in ln[1], ln
     assert ln[2] == ("- Inside the normal range: Battlers +0, Trophies +0, Pokedex +2 (your evolutions +3, the cull's pile -1), "
                      "Trade stock -2 (your evolutions -1, the cull's pile -1)."), ln   # the 14/14/14 Eevee was its best and its backup
-    # 6. the evolved-copies seed reads the walk snapshots in memory -- a WAL-mode file too
+    # 6. a band is filled whoever holds it, and each copy you built is its own item: equal plain copies move nothing, whatever the uids
+    cpv = lambda i: int((193 + 15) * (151 + 15) ** 0.5 * (155 + 15) ** 0.5 * cpm_table.CPM[i] ** 2 / 10)
+    li = next(i for i in range(len(cpm_table.CPM) - 1) if cpv(i) <= 500 < cpv(i + 1))
+    for lo, hi in (('d1', 'd2'), ('d9', 'd0')):
+        plain = mk(lo, 'Raichu', 26, (15, 15, 15), level=1 + li / 2, cp=cpv(li))
+        built_ = mk(hi, 'Raichu', 26, (15, 15, 15), level=1 + li / 2, cp=cpv(li), is_powered_up=1, creation_date='2026-11-15T09:00:00Z')
+        assert job_items([plain, built_], set(), X)['projects'] == {('band', 'raichu', 'LC'): 1, ('built', hi): 1}
+        assert run(bag(plain, built_), bag(built_))['jobs']['projects']['net'] == 0, 'a plain duplicate released: nothing lost'
+        assert run(bag(plain, built_), bag(plain))['jobs']['projects']['parts']['release'] == -1, 'your build released: -1'
+        assert run(bag(built_), bag(built_, plain))['jobs']['projects']['net'] == 0, 'a plain duplicate caught: nothing gained'
+    assert [_job_move_name(m) for m in ('COUNTER_FAST', 'HIDDEN_POWER_FAST', 'TECHNO_BLAST_WATER', 'TECHNO_BLAST_DOUSE', 'PSYSTRIKE')] == \
+        ['COUNTER', 'HIDDEN_POWER', 'TECHNO_BLAST', 'TECHNO_BLAST', 'PSYSTRIKE'], 'the walk and pvpoke spell a move the same way'
+    # 7. the evolved-copies seed reads the walk snapshots in memory -- a WAL-mode file too
     d = tempfile.mkdtemp(prefix='cull_jobs_')
     try:
         snaps = {}
@@ -2231,7 +2268,14 @@ def _job_selftest():
             with open(p, 'rb') as f, _gz.open(snaps[st], 'wb') as g:
                 g.write(f.read())
         assert job_seed_built(snaps, '2026-11-16_100500') == ({'cc'}, 'all')
-        assert job_seed_built(snaps, '2026-11-16_100500', budget=0) == (set(), '2026-11-16_100500'), 'no time: nothing read, resume here'
+        assert job_seed_built(snaps, '2026-11-16_100500', budget=0) == ({'cc'}, 'all'), 'no time left: still one pair a pass'
+        bad = os.path.join(d, 'bad.gz')
+        with open(bad, 'wb') as f:
+            f.write(b'not a snapshot')
+        three = {'2026-11-16_100000': snaps['2026-11-16_100000'], '2026-11-16_100200': bad, '2026-11-16_100500': snaps['2026-11-16_100500']}
+        assert job_seed_built(three, '2026-11-16_100500') == ({'cc'}, 'all'), 'an unreadable walk is skipped: the pair spans it'
+        assert job_seed_built(dict(three, **{'2026-11-16_100900': bad}), '2026-11-16_100900') == ({'cc'}, 'all')
+        assert job_seed_built({'2026-11-16_100000': bad}, '2026-11-16_100000') == (set(), 'all')
     finally:
         shutil.rmtree(d, ignore_errors=True)
 
