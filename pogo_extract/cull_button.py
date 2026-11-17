@@ -96,6 +96,7 @@ def parse_cull(text, rc):
     for pat, why in ((r'GAME MASTER REFRESH STOPPED', 'a new game master moved a keep verdict -- ask Claude'),
                      (r'AUDIT GATE FAILED', 'an audit failed (nothing was tagged) -- ask Claude'),
                      (r'\[frozen\]|session is gone', 'the game session froze or went away -- ask Claude'),
+                     (r'PoGo is not on screen', 'the game was not on screen (nothing ran) -- open it, then tap again'),
                      (r'STOPPED', 'the walk stopped itself -- ask Claude')):
         if re.search(pat, text):
             return 'STOPPED', why

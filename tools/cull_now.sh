@@ -140,8 +140,10 @@ pass() {
   ( cd pogo_extract && python full_audit.py > system/analysis/last_cull.log 2>&1 ); RC=$?; echo "rc=$RC"
   cd pogo_extract || return 1
   # ONE grep: a warning line ("   ! ...") that also holds WARN / VERIFY / FAILED was printed twice by two greps (2026-11-15)
+  # A passing audit's own verdict is dropped: "structural inv. PASS ... (0 BLOCK, 0 WARN)" matched WARN and was relayed as the
+  # whole pass's count on 2026-11-16. The pass's count is the "WARNING LINES THIS PASS" line.
   grep -E "bag [0-9]|AUDIT GATE|DONE --|PHASES|STOPPED|frozen|session is gone|WARN|FAILED|remote trade:|hundo buckets:|VERIFY|retire:|^\[ *[0-9.]+s\]   ! " system/analysis/last_cull.log \
-    | awk '{ if ($0 ~ /hundo buckets:/) print; else if ($0 ~ /remote trade:/) print substr($0, 1, 700); else print substr($0, 1, 260) }'
+    | awk '{ if ($0 ~ / PASS  VERDICT/) next; if ($0 ~ /hundo buckets:/) print; else if ($0 ~ /remote trade:/) print substr($0, 1, 700); else print substr($0, 1, 260) }'
   sed -n '/=== REPORT ===/,$p' system/analysis/last_cull.log | grep -v '^\['
   if [ "$RC" -eq 0 ]; then
     PYTHONIOENCODING=utf-8 python bag_art.py --text > system/analysis/cull_now.page 2>&1; echo "bag_art rc=$? ($(wc -c < system/analysis/cull_now.page) bytes)"

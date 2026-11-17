@@ -70,6 +70,7 @@ def _port_open(timeout=0.25):
         return False
 
 _DASH = {'proc': None}          # the dashboard THIS run started (None = it was already up, or never started)
+_WARN_LINE = re.compile(r'^\s+! |\[WARN\]|\*\*\* WARN|^ROOM SHORT')     # a say() line that is a warning (finish_step counts them)
 
 
 def finish_step(rc):
@@ -103,6 +104,10 @@ def finish_step(rc):
             say('dashboard stopped (started by this run)')
         except Exception as _e:
             say('dashboard: could not stop it (%s)' % _e)
+    # THE WHOLE PASS'S WARNINGS, COUNTED ONCE (2026-11-17). The one count the pass printed was the structural audit's own
+    # "(0 BLOCK, 0 WARN)", and that was relayed as the pass's for a whole evening while three warnings stood right beside it.
+    _nw = sum(1 for _t, _s in _SAID if _WARN_LINE.search(_s))
+    say('WARNING LINES THIS PASS: %d%s' % (_nw, ' -- each one is printed above; read and relay every one' if _nw else ''))
     _pl = phase_line(_SAID)
     if _pl:
         say(_pl)
@@ -1058,17 +1063,28 @@ def room_bar_step():
             pass
         return 2
     short = free < rb['free_min'] and floor >= rb['hi']
+    since = None
+    if short:        # ASKED ONCE PER SHORT SPELL (2026-11-17): the same bold "Your pick" stood in 34 reports in a row on 11-16
+        try:
+            _prev = json.load(open(ROOM_STATE, encoding='utf-8'))
+        except Exception:
+            _prev = {}
+        since = ((_prev.get('short_since') or _prev.get('bag_ts')) if _prev.get('short') else None) or ts
     try:
         with open(ROOM_STATE, 'w', encoding='utf-8') as fh:
-            json.dump(dict(rb, bag_ts=ts, **{'from': start, 'to': floor, 'free_before': trail[0][1], 'free': free, 'short': short}), fh)
+            json.dump(dict(rb, bag_ts=ts, **{'from': start, 'to': floor, 'free_before': trail[0][1], 'free': free, 'short': short,
+                                             'short_since': since}), fh)
     except OSError as e:
         say('room bar: its record for the report was not written (%s)' % e)
     if floor != start:
         say('room bar: %s -- free once the pile is released: %s (it keeps %d or more; range %d%%-%d%%)'
             % (' -> '.join('%d%%' % pc(x) for x, _ in trail), ' -> '.join(str(n) for _, n in trail), rb['free_min'], pc(rb['lo']), pc(rb['hi'])))
-    if short:
+    if short and since == ts:
         say("ROOM SHORT: the spare-copy bar is at its %d%% ceiling and only %d will be free once the pile is released (under %d) -- Benny's pick"
             % (pc(rb['hi']), free, rb['free_min']))
+    elif short:
+        say('room: still short since %s (the bar is at its %d%% ceiling, %d free once the pile is released, it keeps %d or more) -- '
+            'his open pick, asked on that pass' % (str(since)[5:16], pc(rb['hi']), free, rb['free_min']))
     return 0
 
 

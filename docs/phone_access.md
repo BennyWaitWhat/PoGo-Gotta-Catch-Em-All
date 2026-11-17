@@ -32,7 +32,10 @@ Implementations: `pogo_extract/pogo_il2cpp.phone_busy_acquire`, `AutoCatcher/pog
 - Tell Benny what a phone step will do before it starts (which step attaches, roughly how long, PoGo must stay open), unless he just
   asked for exactly that ("cull" is the go for one cull).
 - One pass per go. Never re-run a failed pass while the game is restarting; never attach-probe in a retry loop.
-- Attach only when PoGo is attach-safe (`pogo_il2cpp.wait_ready_to_attach()`: libil2cpp mapped, process older than 45 s).
+- Attach only when PoGo is attach-safe (`pogo_il2cpp.wait_ready_to_attach()`: libil2cpp mapped, process older than 45 s)
+  and ON SCREEN with the screen on: `get_session()` waits 20 s for that, then stops with `STOPPED: PoGo is not on screen`
+  and attaches nothing (2026-11-16: an attach to the game behind another app hung, and the game crashed 37 s later).
+  It never brings the game to the front itself.
 - Never restart, force-stop or relaunch PoGo; never stop GPS Joystick or Pokemod while PoGo is open; never change system settings.
 - Contract the cull relies on (tell Pokemon Inventory before changing it): the `^HH:MM:SS CATCH ` lines of
   `~/pogo/system/analysis/pokemod/catch_loop.log` and `caught=` in `/data/local/tmp/pogo_state.txt` (read by `walk_tripwires.py`).
