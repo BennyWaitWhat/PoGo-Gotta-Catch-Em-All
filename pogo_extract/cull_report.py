@@ -1573,9 +1573,10 @@ JOB_NAME = {'battlers': 'Battlers', 'trophies': 'Trophies', 'pokedex': 'Pokedex'
 JOB_STEPS = (('reread', 're-read data'), ('power-up', 'your power-ups'), ('evolve', 'your evolutions'),
              ('catch', 'your catches'), ('release', 'your releases'), ('cull', "the cull's pile"), ('rule', 'the rule change'))
 JOB_YOURS, JOB_ROUTINE = ('power-up', 'evolve', 'release'), ('reread', 'catch', 'cull')
-# the routine chart's memory before an account has JOB_SERIES_MIN passes of its own: the 120 recorded passes 10-29 -> 11-16
-# (the backtest) -- the copies that arrived or changed in them, each job's routine (gains, losses) summed over them, and each
-# side's sigma_z. An account's own passes are added to these, and replace them at JOB_SERIES_MIN (the last JOB_SERIES_MAX count).
+# the routine chart's memory before an account has JOB_SERIES_MIN passes of its own: the backtest's 119 recorded passes with a
+# size, 10-29 -> 11-16 -- the copies that arrived or changed in them, each job's routine (gains, losses) summed over them, and
+# each side's sigma_z. An account's own passes are added to these, and replace them at JOB_SERIES_MIN (the last JOB_SERIES_MAX
+# count).
 JOB_SEED_N = 4402
 JOB_SEED_X = {'battlers': (122, 1), 'trophies': (151, 0), 'pokedex': (137, 3), 'trade': (571, 135), 'projects': (10, 63)}
 JOB_SEED_SZ = {'battlers': (1.0, 1.0), 'trophies': (1.0, 1.0), 'pokedex': (1.0, 1.0), 'trade': (1.3, 1.0), 'projects': (1.0, 1.0)}
@@ -1875,7 +1876,7 @@ def job_pass(P, C, prev_pile, pile, origin, built, X, rule_moved=False):
 def job_chart(series):
     """The routine chart (Laney u'). series: this account's recorded passes, oldest first -- {'n': the copies that arrived or
     changed, 'g' / 'l': each job's routine gains / losses, JOBS order}; a record of another shape is not counted. Until
-    JOB_SERIES_MIN of them are on record the 120 recorded passes of the backtest are counted with them.
+    JOB_SERIES_MIN of them are on record the backtest's recorded passes (JOB_SEED_*) are counted with them.
     -> {job: ((rate per copy, sigma_z) of the routine gains, the same of the routine losses)}; sigma_z -- how much wider than a
     plain count the job runs, from the median moving range of the z-scores -- is never under 1."""
     ok = lambda s: (isinstance(s, dict) and isinstance(s.get('n'), int) and s['n'] > 0
@@ -2019,7 +2020,8 @@ def job_lines(res, chart, name, walks, show=3):
                 % (head, walks, ', '.join(quiet))]
     verdict = ('Mixed: better %s; worse %s' % (', '.join(better), ', '.join(worse)) if better and worse
                else 'Yes: ' + ', '.join(better) if better else 'No: ' + ', '.join(worse) if worse else 'No net change')
-    return ['%s %s (walk %s).' % (head, verdict, walks)] + real + (['- No real change: %s.' % ', '.join(quiet)] if quiet else [])
+    return (['%s %s (walk %s).' % (head, verdict, walks)] + real
+            + (['- Routine, inside its normal range: %s.' % ', '.join(quiet)] if quiet else []))
 
 
 def _job_sig_rows(path):
@@ -2292,7 +2294,7 @@ def _job_selftest():
     assert ln[3] == ("- **Projects +1: real** (your doing): your power-ups +1 -- Eevee 5/5/5 CP 700 (powered up); your evolutions +1 "
                      "-- Raichu 12/12/12 CP 900 (you evolved it); the cull's pile -1 -- lost Eevee 14/14/14 CP 1,200 (powered up)."), ln[3]
     assert ln[2].startswith('- **Trade stock -2: real** (your doing): your evolutions -1 -- lost ') and len(ln) == 5, ln   # its losses first
-    assert ln[4] == '- No real change: Battlers +0, Trophies +0.', ln[4]
+    assert ln[4] == '- Routine, inside its normal range: Battlers +0, Trophies +0.', ln[4]
     assert '(your doing; unusual: 1 lost, normal is none for 2 new or changed Pokemon)' in job_lines(r2, tight, name, '10:00 -> 10:05')[3]
     l3 = job_lines(r3, wide, name, '10:00 -> 10:05')
     assert l3[0] == head + 'No: Pokedex -3 (walk 10:00 -> 10:05).' and l3[1].startswith('- **Pokedex -3: real** (a rule change): the rule change -3 -- lost '), l3
