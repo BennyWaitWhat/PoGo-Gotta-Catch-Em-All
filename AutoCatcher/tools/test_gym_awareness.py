@@ -723,6 +723,113 @@ def misc_checks():
         src = f.read()
     check("CAP_LEFT.add(fid)" in src and "for f in cap_back(CAP_LEFT, dep[\"n\"], a.max_deployed, live):" in src,
           "the cap branch must remember the gym it left empty, and the main loop must bring it back when a slot is free")
+
+    # at the cap an EMPTY gym is no target (03:16: an 801 m jump onto a gym emptied 8 minutes before, to find the cap again)
+    was_m = gym_run.ch.meters
+    gym_run.ch.meters = lambda a, b: round(abs(a[0] - b[0]) * 111320 + abs(a[1] - b[1]) * 92000)
+    try:
+        goal = (34.0708, -84.2750)
+        lv = {"EMPTY1": [0, 100, 34.0709, -84.2751, 0, 6], "BLUE1": [1, 100, 34.0758, -84.2723, 0, 3], "RED1": [2, 100, 34.0710, -84.2740, 0, 1]}
+        areas = [(goal[0], goal[1], 1100.0)]
+        pa = gym_run.pick_any
+        check(pa([1, 3], set(), {}, goal, goal, lv, 0, 1100, None, 0.0, areas=areas)[0][0] == "EMPTY1",
+              "with a free slot the nearest empty gym is the target (straight to Deploy)")
+        check(pa([1, 3], set(), {}, goal, goal, lv, 0, 1100, None, 0.0, areas=areas, empty=False)[0][0] == "BLUE1",
+              "at the gym cap an empty gym is NO target: the enemy gym behind it is")
+        check(pa([1, 3], set(), {}, goal, goal, lv, 0, 1100, None, 0.0, empty=False)[0][0] == "BLUE1", "...without --hop areas too")
+        del lv["BLUE1"]
+        check(pa([1, 3], set(), {}, goal, goal, lv, 0, 1100, None, 0.0, areas=areas, empty=False) == (None, False),
+              "at the cap with only empty and red gyms left there is nothing to do")
+        check('empty=dep["n"] is None or dep["n"] < a.max_deployed' in src, "the main loop must tell pick_any when the cap is reached")
+
+        # idle at the edge of a wide area: watch from its middle -- but never from a spot HE moved to himself
+        mj = gym_run.mid_jump
+        edge, his = (34.0644, -84.2805), (34.0685, -84.2838)        # the south-west gym (876 m out); where he jumped by hand
+        check(mj(edge, goal, 1100, (edge, None)) is True, "the runner's own jump brought us to the edge: back to the middle to see every gym")
+        check(mj(edge, goal, 1100, (None, (34.0645, -84.2806))) is True, "...or the last gym it worked on stands right here")
+        check(mj(his, goal, 1100, (edge, edge)) is False, "a spot HE moved to (far from our last jump and last gym) is his: we stay with him")
+        check(mj(his, goal, 1100, (None, None)) is False, "a fresh run that has not moved yet stays where he is")
+        check(mj((34.0716, -84.2761), goal, 1100, ((34.0716, -84.2761), None)) is False, "137 m from the middle is the middle: no jump for a short step")
+        check(mj((34.0692, -84.2733), goal, 520, ((34.0692, -84.2733), None)) is True and mj((34.0700, -84.2745), goal, 520, ((34.0700, -84.2745), None)) is False,
+              "a small area: only past 150 m")
+        check("if _ours and not cool_wait() and not g.has(\"GymState\") and not g.in_battle():" in src,
+              "the jump to the middle never happens inside a cooldown wait, over a gym screen or in a battle")
+
+        # HE took the phone out of the area: the area follows him, nothing walks or jumps him back (03:10 and 03:21: walked
+        # back toward the goal at 30 km/h both times)
+        fh = gym_run.follow_him
+        ocee = (34.045485, -84.238181)                              # where he jumped to at 03:21 (4.4 km from the Avalon)
+        check(fh(ocee, goal, 1100) is True, "4.4 km outside the area = his own move: the area follows him")
+        check(fh(his, goal, 520) is True, "840 m out of a 520 m area (03:10) = his own move too")
+        check(fh(edge, goal, 1100) is False, "a gym at the edge of the area is still the area: no follow")
+        check(fh((34.0812, -84.2750), goal, 1100) is False, "50 m past the edge (circling a gym on the rim) is NOT a move of his")
+        check("if a.monitor and len(HOP[\"list\"]) == 1 and not g.in_battle() and follow_him(here, goal, a.area):" in src
+              and "HOP[\"list\"][0] = (here[0], here[1], a.area)" in src,
+              "the main loop must move the watched area onto him BEFORE it picks a target (never a jump back to the old place)")
+        check("if ch.meters(here, goal) > a.area and not a.monitor:" in src,
+              "--monitor never WALKS to its goal (the 'walking toward the goal' branch is for the walking mode only)")
+        check("if idle_anchor[0] is not None and ch.meters(here, idle_anchor[0]) > 40:" in src,
+              "idle: a spot he moved to becomes the spot we stand at (the old orbit never walks him back)")
+    finally:
+        gym_run.ch.meters = was_m
+
+    # HIS party screen: he pressed Battle himself (no press of ours right before it) -- no GO, no team change, no Back
+    hp = gym_run.his_party
+    check(hp(1000.0, 999.4) is False, "a party screen 0.6 s after OUR Battle press is ours: GO at once")
+    check(hp(1000.0, 0.0) is True and hp(1000.0, 950.0) is True, "no Battle press of ours (or one 50 s old): he pressed -- hands off")
+    g = gym_run.Game()
+    g.on_msg({"type": "send", "payload": {"k": "gui", "open": "GymBattlePrepUIController"}}, None)
+    check(g.prep and g.prep_his, "Game: a party screen with no Battle press of ours before it is marked HIS")
+    g.on_msg({"type": "send", "payload": {"k": "gui", "close": "GymBattlePrepUIController"}}, None)
+    check(not g.prep and not g.prep_his, "...and the mark goes when the screen closes")
+    g.on_msg({"type": "send", "payload": {"k": "pressed", "what": "Battle"}}, None)
+    g.on_msg({"type": "send", "payload": {"k": "gui", "open": "GymBattlePrepUIController"}}, None)
+    check(g.prep and not g.prep_his, "Game: the party screen right after OUR Battle press is ours")
+    check("if g.prep and g.prep_his:" in src and src.index("if g.prep and g.prep_his:") < src.index('sc.exports_sync.act("go")'),
+          "drill: HIS party screen is left alone BEFORE the orphan-GO / Android-back path can touch it")
+    with open(gym_run.gt.__file__, encoding="utf-8") as f:
+        tsrc = f.read()
+    check("if (ourParty(now)) { EXPECT_PREP = now;" in tsrc and tsrc.count("OUR_BATTLE_AT = now") == 2,
+          "tapper: the orphan GO needs a Battle press of OURS behind the party screen (both of our presses stamp it)")
+
+    # "The Gym battle has ended! (30)" is the same kick as (29): the same hold, on the phone and in the runner
+    br = gym_run.battle_refused
+    check(br("The Gym battle has already been completed! (29)") and br("The Gym battle has ended! (30)"), "(29) and (30) are refused battles")
+    check(not br("Error (3)") and not br("290 Stardust") and not br(None), "other texts are not")
+    check("/\\((29|30)\\)/.test(txt)" in tsrc, "tapper: the 5 s re-open / Battle hold starts on (30) too")
+    g = gym_run.Game()
+    g.on_msg({"type": "send", "payload": {"k": "says", "gui": "GlobalErrorController", "text": "The Gym battle has ended! (30)"}}, None)
+    check(getattr(g, "err29_at", 0.0) > 0, "Game: error (30) is handed to the error-29 handling (hold before the next Battle)")
+
+    # a stop outlives a lost game connection (03:38: the re-attach threw the restart script's stop away; 3 more minutes of walking)
+    was_stop, was_att = gym_run.STOP_ASKED[0], gym_run.ATTACHED[0]
+    try:
+        with tempfile.TemporaryDirectory() as td:
+            gym_run.STOP_ASKED[0] = False
+            with open(os.path.join(td, "1_lap.json"), "w", encoding="utf-8") as f:
+                f.write('{"lap": true}')
+            check(gym_run.stop_waiting(td) is False and os.listdir(td) == ["1_lap.json"], "no stop in the inbox: nothing is waiting, other commands stay")
+            with open(os.path.join(td, "2_restart_stop.json"), "w", encoding="utf-8") as f:
+                f.write('{"stop": true}')
+            with open(os.path.join(td, ".3_half.json"), "w", encoding="utf-8") as f:
+                f.write('{"stop": true}')
+            check(gym_run.stop_waiting(td) is True, "a stop that came into the inbox while the game was away is found")
+            check(sorted(os.listdir(td)) == [".3_half.json", "1_lap.json"], "...and taken out of the inbox (a half-written dot-file is not read)")
+            check(gym_run.stop_waiting(td) is False, "...once")
+            gym_run.STOP_ASKED[0] = True
+            check(gym_run.stop_waiting(td) is True and gym_run.stop_waiting(None) is True, "a stop read BEFORE the connection dropped still stands")
+    finally:
+        gym_run.STOP_ASKED[0], gym_run.ATTACHED[0] = was_stop, was_att
+    check(src.count("if ATTACHED[0] and stop_waiting(_inbox):") == 2 and src.index("if ATTACHED[0] and stop_waiting(_inbox):") < src.index("sess, pid = pg.get_session()"),
+          "run(): on a re-attach a waiting stop ends the runner BEFORE it attaches again (checked before and after the wait for the game)")
+    check("ATTACHED[0] += 1" in src and src.count("STOP_ASKED[0] = STOP_ASKED[0] or") == 2, "every stop that is read is remembered; attaches are counted")
+
+    # the gym report at the 20/20 cap: an empty gym is the plan there, not a miss
+    r0 = {"fid": "X" * 32, "t0": 100.0, "first": 104.0, "battles": 1, "won": 1, "empty": 0, "giveups": 0, "stays": 0, "e29": 0,
+          "victory": 112.0, "placed": None}
+    ln = gym_run.gym_report(dict(r0), False, True, 120.0, None, capped=20)
+    check("won, left empty: all 20 of your gym slots are in use" in ln and "look here" not in ln, f"cap report line: {ln}")
+    check("won, but NOT placed <-- look here" in gym_run.gym_report(dict(r0), False, True, 120.0, None), "below the cap a win without a placement is still flagged")
     if len(FAILS) == n0:
         print("ok: the banner does not block a gym open; out of Gyarados = the highest-CP shinies first; a gym left empty at "
               "the cap is filled the moment a slot is free")

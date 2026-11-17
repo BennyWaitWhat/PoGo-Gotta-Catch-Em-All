@@ -153,7 +153,24 @@ def dd_guard(now=None):
     return why
 
 
-def gym_report(r, placed_ok, obo, now, path=None):
+PREP_OURS_S = 12.0                                       # a party screen is OURS when a Battle press of ours came this close before it
+
+
+def his_party(now, our_battle_at, window=PREP_OURS_S):
+    """A party screen just opened: is it HIS? Ours follows a Battle press of ours by under a second (the phone presses GO the
+    moment it is open). With no press of ours in the last `window` seconds HE pressed Battle and is picking his own team:
+    hands off -- 11-17 03:10:19 the runner pressed GO on it with its own six swapped in, the game answered "The Gym battle
+    has ended! (30)" and was gone 10 s later."""
+    return now - our_battle_at > window
+
+
+def battle_refused(text):
+    """The game's error box for a battle the server would not run: "...already been completed! (29)" or "...has ended! (30)".
+    Both throw us out of the battle; a Battle press right behind either one was followed by the game dying (11-16, 11-17)."""
+    return bool(re.search(r"\((29|30)\)", str(text)))
+
+
+def gym_report(r, placed_ok, obo, now, path=None, capped=None):
     """One line per finished gym from its stopwatch r (Game.rep_new): arrival -> first battle; battles, rounds won (each
     takes a third of a defender's motivation) and the seconds per round; battles that won nothing; refused battles
     (error 29); win -> your Pokemon in. The same numbers go to gym_reports.jsonl, one row per gym."""
@@ -176,8 +193,8 @@ def gym_report(r, placed_ok, obo, now, path=None):
         bits.append(f"{row['refused']} refused (error 29)" + (" <-- look here" if row["refused"] >= 2 else ""))
     if row["win_to_placed_s"] is not None:
         bits.append(f"win -> your Pokemon in {row['win_to_placed_s']:.1f} s" + (" <-- slow" if row["win_to_placed_s"] > 3 else ""))
-    elif r["victory"] and not placed_ok:
-        bits.append("won, but NOT placed <-- look here")
+    elif r["victory"] and not placed_ok:                     # (at the gym cap an empty gym is the plan, not a miss)
+        bits.append(f"won, left empty: all {capped} of your gym slots are in use" if capped else "won, but NOT placed <-- look here")
     bits.append(f"{row['total_s']:.0f} s in all" + ("" if placed_ok else ", nothing placed"))
     if path:
         try:
@@ -210,6 +227,7 @@ class Game:
         self.buddy_f = None                                  # the buddy session's replies (buddy_out.jsonl next to the command file)
         self.progress_at, self.opened_at, self.user_gym = time.time(), 0.0, False
         self.his_gym = None                                  # (fid, when, why): the gym YOUR own deploy was refused at -- ours to get
+        self.battle_at, self.prep_his = 0.0, False           # OUR last Battle press; the party screen that is up is HIS (he pressed)
 
     def on_msg(self, m, _d):
         if m.get("type") != "send":
@@ -218,6 +236,8 @@ class Game:
         p, k = m["payload"], m["payload"]["k"]
         if k in ("start", "end", "pressed", "says", "outcome", "deployresult"):
             self.rep_ev(k, p)                                # the per-gym stopwatch
+        if k == "pressed" and str(p.get("what")) == "Battle":
+            self.battle_at = time.time()                     # a Battle press of OURS (the phone's own, or the runner's backup)
         if k == "deployresult":
             DD["armed_at"] = 0.0                             # the server's answer was read: an armed direct deploy is settled
         if k == "state":
@@ -237,7 +257,14 @@ class Game:
             self.top = p["gui"]
             say(f"    top screen: {self.top or '(none)'}")
         elif k == "gui":
+            _was = self.prep
             self.prep = p.get("open") == "GymBattlePrepUIController"
+            if self.prep and not _was:                       # a party screen no Battle press of ours opened is HIS: he pressed
+                self.prep_his = his_party(time.time(), self.battle_at)   # Battle himself and is picking his own team
+                if self.prep_his:
+                    say("    party screen: YOU pressed Battle -- this battle is yours (no GO, no team change, no Back from the runner)")
+            elif not self.prep:
+                self.prep_his = False
         elif k == "gymteam":
             team, fid = (0 if p["neutral"] else p["team"]), p.get("fid")
             if (team, fid) != (self.gym_team, self.open_fid):
@@ -419,9 +446,10 @@ class Game:
                 f"(a restart picks the live graph)")
         elif k == "says":
             say(f"    GAME SAYS ({p['gui']}): {p['text']}")
-            if p.get("gui") == "GlobalErrorController" and "(29)" in str(p.get("text")):
+            if p.get("gui") == "GlobalErrorController" and battle_refused(p.get("text")):
                 self.err29_at = time.time()                  # "The Gym battle has already been completed! (29)": the game died 3-5 s
-                                                             # after a re-open + Battle right behind it, twice on 11-16 (22:03, 22:37)
+                                                             # after a re-open + Battle right behind it, twice on 11-16 (22:03, 22:37);
+                                                             # "The Gym battle has ended! (30)" + a Battle 1 s later: gone 8 s on (11-17 03:10)
         elif k == "mdopen":                                  # a ModalDialog is fully Open (the game's own GUI state)
             _ran = getattr(self, "obo_ran", 0.0)
             if time.time() - _ran < 8 and getattr(self, "obo_ok", 0.0) < _ran:   # OUR one-by-one run-away's give-up prompt:
@@ -484,7 +512,7 @@ class Game:
             cur[1] += 1
         elif k == "pressed" and what.startswith("stay ("):
             r["stays"] += 1
-        elif k == "says" and p.get("gui") == "GlobalErrorController" and "(29)" in str(p.get("text")):
+        elif k == "says" and p.get("gui") == "GlobalErrorController" and battle_refused(p.get("text")):
             r["e29"] += 1
         elif k == "outcome" and p.get("v") == "victory":
             r["victory"] = now
@@ -504,13 +532,13 @@ class Game:
         r["empty"] += 0 if won else 1
         r["cur"] = [0, 0, False]
 
-    def rep_line(self, placed_ok, obo, path=None):
+    def rep_line(self, placed_ok, obo, path=None, capped=None):
         r = getattr(self, "rep", None)
         if not r:
             return None
         self.rep_close()                                     # (a battle whose 'battle over' never came still counts)
         self.rep = None
-        return gym_report(r, placed_ok, obo, time.time(), path)
+        return gym_report(r, placed_ok, obo, time.time(), path, capped)
 
     def has(self, name):
         return name in self.chain.split(" > ")
@@ -603,6 +631,17 @@ def rested(done, taken, scanned, enemy, now, rest=600):
     return skip, back
 
 
+def mid_jump(here, mid, area_r, ours, near=120.0):
+    """--monitor, nothing to beat or fill in view: jump to the middle of the area? The game's map holds about 1 km around
+    the player, so from the edge of a wide area its far side is not on the map (Avalon 11-17 03:18: idle at the south-west
+    gym with three enemy gyms standing in the north-east). Only when the RUNNER brought us here -- we stand within `near`
+    m of its last jump's landing or of the last gym it worked on (ours). A spot HE moved to himself is where he plays:
+    never taken from under him (03:10: it walked him 240 m back). Never for a short step: under a quarter of the radius."""
+    if ch.meters(here, mid) <= max(150.0, 0.25 * area_r):
+        return False
+    return any(p and ch.meters(here, (p[0], p[1])) <= near for p in ours)
+
+
 def cap_back(left, n, cap, live):
     """The gyms left EMPTY at the gym cap that can be filled NOW (Avalon 11-17: 20/20 with one enemy gym still to turn red).
     A gym somebody took meanwhile is forgotten (an enemy one is a target by itself, a red one is joined like any other);
@@ -639,14 +678,25 @@ def pick(enemy, skip, here, goal, live, detour, area_r, ok=None):
     return best
 
 
-def pick_any(enemy, skip, done, here, goal, live, detour, area_r, ok, now, areas=None):
+def follow_him(here, goal, area_r, slack=150.0):
+    """--monitor, one area: did HE take the phone out of the area we watch? The runner itself never leaves it (its targets are
+    inside, it teleports onto them and circles at 25 m), so a position well past the edge is his own move -- and where he
+    went is where he plays. The area FOLLOWS him; nothing walks or jumps him back. (Benny 11-17 03:10 and 03:21: he jumped
+    840 m, then 4.4 km to the next gyms himself, and the runner walked him back toward its goal at 30 km/h both times.)"""
+    return ch.meters(here, goal) > area_r + slack
+
+
+def pick_any(enemy, skip, done, here, goal, live, detour, area_r, ok, now, areas=None, empty=True):
     """pick() over the gyms that are not resting; when that finds nothing, an ENEMY gym that is only resting (Benny 2026-11-15:
     "drill and finish" -- never idle while an enemy gym stands): never an empty one, never one under a raid, never one in a refused
-    placement's one-hour rest. Returns (target, it_was_resting). areas (--monitor): every watched area, not just the goal's."""
+    placement's one-hour rest. Returns (target, it_was_resting). areas (--monitor): every watched area, not just the goal's.
+    empty=False (every gym slot of yours is in use): an EMPTY gym is no target -- nothing can be placed there (Avalon 11-17
+    03:16: an 801 m jump onto a gym emptied 8 minutes before, to find the cap again; Benny: "defeat all the other non red")."""
+    teams = enemy + ([0] if empty else [])
     if areas:
-        t = pick_areas(enemy + [0], skip, here, live, areas, ok)
+        t = pick_areas(teams, skip, here, live, areas, ok)
     else:
-        t = pick(enemy + [0], skip, here, goal, live, detour, area_r, ok)
+        t = pick(teams, skip, here, goal, live, detour, area_r, ok)
     if t or not skip:
         return t, False
     hard = {f for f in skip if done.get(f, 0) > now}
@@ -1653,7 +1703,13 @@ def drill(fid, enemy, g, sc, a, tick, until, refresh=None, join_near=None, cmd_w
             if (g.prep or leaf == "GymApproachState") and not g.in_battle() and hold_on():
                 time.sleep(0.3)                              # a cooldown / error-29 hold is on: no GO, no Battle from here either
                 continue                                     # (00:33:17: this backup pressed Battle 4 s into the hold; no Back --
-            if g.prep:                                       # the screen may be his). party screen: gym_tapper presses GO itself, once
+            if g.prep and g.prep_his:                        # the screen may be his). HIS party screen: he pressed Battle himself --
+                if time.time() - his_said > 30:              # no GO, no team change, no Back; the drill goes on after his battle
+                    his_said = time.time()
+                    say(f"  you pressed Battle at {fid[:8]} yourself -- your party screen stays yours; the drill goes on after your battle")
+                g.wait_for(lambda: g.in_battle() or not g.prep, 2, tick)
+                continue
+            if g.prep:                                       # party screen: gym_tapper presses GO itself, once
                 if not g.wait_for(lambda: g.in_battle() or not g.prep, 1.5, tick):   # not ours (left over from a restart)? GO on
                     sc.exports_sync.act("go")                # it now, not 12 s later
                 if g.in_battle() or (g.wait_for(lambda: g.in_battle() or not g.prep, 12, tick) and g.in_battle()):
@@ -1814,6 +1870,32 @@ def main():
             time.sleep(10)
 
 
+ATTACHED = [0]                                           # attaches of THIS process: on a re-attach a stop in the inbox is OURS
+STOP_ASKED = [False]                                     # a {"stop": true} was read: it outlives a lost game connection
+
+
+def stop_waiting(inbox):
+    """A stop for THIS runner that must outlive a lost game connection: one read before the connection dropped, or one that
+    came into the inbox while the game was away. (11-17 03:38: gym_restart.sh's stop sat in the inbox during the re-attach
+    wait; the fresh session threw it away as 'a stop meant for the last runner', the script gave up after 150 s, and the old
+    code walked Benny for three more minutes.) Removes the stop files it finds."""
+    found = STOP_ASKED[0]
+    if inbox and os.path.isdir(inbox):
+        for n in sorted(os.listdir(inbox)):
+            p = os.path.join(inbox, n)
+            try:
+                if not n.endswith(".json") or n.startswith("."):
+                    continue
+                with open(p, encoding="utf-8") as f:
+                    c = json.load(f)
+                if isinstance(c, dict) and c.get("stop"):
+                    os.remove(p)
+                    found = True
+            except Exception:
+                pass
+    return found
+
+
 def dd_said(why):
     if why:
         say(f"  !! direct deploy OFF from here on: {why}. The gym screen places again (as in every run before 11-17). "
@@ -1822,13 +1904,21 @@ def dd_said(why):
 
 def run(a, g, mv, done, t_start, enemy, goal):
     """One attached session: attach, install, then walk/battle until the time is up or a STOP."""
+    _inbox = os.path.join(os.path.dirname(a.cmd), "runner_inbox") if a.cmd else None
+    if ATTACHED[0] and stop_waiting(_inbox):                 # a RE-attach with a stop behind it: do not wait for the game at all
+        say("  COMMAND stop: it was asked before / while the game connection was down -- not attaching again; stopped")
+        return
     pg.wait_ready_to_attach(timeout_s=300, min_age_s=45)
+    if ATTACHED[0] and stop_waiting(_inbox):                 # ...or it came in during that wait: no attach just to stop
+        say("  COMMAND stop: it came in while the runner waited for the game -- not attaching again; stopped")
+        return
     pg.busy_acquire = lambda *_a, **_k: None                 # the marker is advisory: get_session must never wait / refuse (phone_mark)
     sess, pid = pg.get_session()
     sc = sess.create_script(gt.JS)
     sc.on("message", g.on_msg)
     sess.on("detached", lambda *args: (setattr(g, "detached", True), DD.__setitem__("gone_at", time.time())))
     sc.load()
+    ATTACHED[0] += 1
     try:
         return _run(a, g, mv, done, t_start, enemy, goal, sess, pid, sc)
     finally:                                                 # never leave a second tapper hooked on a re-attach
@@ -2282,6 +2372,7 @@ def _run(a, g, mv, done, t_start, enemy, goal, sess, pid, sc):
     last_tick = [0.0]
     scan_at, scan_said, scan_logged, scan_seen = [0.0], {}, {}, {}
     rscan_at, rscan_warned, idle_anchor = [0.0], [False], [None]   # --monitor: last remote sweep / told it is missing / where we stand
+    last_gym = [None]                                        # where the last gym we worked on stands (mid_jump: WE came here)
     user_anchor = [None]                                     # where we stand while YOUR gym is open
     rscan_sent = {}                                          # --monitor: fid -> when its last remote reading was asked
 
@@ -2336,6 +2427,7 @@ def _run(a, g, mv, done, t_start, enemy, goal, sess, pid, sc):
             cmd_st["mtime"] = os.path.getmtime(a.cmd)
             try:
                 cmdq.append(json.load(open(a.cmd, encoding="utf-8")) or {})
+                STOP_ASKED[0] = STOP_ASKED[0] or bool(cmdq[-1].get("stop"))
             except Exception as _e:
                 say(f"  !! command file unreadable ({_e}) -- that command is LOST (writers: one file per command in {inbox})")
         try:
@@ -2355,6 +2447,7 @@ def _run(a, g, mv, done, t_start, enemy, goal, sess, pid, sc):
                 pass
             if _c:
                 cmdq.append(_c)
+                STOP_ASKED[0] = STOP_ASKED[0] or bool(isinstance(_c, dict) and _c.get("stop"))   # (kept across a lost connection)
 
     def quick_cmds():                                        # buddy / topup commands: handled at once, even mid-drill
         pull()
@@ -2460,6 +2553,18 @@ def _run(a, g, mv, done, t_start, enemy, goal, sess, pid, sc):
                 say(f"  could not leave the gym screen ({g.chain} / top {g.top}) -- retrying")
                 time.sleep(2)
                 continue
+        if a.monitor and len(HOP["list"]) == 1 and not g.in_battle() and follow_him(here, goal, a.area):
+            say(f">> FOLLOW: you took the phone {ch.meters(here, goal):.0f} m from the middle of the area I watched (its edge: "
+                f"{a.area:.0f} m) -- nothing moves you back: the {a.area:.0f} m around YOU is the area now")
+            goal[:] = [here[0], here[1]]
+            HOP["list"][0] = (here[0], here[1], a.area)
+            HOP["i"], HOP["ready"], HOP["idle"] = 0, True, None
+            if a.feed_zone:
+                sc.exports_sync.feedzone(here[0], here[1], a.area)
+            if target and ch.meters(here, target[1]) > 300:   # (a gym of the place he left: never a jump back onto it)
+                target, gpos_now[0] = None, None
+            said, idle_anchor[0], last_gym[0], mv.key, mv.fast = None, None, None, None, False
+            STATS["area_t0"] = time.time()
         live = sc.exports_sync.teams()
         if time.time() - scan_at[0] > 15:                    # verified park state: the map record of a far gym can be stale
             scan_at[0] = time.time()
@@ -2741,7 +2846,8 @@ def _run(a, g, mv, done, t_start, enemy, goal, sess, pid, sc):
         tv = live.get(target[0]) if target else None
         if target is None or target[0] in skip or not tv or tv[4] or not (tv[0] in enemy + [0] or slot(target[0], tv)):
             target, _was_resting = pick_any(enemy, skip, done, here, goal, live, a.detour, a.area, slot, time.time(),
-                                            areas=HOP["list"] if a.monitor else None)   # an empty gym: straight to Deploy
+                                            areas=HOP["list"] if a.monitor else None,   # an empty gym: straight to Deploy
+                                            empty=dep["n"] is None or dep["n"] < a.max_deployed)   # (never at the gym cap)
             if target and _was_resting:                      # nothing else to beat: its rest ends now
                 done.pop(target[0], None)
                 TAKEN.pop(target[0], None)
@@ -2762,7 +2868,7 @@ def _run(a, g, mv, done, t_start, enemy, goal, sess, pid, sc):
                         said = "landing"
                     time.sleep(1)
                     continue
-            if ch.meters(here, goal) > a.area:
+            if ch.meters(here, goal) > a.area and not a.monitor:   # (--monitor never WALKS to its goal: it stands and watches)
                 mv.travel(goal, here)
                 msg = "no enemy gym on the way yet -- walking toward the goal"
             else:
@@ -2834,12 +2940,27 @@ def _run(a, g, mv, done, t_start, enemy, goal, sess, pid, sc):
                     continue
                 _idle_done = False
                 if a.monitor and not soon and not guard:     # nothing to beat or fill: stand still, watch (never loop the gyms)
+                    if idle_anchor[0] is not None and ch.meters(here, idle_anchor[0]) > 40:   # our idle circle is 8 m wide:
+                        idle_anchor[0], mv.key = (here[0], here[1]), None                     # HE moved -- stand where he is now
+                        say("  you moved yourself -- standing still HERE now (nothing walks you back to the old spot)")
                     if idle_anchor[0] is None:
+                        _mid = (goal[0], goal[1])
+                        _ours = mid_jump(here, _mid, a.area, (JUMPED.get("to"), last_gym[0]))   # (never from a spot HE moved to)
+                        if _ours and not cool_wait() and not g.has("GymState") and not g.in_battle():
+                            say(f">> MIDDLE: nothing to beat or fill in view from here -- teleporting {ch.meters(here, _mid):.0f} m "
+                                f"to the middle of the area: from there the game's map shows every gym of it")
+                            ch.api("TELEPORT", f"--ef lat {_mid[0]} --ef lng {_mid[1]}")
+                            note_jump(ch.meters(here, _mid), _mid)
+                            mv.key, gpos_now[0], said, target, idle_anchor[0] = None, None, None, None, _mid
+                            _land(_mid[0], _mid[1], a.area)
+                            continue
                         idle_anchor[0] = (here[0], here[1])
                     mv.orbit(idle_anchor[0], here, r=8)
                     _nw = sum(1 for v in live.values() if ch.meters((v[2], v[3]), goal) <= a.area)
+                    _capped = dep["n"] is not None and dep["n"] >= a.max_deployed
                     msg = (f"watching the {_nw} gyms of this island on the game's map -- nothing to beat or fill"
-                           f"{'' if _gy_ready else ' (no Gyarados left to place)'}: standing still")
+                           + (f" (all {a.max_deployed} gym slots of yours are in use: an empty gym waits for one to come home)"
+                              if _capped else "" if _gy_ready else " (no Gyarados left to place)") + ": standing still")
                     _idle_done = True
                 elif HOP["list"] and not soon and not guard:   # --hop: nothing to do here -> the next area, by TELEPORT
                     HOP["idle"] = HOP["idle"] or time.time()
@@ -2864,7 +2985,8 @@ def _run(a, g, mv, done, t_start, enemy, goal, sess, pid, sc):
                 else:
                     HOP["idle"] = None
                 if soon or guard or _idle_done:              # (11-16 review: the monitor's stand-still fell through into the
-                    pass                                     # gym ring below -- it still walked through all of them)
+                    if not _idle_done:                       # gym ring below -- it still walked through all of them)
+                        idle_anchor[0] = None                # (we stand by another gym now: the next idle anchors afresh)
                 else:
                     ring = sorted([(v[2], v[3]) for v in live.values() if ch.meters((v[2], v[3]), goal) <= a.area],
                                   key=lambda q: math.atan2((q[1] - goal[1]) * math.cos(math.radians(goal[0])), q[0] - goal[0]))
@@ -2879,6 +3001,7 @@ def _run(a, g, mv, done, t_start, enemy, goal, sess, pid, sc):
             time.sleep(2)
             continue
         fid, gpos, team = target
+        last_gym[0] = (gpos[0], gpos[1])
         HOP["idle"] = None                                   # work here: no hop
         HOP["empty"] = set()                                 # (islands found with nothing to do: forgotten once there is work)
         idle_anchor[0] = None                                # (stand still where the NEXT idle starts, not at an old spot)
@@ -3105,7 +3228,8 @@ def _run(a, g, mv, done, t_start, enemy, goal, sess, pid, sc):
             STATS["emptied"] += 1
             STATS["gym_s"].append(time.time() - gym_t0)
         refresh_deployed(True)                               # fainted count, hold count, feeder watch list: the live bag
-        _rl = g.rep_line(placed_ok, a.one_by_one, os.path.join(os.path.dirname(COOL_OBS), "gym_reports.jsonl"))
+        _rl = g.rep_line(placed_ok, a.one_by_one, os.path.join(os.path.dirname(COOL_OBS), "gym_reports.jsonl"),
+                         capped=a.max_deployed if (dep["n"] is not None and dep["n"] >= a.max_deployed) else None)
         if _rl:
             say(_rl)
         say(stats_line(dep, a))
