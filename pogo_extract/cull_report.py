@@ -1557,7 +1557,7 @@ JOBS = ('battlers', 'trophies', 'pokedex', 'trade', 'projects')
 JOB_NAME = {'battlers': 'Battlers', 'trophies': 'Trophies', 'pokedex': 'Pokedex', 'trade': 'Trade stock', 'projects': 'Projects'}
 # the normal range until 20 passes of this account are on record: the XmR upper limits (gains, losses) of the 73 recorded passes
 # 10-29 -> 11-15 (the backtest); from the 20th pass on, the limits come from the account's own passes
-JOB_SEED_LIMITS = {'battlers': (3.2, 0.0), 'trophies': (5.0, 0.0), 'pokedex': (8.3, 0.0), 'trade': (22.4, 6.1), 'projects': (18.9, 1.0)}
+JOB_SEED_LIMITS = {'battlers': (3.2, 0.0), 'trophies': (5.0, 0.0), 'pokedex': (8.3, 0.0), 'trade': (22.4, 6.1), 'projects': (18.0, 2.1)}
 JOB_SERIES_MIN, JOB_SERIES_MAX = 20, 500
 # the order of the steps: his actions first (power-ups, evolutions, catches, his releases of kept copies), then the cull's pile
 # as the rules of the LAST report would have built it, then the rule change (the same as replaying the old rules on the new bag)
