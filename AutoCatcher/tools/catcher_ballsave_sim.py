@@ -10,7 +10,7 @@ import tempfile
 HERE = os.path.dirname(os.path.abspath(__file__))
 src = open(os.path.join(HERE, os.pardir, "system", "scripts", "game_write", "catch_loop_fast.py"), encoding="utf-8").read()
 ns = {"CFG": {"floors": {"1": 5, "2": 5, "3": 5}}}
-for name in ("usable_balls", "ballsave_skip", "ballsave_now", "ballsave_log"):
+for name in ("usable_balls", "ballsave_skip", "ballsave_reserve", "ballsave_now", "ballsave_log", "cfg_now"):
     exec(re.search(rf"^def {name}\(.*?(?=^\n\ndef )", src, re.S | re.M).group(0), ns)
 skip_of, usable = ns["ballsave_skip"], ns["usable_balls"]
 failed = 0
@@ -43,6 +43,11 @@ check("balls not read yet", skip_of(PLAN, None, NOW), ([], "waiting for the ball
 check("unreadable plan", skip_of({"bad": 1}, 10, NOW), ([], "off: unreadable plan"))
 check("the why line", skip_of(PLAN, 1700, NOW)[1], "1700 balls for 100 min: leaving 1 of 4 species alone (at most 150 stardust per ball)")
 check("balls above the floors", usable({"1": 1704, "2": 5, "3": 9}), 1703)
+# a reserve: the greedy budget is the balls minus the ones kept back
+check("reserve 100: 700 balls act like 600", skip_of(dict(PLAN, reserve=100), 700, NOW)[0], skip_of(PLAN, 600, NOW)[0])
+check("reserve: balls at the reserve keep nothing", skip_of(dict(PLAN, reserve=100), 100, NOW)[0], [10, 41, 316, 774])
+check("reserve in the why line", skip_of(dict(PLAN, reserve=100), 700, NOW)[1],
+      "700 balls (600 after the 100 kept back) for 100 min: leaving 2 of 4 species alone (at most 380 stardust per ball)")
 check("balls not read", usable({}), None)
 
 # ---- the plan file, priority species, and the BALLSAVE log lines
@@ -81,6 +86,17 @@ log(163)
 check("plan deleted: one 'off' line", lines[-1], "BALLSAVE off")
 log(300)
 check("then silent", len(lines), 4)
+
+# the reserve rides on the Poke Ball floor while a plan file is on the phone (also after its end time)
+ns.update(FLAGS={}, flag=lambda k: False)
+ns["CFG"].update(floors={"1": 5, "2": 5, "3": 5})
+json.dump(dict(PLAN, end=time.time() - 60, reserve=100), open(pf, "w"))
+os.utime(pf, (time.time() + 20, time.time() + 20))
+c = ns["cfg_now"]()
+check("reserve -> Poke Ball floor 105, end passed", (c["floors"], c["skipSp"]), ({"1": 105, "2": 5, "3": 5}, []))
+os.remove(pf)
+c = ns["cfg_now"]()
+check("plan deleted -> floors back to 5", c["floors"], {"1": 5, "2": 5, "3": 5})
 
 # ---- JS (node): applyCfg + ballsave()
 i = src.index('JS = r"""') + 9

@@ -1,7 +1,7 @@
 """Build the BALL-SAVER plan for catch_loop_fast.py (Benny 2026-11-16 meteor shower: "i need max stardust between now and
 until the meteor shower is over"; spins refused, so the balls on hand are all there are). Read-only: writes a local JSON.
 
-usage: python tools/ballsave_plan.py <spawn_ledger.jsonl> <catch log lines> <start epoch s> <end epoch s> <out.json> [margin] [gamemaster.json] [saver since epoch s] [recent minutes]
+usage: python tools/ballsave_plan.py <spawn_ledger.jsonl> <catch log lines> <start epoch s> <end epoch s> <out.json> [margin] [gamemaster.json] [saver since epoch s] [recent minutes] [reserve]
   ledger   the phone's ~/pogo/system/analysis/pokemod/spawn_ledger.jsonl (a tail is fine); records from <start> on count
   log      catch_loop.log lines of the same window (the caller cuts them: every CATCH line in the file is used)
   gamemaster  pogo_extract/gamemaster_pokeminers.json: the award of a species never caught in the window comes from its
@@ -12,6 +12,7 @@ usage: python tools/ballsave_plan.py <spawn_ledger.jsonl> <catch log lines> <sta
   recent minutes  balls per minute from only the last N throwing minutes (a left-alone species: the last N before the
               saver). 11-16 19:20: the shower faded -- Minior 3.36 balls/min over the evening, 2.52 in the last 20 min --
               so whole-evening rates held ~20% too many balls back (stardust per ball stays whole-window)
+  reserve     Poke Balls to keep back (the catcher adds them to its Poke Ball floor while the plan file is on the phone)
 Per species: stardust per ball = (catches + 2 x c0) x average award / (balls thrown + 2 x b0), where c0 / b0 = catches /
 balls per spawn over ALL species: two average spawns of prior, so a species seen once is neither perfect nor worthless
 (11-16: Exeggutor and Blissey, bonus 200, fled once each and scored 0 without it). Balls per minute = balls thrown /
@@ -27,7 +28,8 @@ import time
 LED, LOG, START, END, OUT = sys.argv[1], sys.argv[2], float(sys.argv[3]), float(sys.argv[4]), sys.argv[5]
 MARGIN = float(sys.argv[6]) if len(sys.argv) > 6 else 1.15
 SINCE = float(sys.argv[8]) * 1000 if len(sys.argv) > 8 and sys.argv[8] not in ("", "-") else None
-RECENT = int(sys.argv[9]) if len(sys.argv) > 9 else None
+RECENT = int(sys.argv[9]) if len(sys.argv) > 9 and sys.argv[9] not in ("", "-") else None
+RESERVE = int(sys.argv[10]) if len(sys.argv) > 10 else 0
 BONUS = {}
 if len(sys.argv) > 7:
     for e in json.load(open(sys.argv[7], encoding="utf-8")):
@@ -90,7 +92,7 @@ for d in seen:
     else:
         rate = balls[d] / mins if kept else balls_before[d] / mins_before
     species[str(d)] = [round((caught[d] + 2 * c0) * avg / (balls[d] + 2 * b0), 1), round(rate, 4)]
-plan = {"end": END, "margin": MARGIN, "made": time.strftime("%Y-%m-%d %H:%M:%S"), "minutes": mins,
+plan = {"end": END, "margin": MARGIN, "reserve": RESERVE, "made": time.strftime("%Y-%m-%d %H:%M:%S"), "minutes": mins,
         "species": dict(sorted(species.items(), key=lambda kv: -kv[1][0]))}
 json.dump(plan, open(OUT, "w", encoding="utf-8"), indent=0)
 need = sum(v[1] for v in species.values())
