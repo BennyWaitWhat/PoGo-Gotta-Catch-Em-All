@@ -35,6 +35,7 @@ def costume_forms_load_error():
 from references import LEGENDARY_IDS, MYTHICAL_IDS, ULTRA_BEAST_IDS, PARADOX_IDS
 RARE_PIDS = LEGENDARY_IDS | MYTHICAL_IDS | ULTRA_BEAST_IDS | PARADOX_IDS  # authoritative roster (NULL-column-proof)
 DB = os.path.join(ROOT, 'pokemon.db')
+_ROOT_AT_IMPORT = os.path.abspath(ROOT)     # main()'s evolve pass runs only when ROOT is still this (not a repointed sandbox)
 TD = os.path.join(ROOT, 'system', 'analysis', 'tagsets'); os.makedirs(TD, exist_ok=True)
 
 def _ae_ids_live():
@@ -418,6 +419,36 @@ def _align_match(slots, cands):
     for s in slots:
         _try(s, set())
     return {s: u for u, s in owner.items()}
+
+
+def min_short(lst, n, kept, leaving=frozenset(), ok=None):
+    """THE MINIMUMS' ONE COUNT: (short, rest) for a kind (`lst`: its copies) -- how many more must stay so that `n` of them STAY
+    (kept: `kept(uid)` truthy, and not in `leaving`), and the rest it may add, best first by IV, CP, uid; `ok` narrows what
+    may be added (the regular minimum's floor). The caller marks rest[:short]: the slice stays at the mark (audit_invariants).
+    A COPY TOLD TO EVOLVE IS COUNTED AS GONE (2026-11-17, rules.min_skips_evolving): on 2026-11-16 the three kept plain Zorua
+    included one wearing Evolve to Final, so the fourth went to the pile; he released it, evolved the tagged one, and plain
+    Zorua stood at 2. With no `leaving` this is the top-up the three minimums always did."""
+    short = n - sum(1 for r in lst if kept(r['uid_hex']) and r['uid_hex'] not in leaving)
+    rest = sorted((r for r in lst if not kept(r['uid_hex']) and (ok is None or ok(r))),
+                  key=lambda r: (-(r['iv_total'] or 0), -(r['cp'] or 0), r['uid_hex']))
+    return short, rest
+
+
+def _min_selftest():
+    """python -c "import keep_policy as k; k._min_selftest()" -- the Zorua case of 2026-11-16 and its neighbours."""
+    Z = [{'uid_hex': u, 'iv_total': iv, 'cp': cp} for u, iv, cp in (('a91', 41, 500), ('b67', 30, 400), ('c62', 28, 300), ('d44', 20, 900))]
+    kept = {'a91', 'b67', 'd44'}.__contains__
+    def min_topup(*a, **k):
+        short, rest = min_short(*a, **k)
+        return [r['uid_hex'] for r in rest[:max(0, short)]]
+    assert min_topup(Z, 3, kept) == [], 'three kept: nothing to add (the old count)'
+    assert min_topup(Z, 3, kept, {'d44'}) == ['c62'], 'the copy told to evolve is counted out: the 62% stays'
+    assert min_topup(Z, 3, kept, {'d44', 'a91'}) == ['c62'], 'it adds only what the kind has'
+    assert min_topup(Z, 3, {'a91', 'b67', 'c62', 'd44'}.__contains__, {'d44'}) == [], 'three stay beside the one leaving'
+    assert min_topup(Z, 3, {'a91'}.__contains__) == ['b67', 'c62'], 'best of the rest first, by IV'
+    assert min_topup(Z, 3, {'a91'}.__contains__, ok=lambda r: r['iv_total'] >= 30) == ['b67'], 'the floor narrows what may be added'
+    assert min_topup(Z, 0, kept, {'d44'}) == [], 'a minimum of 0 adds nothing'
+    print('keep_policy minimum top-up selftest: ok')
 
 
 def align_line_picks(rows, graph, kept, hand_kept=frozenset()):
@@ -2263,50 +2294,51 @@ def main():
     # A COPY KEPT BY HAND COUNTS TOWARD NO MINIMUM (2026-11-12): he took it out of the Transfer tag as an extra, so it never
     # fills a kind's last-copies quota -- else untagging one copy sent a better copy of its kind to the pile.
     _HK = keep_config.hand_kept()
-    _smin = keep_config.cap('species_min')
-    if _smin:
-        _spg = defaultdict(list)
-        for r in rows:
-            if r['pokemon_id'] and r['uid_hex'] not in _HK:
-                _spg[pvid(r['species_name'], r['form'] or 0)].append(r)
-        for _lst in _spg.values():
-            _short = _smin - sum(1 for r in _lst if keep.get(r['uid_hex']))
-            _rest = sorted((r for r in _lst if not keep.get(r['uid_hex'])),
-                           key=lambda r: (-(r['iv_total'] or 0), -(r['cp'] or 0), r['uid_hex']))
-            for r in _rest[:max(0, _short)]:
-                mark(r['uid_hex'], 'species_min')
-    # PATTERN MINIMUM (user 2026-11-07: "for those two, I want 2 of each at a min" of Scatterbug patterns and Unown letters,
-    # then "....yes." for Spinda patterns, Flabebe colors, Furfrou trims, Deerling seasons): the species minimum counts all
-    # such forms of a species as one kind, so one could fall to 1 copy. Every pattern of a pattern-pooled line (Scatterbug +
-    # Spewpa + Vivillon together) and every lumped named form keeps caps.pattern_min copies. Groups: pattern_pools.min_group.
-    _pmin = pattern_pools.min_count(None)          # the global number; a species' own (Unown: 3) is asked per group below
-    if _pmin:
-        _pmg = defaultdict(list)
-        for r in rows:
-            _g = pattern_pools.min_group(r['pokemon_id'], r['species_name'], r['form'] or 0)
-            if _g and r['uid_hex'] not in _HK:
-                _pmg[_g].append(r)
-        for _g, _lst in _pmg.items():
-            _short = pattern_pools.min_count(_g) - sum(1 for r in _lst if keep.get(r['uid_hex']))
-            _rest = sorted((r for r in _lst if not keep.get(r['uid_hex'])),
-                           key=lambda r: (-(r['iv_total'] or 0), -(r['cp'] or 0), r['uid_hex']))
-            for r in _rest[:max(0, _short)]:
-                mark(r['uid_hex'], 'pattern_min')
-    # REGULAR MINIMUM (user 2026-11-12, room bar pick "A"; 2026-11-04: "a back up and one to trade and one for me"): the moving
-    # bar never leaves a species + form (pvid) with fewer than caps.regular_min REGULAR copies (keep_config.is_regular_copy):
-    # topped up with the best regular copies left that reach the bar's lowest point (keep_config.regular_min). Last.
-    _rmin, _rlo = keep_config.regular_min()
-    if _rmin:
-        _rgm = defaultdict(list)
-        for r in rows:
-            if r['pokemon_id'] and keep_config.is_regular_copy(r) and r['uid_hex'] not in _HK:
-                _rgm[pvid(r['species_name'], r['form'] or 0)].append(r)
-        for _lst in _rgm.values():
-            _short = _rmin - sum(1 for r in _lst if keep.get(r['uid_hex']))
-            _rest = sorted((r for r in _lst if not keep.get(r['uid_hex']) and (r['iv_total'] or 0) >= _rlo),
-                           key=lambda r: (-(r['iv_total'] or 0), -(r['cp'] or 0), r['uid_hex']))
-            for r in _rest[:max(0, _short)]:
-                mark(r['uid_hex'], 'regular_min')
+    def _minimums(_leaving=frozenset()):
+        """The three minimums below, as one top-up over the keeps made so far; returns how many copies it added.
+        `_leaving`: copies told to evolve -- each is counted as already gone from the kind it leaves (the second pass
+        after the shadow / purified lines, rules.min_skips_evolving)."""
+        _n = 0
+        _smin = keep_config.cap('species_min')
+        if _smin:
+            _spg = defaultdict(list)
+            for r in rows:
+                if r['pokemon_id'] and r['uid_hex'] not in _HK:
+                    _spg[pvid(r['species_name'], r['form'] or 0)].append(r)
+            for _lst in _spg.values():
+                _short, _rest = min_short(_lst, _smin, keep.get, _leaving)
+                for r in _rest[:max(0, _short)]:
+                    mark(r['uid_hex'], 'species_min'); _n += 1
+        # PATTERN MINIMUM (user 2026-11-07: "for those two, I want 2 of each at a min" of Scatterbug patterns and Unown letters,
+        # then "....yes." for Spinda patterns, Flabebe colors, Furfrou trims, Deerling seasons): the species minimum counts all
+        # such forms of a species as one kind, so one could fall to 1 copy. Every pattern of a pattern-pooled line (Scatterbug +
+        # Spewpa + Vivillon together) and every lumped named form keeps caps.pattern_min copies. Groups: pattern_pools.min_group.
+        _pmin = pattern_pools.min_count(None)          # the global number; a species' own (Unown: 3) is asked per group below
+        if _pmin:
+            _pmg = defaultdict(list)
+            for r in rows:
+                _g = pattern_pools.min_group(r['pokemon_id'], r['species_name'], r['form'] or 0)
+                if _g and r['uid_hex'] not in _HK:
+                    _pmg[_g].append(r)
+            for _g, _lst in _pmg.items():
+                _short, _rest = min_short(_lst, pattern_pools.min_count(_g), keep.get, _leaving)
+                for r in _rest[:max(0, _short)]:
+                    mark(r['uid_hex'], 'pattern_min'); _n += 1
+        # REGULAR MINIMUM (user 2026-11-12, room bar pick "A"; 2026-11-04: "a back up and one to trade and one for me"): the moving
+        # bar never leaves a species + form (pvid) with fewer than caps.regular_min REGULAR copies (keep_config.is_regular_copy):
+        # topped up with the best regular copies left that reach the bar's lowest point (keep_config.regular_min). Last.
+        _rmin, _rlo = keep_config.regular_min()
+        if _rmin:
+            _rgm = defaultdict(list)
+            for r in rows:
+                if r['pokemon_id'] and keep_config.is_regular_copy(r) and r['uid_hex'] not in _HK:
+                    _rgm[pvid(r['species_name'], r['form'] or 0)].append(r)
+            for _lst in _rgm.values():
+                _short, _rest = min_short(_lst, _rmin, keep.get, _leaving, ok=lambda r: (r['iv_total'] or 0) >= _rlo)
+                for r in _rest[:max(0, _short)]:
+                    mark(r['uid_hex'], 'regular_min'); _n += 1
+        return _n
+    _minimums()
     # SHADOW / PURIFIED LINES (user 2026-11-16: "culling pokemon i dont have all shadow or purified evos of. i saved one from the transfer you missed"): every shadow / purified stage he holds keeps a copy, and
     # every later stage a held copy can still become but none of that kind holds keeps ONE spare that can become it
     # (align_line_picks). Last, so it only adds; a copy kept by hand is a spare, never a stage's own copy. The report lists each
@@ -2317,6 +2349,29 @@ def main():
             mark(_u, 'align_line')
         print(f"[align lines] {len(_al_need)} kept for a shadow / purified stage; {len(_al_fills)} missing stage(s) have a "
               f"spare, {len(_al_gaps)} have none", flush=True)
+    # A COPY TOLD TO EVOLVE HAS LEFT ITS KIND (user 2026-11-16, after the plain Zorua: asked "Should I fix it so a Pokemon tagged
+    # to evolve stops counting toward the 3 copies of the form it's leaving?", answered 11-17 "fix all the crap"). The minimums
+    # above counted a copy wearing an Evolve tag as one of its kind's last copies, so the kind stood one short the moment he
+    # did what the tag says. The advice is THE table build_tagsets tags from (granular_tags.evolve_advice: promises, PvP
+    # comb-ups, shiny upgrades, showcase picks), asked on the keeps as they stand here -- the copies counted out are the
+    # ones that will wear an Evolve tag. A copy this adds can move an advice (a showcase pick is never a kind's last copy), so
+    # it repeats until a pass adds nothing. It only ADDS keeps.
+    # NOT IN A REPOINTED RUN (regress_pvp_keepers.run_engine: the fixture and promise audits point DB / ROOT at a throwaway
+    # tree): the advice table reads the project's own files, so there it would mix two bags. Those runs keep the first pass.
+    if keep_config.rule_enabled('min_skips_evolving') and os.path.abspath(ROOT) == _ROOT_AT_IMPORT:
+        import granular_tags as _gta
+        _ev_added, _ev_rows = 0, [dict(r) for r in rows]
+        for _ev_round in range(1, 9):
+            _ev_adv = _gta.evolve_advice([r for r in _ev_rows if keep.get(r['uid_hex'])],
+                                         {u: sorted(v) for u, v in keep.items() if v},
+                                         {r['uid_hex'] for r in rows if not keep.get(r['uid_hex'])})
+            _ev_n = _minimums(frozenset(_ev_adv))
+            _ev_added += _ev_n
+            if not _ev_n:
+                break
+        print(f"[evolving] {len(_ev_adv)} kept copies are told to evolve and count toward no minimum; {_ev_added} more kept so "
+              f"no kind falls under its minimum once they have evolved ({_ev_round} pass(es))"
+              + (' -- [WARN] still adding after 8 passes' if _ev_n else ''), flush=True)
     # ---- KEEP / TRANSFER ----
     allu = {r['uid_hex'] for r in rows}
     keepu = set(keep)

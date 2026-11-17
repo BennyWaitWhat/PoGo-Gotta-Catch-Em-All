@@ -142,6 +142,10 @@ DEFAULTS = {
         #                                 stage a held copy can still become but none of that kind holds keeps ONE spare that can
         #                                 become it (keep_policy.align_line_picks; user 2026-11-16: "culling pokemon i dont have all
         #                                 shadow or purified evos of"); OFF = as before
+        "min_skips_evolving": False,    # THE MINIMUMS -- a copy told to evolve (any Evolve tag) counts toward no minimum of the kind
+        #                                 it leaves: species_min / pattern_min / regular_min keep the best of the rest instead, so the
+        #                                 kind is not one short once he evolves it (keep_policy.min_topup; 2026-11-16 the plain
+        #                                 Zorua; user 2026-11-17); OFF = it counts, as before
     },
     "per_species_caps": {},       # Curation Studio per-species overrides {category:{pid:cap}}; empty = use the global cap (behavior-neutral)
     # PATTERN-POOLED LINES (user 2026-09-08 "top 3 of each region type only for its whole evo line"): lines whose
