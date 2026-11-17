@@ -763,9 +763,16 @@ def misc_checks():
         check(fh(his, goal, 520) is True, "840 m out of a 520 m area (03:10) = his own move too")
         check(fh(edge, goal, 1100) is False, "a gym at the edge of the area is still the area: no follow")
         check(fh((34.0812, -84.2750), goal, 1100) is False, "50 m past the edge (circling a gym on the rim) is NOT a move of his")
-        check("if a.monitor and len(HOP[\"list\"]) == 1 and not g.in_battle() and follow_him(here, goal, a.area):" in src
+        check("_out = a.monitor and len(HOP[\"list\"]) == 1 and not g.in_battle() and follow_him(here, goal, a.area)" in src
               and "HOP[\"list\"][0] = (here[0], here[1], a.area)" in src,
               "the main loop must move the watched area onto him BEFORE it picks a target (never a jump back to the old place)")
+        # --home: a run SENT to a named area jumps into it once at the start; afterwards a way out is his move (follow)
+        hj = gym_run.home_jump
+        check(hj(True, False) is True and hj(True, True) is False and hj(False, False) is False,
+              "--home jumps into the area once, at the start only; without the flag never")
+        check(src.index("if _out and home_jump(a.home, HOMED[0]):") < src.index(">> FOLLOW: you took the phone")
+              and "note_jump(_hd, (goal[0], goal[1]))" in src and "first_done[0] = True                             # (a waiting 'go'" in src,
+              "the home jump comes before the follow, is written down as OUR jump (its cooldown), and a follow drops a waiting 'go'")
         check("if ch.meters(here, goal) > a.area and not a.monitor:" in src,
               "--monitor never WALKS to its goal (the 'walking toward the goal' branch is for the walking mode only)")
         check("if idle_anchor[0] is not None and ch.meters(here, idle_anchor[0]) > 40:" in src,

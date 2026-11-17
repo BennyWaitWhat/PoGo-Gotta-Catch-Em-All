@@ -686,6 +686,15 @@ def follow_him(here, goal, area_r, slack=150.0):
     return ch.meters(here, goal) > area_r + slack
 
 
+HOMED = [False]                                          # --home: the one jump into the area at the start is done (or was never needed)
+
+
+def home_jump(home, homed):
+    """--home: the phone is outside the area this run was sent to -- jump to its middle? Only once, and only at the start
+    (before the run has been inside the area): later a position outside it is HIS move, and the area follows him."""
+    return bool(home) and not homed
+
+
 def pick_any(enemy, skip, done, here, goal, live, detour, area_r, ok, now, areas=None, empty=True):
     """pick() over the gyms that are not resting; when that finds nothing, an ENEMY gym that is only resting (Benny 2026-11-15:
     "drill and finish" -- never idle while an enemy gym stands): never an empty one, never one under a raid, never one in a refused
@@ -1829,6 +1838,9 @@ def main():
     ap.add_argument("--hop", default=None, help="areas to cycle by TELEPORT, 'lat,lng,radius;lat,lng,radius;...': once the current one has "
                     "had nothing to beat, join or guard for --hop-idle s, jump to the next and retake / fill its gyms (Benny 11-16: 'control all of them')")
     ap.add_argument("--hop-idle", type=float, default=45.0, help="seconds with nothing to do in an area before the next --hop area")
+    ap.add_argument("--home", action="store_true",
+                    help="--monitor, one --hop area: if the phone is outside that area at the start, teleport to its middle once "
+                         "(the run was sent to a place he named; Benny 11-17 03:52: 'Only the Avalon area dude')")
     ap.add_argument("--rscan", action="store_true",
                     help="--monitor: also read gyms OFF the game's map (other islands) by id. OFF: 11-16 23:14-23:19 the game "
                          "exited 3 times in 6 min with it on (no crash record) -- off-map reads were never run on this game build")
@@ -2553,9 +2565,22 @@ def _run(a, g, mv, done, t_start, enemy, goal, sess, pid, sc):
                 say(f"  could not leave the gym screen ({g.chain} / top {g.top}) -- retrying")
                 time.sleep(2)
                 continue
-        if a.monitor and len(HOP["list"]) == 1 and not g.in_battle() and follow_him(here, goal, a.area):
+        _out = a.monitor and len(HOP["list"]) == 1 and not g.in_battle() and follow_him(here, goal, a.area)
+        if _out and home_jump(a.home, HOMED[0]):             # --home: this run was SENT to an area he named ("Only the Avalon
+            HOMED[0] = True                                  # area dude", 11-17 03:52: the last run had taken the phone 1.2 km
+            _hd = ch.meters(here, goal)                      # out of it). Once, at the start: the runner's own jump back in.
+            say(f">> HOME: the phone is {_hd:.0f} m from the middle of the area this run was sent to (its edge: {a.area:.0f} m) -- "
+                f"teleporting to the middle, once; after that the area follows you only when YOU jump away")
+            ch.api("TELEPORT", f"--ef lat {goal[0]} --ef lng {goal[1]}")
+            note_jump(_hd, (goal[0], goal[1]))
+            mv.key, gpos_now[0], said, target, idle_anchor[0] = None, None, None, None, (goal[0], goal[1])
+            _land(goal[0], goal[1], a.area)
+            continue
+        HOMED[0] = True                                      # (inside once, or sent home once: from here on a way out is HIS move)
+        if _out:
             say(f">> FOLLOW: you took the phone {ch.meters(here, goal):.0f} m from the middle of the area I watched (its edge: "
                 f"{a.area:.0f} m) -- nothing moves you back: the {a.area:.0f} m around YOU is the area now")
+            first_done[0] = True                             # (a waiting 'go' to a gym of the place he left is dropped with it)
             goal[:] = [here[0], here[1]]
             HOP["list"][0] = (here[0], here[1], a.area)
             HOP["i"], HOP["ready"], HOP["idle"] = 0, True, None
