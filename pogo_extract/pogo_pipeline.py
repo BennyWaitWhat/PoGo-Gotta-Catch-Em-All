@@ -343,6 +343,37 @@ def _rec_is_egg(rec):
         return False
 
 
+def _egg_line(rec):
+    """One egg record's own fields, for the line that names the eggs when the bag list and the game's EggCount differ.
+    Offsets: proto_layout.json, Holoholo.Rpc.PokemonProto (game 0.435) -- all inside the 0x200 the walk already dumps, so
+    no new device read. A moved offset garbles this line and nothing else."""
+    import struct, time as _t
+    _u = (_rec_uid_hex(rec) or '?')[-6:]
+    try:
+        bs = bytes.fromhex(rec.get('protoBytes') or '')
+        q = lambda off, fmt: struct.unpack_from(fmt, bs, off)[0]
+        made = q(160, '<q')                                    # creationTimeMs_
+        return '%s made %s, %g km egg (started at %.1f km), type %d, slot %d%s%s' % (
+            _u, _t.strftime('%m-%d %H:%M', _t.localtime(made / 1000)) if 0 < made < 4e12 else '?',
+            q(88, '<d'), q(96, '<d'), q(340, '<i'), q(400, '<i'),      # eggKmWalkedTarget_ / Start_, eggType_, eggSlotType_
+            ', in an incubator' if q(152, '<Q') else '',               # eggIncubatorId_ (a string pointer)
+            '' if q(32, '<Q') == (int(rec['uid']) & 0xFFFFFFFFFFFFFFFF) else ", its id_ is NOT the node's uid")
+    except Exception as e:
+        return '%s unreadable (%s)' % (_u, type(e).__name__)
+
+
+def counts_agree(g_mons, g_eggs, n_parsed, n_eggs, declared):
+    """THE GAME'S OWN COUNTS PROVE THE WALK (the purge's proof (a)). The Pokemon count must match exactly, and every record
+    of the list must be a Pokemon or an egg. The egg count may be HIGHER in the list than the game's EggCount, never lower
+    (2026-11-17): from 11-16 18:52 the list held 13 egg records against the game's 12, on three game processes in a row,
+    with the Pokemon equal on every walk -- and "12 != 13" switched the purge off for the whole evening (34 passes, a
+    WARN on each). An extra egg record cannot hide a missing Pokemon: a Pokemon read as an egg, dropped, or released
+    between the walk and the counter read still breaks the Pokemon equality. Fewer egg records than the game counts
+    means an egg was read as something else, and stays a refusal."""
+    return (isinstance(g_mons, int) and isinstance(g_eggs, int) and isinstance(declared, int)
+            and g_mons == n_parsed and n_eggs >= g_eggs and declared == n_parsed + n_eggs)
+
+
 def _atomic_json(path, obj, indent=None):
     """R5 (Gym Battle review, 2026-09-29): write a JSON file other processes read (candy.json, inventory.json) through a
     temp file + os.replace, so a reader never sees half of it."""
@@ -776,6 +807,7 @@ def step_reconcile_db(conn, entries, species_lookup, walk_meta=None, allow_purge
     parsed = []
     skipped_pid0 = 0          # pid0 records that are NOT eggs (also counted in skipped_unparsed) -- see below
     skipped_eggs = 0
+    egg_recs = []             # the egg records themselves: named when the list and the game's EggCount differ
     skipped_unparsed = 0
     unread_uids = set()       # records the walk REACHED but could not read: present in the bag, never "gone" (H07)
     skipped_idmismatch = 0    # records whose proto id_ != the node key (also counted in skipped_unparsed) (H07)
@@ -789,6 +821,7 @@ def step_reconcile_db(conn, entries, species_lookup, walk_meta=None, allow_purge
             # PokemonProto+0x50, inside the 0x200 already dumped. (lockdown 2026-09-02)
             if _rec_is_egg(rec):
                 skipped_eggs += 1
+                egg_recs.append(rec)
             else:
                 skipped_unparsed += 1
                 _u = _rec_uid_hex(rec)
@@ -805,6 +838,7 @@ def step_reconcile_db(conn, entries, species_lookup, walk_meta=None, allow_purge
             # (the purge is skipped) and kept in the bag on its last-read row.
             if _rec_is_egg(rec):
                 skipped_eggs += 1
+                egg_recs.append(rec)
             else:
                 skipped_pid0 += 1
                 skipped_unparsed += 1
@@ -1134,8 +1168,10 @@ def step_reconcile_db(conn, entries, species_lookup, walk_meta=None, allow_purge
     _g = _meta.get('game') or {}
     _g_mons, _g_eggs = _g.get('get_PokemonOnlyCount'), _g.get('get_EggCount')
     _n_parsed = len({p['uid_hex'] for p in parsed})
-    _counts_agree = (isinstance(_g_mons, int) and isinstance(_g_eggs, int)
-                     and _g_mons == _n_parsed and _g_eggs == skipped_eggs)
+    _counts_agree = counts_agree(_g_mons, _g_eggs, _n_parsed, skipped_eggs, _declared)
+    if isinstance(_g_eggs, int) and _g_eggs != skipped_eggs:
+        _tick(f"   egg records: the bag list holds {skipped_eggs}, the game's EggCount says {_g_eggs} "
+              f"(Pokemon: list {_n_parsed}, game {_g_mons}) -- " + '; '.join(_egg_line(r) for r in egg_recs))
     # (b) THE ACCOUNT. account_guard.check() only WARNS when it cannot read the trainer name, and the 70% floor is measured
     #     against the LAST walk's bag: one walk of another trainer's 939-mon bag flips this set's 5623 rows to in_bag=0 (no
     #     purge, 939 < 70%), and a second passes the floor against 939 and DELETES all 5623. The purge needs the trainer

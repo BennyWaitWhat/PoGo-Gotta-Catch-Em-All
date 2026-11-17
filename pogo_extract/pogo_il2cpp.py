@@ -14,6 +14,7 @@ Usage:
 import frida
 import subprocess
 import os
+import re
 
 ADB_TARGET = os.environ.get('ADB_TARGET', '100.98.158.56:5555')  # env override (e.g. ADB_TARGET=<usb-serial>) for when Tailscale is down
 FRIDA_REMOTE = '127.0.0.1:27047'
@@ -610,6 +611,57 @@ def wait_ready_to_attach(timeout_s=240, min_age_s=45):
     raise RuntimeError(f'PoGo never became attach-safe in {timeout_s}s ({last})')
 
 
+ON_SCREEN_WAIT_S = 20      # a glance at another app is waited out; longer than that and the step stops, attaching nothing
+
+
+def _on_screen(out):
+    """(ok, what) from the two lines _adb_on_screen reads: the app Android has resumed on top, and the screen's state."""
+    m = re.search(r'ResumedActivity\S*\s*ActivityRecord\{\S+ \S+ ([\w.]+)/', out or '')
+    awake = 'mWakefulness=Awake' in (out or '')
+    if not m:
+        return False, 'what is on screen could not be read from adb'
+    if m.group(1) != POGO_PKG:
+        return False, '%s is on screen, PoGo is behind it' % m.group(1)
+    if not awake:
+        return False, 'the screen is off'
+    return True, 'PoGo is on screen'
+
+
+def _adb_on_screen(devser):
+    """PURE-ADB: is PoGo the app on screen, with the screen on? Returns (ok, what). Never raises (a failed read = not ok).
+
+    2026-11-16 18:12: the cull's tag-sync attach ran while PoGo sat behind another app (he had switched to the TV remote
+    mid-pass). The attach hung, the 15 s timeout below cut it off mid-handshake, and the game died 37 s later (gdbus
+    "Transport endpoint is not connected", the cut-off-attach crash). The walk had attached fine 30 s earlier with the
+    game on screen. So: never attach to a game that is not on screen."""
+    try:
+        return _on_screen(subprocess.run(
+            ['adb', '-s', devser, 'shell', 'dumpsys activity activities | grep -m1 -E "topResumedActivity|ResumedActivity"; '
+                                           'dumpsys power | grep -m1 mWakefulness='],
+            capture_output=True, text=True, timeout=15).stdout)
+    except Exception as e:
+        return False, 'what is on screen could not be read from adb (%s)' % e
+
+
+def wait_on_screen(devser, wait_s=ON_SCREEN_WAIT_S):
+    """Return once PoGo is on screen; raise NotReadyToAttach when it is not within wait_s. Attaches nothing, brings
+    nothing to the front: he may be using the phone (FAILURES.md), and a stopped pass costs one more "cull"."""
+    import time as _t
+    ok, what = _adb_on_screen(devser)
+    if ok:
+        return
+    print('[attach] %s -- waiting up to %d s for the game; nothing attaches until it is on screen' % (what, wait_s), flush=True)
+    deadline = _t.time() + wait_s
+    while not ok and _t.time() < deadline:
+        _t.sleep(2)
+        ok, what = _adb_on_screen(devser)
+    if not ok:
+        raise NotReadyToAttach('STOPPED: PoGo is not on screen (%s) -- nothing was attached. An attach to a game behind '
+                               'another app hung and the game crashed 37 s later (2026-11-16). Open the game, then run '
+                               'this again.' % what)
+    print('[attach] PoGo is back on screen -- attaching', flush=True)
+
+
 # ---- THE PHONE BUSY MARKER (2026-09-29, agreed with the AutoCatcher and Gym Battle sessions) -------------------------
 # Every DESKTOP Frida attacher (this cull, AutoCatcher's desktop tools, the gym runner) shares ONE marker on the phone:
 # /data/local/tmp/pogo_desktop_busy = "<name> <epoch-seconds deadline>" (root-created, 666). ADVISORY (Benny: nobody
@@ -722,6 +774,7 @@ def get_session(retries=3, allow_cold=False):
         ok, why = _adb_ready_to_attach(devser, pid0)
         if not ok:
             raise NotReadyToAttach(why + ' -- wait (wait_ready_to_attach) instead of attaching')
+    wait_on_screen(devser)                # every attach, no flag skips it: a game behind another app is never attached
     phone_busy_acquire(devser)            # the shared desktop marker (another session's desktop attach -> wait / refuse)
     subprocess.run(['adb', '-s', devser, 'forward', 'tcp:27047', 'tcp:27047'], capture_output=True)
     # adb forward's local socket accepts regardless of whether frida-server is

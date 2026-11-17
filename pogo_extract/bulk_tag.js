@@ -1121,7 +1121,8 @@ rpc.exports = {
         var ret = fns.rI(setMethod, ptr(serviceInstanceStr), setArgs, excF);
         if (!excF.readPointer().isNull()) {
             var k = excF.readPointer().readPointer();
-            return {ok:false, err:"SetPokemonTags exc", excClass: fns.cGNs(k).readCString() + "." + fns.cN(k).readCString(), built: built};
+            return {ok:false, err:"SetPokemonTags exc", excClass: fns.cGNs(k).readCString() + "." + fns.cN(k).readCString(), built: built,
+                    excText: _excText(excF.readPointer())};
         }
         return {ok:true, ret: ret.toString(), built: built, requested: pokemonProtoArray.length};
     },
@@ -1256,7 +1257,8 @@ rpc.exports = {
         var ret = fns.rI(setMethod, ptr(serviceInstanceStr), setArgs, excF);
         if (!excF.readPointer().isNull()) {
             var k = excF.readPointer().readPointer();
-            return {ok:false, err:"SetPokemonTags exc", excClass: fns.cGNs(k).readCString() + "." + fns.cN(k).readCString(), built: built};
+            return {ok:false, err:"SetPokemonTags exc", excClass: fns.cGNs(k).readCString() + "." + fns.cN(k).readCString(), built: built,
+                    excText: _excText(excF.readPointer())};
         }
         // THE SERVER'S ANSWER (H02-2, 2026-09-29): SetPokemonTags returns the RPC's promise. A GC handle on it lets the caller
         // wait for the server's reply (promiseState / promiseFree below, order_tags' proven pattern) instead of reading
@@ -1377,7 +1379,8 @@ rpc.exports = {
         var ret = fns.rI(setMethod, ptr(serviceInstanceStr), setArgs, exc5);
         if (!exc5.readPointer().isNull()) {
             var k = exc5.readPointer().readPointer();
-            return {ok:false, err:"SetPokemonTags exc", excClass: fns.cGNs(k).readCString() + "." + fns.cN(k).readCString()};
+            return {ok:false, err:"SetPokemonTags exc", excClass: fns.cGNs(k).readCString() + "." + fns.cN(k).readCString(),
+                    excText: _excText(exc5.readPointer())};
         }
         return {ok:true, ret: ret.toString(), innerList: innerList.toString(), outerList: outerList.toString(), ptcInst: ptcInst.toString()};
     },
@@ -2329,6 +2332,45 @@ function _ghRepeated(rf) {
     var v = []; for (var i = 0; i < cnt; i++) v.push(arr.add(0x20 + 4 * i).readS32()); return v;
 }
 function _ghStr(p) { try { var n = p.add(0x10).readS32(); return (n >= 0 && n < 400) ? p.add(0x14).readUtf16String(n) : null; } catch (e) { return null; } }
+// WHAT A THROWN EXCEPTION SAYS ABOUT ITSELF (2026-11-17). SetPokemonTags throws on the first try of about 1 pass in 4 and the
+// retry takes it; all anyone ever saw was the class ("System.NullReferenceException"), so the cause stayed blind. This reads
+// the exception's OWN fields: its message, its inner exception, and the methods on the stack when it was thrown (il2cpp stores
+// a MethodInfo* per frame in _stackTrace). Raw memory reads only, every one inside the try: a wrong offset gives an unreadable
+// note, never a crash, and no managed code runs (pogo-gc-world-freeze: no managed call from this thread).
+function _excText(exc) {
+    var out = [];
+    try {
+        var y = _GH(), mod = Process.findModuleByName('libil2cpp.so');
+        var rel = function (a) { return (mod && a.compare(mod.base) >= 0 && a.compare(mod.base.add(mod.size)) < 0) ? '+0x' + a.sub(mod.base).toString(16) : a.toString(); };
+        var cstr = function (p) { var s = p.isNull() ? null : p.readCString(80); return (s && /^[!-~]{1,80}$/.test(s)) ? s : null; };
+        for (var depth = 0, e = exc; depth < 3 && e && !e.isNull(); depth++) {
+            var k = y.oc(e), msg = null, inner = null, trace = null;
+            _ghFields(k, true).forEach(function (f) {
+                if (f.name === '_message') { var p = e.add(f.off).readPointer(); msg = p.isNull() ? null : _ghStr(p); }
+                else if (f.name === '_innerException') inner = e.add(f.off).readPointer();
+                else if (f.name === '_stackTrace') trace = e.add(f.off).readPointer();
+            });
+            var s = (depth ? 'inner ' + y.cnm(k).readCString() + ': ' : '') + (msg ? JSON.stringify(msg) : 'no message');
+            if (trace && !trace.isNull()) {
+                var n = trace.add(0x18).readU32(), at = [];           // an IntPtr[]: length @0x18, items from @0x20
+                for (var i = 0; i < Math.min(n, 6); i++) {
+                    var mi = trace.add(0x20 + i * Process.pointerSize).readPointer();
+                    if (mi.isNull()) continue;
+                    var fn = '?';
+                    try {                                              // MethodInfo: methodPointer @0, name @0x18, klass @0x20 (name @0x10)
+                        var nm = cstr(mi.add(0x18).readPointer()), kn = cstr(mi.add(0x20).readPointer().add(0x10).readPointer());
+                        fn = (kn || '?') + '.' + (nm || '?');
+                    } catch (e2) { fn = '?'; }
+                    at.push(fn + ' ' + rel(mi.readPointer()));
+                }
+                if (at.length) s += ' thrown in ' + at.join(' < ') + (n > 6 ? ' < (' + (n - 6) + ' more)' : '');
+            }
+            out.push(s);
+            e = inner;
+        }
+    } catch (err) { out.push('(the exception could not be read: ' + err + ')'); }
+    return out.join(' | ');
+}
 // Niantic's Promise<T> (Gym Battle, proven on GymFeedPokemonOutProto / MapPlaceDetails / Buddy* replies): completeCalled /
 // errorCalled are the settle flags, completedValue holds the reply (*OutProto), errorValue an Exception (_message).
 function _ghDump(obj, depth) {

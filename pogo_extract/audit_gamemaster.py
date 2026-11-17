@@ -199,7 +199,10 @@ def main():
         if len(_fs) < 2 or _sd not in _src_of:
             continue
         for _sp, _f, _g in sorted(_src_of[_sd]):
-            if not evolvable_forms.target_form(_f, _sd, _rc.to_pvpoke_id(_sp, _f, 0), _g):
+            # NONE named = blind. SEVERAL named is the game's own answer (Dunsparce becomes the two- or the three-segment
+            # form by chance, 99 to 1): nobody can know which before the evolve, so pooling them is right, not a fallback.
+            # This warned on every pass of 2026-11-16 with nothing anyone could fix.
+            if not evolvable_forms.target_forms(_f, _sd, _rc.to_pvpoke_id(_sp, _f, 0), _g):
                 _blind.append('%s form %s -> %s (%d forms held)'
                               % (_sp, _enum2.get(_f, _f), _sd, len(_fs)))
     if _blind:

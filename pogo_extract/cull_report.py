@@ -1390,10 +1390,14 @@ def room_lines(st, gmax=None):
     elif a is not None and b is not None and b < a:
         out.append('Room: spare copies now need %d%% (was %d%%) -- %d free once this pile is released, so the bar came down one step.%s'
                    % (pc(b), pc(a), st['free'], _g))
-    if st.get('short'):
+    _pick = 'a higher ceiling, or a cut somewhere else' if st['hi'] < 45 else 'a cut somewhere else, or more storage'
+    if st.get('short') and st.get('short_since') and st['short_since'] != st.get('bag_ts'):
+        # the same short spell as an earlier pass: said, not asked again (2026-11-17: the bold question stood in 34 reports in a row)
+        out.append('Room: still short since %s -- the bar is at its %d%% ceiling and %d will be free once this pile is released '
+                   '(it wants %d). Still your pick: %s.' % (str(st['short_since'])[5:16], pc(st['hi']), st['free'], st['free_min'], _pick))
+    elif st.get('short'):
         out.append('**ROOM SHORT:** the spare-copy bar is at its %d%% ceiling and only %d will be free once this pile is released '
-                   '(under %d). Your pick: %s.' % (pc(st['hi']), st['free'], st['free_min'],
-                                                   'a higher ceiling, or a cut somewhere else' if st['hi'] < 45 else 'a cut somewhere else, or more storage'))
+                   '(under %d). Your pick: %s.' % (pc(st['hi']), st['free'], st['free_min'], _pick))
     return out
 
 
@@ -2036,6 +2040,11 @@ def _selftest():
     assert room_lines(dict(_rb, **{'from': 41, 'to': 41, 'free': 229, 'short': False}), gmax=False) == [], 'a steady bar says nothing'
     assert room_lines(dict(_rb, **{'from': 41, 'to': 40, 'free': 420, 'short': False}), gmax=False)[0].endswith('came down one step.')
     assert 'ROOM SHORT' in room_lines(dict(_rb, **{'from': 42, 'to': 42, 'free': 150, 'short': True}), gmax=False)[0]
+    _sp = dict(_rb, **{'from': 42, 'to': 42, 'free': 150, 'short': True, 'bag_ts': '2026-11-16 18:52:10'})
+    assert room_lines(dict(_sp, short_since='2026-11-16 18:52:10'), gmax=False)[0].startswith('**ROOM SHORT:**'), 'asked on the pass the spell starts'
+    assert room_lines(dict(_sp, short_since='2026-11-16 18:38:02'), gmax=False) == [
+        'Room: still short since 11-16 18:38 -- the bar is at its 93% ceiling and 150 will be free once this pile is released '
+        '(it wants 200). Still your pick: a higher ceiling, or a cut somewhere else.'], 'said, not asked again, on the passes after'
     assert room_lines(dict(_rb, **{'from': 39, 'to': 41, 'free': 229, 'short': False}), gmax=True)[0].endswith('when there is room. Gigantamax copies stay at 82%.')
     assert 'Gigantamax' not in room_lines(dict(_rb, **{'from': 39, 'to': 41, 'free': 229, 'short': False}), gmax=False)[0]
     assert hand_lines([], 3) == [] and hand_lines(['89% Unown', '87% Mr. Rime'], 5)[0].startswith(
