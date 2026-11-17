@@ -27,6 +27,7 @@ BLOCK_S = 300          # the A/B block length in catch_loop_fast.py (CFG abBlock
 RANGE_M = 140          # MapSettingsProto EncounterRangeMeters, read live 2026-11-07
 BACKLOG_MS = 1000      # a spawn waiting longer than this for its open = the catcher is behind
 LIMITED_S = 20         # seconds of backlog in a minute that make it catcher-limited
+SKIP_RULES = ("legendary", "ballsave")   # left alone on purpose: legendaries, and the meteor-shower ball-saver (11-16)
 
 
 def usage():
@@ -139,8 +140,8 @@ def main():
         best = min(rs, key=lambda r: (rank.get(r["r"], 2), -r["t1"]))
         final[e] = best
 
-    skipped = [e for e, r in final.items() if r["r"] == "legendary"]
-    E = {e: r for e, r in final.items() if r["r"] != "legendary"}
+    skipped = [e for e, r in final.items() if r["r"] in SKIP_RULES]
+    E = {e: r for e, r in final.items() if r["r"] not in SKIP_RULES}
     n = len(E)
 
     def any_(e, k):
@@ -150,7 +151,8 @@ def main():
     enc_ok = [e for e in E if any(r.get("rs") == 1 for r in enc[e])]
     thrown = [e for e in E if any_(e, "tT")]
     caught = [e for e in E if E[e]["r"] == "caught"]
-    print("\n1. FUNNEL (one line per encounter id; skipped by rule: %d legendary)" % len(skipped))
+    print("\n1. FUNNEL (one line per encounter id; skipped by rule: %d legendary, %d left alone by the ball-saver)"
+          % (sum(final[e]["r"] == "legendary" for e in skipped), sum(final[e]["r"] == "ballsave" for e in skipped)))
     for name, xs in (("in range", list(E)), ("opened", opened), ("encounter ok", enc_ok), ("thrown", thrown), ("caught", caught)):
         print(f"   {name:<13} {len(xs):>5}  {100 * len(xs) / max(1, n):5.1f}%")
     far = [e for e in E if (E[e].get("d0") or 0) > RANGE_M]
@@ -264,12 +266,12 @@ def main():
     minutes = []
     for m0 in range(t_first, t_last, 60000):
         m1 = m0 + 60000
-        arr = [r for r in recs if m0 <= r["t0"] < m1 and r["r"] != "legendary"]
+        arr = [r for r in recs if m0 <= r["t0"] < m1 and r["r"] not in SKIP_RULES]
         got = [r for r in recs if r["r"] == "caught" and r.get("tC") and m0 <= r["tC"] < m1]
         lost_q = [r for r in recs if r["r"] == "gone" and not r.get("tO") and m0 <= r["t1"] < m1]
         backlog = 0
         for s in range(m0, m1, 1000):
-            if any(r["t0"] <= s - BACKLOG_MS and s < (r.get("tO") or r["t1"]) for r in recs if r["t0"] <= s and r["r"] != "legendary"):
+            if any(r["t0"] <= s - BACKLOG_MS and s < (r.get("tO") or r["t1"]) for r in recs if r["t0"] <= s and r["r"] not in SKIP_RULES):
                 backlog += 1
         inside = [m0] + [t for t in fixes if m0 <= t < m1] + [min(m1, hi)]
         down = max(b - a for a, b in zip(inside, inside[1:])) > 15000
@@ -314,7 +316,7 @@ def main():
         return f"{key}={v}"
 
     def waiting_at(t):
-        return sum(1 for r in recs if r["t0"] < t and t < (r.get("tO") or r["t1"]) and r["r"] != "legendary")
+        return sum(1 for r in recs if r["t0"] < t and t < (r.get("tO") or r["t1"]) and r["r"] not in SKIP_RULES)
 
     blocks = defaultdict(Counter)
     arms = defaultdict(lambda: defaultdict(list))
