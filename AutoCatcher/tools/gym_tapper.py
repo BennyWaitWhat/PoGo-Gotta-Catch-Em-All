@@ -959,7 +959,7 @@ function gymScreen(now) {                     /* the gym screen: its gym's own t
         if (AUTODEP && fid === AUTODEP.fid && !n && t !== MYTEAM && !IN_BATTLE && LEAF === 'GymApproachState' && !prepOpen() && !NOAUTOBATTLE
             && now >= E29_HOLD && !ACT && !ST.modal && now - GO_AT > 3000 && now - (ST.autoBattleAt || 0) > 8000 && !EXPECT_PREP && alive(gui)
             && gui.add(O.guiState).readS32() === LIT.open.Open && !prepRegistered()) {
-          ST.autoBattleAt = now; EXPECT_PREP = now;
+          ST.autoBattleAt = now; EXPECT_PREP = now; OUR_BATTLE_AT = now;
           if (call(M.clickBattle, gui, 'ClickBattle') !== null) send({k: 'pressed', what: 'Battle', auto: true, ms: now});
         }
       }
@@ -979,7 +979,7 @@ function gymScreen(now) {                     /* the gym screen: its gym's own t
   if ((ACT === 'deploy' || ACT === 'back' || ACT === 'battle' || ACT === 'pokestop') && gui.add(O.guiState).readS32() !== LIT.open.Open) return;   /* only on a fully open gym screen */
   if (ACT === 'deploy' && PLACED) { ACT = null; return; }   /* a placement request is in flight */
   var a = ACT; ACT = null;
-  if (a === 'battle') { EXPECT_PREP = now; if (call(M.clickBattle, gui, 'ClickBattle') !== null) send({k: 'pressed', what: 'Battle'}); }
+  if (a === 'battle') { EXPECT_PREP = now; OUR_BATTLE_AT = now; if (call(M.clickBattle, gui, 'ClickBattle') !== null) send({k: 'pressed', what: 'Battle'}); }
   else if (a === 'deploy') { if (call(M.clickDeploy, gui, 'ClickDeploy') !== null) send({k: 'pressed', what: 'Deploy'}); }
   else if (a === 'back') { if (call(M.back, gui, 'Back') !== null) send({k: 'pressed', what: 'Back'}); }
   else if (a === 'pokestop' && M.clickStop) { if (call(M.clickStop, gui, 'ClickPokestopButton') !== null) send({k: 'pressed', what: 'PokestopButton'}); }
@@ -990,6 +990,8 @@ function prepRegistered() {                   /* a party screen already register
   return registered().some(function (g) { try { var k = g.readPointer(); if (!k.equals(K.GymBattlePrepUIController)) return false;
     var st = g.add(O.guiState).readS32(); return st === LIT.open.Open || st === LIT.open.Opening; } catch (e) { return false; } });
 }
+var OUR_BATTLE_AT = 0;                       /* our last Battle press (the automatic one or the runner's backup) */
+function ourParty(now) { return OUR_BATTLE_AT > 0 && now - OUR_BATTLE_AT < 30000; }   /* the party screen that is up follows a press of OURS */
 function prepOpen() {                        /* the tracked party screen is still Opening/Open (its own state) */
   if (!PREP) return false;
   try { if (!alive(PREP)) return false; var st = PREP.add(O.guiState).readS32(); return st === LIT.open.Open || st === LIT.open.Opening; } catch (e) { return false; }
@@ -1086,7 +1088,7 @@ function screenText(now) {                    /* plain reads of the screen's Tex
       var parts = SAYS[q.name].map(function (off) { var t = q.gui.add(off).readPointer(); return t.isNull() ? '' : (str(t.add(O.textM).readPointer()) || ''); })
         .filter(function (x) { return x && x.trim(); });
       if (parts.length) { var txt = parts.join(' | ').replace(/<[^>]+>/g, '').slice(0, 300);
-        if (q.name === 'GlobalErrorController' && /\(29\)/.test(txt)) { E29_HOLD = now + E29_GUARD_MS; PENDING = null; }
+        if (q.name === 'GlobalErrorController' && /\((29|30)\)/.test(txt)) { E29_HOLD = now + E29_GUARD_MS; PENDING = null; }   /* (30) "The Gym battle has ended!": same kick, same hold (11-17 03:10: a Battle 1 s behind it, the game gone 8 s later) */
         send({k: 'says', gui: q.name, text: txt}); }
     } catch (e) {}
     return false;
@@ -1393,8 +1395,11 @@ function frameTick() {
     popups(now);
     screenText(now);
     if (ACT === 'runaway') { if (IN_BATTLE) { ACT = null; send({k: 'pressed', what: 'RunAway', ok: runAway()}); } else if (now - ACT_AT > 3000) ACT = null; }
-    if (ACT === 'go') { ACT = null;             /* a party screen nobody pressed GO on (e.g. left over from a restart): GO now */
-      if (prepOpen() && now - GO_AT > 5000 && !EXPECT_PREP) { EXPECT_PREP = now; send({k: 'err', e: 'orphaned party screen -- pressing GO'}); } }
+    if (ACT === 'go') { ACT = null;             /* a party screen OUR Battle press opened and nobody pressed GO on: GO now. One that no
+         press of ours opened is HIS (he pressed Battle and is picking his team): never GO on it -- 11-17 03:10:19 */
+      if (prepOpen() && now - GO_AT > 5000 && !EXPECT_PREP) {
+        if (ourParty(now)) { EXPECT_PREP = now; send({k: 'err', e: 'orphaned party screen -- pressing GO'}); }
+        else send({k: 'info', what: 'party screen', layout: 'not opened by a Battle press of ours: it is yours -- no GO'}); } }
     if (ACT === 'unhang') { ACT = null;         /* a hung battle: the game's own recovery path back to the gym screen */
       var live = false; try { var sv = GBS ? GBS.add(O.gbsSvc).readPointer() : NULL; live = isA(sv, K.svc) && M.active && callB(M.active, sv, 'battleActive?') === true; } catch (e) {}
       if (IN_BATTLE && live) send({k: 'pressed', what: 'RunAway (unhang: the battle is live)', ok: runAway()});
