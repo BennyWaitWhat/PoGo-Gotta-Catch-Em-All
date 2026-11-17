@@ -106,6 +106,12 @@ var MISSING = [];
 /* ---- live picture ---- */
 var ROOT = null, GLS = null, GLS_CANDS = [], DIR = null;
 var CHAIN = '', LEAF = '', GAS = null, GBS = null, IN_BATTLE = false, ROUND = false;
+var ONEBYONE = false, RN = 0, OBO_AT = 0, OBO_RN = 0, MDLG = null, MDF_TOLD = false;   /* MDLG: the open ModalDialog (one-by-one OK) */
+var OBO_FALL = 0;                              /* the round a direct give-up went out in (prompt + OK fallback if it is still on) */
+var OBO_SKIP = false;                          /* the runner saw the first defender KNOCKED OUT: the next round's defender is the new
+                                                 first -- stay in and fight it, no exit (Benny 11-17 00:08: "no need to exit") */   /* one-by-one mode (Benny 11-16 23:58): drill the FIRST defender over and
+                                                 over -- run away ONCE when the 2nd defender's round starts; the next Battle starts at the
+                                                 1st again. 11-17 00:00: a run-away every 1.5 s piled up 30 give-up dialogs -- never again */
 var TOP = null, TOP_AT = 0, PREP = null, CONT = null;
 var GTEAM = {}, GYMS = {}, MAP_AT = 0, PENDING = null, PENDING_AT = 0;
 var ACT = null, ACT_AT = 0, EXPECT_PREP = 0, GO_AT = 0, PREP_AT = 0, WATCH = [], POPQ = [], GUIS = {};
@@ -788,11 +794,11 @@ function walkChain() {                        /* the game's own state machine, r
   if (GAS && !gas) EXPECT_PREP = 0;                                              /* left the gym screen: no Battle is pending */
   GAS = gas; GSTATE = gst;
   var wasBattle = IN_BATTLE; IN_BATTLE = !!gbs; GBS = gbs;
-  if (IN_BATTLE && !wasBattle) send({k: 'battle', on: true});
+  if (IN_BATTLE && !wasBattle) { RN = 0; OBO_RN = 0; OBO_SKIP = false; send({k: 'battle', on: true}); }
   if (!IN_BATTLE && wasBattle) { ROUND = false; FAINT_DUE = Date.now() + 1500; send({k: 'end', fast: ST.fast, charged: ST.charged});
     if (AUTODEP && leaf === 'MapExploreState') { PENDING = AUTODEP.fid; PENDING_AT = Date.now(); } }
   var round = leaf === 'GymBattleState';
-  if (round && !ROUND) send({k: 'start'});
+  if (round && !ROUND) { RN++; send({k: 'start', n: RN}); }
   ROUND = round; LEAF = leaf;
 }
 function topScreen(now) {                     /* the live top screen (GuiLayerService.TopGui) and what it means */
@@ -809,6 +815,8 @@ function topScreen(now) {                     /* the live top screen (GuiLayerSe
   /* screens are tracked by OBJECT (a new instance of the same class is a new screen), and closed by their own state */
   if (tn === 'GymBattlePrepUIController' && !tg.isNull() && (!PREP || !PREP.equals(tg))) { PREP = tg; PREP_AT = now; send({k: 'gui', open: 'GymBattlePrepUIController'}); }
   if (tn === 'GymBattleContinueGuiController' && !CONT_DONE[tg] && (!CONT || !CONT.gui.equals(tg))) CONT = {gui: tg, k: klassOf(tg), at: now};
+  if (tn === 'ModalDialog' && !tg.isNull() && (TOP !== 'ModalDialog' || !MDLG || !MDLG.gui.equals(tg)))   /* every time it comes up: */
+    MDLG = {gui: tg, k: klassOf(tg), at: now, told: false};   /* the game REUSES the prompt object (00:11:48: no OK for 30 s) */
   if (SKIP.indexOf(tn) >= 0 && !SKIP_OFF[tn] && !SKIP_DONE[tg] && (!SKIPQ[tn] || !SKIPQ[tn].gui.equals(tg))
       && (SKIP_BASE[tn] !== undefined ? SKIP_BASE[tn] : (SKIP_BASE[tn] = derivesGui(klassOf(tg))))) SKIPQ[tn] = {gui: tg, k: klassOf(tg), at: now};
   if (tn === TOP) return;
@@ -1198,10 +1206,12 @@ function attack(now) {
   if (now - ST.lastSent > 1000) { ST.lastSent = now; send({k: 'act', fast: ST.fast, charged: ST.charged}); }
 }
 /* <<< STAB */
-function runAway() {                          /* the battle's own run-away button (SurrenderButton.TrySurrender) */
+function runAway(now) {                       /* the battle's own run-away button (SurrenderButton.TrySurrender; now = its give-up
+                                                 action directly, no prompt) */
   if (!GBS) return false;
   var ui = GBS.add(O.gbsUi).readPointer(); if (ui.isNull()) return false;
   var sb = ui.add(O.uiSurrender).readPointer(); if (!alive(sb) || !isA(sb, K.SurrenderButton)) return false;
+  if (now) return !!M.surrenderNow && call(M.surrenderNow, sb, 'giveUpNow') !== null;
   return call(M.surrender, sb, 'runAway') !== null;
 }
 function bcls(o) { var k = klassOf(o); if (!nameOf(k)) throw new Error('not an object'); return k; }   /* (review: pure reads -- a bad pointer throws, never reaches il2cpp) */
@@ -1306,6 +1316,42 @@ function frameTick() {
       if (IN_BATTLE && live) send({k: 'pressed', what: 'RunAway (unhang: the battle is live)', ok: runAway()});
       else if (IN_BATTLE && GSTATE && M.failedToStart && GSTATE.readPointer().equals(K.GymState)) send({k: 'pressed', what: 'Unhang', ok: call(M.failedToStart, GSTATE, 'FailedToStartBattle') !== null});
       else send({k: 'err', e: 'unhang: not in a battle'}); }
+    /* one-by-one: the 2nd defender's round is up -- ONE run-away per round, never while any dialog is on top (the runner
+       answers the give-up prompt with ONE tap on OK) */
+    if (ONEBYONE && ROUND && RN >= 2 && IN_BATTLE && OBO_RN !== RN && TOP !== 'ModalDialog') {
+      /* only once the round is LIVE (the battle service says active): at the round's first frame the server is not in the
+         battle yet and OK on the give-up prompt is ignored (00:03:10, 00:03:31 -- the 2nd defender got fought behind it) */
+      var oblive = false; try { var obsv = GBS ? GBS.add(O.gbsSvc).readPointer() : NULL; oblive = isA(obsv, K.svc) && M.active && callB(M.active, obsv, 'battleActive?') === true; } catch (e) {}
+      if (oblive && OBO_SKIP) { OBO_SKIP = false; OBO_RN = RN; send({k: 'pressed', what: 'stay (one-by-one): the first defender was knocked out -- this one is the new first'}); }
+      else if (oblive) { OBO_RN = RN; OBO_AT = now;
+        var gun = M.surrenderNow ? runAway(true) : false;   /* no prompt first; the prompt + one OK only if that did nothing */
+        if (gun) { OBO_FALL = RN; send({k: 'pressed', what: 'Give up now (one-by-one, no prompt)', ok: true}); }
+        else send({k: 'pressed', what: 'RunAway (one-by-one)', ok: runAway()}); } }
+    if (OBO_FALL && OBO_FALL === RN && IN_BATTLE && ROUND && now - OBO_AT > 1500 && TOP !== 'ModalDialog') {   /* still in the */
+      OBO_FALL = 0; OBO_AT = now; send({k: 'pressed', what: 'RunAway (one-by-one)', ok: runAway(), why: 'the direct give-up did nothing'}); }   /* round */
+    if (OBO_FALL && (!IN_BATTLE || RN !== OBO_FALL)) OBO_FALL = 0;
+    if (MDLG && !MDLG.told) {                     /* the give-up prompt (any ModalDialog): tell the runner the moment it is fully Open */
+      try {
+        if (!alive(MDLG.gui) || !isA(MDLG.gui, MDLG.k)) MDLG = null;
+        else {
+          if (!MDF_TOLD) { MDF_TOLD = true;            /* once: the OK button's own layout (for a native press, no screen tap) */
+            var mdi = {k: 'mdfields', pbN: null, pb: null, pbCls: null, bc: null, err: null};
+            try {
+              var pbOff = fieldBy(MDLG.k, function (n) { return n === 'primaryButton'; });
+              var pba = pbOff >= 0 ? MDLG.gui.add(pbOff).readPointer() : NULL;
+              if (!pba.isNull()) { mdi.pbN = pba.add(0x18).readS32();
+                if (mdi.pbN > 0) { try { var pe = pba.add(0x20).readPointer(), pk = bcls(pe); mdi.pbCls = nameOf(pk);
+                  mdi.pb = fieldsOf(pk).map(function (x) { return x.name + ':' + tname(x) + '@' + x.off; }); } catch (e) { mdi.err = 'pb: ' + e; } } }
+              var bcOff = fieldBy(MDLG.k, function (n) { return n === 'buttonContainer'; });
+              var bco = bcOff >= 0 ? MDLG.gui.add(bcOff).readPointer() : NULL;
+              if (!bco.isNull()) { try { mdi.bc = fieldsOf(bcls(bco)).map(function (x) { return x.name + ':' + tname(x) + '@' + x.off; }); } catch (e) { mdi.err = (mdi.err || '') + ' bc: ' + e; } }
+            } catch (e) { mdi.err = (mdi.err || '') + ' ' + e; }
+            send(mdi); }
+          var mst = derivesGui(MDLG.k) ? MDLG.gui.add(O.guiState).readS32() : -1;
+          if (mst === LIT.open.Open || (mst < 0 && now - MDLG.at > 400)) { MDLG.told = true; send({k: 'mdopen', ms: now - MDLG.at, st: mst}); }
+        }
+      } catch (e) { MDLG = null; }
+    }
     if (TEAMP && now - TEAM_AT < 15000) {       /* re-resolve the picked six every frame: the hook writes pointers the bag holds NOW */
       var o6 = protoOffs(); TEAMP = TEAMP.map(function (t) { var p = liveProto(t.id); return p && usable(p, o6) ? {p: p, id: t.id, cp: t.cp} : null; }).filter(Boolean); }
     attack(now);
@@ -1399,6 +1445,11 @@ rpc.exports = {
     M.dismiss = need('GuiController.Dismiss', methodOn(K.GuiController, 'Dismiss'));
     M.tapCharge = need('ChargeAttackButtonTapped', methodOn(K.ChargeAttackDisplay, 'ChargeAttackButtonTapped'));
     M.surrender = need('TrySurrender', methodOn(K.SurrenderButton, 'TrySurrender'));
+    M.surrenderNow = methodOn(K.SurrenderButton, 'bwuk', 0);   /* the button's own give-up action (what OK on the prompt runs):
+                                                                  no prompt at all (Benny 00:14: "give it what it wants off the rip") */
+    try { var sbm = [], sbit = Memory.alloc(PS), sbx; sbit.writePointer(NULL);   /* learn the run-away button's own methods: the */
+      while (!(sbx = CGMS(K.SurrenderButton, sbit)).isNull()) sbm.push(cs(MGNM(sbx)) + '(' + sigOf(sbx) + ')');   /* give-up path */
+      send({k: 'sbmethods', m: sbm}); } catch (e) { send({k: 'sbmethods', err: String(e)}); }
     M.failedToStart = need('GymState.FailedToStartBattle', methodOn(K.GymState, 'FailedToStartBattle', 0));
     /* instances -- C-only liveness walk, BEFORE any hook exists */
     if (rootK) instances(rootK, 8).forEach(function (o) { try { if (!ROOT && o.add(O.gsActive).readU8()) ROOT = o; } catch (e) {} });
@@ -1656,6 +1707,8 @@ rpc.exports = {
     return {on: TOPUP_ON, reserve: TOPUP_RESERVE, berries: c}; },
   scan: function (fids) { (fids || []).forEach(function (f) { if (SCANQ.indexOf(f) < 0 && !SCANREQ[f]) SCANQ.push(f); }); return SCANQ.length; },
   autobattle: function (on) { NOAUTOBATTLE = !on; return !NOAUTOBATTLE; },
+  onebyone: function (on) { ONEBYONE = !!on; return ONEBYONE; },
+  obokeep: function () { OBO_SKIP = !!(ONEBYONE && IN_BATTLE); return OBO_SKIP; },
   rscan: function (list) { var added = 0;     /* [[fid, lat, lng], ...]: --monitor, gyms on any island */
     (list || []).forEach(function (x) { var f0 = String(x[0]);
       if (!SCANREQ[f0] && !RSCANQ.some(function (y) { return y[0] === f0; })) { RSCANQ.push([f0, +x[1], +x[2]]); added++; } });
