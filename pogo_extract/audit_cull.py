@@ -908,7 +908,17 @@ from pvp_iv_rule import pvid as _sm_pvid
 _smin = keep_config.cap('species_min')
 _smk = lambda r: _sm_pvid(r['species_name'], r['form'] or 0)
 _HK = keep_config.hand_kept()                          # a copy kept by hand counts toward no minimum (2026-11-12)
-_cnt_k = collections.Counter(_smk(r) for r in _crows if r['pokemon_id'] and r['uid_hex'] not in _HK)
+# A COPY TOLD TO EVOLVE COUNTS TOWARD NO MINIMUM EITHER (rules.min_skips_evolving, 2026-11-17): it is gone from its kind the
+# moment he does what its tag says, so what STAYS of a kind is counted without it. The copies are the rows of
+# evolve_advice.json (build_tagsets' table; never a pile mon). Rule off, or no table (I8.4 blocks on that) = none.
+_EVG = frozenset()
+if keep_config.rule_enabled('min_skips_evolving'):
+    try:
+        _EVG = frozenset(json.load(open(os.path.join(ROOT, 'system', 'analysis', 'evolve_advice.json'), encoding='utf-8')))
+    except (OSError, ValueError):
+        _EVG = frozenset()
+_stays = lambda r: r['uid_hex'] not in _HK and r['uid_hex'] not in _EVG
+_cnt_k = collections.Counter(_smk(r) for r in _crows if r['pokemon_id'] and _stays(r))
 _pp_k = collections.Counter(_smk(rows[u]) for u in _ps_v if rows[u]['pokemon_id'])
 sm = [p for p, n in _pp_k.items() if _cnt_k[p] - n < min(_smin, _cnt_k[p])]
 print('  %-18s %-5d %s   (at least %d of every species + form)' % ('species under min', len(sm), chk('species under minimum', len(sm)), _smin))
@@ -917,7 +927,7 @@ print('  %-18s %-5d %s   (at least %d of every species + form)' % ('species unde
 import pattern_pools as _ppm
 _pmin = _ppm.min_count(None)                           # the global number; a species' own (Unown: 3) per group below
 _pmk = lambda r: _ppm.min_group(r['pokemon_id'], r['species_name'], r.get('form') or 0)
-_cnt_g = collections.Counter(_pmk(r) for r in _crows if _pmk(r) and r['uid_hex'] not in _HK)
+_cnt_g = collections.Counter(_pmk(r) for r in _crows if _pmk(r) and _stays(r))
 _pp_g = collections.Counter(_pmk(rows[u]) for u in _ps_v if _pmk(rows[u]))
 pm = [g for g, n in _pp_g.items() if _cnt_g[g] - n < min(_ppm.min_count(g), _cnt_g[g])]
 print('  %-18s %-5d %s   (at least %d of every pattern / letter / color / season)' % ('patterns under min', len(pm), chk('pattern under minimum', len(pm)), _pmin))
@@ -925,7 +935,7 @@ print('  %-18s %-5d %s   (at least %d of every pattern / letter / color / season
 # copies (keep_config.is_regular_copy), or every regular copy it has that reaches the bar's lowest point -- like the engine
 _rmin, _rlo = keep_config.regular_min()
 _reg = keep_config.is_regular_copy
-_rg_all = collections.Counter(_smk(r) for r in _crows if r['pokemon_id'] and _reg(r) and r['uid_hex'] not in _HK)
+_rg_all = collections.Counter(_smk(r) for r in _crows if r['pokemon_id'] and _reg(r) and _stays(r))
 _rg_pile = collections.Counter(_smk(rows[u]) for u in _ps_v if rows[u]['pokemon_id'] and _reg(rows[u]))
 _rg_hit = {_smk(rows[u]) for u in _ps_v if rows[u]['pokemon_id'] and _reg(rows[u]) and (rows[u].get('iv_total') or 0) >= _rlo}
 rm = [k for k in _rg_hit if _rmin and _rg_all[k] - _rg_pile[k] < _rmin]

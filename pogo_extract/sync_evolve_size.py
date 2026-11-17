@@ -48,7 +48,7 @@ rpc.exports.specialBindings = function(svcAddrStr) {
 """
 
 
-def _own_stage_best():
+def _own_stage_best(why=None):
     """uids that are a Best GL / Best UL copy (keep_policy rule 15d) whose USABLE winning stage is their OWN stage:
     never advised to evolve (user 2026-09-23) -- the same test as keep_policy's _own_pvp, audit_labels and
     refresh_evolve_shiny: pvp_iv_rule.usable_best over the stages keep_policy.pvp_later_stages says the copy can become
@@ -62,7 +62,7 @@ def _own_stage_best():
     import json, sqlite3
     from pvp_iv_rule import pvid, usable_best, maxcp, GL_CAP, UL_CAP, READY_RANK, VIABILITY_MARGIN, competitive
     try:
-        pol = json.load(open(os.path.join('system', 'analysis', 'policy_reasons.json'), encoding='utf-8'))
+        pol = why if why is not None else json.load(open(os.path.join('system', 'analysis', 'policy_reasons.json'), encoding='utf-8'))
         legacy = {norm(e['uid_hex']) for e in json.load(open('legacy_accurate.json', encoding='utf-8'))}
         from keep_policy import build_evo_graph, pvp_later_stages
         gm = json.load(open('pvpoke_gamemaster.json', encoding='utf-8'))
@@ -92,14 +92,14 @@ def _own_stage_best():
     return out
 
 
-def picks(pile=None):
+def picks(pile=None, why=None):
     """An XXL pre-evo whose evolved copy would out-score the best entry you own at the target.
 
     The gate is the BADGE, not a projected z: 297 matched evolutions in the walk history kept their size badge every
     time (132/132 XXL), so an XXL that evolves is still an XXL. The projection only supplies the score."""
     rows = showcase_plan._rows()
     big = [e for e in showcase_plan.evolve_to_win(rows) if e['size'] == 5]
-    held = _own_stage_best()
+    held = _own_stage_best(why)
     if held is None:
         print('  (policy_reasons.json, legacy_accurate.json or the evolution graph unreadable -- Best GL/UL own-stage copies, shiny trophies and legacy movers NOT filtered from %s)' % TAG)
     else:

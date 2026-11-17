@@ -469,9 +469,9 @@ def evolve_advice(kept, reasons, pile):
             _sys.path.insert(0, _p)
     from refresh_evolve_shiny import compute_target       # raises on a broken rule: fail loud, never an empty list
     _sh_detail, _sh_gated, _sh_onward = {}, {}, {}
-    _sh = compute_target(detail=_sh_detail, gated=_sh_gated, onward=_sh_onward)
+    _sh = compute_target(why={u: set(v) for u, v in reasons.items()}, detail=_sh_detail, gated=_sh_gated, onward=_sh_onward)
     import sync_evolve_size
-    _sz_want, _sz_big = sync_evolve_size.picks(set(pile))
+    _sz_want, _sz_big = sync_evolve_size.picks(set(pile), why=reasons)   # the reasons given: keep_policy asks before the file is written
     _sz_best = {}
     for e in _sz_big:                                     # one pick per mon: the branch that scores highest
         if e['uid'] not in _sz_best or (e['score_after'] or 0) > (_sz_best[e['uid']]['score_after'] or 0):

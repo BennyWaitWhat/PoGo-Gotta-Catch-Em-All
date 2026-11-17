@@ -686,18 +686,32 @@ _LAW_KEEPERS = {}        # uid -> [reasons] from independent_law.py (H08, 2026-0
 _SPECIES_MIN_KEPT = set()  # species minimum (user 2026-11-03 "3"), populated in main() like _LOC_CARD_KEPT
 
 
+def _evolving():
+    """The kept copies told to evolve -- the rows of evolve_advice.json, the table build_tagsets wrote beside this pile. Each
+    counts toward no minimum of the kind it leaves (rules.min_skips_evolving, 2026-11-17: the three kept plain Zorua of
+    2026-11-16 included one wearing Evolve to Final; the fourth was piled, and the kind stood at 2 once he evolved it).
+    Rule off = none. A table that cannot be read = none too: audit_invariants I8.4 blocks the pass on that by itself."""
+    if not keep_config.rule_enabled('min_skips_evolving'):
+        return frozenset()
+    try:
+        return frozenset(json.load(open(os.path.join(ROOT, 'system', 'analysis', 'evolve_advice.json'), encoding='utf-8')))
+    except (OSError, ValueError):
+        return frozenset()
+
+
 def _species_min_uids(bag, pile):
     """The pile copies keep_policy's species minimum must keep, from counts alone: per species + form (pvid, every look;
     per dex number until 2026-11-04 "a"), the best by _ivkey until keep_config caps.species_min copies stay out of the pile."""
     from pvp_iv_rule import pvid as _pv
     n = keep_config.cap('species_min')
+    ev = _evolving()                                   # a copy told to evolve is counted as gone from the kind it leaves
     by = defaultdict(list)
     for r in bag:
         if r['pokemon_id'] and r['uid_hex'] not in keep_config.hand_kept():   # a copy kept by hand counts toward no minimum
             by[_pv(r['species_name'], r['form'] or 0)].append(r)
     out = set()
     for lst in by.values():
-        short = n - sum(1 for r in lst if r['uid_hex'] not in pile)
+        short = n - sum(1 for r in lst if r['uid_hex'] not in pile and r['uid_hex'] not in ev)
         out |= {r['uid_hex'] for r in sorted((r for r in lst if r['uid_hex'] in pile), key=_ivkey)[:max(0, short)]}
     return out
 
@@ -709,6 +723,7 @@ def _pattern_min_uids(bag, pile):
     """The pile copies keep_policy's pattern minimum must keep: per Scatterbug pattern (its whole line) and per lumped form
     (Unown letter, Spinda pattern, color, season: pattern_pools.min_group), the best by _ivkey until keep_config caps.pattern_min copies stay out of the pile."""
     import pattern_pools as _pp
+    ev = _evolving()
     by = defaultdict(list)
     for r in bag:
         g = _pp.min_group(r['pokemon_id'], r['species_name'], r['form'] or 0)
@@ -716,7 +731,7 @@ def _pattern_min_uids(bag, pile):
             by[g].append(r)
     out = set()
     for g, lst in by.items():
-        short = _pp.min_count(g) - sum(1 for r in lst if r['uid_hex'] not in pile)   # a species' own number (Unown: 3)
+        short = _pp.min_count(g) - sum(1 for r in lst if r['uid_hex'] not in pile and r['uid_hex'] not in ev)   # a species' own number (Unown: 3)
         out |= {r['uid_hex'] for r in sorted((r for r in lst if r['uid_hex'] in pile), key=_ivkey)[:max(0, short)]}
     return out
 
@@ -733,13 +748,14 @@ def _regular_min_uids(bag, pile):
     regular copies stay out of the pile. Off (no cap or no room bar) = nothing."""
     from pvp_iv_rule import pvid as _pv
     n, lo = keep_config.regular_min()
+    ev = _evolving()
     by = defaultdict(list)
     for r in bag:
         if n and r['pokemon_id'] and keep_config.is_regular_copy(r) and r['uid_hex'] not in keep_config.hand_kept():
             by[_pv(r['species_name'], r['form'] or 0)].append(r)
     out = set()
     for lst in by.values():
-        short = n - sum(1 for r in lst if r['uid_hex'] not in pile)
+        short = n - sum(1 for r in lst if r['uid_hex'] not in pile and r['uid_hex'] not in ev)
         out |= {r['uid_hex'] for r in sorted((r for r in lst if r['uid_hex'] in pile and (r['iv_total'] or 0) >= lo),
                                              key=_ivkey)[:max(0, short)]}
     return out
@@ -1369,6 +1385,8 @@ def main():
     _SPECIES_MIN_KEPT = _species_min_uids(bag, set(transfer_uids))
     print('  species minimum: %d pile copies would leave a species under %d' % (len(_SPECIES_MIN_KEPT),
                                                                             keep_config.cap('species_min')))
+    print('  told to evolve: %d kept copies count toward no minimum of the kind they leave (rule %s)'
+          % (len(_evolving()), 'on' if keep_config.rule_enabled('min_skips_evolving') else 'off'))
     _PATTERN_MIN_KEPT = _pattern_min_uids(bag, set(transfer_uids))
     print('  pattern minimum: %d pile copies would leave a pattern / letter / color / season under %d'
           % (len(_PATTERN_MIN_KEPT), __import__('pattern_pools').min_count(None)))
