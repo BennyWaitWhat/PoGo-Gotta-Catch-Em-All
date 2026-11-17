@@ -1,0 +1,741 @@
+{
+ "shape": "eye",
+ "near": [
+  34.070803,
+  -84.275011
+ ],
+ "radius": 1100.0,
+ "read_at": "2026-11-17 01:04:22",
+ "centre": [
+  34.07130823627994,
+  -84.27822552696298
+ ],
+ "half_length_m": 450.0,
+ "lobe_half_width_m": 70.0,
+ "axis_deg_from_east": -3.0252025561386042,
+ "ring_half_width_m": 370.0,
+ "title": "Avalon Eye",
+ "km": 6.508,
+ "min": 37.798,
+ "stops": 45,
+ "gyms": 8,
+ "per_km": 8.144,
+ "spins_h": 185.722,
+ "of": 89,
+ "mirror": 0.517,
+ "margin": 53,
+ "spots": [
+  {
+   "id": "5571c08e969b35d3bc7ad94c7aec3ac2.16",
+   "lat": 34.068166,
+   "lng": -84.267429,
+   "gym": false,
+   "team": 0,
+   "on_route": false
+  },
+  {
+   "id": "0199c2d2bf2847b38c63f63458fe9679.16",
+   "lat": 34.071596,
+   "lng": -84.266223,
+   "gym": false,
+   "team": 0,
+   "on_route": false
+  },
+  {
+   "id": "4e67bcbbffe44ff0a51e8b90e1a998b1.16",
+   "lat": 34.069805,
+   "lng": -84.266273,
+   "gym": false,
+   "team": 0,
+   "on_route": false
+  },
+  {
+   "id": "63610955c34c3cf3bba87593e612c259.16",
+   "lat": 34.072105,
+   "lng": -84.26699,
+   "gym": false,
+   "team": 0,
+   "on_route": false
+  },
+  {
+   "id": "3293f3c993183bf38e0e9dc97e8d41be.16",
+   "lat": 34.071937,
+   "lng": -84.267756,
+   "gym": false,
+   "team": 0,
+   "on_route": false
+  },
+  {
+   "id": "dce627a737943fa0a85464a7c0717852.16",
+   "lat": 34.07803,
+   "lng": -84.277634,
+   "gym": false,
+   "team": 0,
+   "on_route": false
+  },
+  {
+   "id": "28ee43d5878c35db810ef81e517bc0dc.16",
+   "lat": 34.077815,
+   "lng": -84.277501,
+   "gym": false,
+   "team": 0,
+   "on_route": false
+  },
+  {
+   "id": "7115e3d68a2c3d16ad8fd4566a8ffd5c.16",
+   "lat": 34.073777,
+   "lng": -84.283015,
+   "gym": false,
+   "team": 0,
+   "on_route": false
+  },
+  {
+   "id": "1b0fc8d280eb330aa95645b30fe059e3.16",
+   "lat": 34.062414,
+   "lng": -84.276517,
+   "gym": false,
+   "team": 0,
+   "on_route": false
+  },
+  {
+   "id": "890034efd2ad33e1b0a29da71cb2ba68.16",
+   "lat": 34.063952,
+   "lng": -84.277204,
+   "gym": false,
+   "team": 0,
+   "on_route": false
+  },
+  {
+   "id": "b90e8532909e347a97e5944590975eef.16",
+   "lat": 34.07596,
+   "lng": -84.274895,
+   "gym": false,
+   "team": 0,
+   "on_route": false
+  },
+  {
+   "id": "c4c8fd1192bb3ad8acf3cfdaf2fae445.16",
+   "lat": 34.076195,
+   "lng": -84.274373,
+   "gym": false,
+   "team": 0,
+   "on_route": false
+  },
+  {
+   "id": "6c446d1582f73d56ac63a768c5e93e98.16",
+   "lat": 34.076383,
+   "lng": -84.274185,
+   "gym": false,
+   "team": 0,
+   "on_route": false
+  },
+  {
+   "id": "981872b44a79384091da546080dbdd80.16",
+   "lat": 34.076853,
+   "lng": -84.273573,
+   "gym": false,
+   "team": 0,
+   "on_route": false
+  },
+  {
+   "id": "fcc20ac9698e928a9b707863227f5fba",
+   "lat": 34.06847409,
+   "lng": -84.28096226,
+   "gym": false,
+   "team": 0,
+   "on_route": true
+  },
+  {
+   "id": "0b70db1a66ac35dda7f19b63239a34f4.16",
+   "lat": 34.068331,
+   "lng": -84.281203,
+   "gym": false,
+   "team": 0,
+   "on_route": true
+  },
+  {
+   "id": "1a00151ab56b45c3a98e04aef9380e2f.16",
+   "lat": 34.068556,
+   "lng": -84.281385,
+   "gym": false,
+   "team": 0,
+   "on_route": true
+  },
+  {
+   "id": "283a0291ce2746d59224a407fe2fc3a9.16",
+   "lat": 34.069322,
+   "lng": -84.28262,
+   "gym": false,
+   "team": 0,
+   "on_route": true
+  },
+  {
+   "id": "51c0458274613fbe9f38fc0c6f58e809.16",
+   "lat": 34.072561,
+   "lng": -84.282908,
+   "gym": false,
+   "team": 0,
+   "on_route": true
+  },
+  {
+   "id": "cf26afb5bafa3fc3924b0f803918e793.16",
+   "lat": 34.072953,
+   "lng": -84.272509,
+   "gym": false,
+   "team": 0,
+   "on_route": false
+  },
+  {
+   "id": "661f8dc223a9353ea7552050625f0bbf.16",
+   "lat": 34.071677,
+   "lng": -84.282533,
+   "gym": false,
+   "team": 0,
+   "on_route": true
+  },
+  {
+   "id": "de7e1c8b2ced38a1a52d69bfe3a10357.16",
+   "lat": 34.071074,
+   "lng": -84.282595,
+   "gym": false,
+   "team": 0,
+   "on_route": true
+  },
+  {
+   "id": "7a00d6908a443291818b7d69e84a9459.16",
+   "lat": 34.072242,
+   "lng": -84.282257,
+   "gym": false,
+   "team": 0,
+   "on_route": true
+  },
+  {
+   "id": "116fbf7628593844bd54086b143c9353.16",
+   "lat": 34.072565,
+   "lng": -84.281854,
+   "gym": false,
+   "team": 0,
+   "on_route": true
+  },
+  {
+   "id": "8bb88515d5db38b285c220bcf74b5ee9.16",
+   "lat": 34.071031,
+   "lng": -84.281824,
+   "gym": false,
+   "team": 0,
+   "on_route": true
+  },
+  {
+   "id": "a22d4fd8fcf83cb4adc7bcfa290a54b0.16",
+   "lat": 34.072556,
+   "lng": -84.281297,
+   "gym": false,
+   "team": 0,
+   "on_route": true
+  },
+  {
+   "id": "373713beeeed3e188c4251ae1f85a039.16",
+   "lat": 34.072555,
+   "lng": -84.280701,
+   "gym": false,
+   "team": 0,
+   "on_route": true
+  },
+  {
+   "id": "3bfa6cd6d37239cc99b8f7c1346a6026.16",
+   "lat": 34.074262,
+   "lng": -84.278429,
+   "gym": false,
+   "team": 0,
+   "on_route": true
+  },
+  {
+   "id": "4a700aa16ad134eea993a21a2b9e026b.16",
+   "lat": 34.075128,
+   "lng": -84.278497,
+   "gym": false,
+   "team": 0,
+   "on_route": true
+  },
+  {
+   "id": "264faad0b39f38219ef3eb2b5237d545.16",
+   "lat": 34.075061,
+   "lng": -84.278745,
+   "gym": false,
+   "team": 0,
+   "on_route": true
+  },
+  {
+   "id": "874a1986cd0636cfa8078074aa857f86.16",
+   "lat": 34.075472,
+   "lng": -84.280462,
+   "gym": false,
+   "team": 0,
+   "on_route": false
+  },
+  {
+   "id": "ff8e25ca785941a38bfe47262df590d4.16",
+   "lat": 34.070772,
+   "lng": -84.280875,
+   "gym": false,
+   "team": 0,
+   "on_route": true
+  },
+  {
+   "id": "6a593424865638b0b91082b064862316.16",
+   "lat": 34.07224,
+   "lng": -84.280743,
+   "gym": false,
+   "team": 0,
+   "on_route": true
+  },
+  {
+   "id": "65313cf989264a33b100c2df9480a516.16",
+   "lat": 34.066158,
+   "lng": -84.278495,
+   "gym": false,
+   "team": 0,
+   "on_route": false
+  },
+  {
+   "id": "9e32ccb59847387b8bcc7108af3ecd33.16",
+   "lat": 34.067618,
+   "lng": -84.27979,
+   "gym": false,
+   "team": 0,
+   "on_route": true
+  },
+  {
+   "id": "93db040e7a553063be27aff1618c71b4.16",
+   "lat": 34.074549,
+   "lng": -84.273288,
+   "gym": false,
+   "team": 0,
+   "on_route": false
+  },
+  {
+   "id": "721cac2eec664f01903b67644ef1ec05.16",
+   "lat": 34.073031,
+   "lng": -84.273566,
+   "gym": false,
+   "team": 0,
+   "on_route": true
+  },
+  {
+   "id": "7e008f71b84e319489b702d9a70e12e8.16",
+   "lat": 34.067696,
+   "lng": -84.279579,
+   "gym": false,
+   "team": 0,
+   "on_route": true
+  },
+  {
+   "id": "d671c32c713c48a4bf488709cce4f809.16",
+   "lat": 34.068073,
+   "lng": -84.275208,
+   "gym": false,
+   "team": 0,
+   "on_route": true
+  },
+  {
+   "id": "5b54bffc11b03e0d886be2940a02fdcb.16",
+   "lat": 34.069892,
+   "lng": -84.274383,
+   "gym": false,
+   "team": 0,
+   "on_route": true
+  },
+  {
+   "id": "94e8d0f26a5f36e49988e496faea01b4.16",
+   "lat": 34.070869,
+   "lng": -84.272952,
+   "gym": false,
+   "team": 0,
+   "on_route": true
+  },
+  {
+   "id": "fdf2b37e75b73281bd4b16fa027258fa.16",
+   "lat": 34.070933,
+   "lng": -84.277975,
+   "gym": false,
+   "team": 0,
+   "on_route": true
+  },
+  {
+   "id": "6cfb704c26d23aa89d52db6e25a3a872.16",
+   "lat": 34.071222,
+   "lng": -84.278076,
+   "gym": false,
+   "team": 0,
+   "on_route": true
+  },
+  {
+   "id": "3192e14de8a242bc964d64ba1f56497d.16",
+   "lat": 34.070804,
+   "lng": -84.279019,
+   "gym": false,
+   "team": 0,
+   "on_route": true
+  },
+  {
+   "id": "d2bbcca5e52736f2ada12816e93a0f7b.16",
+   "lat": 34.070782,
+   "lng": -84.279277,
+   "gym": false,
+   "team": 0,
+   "on_route": true
+  },
+  {
+   "id": "d7f8cf6a0f07337d97779550ab51db78.16",
+   "lat": 34.071684,
+   "lng": -84.278977,
+   "gym": false,
+   "team": 0,
+   "on_route": true
+  },
+  {
+   "id": "4201251788153d318305ff0f0fd58f31.16",
+   "lat": 34.071426,
+   "lng": -84.279806,
+   "gym": false,
+   "team": 0,
+   "on_route": true
+  },
+  {
+   "id": "55bc6497ac214b768c70057a6f8737e1.16",
+   "lat": 34.072271,
+   "lng": -84.280492,
+   "gym": false,
+   "team": 0,
+   "on_route": true
+  },
+  {
+   "id": "c3a4c8305f1130fdb6e991918cd50b90.16",
+   "lat": 34.071481,
+   "lng": -84.273146,
+   "gym": false,
+   "team": 0,
+   "on_route": true
+  },
+  {
+   "id": "1d7355ebb01c4e91b8e8ff9a45ea8012.16",
+   "lat": 34.070411,
+   "lng": -84.273922,
+   "gym": false,
+   "team": 0,
+   "on_route": true
+  },
+  {
+   "id": "07a55a804667474584f3438125b7347b.16",
+   "lat": 34.070762,
+   "lng": -84.274383,
+   "gym": false,
+   "team": 0,
+   "on_route": true
+  },
+  {
+   "id": "fe0e6300c6e13db5885009dc28017f01.16",
+   "lat": 34.070715,
+   "lng": -84.274856,
+   "gym": false,
+   "team": 0,
+   "on_route": true
+  },
+  {
+   "id": "7139ab0168113b37900b87a73e550274.16",
+   "lat": 34.071812,
+   "lng": -84.276611,
+   "gym": false,
+   "team": 0,
+   "on_route": true
+  },
+  {
+   "id": "e6bcd6349689436f9277c339010987cb.16",
+   "lat": 34.071742,
+   "lng": -84.275899,
+   "gym": false,
+   "team": 0,
+   "on_route": true
+  },
+  {
+   "id": "2fba06e0cefc482e8ddc043cada54801.16",
+   "lat": 34.071389,
+   "lng": -84.275694,
+   "gym": false,
+   "team": 0,
+   "on_route": true
+  },
+  {
+   "id": "db83f40a26b8384abbea2d49553902eb.16",
+   "lat": 34.071456,
+   "lng": -84.276932,
+   "gym": false,
+   "team": 0,
+   "on_route": true
+  },
+  {
+   "id": "4c8d85009ec04fed9ef00d20580cf895.16",
+   "lat": 34.070705,
+   "lng": -84.27572,
+   "gym": false,
+   "team": 0,
+   "on_route": true
+  },
+  {
+   "id": "c93b745723a23ee9858a6699405b56a4.16",
+   "lat": 34.070925,
+   "lng": -84.276717,
+   "gym": false,
+   "team": 0,
+   "on_route": true
+  },
+  {
+   "id": "2b4864982ed43e0589e5ffb83472f23d.16",
+   "lat": 34.070729,
+   "lng": -84.276398,
+   "gym": false,
+   "team": 0,
+   "on_route": true
+  },
+  {
+   "id": "47ec3ae7d7ad36f7a8d50fba2d12cb0b.16",
+   "lat": 34.068039,
+   "lng": -84.277099,
+   "gym": false,
+   "team": 0,
+   "on_route": true
+  },
+  {
+   "id": "2cb449454dd73f499ac15330e15dbe11.16",
+   "lat": 34.070042,
+   "lng": -84.276993,
+   "gym": false,
+   "team": 0,
+   "on_route": false
+  },
+  {
+   "id": "43499165840f4a6fbdc21d9f4891cd16.16",
+   "lat": 34.071628,
+   "lng": -84.265784,
+   "gym": true,
+   "team": 3,
+   "on_route": false
+  },
+  {
+   "id": "c05e6fe0423749b3a92f3f42cca4aa6e.16",
+   "lat": 34.071649,
+   "lng": -84.265393,
+   "gym": true,
+   "team": 2,
+   "on_route": false
+  },
+  {
+   "id": "ed2bc9006fa24078b367ae6e12ac50a7.16",
+   "lat": 34.071135,
+   "lng": -84.282249,
+   "gym": true,
+   "team": 2,
+   "on_route": true
+  },
+  {
+   "id": "44e1a5f24ba14400800053d98b9c0116.16",
+   "lat": 34.075817,
+   "lng": -84.27231,
+   "gym": true,
+   "team": 1,
+   "on_route": false
+  },
+  {
+   "id": "5fe2d063f9804c44bc788bab8875f991.16",
+   "lat": 34.076056,
+   "lng": -84.272881,
+   "gym": true,
+   "team": 3,
+   "on_route": false
+  },
+  {
+   "id": "95ea321a8c9a32e691b2e6ead9a7290e.16",
+   "lat": 34.068397,
+   "lng": -84.278125,
+   "gym": true,
+   "team": 1,
+   "on_route": true
+  },
+  {
+   "id": "176bc7f26f8e416abfbba47481ea0fd6.16",
+   "lat": 34.067785,
+   "lng": -84.279081,
+   "gym": true,
+   "team": 2,
+   "on_route": true
+  },
+  {
+   "id": "51e12f4bb4223ec396713a24f43e5946.16",
+   "lat": 34.070182,
+   "lng": -84.276343,
+   "gym": false,
+   "team": 0,
+   "on_route": true
+  },
+  {
+   "id": "af1a3d569d75476e9db81c75e77f8f4d.16",
+   "lat": 34.069156,
+   "lng": -84.27325,
+   "gym": true,
+   "team": 3,
+   "on_route": false
+  },
+  {
+   "id": "632ae3a83e7045d19cdd7c293091507c.16",
+   "lat": 34.071624,
+   "lng": -84.276127,
+   "gym": true,
+   "team": 3,
+   "on_route": true
+  },
+  {
+   "id": "cb9bd1b20ae94a97a3437df8d66090e9.16",
+   "lat": 34.070767,
+   "lng": -84.277377,
+   "gym": true,
+   "team": 1,
+   "on_route": true
+  },
+  {
+   "id": "50db9ffe309549a8aa0ba313c657c6ff.16",
+   "lat": 34.071598,
+   "lng": -84.276489,
+   "gym": true,
+   "team": 1,
+   "on_route": true
+  },
+  {
+   "id": "50972c3f1e9b405692c9ffc3c897c66d.16",
+   "lat": 34.070747,
+   "lng": -84.273139,
+   "gym": true,
+   "team": 2,
+   "on_route": true
+  },
+  {
+   "id": "d3a8f4984b5841c5b0676d71d7997bdd.16",
+   "lat": 34.071003,
+   "lng": -84.274048,
+   "gym": true,
+   "team": 2,
+   "on_route": true
+  },
+  {
+   "id": "ba45bcb92dda4fd8a94d59b0b44e58f4.11",
+   "lat": 34.068647,
+   "lng": -84.283569,
+   "gym": true,
+   "team": 1,
+   "on_route": false
+  },
+  {
+   "id": "783217fe352aa2757be8d5309d3830fe",
+   "lat": 34.069729,
+   "lng": -84.284796,
+   "gym": false,
+   "team": 0,
+   "on_route": false
+  },
+  {
+   "id": "42bea8e3d8aa3a58a34d9462c22442ab.16",
+   "lat": 34.070004,
+   "lng": -84.284901,
+   "gym": false,
+   "team": 0,
+   "on_route": false
+  },
+  {
+   "id": "d1098e44148839c7b420433c4d4542db.16",
+   "lat": 34.07033,
+   "lng": -84.28535,
+   "gym": false,
+   "team": 0,
+   "on_route": false
+  },
+  {
+   "id": "9544d486da2a4c8b8101d62796ba7c7f.16",
+   "lat": 34.069265,
+   "lng": -84.283339,
+   "gym": false,
+   "team": 0,
+   "on_route": false
+  },
+  {
+   "id": "ef670af45ccb3048834f2f6eda766e13.16",
+   "lat": 34.070221,
+   "lng": -84.283605,
+   "gym": false,
+   "team": 0,
+   "on_route": true
+  },
+  {
+   "id": "0bf2d2fcaac23e388f05454a5cd186e1.16",
+   "lat": 34.069565,
+   "lng": -84.283874,
+   "gym": false,
+   "team": 0,
+   "on_route": false
+  },
+  {
+   "id": "20187a54b2004609a4c1594bb0b780bb.16",
+   "lat": 34.068455,
+   "lng": -84.283782,
+   "gym": true,
+   "team": 1,
+   "on_route": false
+  },
+  {
+   "id": "6aa8fc7e1da54904be63ef117d9e354f.16",
+   "lat": 34.071656,
+   "lng": -84.285645,
+   "gym": true,
+   "team": 1,
+   "on_route": false
+  },
+  {
+   "id": "73854c47038d35d89d616e4de5af0d95.16",
+   "lat": 34.071149,
+   "lng": -84.283319,
+   "gym": false,
+   "team": 0,
+   "on_route": true
+  },
+  {
+   "id": "59ead29287d532f290b3815fd7c31b90.16",
+   "lat": 34.074346,
+   "lng": -84.284317,
+   "gym": false,
+   "team": 0,
+   "on_route": false
+  },
+  {
+   "id": "7e866bc2662431abbc7d16bd36bbf712.16",
+   "lat": 34.073599,
+   "lng": -84.283217,
+   "gym": false,
+   "team": 0,
+   "on_route": false
+  },
+  {
+   "id": "05e495370e0d474eabbcaf51e1ce0c92.16",
+   "lat": 34.062513,
+   "lng": -84.279758,
+   "gym": true,
+   "team": 2,
+   "on_route": false
+  },
+  {
+   "id": "21eaab7fec2741caa8e85c2f2fa56ebe.16",
+   "lat": 34.064384,
+   "lng": -84.280525,
+   "gym": true,
+   "team": 1,
+   "on_route": false
+  }
+ ]
+}
