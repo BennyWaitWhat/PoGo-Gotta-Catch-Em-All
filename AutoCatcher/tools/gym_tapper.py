@@ -162,7 +162,8 @@ function earlyScreens(now) {                  /* catch the countdown / NEXT UP /
         if (!nm) return;
         if ((nm === 'GymBattleVictoryGuiController' || nm === 'GymBattleDefeatGuiController') && !OUTCOME_SEEN[g]) {
           OUTCOME_SEEN[g] = now; send({k: 'outcome', v: nm === 'GymBattleVictoryGuiController' ? 'victory' : 'defeat'});
-          if (nm === 'GymBattleVictoryGuiController' && DD_OK && AUTODEP && !PLACED) DDW = {fid: AUTODEP.fid, t0: now, until: now + 8000, next: 0}; }
+          if (nm === 'GymBattleVictoryGuiController' && DD_OK && AUTODEP && !PLACED) { DDW = {fid: AUTODEP.fid, t0: now, until: now + 8000, next: 0};
+            if (DD_ON && DD_SEND) send({k: 'ddarmed', fid: AUTODEP.fid}); } }   /* said BEFORE the call: the runner's crash guard reads it */
         if (!SKIP_OFF[nm] && !SKIP_DONE[g] && (!SKIPQ[nm] || !SKIPQ[nm].gui.equals(g))) SKIPQ[nm] = {gui: g, k: k, at: now};
       }
     } catch (e) {}
@@ -191,7 +192,7 @@ function pickCandidate(ids) {                 /* first candidate (CP order) at f
     try {
       var p = liveProto(ids[i]); if (!p) continue;
       var hp = p.add(o.stamina).readS32(), mx = p.add(o.maxStamina).readS32(), fort = str(p.add(o.deployedFortId).readPointer());
-      if (mx > 0 && hp >= mx && !fort && !(M.isMega && callB(M.isMega, p, 'IsMegaEvolved'))) return {p: p, id: String(ids[i]), cp: p.add(o.cp).readS32()};
+      if (mx > 0 && hp >= mx && !fort && !fusedPart(p, o) && !(M.isMega && callB(M.isMega, p, 'IsMegaEvolved'))) return {p: p, id: String(ids[i]), cp: p.add(o.cp).readS32()};
     } catch (e) {}
   }
   return null;
@@ -216,10 +217,18 @@ function liveProto(id) {
   return r && !r.isNull() && r.readPointer().equals(K.PokemonProto) ? r : null;
 }
 function itemCount(it) { if (!isA(IBAG, K.ItemBagImpl)) return 0; I32C.writeS32(it); var r = call(M.itemCount, IBAG, 'GetItemCount', [I32C]); return r && !r.isNull() ? r.add(16).readS32() : 0; }
-function usable(p, o) {                       /* can fight: alive, not in a gym, not at a Power Spot, not an egg / bad */
-  return p.add(o.stamina).readS32() > 0 && !str(p.add(o.deployedFortId).readPointer()) && !str(p.add(o.deployedStationId).readPointer())
-    && !p.add(o.isEgg).readU8() && !p.add(o.isBad).readU8();
+function fusedPart(p, o) {                    /* a Reshiram / Zekrom held inside a White / Black Kyurem (PokemonProto.isComponent_): its record
+     stays in the bag, but the server refuses EVERY battle whose six include it -- "The Gym battle has already been completed! (29)"
+     4 s into round 1. Zekrom CP 3294 was picked as an electric counter twice on 11-16/17 (22:36 vs Walrein, 00:56 vs Vaporeon):
+     13 sessions with it, 13 refused, none without a jump failed like that. Never fights, is never placed, never healed. */
+  return o.isComponent !== undefined && !!p.add(o.isComponent).readU8();
 }
+function usable(p, o) {                       /* can fight: alive, not in a gym, not at a Power Spot, not an egg / bad, not a fused part */
+  return p.add(o.stamina).readS32() > 0 && !str(p.add(o.deployedFortId).readPointer()) && !str(p.add(o.deployedStationId).readPointer())
+    && !p.add(o.isEgg).readU8() && !p.add(o.isBad).readU8() && !fusedPart(p, o) && !BANNED[p.add(o.id).readU64().toString()];
+}
+var BANNED = {};                              /* ids the runner took out of every team: in a battle the server refused twice running, never
+                                                 in one it counted (the runner's own check for a Pokemon that poisons the six) */
 var BUDDY = {id: null, at: 0};
 function buddyId() {                          /* the current buddy, from the game's own BuddyPokemonService getter (every 30 s) */
   var now = Date.now(); if (now - BUDDY.at < 30000) return BUDDY.id;
@@ -307,13 +316,64 @@ function inFeedZone(lat, lng) {
 }
 var DEFS = {}, DSVC = null, FEED_ON = true, FEED_AT = 0.34, HOT_FEED_AT = 0.67, FEED_EMPTY = 0, POFF = {}, PLACED = null, PLACED_AT = 0, EMPTY = null;
 var LLB = Memory.alloc(16), I32R = Memory.alloc(4), I32G = Memory.alloc(4), U64G = Memory.alloc(8), I32D = Memory.alloc(4);
-var DD_OK = false, DD_SLOT = 0xb2e9218, DD_FN = 0x5170c34, DDW = null, DDEP = null, LASTPOS = null;   /* direct deploy (0.429.1 RVAs, validated per use) */
+var DD_OK = false, DDW = null, DDEP = null, LASTPOS = null;   /* direct deploy: the deploy request sent from the map, no gym screen */
 var OBJNEW = EX['il2cpp_object_new'] ? f('il2cpp_object_new', 'pointer', ['pointer']) : null, IL2CPP_BASE = Process.findModuleByName('libil2cpp.so').base;
+/* The request sender, RpcHandlerExt.Send<GymDeployOutProto>(IRpcHandler, Method, IMessage) -- what the gym screen's place handler
+   calls. 0.429.1 read it from a metadata slot at a fixed RVA; 0.435 moved it and every direct deploy failed ("not resolved yet",
+   0 of 21, 11-16/17: an emptied gym waited 4-43 s for the gym screen). Now it is built by the game's own reflection
+   (MethodInfo.MakeGenericMethod): no RVA, nothing for an update to stale. Main thread only (the frame tick); checked by name, class,
+   parameter types, return type and code pointer before it is ever called. */
+var MGO = f('il2cpp_method_get_object', 'pointer', ['pointer', 'pointer']), TGO = f('il2cpp_type_get_object', 'pointer', ['pointer']);
+var CGT = f('il2cpp_class_get_type', 'pointer', ['pointer']), ANEW = f('il2cpp_array_new', 'pointer', ['pointer', 'size_t']);
+var MIG = f('il2cpp_method_is_generic', 'bool', ['pointer']), MII = f('il2cpp_method_is_inflated', 'bool', ['pointer']);
+var DD_SEND = null, DD_TRY = 0, DD_SIGS = [];
+var DD_ON = false, DD_ANN = 0;                /* OFF until the runner says so (directdeploy(true)): its --direct-deploy switch and its crash
+                                                 guard decide BEFORE the first reflection call; DD_ANN = when the build was announced */
+function ddResolve() {
+  if (!DD_ON) return null;
+  if (DD_SEND || DD_TRY >= 2) return DD_SEND;
+  DD_TRY++;
+  var why = '';
+  try {
+    if (!MGO || !TGO || !CGT || !ANEW || !MIG || !WB) why = 'an il2cpp reflection export is missing';
+    else if (!K.RpcHandlerExt) why = 'class RpcHandlerExt not found by name';
+    else {
+      DD_SIGS = [];
+      var cands = methodsWhere(K.RpcHandlerExt, 3, function (m) { if (cs(MGNM(m)) !== 'Send') return false;
+        DD_SIGS.push((MIG(m) ? 'generic ' : '') + 'Send(' + sigOf(m) + ') -> ' + cs(TN(MRTY(m))));
+        return MIG(m) && cs(TN(PTM(m, 0))) === 'Niantic.Holoholo.Rpc.IRpcHandler'; });
+      var tk = byName('System', 'Type'), targ = TGO(CGT(K.GymDeployOutProto));
+      if (!cands.length) why = 'no generic Send(IRpcHandler, .., ..) with 3 parameters';
+      else if (!tk || targ.isNull()) why = 'System.Type / typeof(GymDeployOutProto) not available';
+      for (var i = 0; i < cands.length && !DD_SEND && !why; i++) {
+        var ro = MGO(cands[i], K.RpcHandlerExt); if (ro.isNull()) continue;
+        var mk = methodOn(klassOf(ro), 'MakeGenericMethod', 1); if (!mk) { why = 'no MakeGenericMethod on ' + nameOf(klassOf(ro)); break; }
+        var arr = ANEW(tk, 1); if (arr.isNull()) continue;
+        WB(arr, arr.add(32), targ);
+        var inf = call(mk, ro, 'MakeGenericMethod(GymDeployOutProto)', [arr]); if (inf === null || inf.isNull()) continue;
+        var mi = inf.add(16).readPointer();   /* Il2CppReflectionMethod.method */
+        if (mi.isNull() || !Process.findRangeByAddress(mi)) continue;
+        var code = mi.readPointer(), sig = sigOf(mi), ret = cs(TN(MRTY(mi)));
+        if (cs(MGNM(mi)) !== 'Send' || MPC(mi) !== 3 || !MCLS(mi).equals(K.RpcHandlerExt) || (MII && !MII(mi))) continue;
+        if (code.isNull() || !Process.findRangeByAddress(code)) continue;       /* no compiled code for this instance */
+        if (ret.indexOf('GymDeployOutProto') < 0 || sig.split(',')[0] !== 'Niantic.Holoholo.Rpc.IRpcHandler') continue;
+        var p1 = IL.classFromType(PTM(mi, 1));
+        if (!(IL.isEnum(p1) || cs(TN(PTM(mi, 1))) === 'System.Int32')) continue;   /* the Method number (155) goes here */
+        DD_SEND = mi; why = 'Send(' + sig + ') -> ' + ret + ', code @0x' + code.sub(IL2CPP_BASE).toString(16);
+      }
+      if (!DD_SEND && !why) why = 'no candidate passed the checks';
+    }
+  } catch (e) { why = 'threw: ' + e; }
+  send({k: 'ddsend', ok: !!DD_SEND, why: why, sigs: DD_SIGS.slice(0, 8)});
+  return DD_SEND;
+}
 function directDeploy(fid, pick, now) {       /* the gym screen's own GYM_DEPLOY request, sent from the map */
-  if (!DD_OK || !LASTPOS || !OBJNEW || !WB || !isA(DSVC, K.MapPlaceDetailsService)) return false;
-  var mi = IL2CPP_BASE.add(DD_SLOT).readPointer();
-  if (mi.compare(ptr('0x1000000000')) <= 0 || !Process.findRangeByAddress(mi) || !mi.readPointer().sub(IL2CPP_BASE).equals(ptr(DD_FN))) {
-    send({k: 'err', e: 'direct deploy: the send method is not resolved yet (first placement after a launch) -- the gym screen places'}); return false; }
+  if (!DD_ON || !DD_OK || !LASTPOS || !OBJNEW || !WB || !isA(DSVC, K.MapPlaceDetailsService)) return false;
+  var mi = DD_SEND;                           /* built ONLY by ddTick, after its announcement: a build here would run with nothing
+                                                 announced, and the runner's crash guard would be blind to it (review 11-17) */
+  if (!mi || !Process.findRangeByAddress(mi) || cs(MGNM(mi)) !== 'Send' || !MCLS(mi).equals(K.RpcHandlerExt)) {
+    if (!ST.ddTold) { ST.ddTold = true; send({k: 'err', e: 'direct deploy: no checked Send<GymDeployOutProto> -- the gym screen places'}); }
+    return false; }
   var mg = GYMS[fid]; if (!mg || !alive(mg) || !mg.readPointer().equals(K.MapGym)) return false;
   var fd = mg.add(O.mgFort).readPointer(); if (fd.isNull()) return false;
   var fs = fd.add(O.fFortId).readPointer(); if (str(fs) !== fid) return false;
@@ -330,6 +390,14 @@ function directDeploy(fid, pick, now) {       /* the gym screen's own GYM_DEPLOY
   return true;
 }
 function ddTick(now) {                        /* after a drilled gym's VICTORY: scan it every 0.5 s, deploy the moment the server says EMPTY */
+  if (DD_ON && DD_OK && !DD_SEND && !DD_TRY) {
+    if (!IN_BATTLE && LEAF === 'MapExploreState' && now - MAP_SINCE > 1500) {   /* once, on the plain map, long before the first
+                                                 victory needs it */
+      if (!DD_ANN) { DD_ANN = now; send({k: 'ddtry'}); }   /* announced 0.4 s BEFORE the reflection calls: a game that closes on them
+                                                              is told apart, and the runner keeps direct deploy off from then on */
+      else if (now - DD_ANN > 400) ddResolve();
+    } else DD_ANN = 0;                        /* left the plain map before the build: announce again (the guard counts from the LAST one) */
+  }
   if (DDEP) {
     var r = promiseRead(DDEP); if (r === null && now - DDEP.at < 15000) return;
     var res = null; try { if (r && r.val && !r.val.isNull() && r.val.readPointer().equals(K.GymDeployOutProto)) res = r.val.add(O.gdoRes).readS32(); } catch (e) {}
@@ -461,6 +529,10 @@ var SNEW = f('il2cpp_string_new', 'pointer', ['pointer']), GCH = f('il2cpp_gchan
     GCT = f('il2cpp_gchandle_get_target', 'pointer', ['uint32']);
 var RSTR = {}, RSCANQ = [];
 var NOAUTOBATTLE = false;                     /* the server's cooldown is on (runner): no automatic Battle press on the gym screen */
+var E29_HOLD = 0, E29_GUARD_MS = 5000;        /* "The Gym battle has already been completed! (29)": the game throws us out of the gym; for one
+     map refresh (5 s) this script neither re-opens the gym nor presses Battle. The runner's hold could not win that race -- the re-open
+     came 2-3 s after the kick with Battle in the same second (11-16 22:37: five (29)s 8-12 s apart, then the game died; 11-17 00:33: a
+     Battle 4 s into the runner's hold). It binds every caller: an open() asked for inside the hold is queued until it ends. */
 function fidStr(fid) {
   if (!SNEW || !GCH || !GCT) return null;
   var h = RSTR[fid];
@@ -796,7 +868,7 @@ function walkChain() {                        /* the game's own state machine, r
   var wasBattle = IN_BATTLE; IN_BATTLE = !!gbs; GBS = gbs;
   if (IN_BATTLE && !wasBattle) { RN = 0; OBO_RN = 0; OBO_SKIP = false; send({k: 'battle', on: true}); }
   if (!IN_BATTLE && wasBattle) { ROUND = false; FAINT_DUE = Date.now() + 1500; send({k: 'end', fast: ST.fast, charged: ST.charged});
-    if (AUTODEP && leaf === 'MapExploreState') { PENDING = AUTODEP.fid; PENDING_AT = Date.now(); } }
+    if (AUTODEP && leaf === 'MapExploreState' && Date.now() >= E29_HOLD) { PENDING = AUTODEP.fid; PENDING_AT = Date.now(); } }
   var round = leaf === 'GymBattleState';
   if (round && !ROUND) { RN++; send({k: 'start', n: RN}); }
   ROUND = round; LEAF = leaf;
@@ -885,7 +957,7 @@ function gymScreen(now) {                     /* the gym screen: its gym's own t
         /* drilling and the gym screen is back while the gym is still theirs: Battle THIS frame. Nobody can deploy into a gym that
            is in battle, so the gap between our sessions is the only window the other team gets -- keep it as short as possible */
         if (AUTODEP && fid === AUTODEP.fid && !n && t !== MYTEAM && !IN_BATTLE && LEAF === 'GymApproachState' && !prepOpen() && !NOAUTOBATTLE
-            && !ACT && !ST.modal && now - GO_AT > 3000 && now - (ST.autoBattleAt || 0) > 8000 && !EXPECT_PREP && alive(gui)
+            && now >= E29_HOLD && !ACT && !ST.modal && now - GO_AT > 3000 && now - (ST.autoBattleAt || 0) > 8000 && !EXPECT_PREP && alive(gui)
             && gui.add(O.guiState).readS32() === LIT.open.Open && !prepRegistered()) {
           ST.autoBattleAt = now; EXPECT_PREP = now;
           if (call(M.clickBattle, gui, 'ClickBattle') !== null) send({k: 'pressed', what: 'Battle', auto: true, ms: now});
@@ -984,11 +1056,21 @@ function fastBattle() {                       /* the battle state's own KO -> re
   try { var v = GBS.add(O.gbsResultsDelay).readFloat(); if (v > RESULTS_DELAY) { GBS.add(O.gbsResultsDelay).writeFloat(RESULTS_DELAY); send({k: 'fastdelay', was: v}); } } catch (e) {}
 }
 function openPending(now) {
+  if (LAST_OPEN.fid && !PENDING && !/Gym(Root|Rotation)?State/.test(CHAIN)) {   /* an open of ours is in flight and no gym screen came */
+    if (TOP === 'GymBadgeAwardGuiController' && now - LAST_OPEN.at < 4000) LAST_OPEN.eaten = true;   /* the badge popup took the tap */
+    else if (LAST_OPEN.eaten && LEAF === 'MapExploreState' && (!TOP || TOP === 'MainMenuGuiController' || /Toast|^NotificationGuiController$/.test(TOP))) {
+      PENDING = LAST_OPEN.fid; PENDING_AT = now; LAST_OPEN = {fid: null, at: 0};   /* the popup is gone and the gym never opened: again, now
+         -- not after the 12 s in-flight guard (4 victories of 11-16/17 took 14-16 s to place this way: 22:31:08, 22:20:33, 22:48:46, 00:44:57) */
+      send({k: 'info', what: 'the gym badge popup swallowed the open -- opening the gym again', layout: ''}); }
+  }
   if (!PENDING) return;
+  if (now < E29_HOLD) return;                 /* thrown out by error (29) a moment ago: no re-open before the next map refresh */
   if (now - PENDING_AT > 10000) { send({k: 'err', e: 'open request expired: ' + PENDING}); PENDING = null; return; }
   if (LEAF !== 'MapExploreState') return;     /* only from the plain map */
   if (now - LEFT_GYM_AT < 2000 || now - MAP_SINCE < 700) return;   /* the last gym / battle is still tearing down: wait */
-  if (TOP && TOP !== 'MainMenuGuiController' && !/Toast/.test(TOP)) return;   /* only over the plain map */
+  if (TOP && TOP !== 'MainMenuGuiController' && !/Toast|^NotificationGuiController$/.test(TOP)) return;   /* only over the plain map --
+     the notification banner counts as the map: after every gym win it sat on top for 4-5 s and held the placement back
+     (11-17: VICTORY 00:50:20, gym re-opened 00:50:26; Benny: "as instantaneous as possible") */
   if (LAST_OPEN.fid && now - LAST_OPEN.at < 12000 && !/GymState/.test(CHAIN)) return;   /* an open already in flight */
   var mg = GYMS[PENDING]; if (!mg || !alive(mg) || !mg.readPointer().equals(K.MapGym)) return;
   var fid = PENDING; PENDING = null;
@@ -1003,7 +1085,9 @@ function screenText(now) {                    /* plain reads of the screen's Tex
       if (!isA(q.gui, q.k) || O.textM === undefined || O.textM < 0) return false;
       var parts = SAYS[q.name].map(function (off) { var t = q.gui.add(off).readPointer(); return t.isNull() ? '' : (str(t.add(O.textM).readPointer()) || ''); })
         .filter(function (x) { return x && x.trim(); });
-      if (parts.length) send({k: 'says', gui: q.name, text: parts.join(' | ').replace(/<[^>]+>/g, '').slice(0, 300)});
+      if (parts.length) { var txt = parts.join(' | ').replace(/<[^>]+>/g, '').slice(0, 300);
+        if (q.name === 'GlobalErrorController' && /\(29\)/.test(txt)) { E29_HOLD = now + E29_GUARD_MS; PENDING = null; }
+        send({k: 'says', gui: q.name, text: txt}); }
     } catch (e) {}
     return false;
   });
@@ -1604,7 +1688,10 @@ rpc.exports = {
         var out = TEAMP.filter(function (t) { try { return t.p.readPointer().equals(K.PokemonProto) && t.p.add(o.id).readU64().toString() === t.id && usable(t.p, o); } catch (e) { return false; } })
           .slice(0, len).map(function (t) { have[t.id] = 1; return t.p; });
         var mine = out.length;
-        orig.forEach(function (q) { if (out.length < len && !q.isNull() && !have[q.add(o.id).readU64().toString()]) out.push(q); });   /* short: the game's own picks fill in */
+        [true, false].forEach(function (clean) {   /* short: the game's own picks fill in -- first those that are neither a fused part nor
+             banned by the runner; only if the six is still short, the rest (never a hole or the same Pokemon twice) */
+          orig.forEach(function (q) { if (out.length >= len || q.isNull()) return; var qid = q.add(o.id).readU64().toString();
+            if (have[qid] || (clean && (BANNED[qid] || fusedPart(q, o)))) return; have[qid] = 1; out.push(q); }); });
         for (var j = 0; j < out.length; j++) { if (WB) WB(arr, base.add(j * PS), out[j]); else base.add(j * PS).writePointer(out[j]); }
         ACTIVE = {}; ACTIVE_AT = now; out.forEach(function (q) { ACTIVE[q.add(o.id).readU64().toString()] = 1; });
         TEAMP = null;
@@ -1619,6 +1706,7 @@ rpc.exports = {
     (function () {                             /* the deploy reply's own Result: probe hook, plain reads only */
       try {                                   /* direct deploy: the request class, its fields, the rpc handler, the reply's Result */
         K.GymDeployProto = byName('Holoholo.Rpc', 'GymDeployProto'); K.GymDeployOutProto = byName('Holoholo.Rpc', 'GymDeployOutProto');
+        K.RpcHandlerExt = byName('Niantic.Holoholo.Rpc', 'RpcHandlerExt');   /* its Send<T> is built in ddResolve() (main thread) */
         O.gdpFort = fieldBy(K.GymDeployProto, function (n, t) { return n === 'FortId' && t === 'System.String'; });
         O.gdpPoke = fieldBy(K.GymDeployProto, function (n, t) { return n === 'PokemonId' && t === 'System.UInt64'; });
         O.gdpLat = fieldBy(K.GymDeployProto, function (n, t) { return n === 'PlayerLatDegrees' && t === 'System.Double'; });
@@ -1674,7 +1762,9 @@ rpc.exports = {
   },
   stab: function (cfg) { return loadStab(cfg); },   /* the client game master's same-type multiplier + typing table, handed over by the runner (gym_tapper.stab_config) */
   open: function (fid) { if (/GymRootState|GymRotationState/.test(CHAIN)) return {known: !!GYMS[fid], busy: true};   /* a gym is opening/open */
-    PENDING = fid; PENDING_AT = Date.now(); return {known: !!GYMS[fid]}; },
+    PENDING = fid; PENDING_AT = Math.max(Date.now(), E29_HOLD);   /* inside the error-29 hold the open is QUEUED, not refused: it goes
+       out the tick the hold ends (the hold binds every caller -- a join from the main loop too) and does not expire meanwhile */
+    return {known: !!GYMS[fid], held: Date.now() < E29_HOLD}; },
   pickname: function (name) {                /* a place handler learned in an earlier run (gym_state/pick_handler.json): only one of this shape */
     var hit = null; (LIT.pickCands || []).forEach(function (m, i) { if (LIT.pickNames[i] === name) hit = m; });
     if (hit) { M.pickHandler = hit; M.pickName = name; LIT.pickWhy = 'learned from a placement in an earlier run'; }
@@ -1707,6 +1797,8 @@ rpc.exports = {
     return {on: TOPUP_ON, reserve: TOPUP_RESERVE, berries: c}; },
   scan: function (fids) { (fids || []).forEach(function (f) { if (SCANQ.indexOf(f) < 0 && !SCANREQ[f]) SCANQ.push(f); }); return SCANQ.length; },
   autobattle: function (on) { NOAUTOBATTLE = !on; return !NOAUTOBATTLE; },
+  ban: function (ids) { (ids || []).forEach(function (x) { BANNED[String(x)] = 1; }); return Object.keys(BANNED).length; },   /* out of every team */
+  directdeploy: function (on) { DD_ON = !!on; return {on: DD_ON, parts: DD_OK, ready: !!DD_SEND}; },   /* the runner's switch (default OFF) */
   onebyone: function (on) { ONEBYONE = !!on; return ONEBYONE; },
   obokeep: function () { OBO_SKIP = !!(ONEBYONE && IN_BATTLE); return OBO_SKIP; },
   rscan: function (list) { var added = 0;     /* [[fid, lat, lng], ...]: --monitor, gyms on any island */
