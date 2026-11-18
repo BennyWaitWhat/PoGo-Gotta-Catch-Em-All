@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.benny.autocatcher"
-    android:versionCode="3"
-    android:versionName="1.2">
+    android:versionCode="4"
+    android:versionName="1.3">
   <uses-sdk android:minSdkVersion="24" android:targetSdkVersion="34"/>
   <application
       android:label="Auto-Catcher"
@@ -16,4 +16,10 @@
       </intent-filter>
     </activity>
   </application>
+  <!-- Draws the screen off screen into PNG files, without opening the app (see MainActivity.RenderProbe):
+       adb shell am instrument -w 'com.benny.autocatcher/.MainActivity$RenderProbe' -->
+  <instrumentation
+      android:name=".MainActivity$RenderProbe"
+      android:targetPackage="com.benny.autocatcher"
+      android:label="Auto-Catcher off-screen picture"/>
 </manifest>

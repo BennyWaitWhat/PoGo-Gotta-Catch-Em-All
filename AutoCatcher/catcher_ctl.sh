@@ -19,17 +19,41 @@ TAPFLAG=/data/local/tmp/pogo_tap.on
 PERFFLAG=/data/local/tmp/pogo_perfect.on
 # Apples: tap event map tappables (TAPPABLE_TYPE_MAPLE at Mossy-lured stops) the way a finger does.
 APPLEFLAG=/data/local/tmp/pogo_apples.on
+# Gym Battle (app 1.3, Benny 2026-11-18: "any gym i visit and enter it will automatically go drill and finish and place
+# shiny gyrados", then "why cant gym mode work without the PC? i want it working on my phone"). The gym runner runs ON
+# the phone under its own supervisor, run_gym.sh (Gym Battle's file). The supervisor watches this flag: when it goes off
+# it stops its runner gracefully through the runner's inbox and exits by itself.
+#   gym-on  = write the flag, then start the supervisor if it is not alive (start_gym below).
+#   gym-off = write the flag and NOTHING else. Never pkill / kill anything gym-related from here: a kill of a runner
+#             attached to the game deadlocked PoGo (tools/GYM.md).
+# The catcher stays blind to all of it: running() / stop_proc / reconcile() match only catch_phone.py and run_catch.sh,
+# the gym verbs never start, keep alive or stop the catcher, and run_catch.sh's on() does not count this flag.
+GYMFLAG=/data/local/tmp/pogo_gym.on
+GYMRUN="$HOME/pogo/run_gym.sh"
+# Berries (catch_loop_fast.berry_mode, read every second): 1 = Pinap and Razz, pinap = Pinap only, razz = Razz only,
+# anything else = none. Only the catcher reads it; it keeps no process alive either.
+BERRYFLAG=/data/local/tmp/pogo_berries.on
+# High stardust only (Benny 2026-11-18: "a catch mode that only catches high stardust pokemon (+ shinies) that can be
+# toggled on", "inclusive of EVERY higher than avg stardust pokemon for that mode"). A whole number: 0 (or no file, or
+# anything else) = catch everything; 1 = every species that pays more than the normal catch; N >= 2 = only species
+# whose base catch stardust is N or more. Every shiny is always caught. Only the catcher reads it: like the berries
+# flag it keeps no process alive, and run_catch.sh's on() does not count it.
+DUSTFLAG=/data/local/tmp/pogo_dust.on
 
 # [c]/[r] trick: the patterns never match this grep's own cmdline (avoids the pgrep self-match false positive).
 # The supervisor (run_catch.sh) counts as running: it is alive while it waits for the game.
 running() { ps -ef 2>/dev/null | grep -qE "[c]atch_phone\.py|[r]un_catch\.sh"; }
 
 flag_on() { [ "$(cat "$1" 2>/dev/null | tr -d '[:space:]')" = "1" ]; }
+# What the berries flag says, the way the catcher reads it: 1 / pinap / razz, anything else = 0 (none).
+berry_mode() { b=$(cat "$BERRYFLAG" 2>/dev/null | tr -d '[:space:]'); case "$b" in 1|pinap|razz) echo "$b" ;; *) echo 0 ;; esac; }
+# What the high-stardust flag says: its whole number, anything else (or no file) = 0 (everything).
+dust_mode() { d=$(cat "$DUSTFLAG" 2>/dev/null | tr -d '[:space:]'); case "$d" in ''|*[!0-9]*|????????*) echo 0 ;; *) echo "$((10#$d))" ;; esac; }
 
 # AUDIT: every flag transition is logged with the verb that caused it, so a toggle that silently
 # flips off can be traced to its cause instead of guessed at.
 FLAGLOG="$HOME/pogo/system/analysis/pokemod/flags.log"
-setflag() { # setflag <file> <0|1> <label>
+setflag() { # setflag <file> <value> <label>   value = 0 / 1; the berries flag also takes pinap / razz
   old=$(cat "$1" 2>/dev/null | tr -d '[:space:]')
   [ -z "$2" ] && return 0                     # never write an empty value
   { echo "$2" > "$1"; } 2>/dev/null || mkflag "$1" "$2"
@@ -104,6 +128,23 @@ ensure_live() {
   start_proc
 }
 
+# The gym supervisor is alive ([r] trick as in running(); this pattern matches run_gym.sh and nothing of the catcher).
+gym_running() { ps -ef 2>/dev/null | grep -qE "[r]un_gym\.sh"; }
+
+# Start the gym supervisor the way start_proc starts run_catch.sh. No run_gym.sh on the phone (the gym runner is not
+# deployed) or a supervisor already alive: nothing to do. It never stops or kills anything.
+start_gym() {
+  [ -f "$GYMRUN" ] || return 0
+  gym_running && return 0
+  am startservice --user 0 \
+    -n com.termux/com.termux.app.RunCommandService \
+    -a com.termux.RUN_COMMAND \
+    --es com.termux.RUN_COMMAND_PATH "$PREFIX/bin/bash" \
+    --esa com.termux.RUN_COMMAND_ARGUMENTS "$GYMRUN" \
+    --ez com.termux.RUN_COMMAND_BACKGROUND true >/dev/null 2>&1
+  return 0
+}
+
 # keep the host process alive while EITHER feature is on; shut down only when both are off
 reconcile() {
   if flag_on "$CATCHFLAG" || flag_on "$SPINFLAG" || flag_on "$TAPFLAG" || flag_on "$PERFFLAG" || flag_on "$APPLEFLAG"; then start_proc; else stop_proc; fi
@@ -137,8 +178,21 @@ case "$1" in
   tap-off)    setflag "$TAPFLAG" 0 "tap-off"; reconcile ;;
   apples-on)  setflag "$APPLEFLAG" 1 "apples-on"; ensure_live ;;
   apples-off) setflag "$APPLEFLAG" 0 "apples-off"; reconcile ;;
+  gym-on)     setflag "$GYMFLAG" 1 "gym-on"; start_gym ;;
+  gym-off)    setflag "$GYMFLAG" 0 "gym-off" ;;   # the flag ONLY: run_gym.sh sees it and stops by itself (see GYMFLAG)
+  berries-off)   setflag "$BERRYFLAG" 0 "berries-off" ;;        # the flag only: the catcher reads it every second
+  berries-pinap) setflag "$BERRYFLAG" pinap "berries-pinap" ;;
+  berries-razz)  setflag "$BERRYFLAG" razz "berries-razz" ;;
+  berries-on)    setflag "$BERRYFLAG" 1 "berries-on" ;;
+  dust-off)   setflag "$DUSTFLAG" 0 "dust-off" ;;                # the flag only: the catcher reads it
+  dust-on)    setflag "$DUSTFLAG" 1 "dust-on" ;;                 # every species that pays more than the normal catch
+  dust-*)     n=${1#dust-}                                       # dust-500 / dust-700 / dust-1000: a whole number, nothing else
+              case "$n" in
+                ''|*[!0-9]*|????????*) echo "usage: catcher_ctl.sh dust-off | dust-on | dust-<whole number>" ;;
+                *) setflag "$DUSTFLAG" "$((10#$n))" "dust-$n" ;;
+              esac ;;
   restart)    stop_proc; sleep 1; start_proc ;;
-  reconcile)  reconcile ;;   # boot hook: starts the supervisor only if a toggle was left on
+  reconcile)  reconcile; if flag_on "$GYMFLAG"; then start_gym; fi ;;   # boot hook: starts each supervisor only if its toggle was left on
   rewards)
     # One-shot: clear stacked Field-Research ("Today") reward encounters. The reward catcher needs the
     # gadget to ITSELF (single client), so park the auto-catcher, run it, then restore both toggles.
@@ -155,6 +209,6 @@ case "$1" in
     reconcile
     ;;
   toggle)     if flag_on "$CATCHFLAG"; then echo 0 > "$CATCHFLAG"; else echo 1 > "$CATCHFLAG"; fi; reconcile ;;
-  status)     echo "proc=$(running && echo up || echo down) catch=$(flag_on "$CATCHFLAG" && echo 1 || echo 0) spin=$(flag_on "$SPINFLAG" && echo 1 || echo 0) perfect=$(flag_on "$PERFFLAG" && echo 1 || echo 0) tap=$(flag_on "$TAPFLAG" && echo 1 || echo 0) apples=$(flag_on "$APPLEFLAG" && echo 1 || echo 0)" ;;
-  *) echo "usage: catcher_ctl.sh start|stop|restart|reconcile|catch-on|catch-off|spin-on|spin-off|perfect-on|perfect-off|tap-on|tap-off|apples-on|apples-off|rewards|toggle|status" ;;
+  status)     echo "proc=$(running && echo up || echo down) catch=$(flag_on "$CATCHFLAG" && echo 1 || echo 0) spin=$(flag_on "$SPINFLAG" && echo 1 || echo 0) perfect=$(flag_on "$PERFFLAG" && echo 1 || echo 0) tap=$(flag_on "$TAPFLAG" && echo 1 || echo 0) apples=$(flag_on "$APPLEFLAG" && echo 1 || echo 0) gym=$(flag_on "$GYMFLAG" && echo 1 || echo 0) berries=$(berry_mode) dust=$(dust_mode)" ;;
+  *) echo "usage: catcher_ctl.sh start|stop|restart|reconcile|catch-on|catch-off|spin-on|spin-off|perfect-on|perfect-off|tap-on|tap-off|apples-on|apples-off|gym-on|gym-off|berries-off|berries-pinap|berries-razz|berries-on|dust-off|dust-on|dust-<N>|rewards|toggle|status" ;;
 esac

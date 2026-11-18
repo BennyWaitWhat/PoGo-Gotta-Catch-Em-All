@@ -13,9 +13,10 @@ belongs to the **Pokemon Inventory** session. No session edits another's files.
 | Where | What | Entry point |
 |---|---|---|
 | **Phone** (Termux, always on) | The catcher: wild/lure/incense catching, apples, auto-spin, limit detection | `system/scripts/game_write/catch_loop_fast.py`, run by `catch_phone.py` → `run_catch.sh` → `catcher_ctl.sh` |
-| Phone | Toggles | flag files `/data/local/tmp/pogo_{catch,spin,tap,perfect,apples}.on` (content `1`/`0`), the Auto-Catcher app, or `catcher_ctl.sh <feature>-on/off` |
+| Phone | Toggles | flag files `/data/local/tmp/pogo_{catch,spin,tap,perfect,apples}.on` (content `1`/`0`), `pogo_berries.on` (`1` = Pinap and Razz, `pinap`, `razz`, anything else = none) and `pogo_dust.on` (High stardust only: a whole number; `0`, no file or anything else = catch everything, `1` = every species that pays more than the normal catch, `N` = only species whose base catch stardust is N or more; every shiny is always caught); the Auto-Catcher app (its switch tiles, its High stardust bar and its Berries bar); or `catcher_ctl.sh <feature>-on/off`, `catcher_ctl.sh berries-off / berries-pinap / berries-razz / berries-on` and `catcher_ctl.sh dust-off / dust-on / dust-500 / dust-700 / dust-1000` (any `dust-<whole number>`). The berries and dust verbs write the flag and nothing else. What each High stardust step means today (how many species, which ones) is not in the app: it reads `/data/local/tmp/pogo_dust_levels.txt`, which the catcher writes (line 1 `base=100 species=1024 batch=<id>`, then `<N> <count>[ names]` for the levels 1, 500, 700, 1000) |
 | Phone | Reward catcher, on demand | `catcher_ctl.sh rewards [--dry]` → `reward_phone.py` → `reward_catcher.py` |
 | Phone → PC | CULL NOW button (app 1.2, 2026-11-05) | the app writes `/data/local/tmp/pogo_cull.req` as root; the PC's `pogo_extract/cull_button.py` (Pokemon Inventory) runs one cull per tap and writes `/data/local/tmp/pogo_cull_status.txt`, which the app shows |
+| Phone | Gym Battle switch (app 1.3, 2026-11-18) | `/data/local/tmp/pogo_gym.on` (`1` = on, anything else off). The gym runner runs on the phone under its own supervisor, `~/pogo/run_gym.sh` (Gym Battle's file, see `tools/GYM.md`). The app's switch or `catcher_ctl.sh gym-on` writes the flag and starts the supervisor when it is not alive (no `run_gym.sh` on the phone: nothing is started). `gym-off` writes the flag and NOTHING else: the supervisor watches the flag and stops its runner by itself, and nothing here ever kills a gym process. `catcher_ctl.sh reconcile` (the boot hook) starts the supervisor again when the flag was left on. The catcher is blind to all of it: `running()` / `stop_proc` / `run_catch.sh` count neither the flag nor the gym processes. The runner writes ONE status line (`HH:MM:SS ...`, `STOPPED: ...` when it gave up) to `/data/local/tmp/pogo_gym_status.txt`, which the app shows under the switch. Switch on and that file older than 60 s, or missing: the app says the gym runner is not answering. Switch off: an old line is not shown |
 | **Cloud session** (Linux VM, the phone via the bridge) — the default place for AutoCatcher work | Everything the desktop does: deploys, toggles, reward catcher, probes, analysis | same files; `ADB_TARGET` is exported by the session hook |
 | **Desktop** (Windows, adb over Tailscale) — fallback | Same as the cloud | `reward_catcher.py`, `tools/*.py` (attach through `pogo_il2cpp.get_session`) |
 
@@ -25,7 +26,9 @@ as `ondevice_toggle/phone_pogo_il2cpp.py`. `catch_phone.py` points `get_session`
 
 `ondevice_toggle/` holds the phone-side setup:
 - the phone's own library, `phone_pogo_il2cpp.py`;
-- the Auto-Catcher app (`apk/`);
+- the Auto-Catcher app (`apk/`; `apk/build.ps1` builds it, run it in PowerShell 7). `adb shell am instrument -w 'com.benny.autocatcher/.MainActivity$RenderProbe'`
+  draws its screen off screen into two PNG files in the app's own files folder, without opening the app (add `-e demo 1`
+  to `4` for a made-up state, `-e help 1` for the fold-out);
 - the Termux:Boot starter `20-pogo-catcher.sh`;
 - the gadget's listen config `config.listen.so` (the same bytes as the phone's live `/data/local/tmp/re.zyg.fri/libgadget.config.so`);
 - the phone guide `AUTO_CATCHER_PHONE.html`;
@@ -68,7 +71,7 @@ recorders all work from the cloud, with the same rules as on the PC:
 
 Verify on the phone:
 - the `attached ...` line in `~/pogo/system/analysis/pokemod/catch_loop.log`;
-- `catcher_ctl.sh status`.
+- `catcher_ctl.sh status` (read only; it prints `proc=up catch=1 spin=1 perfect=0 tap=0 apples=1 gym=0 berries=pinap dust=0`).
 
 ## Crash rules (each one is a PoGo crash we had)
 
