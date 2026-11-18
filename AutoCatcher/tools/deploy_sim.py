@@ -1,7 +1,8 @@
 """Offline test of AutoCatcher/deploy.sh against a fake adb (no phone): python tools/deploy_sim.py
 The fake adb logs every call and answers the phone's md5 step with "ok <dst>" or "FAIL <dst>" (STUB_MODE), with the CR
 line endings a real `adb shell` can add. Checks: a good copy restarts with --restart; a bad copy stops at once with
-exit 1, never restarts and never pushes the next file; the desktop pogo_il2cpp.py is still refused; the STARDUST ONLY
+exit 1, never restarts and never pushes the next file; the desktop pogo_il2cpp.py is still refused; a .sh file is made
+runnable (chmod 744) before it takes its place, and no other file is touched that way; the STARDUST ONLY
 table rides along exactly when the phone's copy is missing, different or older (STUB_DUST = what the phone holds).
 Exit code 1 when any check fails."""
 import os
@@ -75,6 +76,23 @@ check("two good files, no --restart: exit 0", r.returncode, 0)
 check("two good files: both pushed, no restart", (sum(" push " in f" {c} " for c in calls), sum("restart" in c for c in calls)), (2, 0))
 r, calls = run("ok", "--restart", "pogo_il2cpp.py")
 check("desktop pogo_il2cpp.py refused", (r.returncode, len(calls)), (2, 0))
+
+# ---- a script lands runnable: the app runs catcher_ctl.sh as a program (a 644 copy = every switch dead)
+H = "/data/data/com.termux/files/home/pogo"
+SH, OTHER = [F2, "run_catch.sh", "tools/gym_send.sh"], [F1, "tools/GYM.md"]
+r, calls = run("ok", *SH, *OTHER)
+step = lambda f: [c for c in calls if f" cp /data/local/tmp/ac_{os.path.basename(f)} {H}/{f}.tmp && " in c]
+check("modes: five files, each copied once", (r.returncode, [len(step(f)) for f in SH + OTHER]), (0, [1] * 5))
+for f in SH:
+    c = "".join(step(f))
+    check(f"modes: {f} is made 744 as its .tmp, then moved into place",
+          (f"chown 10762:10762 {H}/{f}.tmp && chmod 744 {H}/{f}.tmp && mv {H}/{f}.tmp {H}/{f} && " in c, c.count("chmod")), (True, 1))
+for f in OTHER:
+    c = "".join(step(f))
+    check(f"modes: {f} gets no chmod: its copy step is as before",
+          (f"chown 10762:10762 {H}/{f}.tmp && mv {H}/{f}.tmp {H}/{f} && " in c, c.count("chmod")), (True, 0))
+r, calls = run("FAIL", F2)
+check("modes: a script whose copy fails still stops the deploy", (r.returncode, "STOPPED at " + F2 in r.stderr), (1, True))
 
 # ---- STARDUST ONLY's species table rides along (Benny 11-18: "make sure that table is always updated")
 sys.path.insert(0, GW)

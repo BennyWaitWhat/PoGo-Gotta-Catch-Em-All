@@ -34,9 +34,12 @@ for f in "$@"; do
   sum=$(md5sum < "$f" | cut -c1-32); tmp=/data/local/tmp/ac_$(basename "$f")
   if command -v cygpath >/dev/null 2>&1; then src=$(cygpath -w "$f"); else src="$f"; fi
   MSYS_NO_PATHCONV=1 adb -s "$D" push "$src" "$tmp" >/dev/null
+  # A script lands RUNNABLE (744): the app and the boot hook run catcher_ctl.sh as a program, and the copy below is a new
+  # 644 file. Until 2026-11-18 each deploy of it needed a chmod by hand afterwards; one forgotten = every switch dead.
+  case "$dst" in *.sh) x="chmod 744 $H/$dst.tmp && " ;; *) x= ;; esac
   # The phone answers "ok <dst>" or "FAIL <dst>"; adb exits 0 either way, so the answer itself decides (2026-11-16 review:
   # a FAIL used to fall through to --restart, restarting the catcher on the OLD code and exiting 0).
-  out=$(MSYS_NO_PATHCONV=1 adb -s "$D" shell "su -c '[ \"\$(md5sum $tmp | cut -c1-32)\" = $sum ] && cp $tmp $H/$dst.tmp && chown 10762:10762 $H/$dst.tmp && mv $H/$dst.tmp $H/$dst && rm -f $tmp && echo \"ok   $dst\" || echo \"FAIL $dst\"'" | tr -d '\r')
+  out=$(MSYS_NO_PATHCONV=1 adb -s "$D" shell "su -c '[ \"\$(md5sum $tmp | cut -c1-32)\" = $sum ] && cp $tmp $H/$dst.tmp && chown 10762:10762 $H/$dst.tmp && ${x}mv $H/$dst.tmp $H/$dst && rm -f $tmp && echo \"ok   $dst\" || echo \"FAIL $dst\"'" | tr -d '\r')
   echo "$out"
   if ! printf '%s\n' "$out" | grep -qxF "ok   $dst"; then
     echo "STOPPED at $dst: it did not land intact on the phone (md5 or copy failed) -- nothing restarted; files before it did land" >&2
