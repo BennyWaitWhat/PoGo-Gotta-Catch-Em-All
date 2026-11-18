@@ -69,7 +69,7 @@ SETTLE_DELAY = 3.0
 # Frida JS -- enumerate tags with memberCount, delete a single tag
 # ---------------------------------------------------------------------------
 JS = r"""
-function enumTagsFull(s) {
+function enumTagsFull(s, withUids) {
     _ensureInit();
     var cl = cFN('Niantic.Holoholo.Tagging', 'TaggingRpcService');
     var it = Memory.alloc(Process.pointerSize);
@@ -114,7 +114,31 @@ function enumTagsFull(s) {
                 mc = pokemonList.add(0x18).readS32();
             }
         } catch (e) {}
-        out.push({name: nm, tagId: tid, memberCount: mc});
+        var one = {name: nm, tagId: tid, memberCount: mc};
+        // WHO THE MEMBERS ARE (2026-11-18), only when asked (retire_tags' delete check): a count that drops does not say
+        // why. Each member's own uid (PokemonProto.id_ @0x20: the read reconcile_tags' enumerateAllTagMembers has made on
+        // every cull since 2026-09-26). '' = that one member could not be read, null = the list could not.
+        if (withUids) {
+            var uids = [];
+            try {
+                var ml = bp.add(0x18).readPointer();
+                if (!ml.isNull()) {
+                    var cnt = ml.add(0x18).readS32();
+                    if (cnt < 0 || cnt > 20000) throw new Error('member count ' + cnt);
+                    var items = ml.add(0x10).readPointer();
+                    for (var j = 0; j < cnt; j++) {
+                        var mu = '';
+                        try {
+                            var el = items.add(0x20 + j * 8).readPointer();
+                            if (!el.isNull()) mu = el.add(0x20).readU64().toString();
+                        } catch (e2) {}
+                        uids.push(mu);
+                    }
+                }
+            } catch (e) { uids = null; }
+            one.memberUids = uids;
+        }
+        out.push(one);
     }
     return out;
 }
@@ -136,8 +160,16 @@ function delTag(s, tidStr) {
     var exc = Memory.alloc(Process.pointerSize);
     exc.writePointer(ptr(0));
     rI(dm, ptr(s), args, exc);
-    if (!exc.readPointer().isNull())
-        return {ok: false, err: 'DeleteTag threw an exception'};
+    var thrown = exc.readPointer();
+    if (!thrown.isNull()) {
+        // WHAT IT THREW (2026-11-18). The exception was dropped here, and retire_tags printed "rate limit reached" as a
+        // guess. Its class comes from the preamble's _excName; its message and frames from bulk_tag.js's _excText when
+        // the caller put that reader in front of this script (retire_tags.exc_text_js). Raw memory reads, each fail-soft.
+        var cls = '', txt = '';
+        try { cls = _excName(thrown).replace(/^ \(/, '').replace(/\)$/, ''); } catch (e1) {}
+        try { if (typeof _excText === 'function') txt = _excText(thrown); } catch (e2) {}
+        return {ok: false, err: 'DeleteTag threw an exception', excClass: cls, excText: txt};
+    }
     return {ok: true};
 }
 
@@ -150,14 +182,16 @@ rpc.exports.delTag = delTag;
 # Helpers
 # ---------------------------------------------------------------------------
 
-def enumerate_tags(script, svc):
-    """Return list of {name, tagId, memberCount} from a fresh enumeration."""
-    return script.exports_sync.enum_tags_full(svc)
+def enumerate_tags(script, svc, uids=False):
+    """Return list of {name, tagId, memberCount} from a fresh enumeration. uids=True adds 'memberUids' (each member's
+    decimal uid, '' for one that could not be read; None when the tag's list could not be read): retire_tags' delete
+    check asks for them, to tell a Pokemon he released from a tag that lost a member."""
+    return script.exports_sync.enum_tags_full(svc, True) if uids else script.exports_sync.enum_tags_full(svc)
 
 
 def tag_census(tags):
-    """Build {name: {tagId, memberCount}} dict for quick lookup."""
-    return {t['name']: {'tagId': t['tagId'], 'memberCount': t['memberCount']}
+    """Build {name: {tagId, memberCount[, memberUids]}} dict for quick lookup."""
+    return {t['name']: {k: t[k] for k in ('tagId', 'memberCount', 'memberUids') if k in t}
             for t in tags}
 
 

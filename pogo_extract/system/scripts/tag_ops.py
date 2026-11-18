@@ -63,7 +63,9 @@ Rationale for warm-up and backoff:
    destroyed. Deletion lives in system/scripts/safe_nuke_tags.py, which
    re-enumerates and verifies between every deletion. Removing a mon from a
    tag is untag_one() (membership removal) -- a different RPC, not subject to
-   the DeleteTag limit.
+   the DeleteTag limit. (2026-11-18: none of the refusals counted above was ever
+   READ -- the exception was dropped. retire_tags now prints its class and
+   message, so the next refusal says whether a limit exists at all.)
 
 Usage as CLI:
     python tag_ops.py apply <TagName> <color_int 0-8>
@@ -111,6 +113,7 @@ import time
 import sqlite3
 import argparse
 import logging
+import re
 
 logging.basicConfig(
     level=logging.INFO,
@@ -423,6 +426,36 @@ def create_tag(bt, svc, name, color, attempts=5, index=None):
     )
 
 
+# THE GAME'S FIRST-CALL HICCUP IS NOT A WARNING (Benny 2026-11-18 17:44, on a cull that printed four of them: "DUDE, whats
+# with these warnings?!?!?! fix them"). About one pass in four, a SetPokemonTags call (most often the first of a session)
+# throws System.Exception "Field currentActivity or type signature  not found" -- by its text a Unity JNI lookup, which
+# does not work on Frida's thread (not proven; pogo-tag-write-first-try-nre). The try 0.6 s later goes through, the server
+# answers Success and the read-back is clean: 11-16, 11-17 and 11-18, every time. So that try is said at INFO, in words
+# the cull's warning scan does not flag. Its line must NOT hold the text 'apply_changes': full_audit echoes every sync
+# line that does, and reads 'INFO apply_changes:' as "the write was answered" (the post-push session attaches on it).
+# Every OTHER refusal keeps its WARNING, and a batch that fails all three tries keeps its ERROR whatever it threw.
+_FIRST_CALL_HICCUP = re.compile(r'Field currentActivity or type signature\s+not found')
+
+
+def first_call_hiccup(text):
+    """True for the one exception text known to be the game's first-call hiccup (see above)."""
+    return bool(_FIRST_CALL_HICCUP.search(text or ''))
+
+
+def _try_line(fn, bn, nb, retry, r, n):
+    """(routine, line) for one try of a batch the game did not take. routine = the known first-call hiccup."""
+    exc = '%s%s' % (r.get("excClass") or '', (' -- ' + r["excText"]) if r.get("excText") else '')
+    if first_call_hiccup(r.get("excText")):
+        return True, "first-call hiccup: tag write batch %d/%d, try %d of 3 (%s)" % (bn, nb, retry + 1, exc)
+    return False, "%s: batch %d/%d retry %d: built=%s requested=%d err=%s %s" % (
+        fn, bn, nb, retry, r.get("built"), n, r.get("err"), exc)
+
+
+def _try_log(fn, bn, nb, retry, r, n):
+    routine, line = _try_line(fn, bn, nb, retry, r, n)
+    (log.info if routine else log.warning)(line)
+
+
 def apply_members(bt, svc, tagproto, proto_list, batch=100):
     """Apply tag membership in batches with per-batch retry.
 
@@ -469,12 +502,7 @@ def apply_members(bt, svc, tagproto, proto_list, batch=100):
                     total_applied += len(chunk)
                     ok = True
                     break
-                log.warning(
-                    "apply_members: batch %d/%d retry %d: built=%s requested=%d err=%s %s%s",
-                    batch_num, total_batches, retry,
-                    r.get("built"), len(chunk), r.get("err"), r.get("excClass") or '',
-                    (' -- ' + r["excText"]) if r.get("excText") else '',
-                )
+                _try_log("apply_members", batch_num, total_batches, retry, r, len(chunk))
             except Exception as exc:
                 last_result = str(exc)
                 log.warning(
@@ -673,9 +701,7 @@ def apply_changes(bt, svc, changes, batch=150):
                     break
                 if _mm:
                     break
-                log.warning("apply_changes: batch %d/%d retry %d: built=%s requested=%d err=%s %s%s",
-                            bn, nb, retry, r.get("built"), len(chunk), r.get("err"), r.get("excClass") or '',
-                            (' -- ' + r["excText"]) if r.get("excText") else '')
+                _try_log("apply_changes", bn, nb, retry, r, len(chunk))
             except Exception as exc:
                 last = str(exc)
                 log.warning("apply_changes: batch %d/%d retry %d threw: %s", bn, nb, retry, exc)
