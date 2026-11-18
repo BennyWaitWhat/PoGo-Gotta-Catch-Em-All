@@ -34,8 +34,10 @@ LOG = os.path.join(AN, "catch_loop.log")
 LEDGER = os.path.join(AN, "spawn_ledger.jsonl")   # one line per spawn (k=spawn) and per avatar fix (k=pos): tools/yield_report.py
 STATE_FILE = "/data/local/tmp/pogo_state.txt"      # read by the AutoCatcher app
 FLAGS = {k: f"/data/local/tmp/pogo_{k}.on" for k in ("catch", "spin", "tap", "perfect", "apples", "berries")}
-# berries: Pinap / Razz in encounters only while pogo_berries.on holds "1" (Benny 2026-11-16 22:14: "i also want you to stop
-# auto feeding berries for now" -- off since; no switch in the app: on again = adb su -c 'echo 1 > /data/local/tmp/pogo_berries.on')
+# berries: what pogo_berries.on holds says what is fed in encounters (berry_mode): "1" = Pinap and Razz as configured,
+# "pinap" = Pinap only, "razz" = Razz only, anything else or no file = none. Benny 2026-11-16 22:14: "i also want you to
+# stop auto feeding berries for now" -- off since; 11-18: "start catching with only pinap berries fed" -> "pinap". No
+# switch in the app: adb su -c 'echo pinap > /data/local/tmp/pogo_berries.on' (read every second, no restart).
 # BALL-SAVER plan (AutoCatcher/tools/ballsave_go.py builds + pushes it; delete it = catch everything again): see ballsave_skip()
 BALLSAVE_FILE = "/data/local/tmp/pogo_ballsave.json"
 COLD_AGE_S = 12      # attach once PoGo is this old; install() then retries every 3 s until the map has loaded.
@@ -1507,6 +1509,17 @@ def flag(name):
         return False
 
 
+def berry_mode():
+    """Which berries the berries switch allows: "on" (Pinap and Razz, each as configured), "pinap" or "razz" (only that
+    one), "" (none). The file holds 1 / pinap / razz; anything else, or no file, is none."""
+    try:
+        with open(FLAGS["berries"]) as fh:
+            v = fh.read().strip().lower()
+    except OSError:
+        return ""
+    return {"1": "on", "pinap": "pinap", "razz": "razz"}.get(v, "")
+
+
 def flag_mtime(name):
     """When the app last wrote this switch (any write, same value or not)."""
     try:
@@ -1746,8 +1759,11 @@ def cfg_now():
     c["mightyBalls"] = 0 if live else c["mightyKeep"]
     for k in FLAGS:
         c[k] = flag(k)
-    if not c.get("berries"):   # no Pinap, no Razz -- not for a Mighty or a shiny either (FLAGS: berries)
-        c["pinap"] = c["razz"] = False
+    c["berries"] = mode = berry_mode()   # what the switch allows; what it leaves out no Mighty and no shiny gets either
+    if mode not in ("on", "pinap"):
+        c["pinap"] = False
+    if mode not in ("on", "razz"):
+        c["razz"] = False
     c["apples"] = True   # Benny 2026-10-29: "i want anything to always be picked up" -- map items no longer wait on a switch
     if c.get("abBlockS") and c.get("abKey"):
         c[c["abKey"]] = c["abArms"][int(time.time() // c["abBlockS"]) % 2]
@@ -2075,7 +2091,7 @@ def session_loop(w, done_ids, base):
             if ab and c.get(ab) != cfg.get(ab):
                 w(f"A/B {ab}={c[ab]} (block of {c.get('abBlockS')} s)")
             if any(c[k] != cfg[k] for k in FLAGS):
-                w("toggles: " + " ".join(f"{k}={'on' if c[k] else 'off'}" for k in FLAGS))
+                w("toggles: " + " ".join(f"{k}={c[k] if isinstance(c[k], str) and c[k] else 'on' if c[k] else 'off'}" for k in FLAGS))
             cfg = c
             sc.exports_sync.cfg(c)
         ballsave_log(w, time.time())
