@@ -317,11 +317,17 @@ if __name__ == '__main__':
         assert P.behind_owned(dict(mk('p4', 'a:900(9%);b:3(99%)'), fresh_alignment=1), own, BS) is None   # shadow vs plain
         assert P.behind_owned(mk('p5', 'a:900(9%);b:3(99%);c:4(99%)'), own, BS) is None   # nobody holds c: kept
         # THE TOP HALF (2026-11-16, rules.pvp_top_half): b outside pvpoke's top half -> no comb-up into b; c inside -> x2 to c
-        K.CFG = dict(K.CFG, rules=dict(K.CFG['rules'], pvp_top_half=True))
+        K.CFG = dict(K.CFG, rules=dict(K.CFG['rules'], pvp_top_half=True, pvp_top_half_ml=False))
         P._META_HALF.update(gl=(frozenset({'a', 'c'}), frozenset({'a', 'b', 'c'})), ul=None)
         res = pick(rows, lambda r: {'b', 'c'}, BS, 614, set())
         assert res['gl'] == {'x2': ('c', 30, None)}, res
         assert not P.competitive('gl', 'b') and not P.competitive('gl', 'zz') and P.competitive('ul', 'b') and P.competitive('ml', 'b')
+        # ... Master League has its own switch and its own list (rules.pvp_top_half_ml, 2026-11-18)
+        K.CFG = dict(K.CFG, rules=dict(K.CFG['rules'], pvp_top_half_ml=True))
+        P._META_HALF.update(ml=(frozenset({'a'}), frozenset({'a', 'b'})))
+        assert P.competitive('ml', 'a') and not P.competitive('ml', 'b') and not P.competitive('ml', 'zz') and P.competitive('ul', 'b')
+        K.CFG = dict(K.CFG, rules=dict(K.CFG['rules'], pvp_top_half_ml=False))
+        assert P.competitive('ml', 'b')
         # ... a callable gate judges the top half in competitive()'s place (the pre-flight's own read of the list)
         t5 = mk('t5', 'a:900(9%);b:3(99%)')
         assert P.plays(t5, 'gl', P.GL_CAP, BS) is None and P.plays(t5, 'gl', P.GL_CAP, BS, gate=False) == ('b', 3)

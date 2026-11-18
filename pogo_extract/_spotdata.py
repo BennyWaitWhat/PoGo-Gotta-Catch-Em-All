@@ -102,6 +102,7 @@ SPREADS = keep_config.pvp_spread_keep()
 # that league (Best GL / UL, the roster too; NEVER the 0/15/15 spread) -- read by independent_law from the ranking files on its own
 from independent_law import in_top_half as _sd_in_half
 _SD_TH = keep_config.rule_enabled('pvp_top_half')
+_SD_THM = keep_config.rule_enabled('pvp_top_half_ml')    # (2026-11-18) Best ML: the same test on the Master League list
 _sd_half = lambda lg, st, sh=0: _sd_in_half(lg, st, sh, _SD_TH)
 
 # rarity ranking, same grouping as the engine: (pid, cf, shadow, bread-mode), shinies excluded (kept in
@@ -327,7 +328,8 @@ for _l in _pbg.values():
                     not _SD_BMT or _bk[1] <= _SD_RDY or _SD_META.get(_lg) is None
                     or _pb_pvid(_bx['species_name'], _bx.get('form') or 0) in _SD_META[_lg]))):
                 pvp_best[_bx['uid_hex']].add(_lg.upper())
-    _c = [x for x in _l if x.get('ml_rank') is not None and (x['ml_rank'] <= _BRF or x['pokemon_id'] in _SD_RARE)]
+    _c = ([x for x in _l if x.get('ml_rank') is not None and (x['ml_rank'] <= _BRF or x['pokemon_id'] in _SD_RARE)]
+          if _sd_in_half('ml', _pb_pvid(_l[0]['species_name'], _l[0].get('form') or 0), 0, _SD_THM) else [])   # an ML species only
     if _c:
         pvp_best[min(_c, key=lambda x: (0 if _pb_via(x.get('ml_stage'), _PB_ML) else 1, x['ml_rank'], -(x.get('iv_total') or 0),
                                      x['uid_hex']))['uid_hex']].add('ML')   # an ML tie: the higher IV (2026-11-16)

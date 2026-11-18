@@ -60,7 +60,7 @@ _META_LISTS = {}
 
 
 def meta_list(lg):
-    """pvpoke's overall META ranking of a league ('gl' / 'ul') as speciesIds, best score first -- read from
+    """pvpoke's overall META ranking of a league ('gl' / 'ul' / 'ml') as speciesIds, best score first -- read from
     system/analysis/pvpoke_rankings/rankings-<cap>.json (refresh_gamemaster.refresh_rankings downloads it). None when the
     file is missing, unreadable, shorter than 300 entries or mostly without a score (pvpoke's master has carried such a
     file): an unknown list is never an empty one."""
@@ -69,7 +69,8 @@ def meta_list(lg):
             import json
             import os
             lst = json.load(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'system', 'analysis', 'pvpoke_rankings',
-                                              'rankings-%d.json' % {'gl': GL_CAP, 'ul': UL_CAP}[lg]), encoding='utf-8'))
+                                              'rankings-%d.json' % {'gl': GL_CAP, 'ul': UL_CAP, 'ml': 10000}[lg]),   # pvpoke names its Master League file 10000
+                                 encoding='utf-8'))
             ok = [x for x in lst if isinstance(x.get('score'), (int, float)) and not isinstance(x.get('score'), bool)]
             _META_LISTS[lg] = ([x['speciesId'] for x in sorted(ok, key=lambda x: -x['score'])]
                                if len(lst) >= 300 and len(ok) >= 0.9 * len(lst) else None)
@@ -101,9 +102,11 @@ _META_HALF = {}
 def meta_half(lg):
     """pvpoke's TOP HALF of a league's list ('gl' / 'ul') as speciesIds: what a PvP keep there needs once keep_config
     rules.pvp_top_half is on (user 2026-11-16: "i say keep them if they're at least in the top half of being compeititve",
-    then "for GL and UL leagues and counting a Pokemon pvpoke doesn't rank as not competitive"; Master League is not
+    then "for GL and UL leagues and counting a Pokemon pvpoke doesn't rank as not competitive"). Master League ('ml') has its
+    own switch, rules.pvp_top_half_ml (user 2026-11-18: "ml is confusing, because a lot of those pokemon arent competitive in
+    ML" -- only the Best ML rule asks it; without it Master League is not
     gated). None = no gate: the rule is off, or the list is unknown (an unknown list is never an empty one)."""
-    if lg not in ('gl', 'ul') or not keep_config.rule_enabled('pvp_top_half'):
+    if lg not in ('gl', 'ul', 'ml') or not keep_config.rule_enabled('pvp_top_half_ml' if lg == 'ml' else 'pvp_top_half'):
         return None
     if lg not in _META_HALF:
         lst = meta_list(lg)
@@ -113,7 +116,7 @@ def meta_half(lg):
 
 def competitive(lg, stage, shadow=0):
     """May `stage` (a pvpoke speciesId) hold a PvP keep in `lg`? True inside meta_half -- a shadow copy is judged by its
-    shadow entry when pvpoke lists one -- and whenever there is no gate (rule off, list unknown, Master League, no stage).
+    shadow entry when pvpoke lists one -- and whenever there is no gate (rule off, list unknown, no stage; Master League has its own rule, see meta_half).
     THE test of rules.pvp_top_half: plays(), qualifies(), owned_as_stage(), behind_owned() and keep_policy's Best and
     comb-up rules ask it -- never the 0/15/15 spread (his 11-16 correction: "no 0-15-15 pokemon should be cull'd") and never an IV rank #1
     (the callers skip the test for it: his 11-16 "But why are you culling a #1 ranked PVP pokemon? how does this make any sense?"); the audits and the pre-flight read

@@ -116,19 +116,20 @@ _HALF = {}
 
 
 def top_half(lg, enabled):
-    """LAW "TOP HALF" (2026-11-16; keep_config rules.pvp_top_half -- the caller passes it as `enabled`): pvpoke's top half
+    """LAW "TOP HALF" (2026-11-16; keep_config rules.pvp_top_half -- the caller passes it as `enabled`; for 'ml' the caller
+    passes rules.pvp_top_half_ml, 2026-11-18: Best ML needs a Master League species): pvpoke's top half
     of a league's overall list, read HERE from system/analysis/pvpoke_rankings/rankings-<cap>.json by score, on its own
     (the engine reads it through pvp_iv_rule.meta_list). -> (top-half speciesIds, every listed speciesId), or None = NO
     GATE: the rule is off, the league is not gl / ul, or the list is unknown (missing, under 300 entries, under 90%
     scored) -- an unknown list is never an empty one."""
-    if not enabled or lg not in ('gl', 'ul'):
+    if not enabled or lg not in ('gl', 'ul', 'ml'):
         return None
     if lg not in _HALF:
         import json
         import os
         try:
             lst = json.load(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'system', 'analysis',
-                                              'pvpoke_rankings', 'rankings-%d.json' % {'gl': 1500, 'ul': 2500}[lg]),
+                                              'pvpoke_rankings', 'rankings-%d.json' % {'gl': 1500, 'ul': 2500, 'ml': 10000}[lg]),
                                  encoding='utf-8'))
             ok = [x for x in lst if isinstance(x.get('score'), (int, float)) and not isinstance(x.get('score'), bool)]
             ids = [x['speciesId'] for x in sorted(ok, key=lambda x: -x['score'])]
@@ -434,6 +435,11 @@ if __name__ == '__main__':
     assert in_top_half('gl', 'a', 0, True) and not in_top_half('gl', 'c', 0, True), 'inside / outside the top half'
     assert not in_top_half('gl', 'zz', 0, True), 'a stage pvpoke does not rank is not competitive'
     assert in_top_half('gl', 'b', 1, True) and not in_top_half('gl', 'b', 0, True), 'a shadow is judged by its shadow entry'
-    assert in_top_half('gl', 'c', 0, False) and in_top_half('ml', 'c', 0, True), 'no gate: the rule off, or Master League'
+    _HALF['ml'] = (frozenset({'a'}), frozenset({'a', 'c'}))             # Master League: its own list, its own switch (2026-11-18)
+    assert in_top_half('gl', 'c', 0, False) and in_top_half('ml', 'c', 0, False) and in_top_half('xl', 'c', 0, True), \
+        'no gate: the rule off, or a league without a list'
+    assert in_top_half('ml', 'a', 0, True) and not in_top_half('ml', 'c', 0, True) and not in_top_half('ml', 'zz', 0, True), \
+        'Master League under rules.pvp_top_half_ml: the same test on its own list'
+    del _HALF['ml']
     del _HALF['gl']
     print('independent_law self-check OK')

@@ -562,6 +562,12 @@ def main():
                     continue
                 # BEST NEEDS A META SPECIES (LAW 2b since 2026-11-11): its own-stage spread is past the top READY_RANK and
                 # its stage is outside pvpoke's top pvp.best_meta_top -- say the list place, not "no copy is kept"
+                # BEST ML NEEDS A MASTER LEAGUE SPECIES (LAW 2026-11-18, rules.pvp_top_half_ml): say the list place
+                if not new and reason == 'pvp_best_ml':
+                    _ms = pv.pvid(r['species_name'], r['form'] or 0)
+                    if _ms and not pv.competitive('ml', _ms):
+                        parts.append('lost its Best ML: %s (your 11-18 Master League rule)' % half_txt('ml', _ms))
+                        continue
                 if not new and reason in ('pvp_best_gl', 'pvp_best_ul'):
                     _ms = pv.pvid(r['species_name'], r['form'] or 0)
                     if half_out(_lg[0], _ms):            # THE TOP HALF (2026-11-16): at any rank, the legendary roster too

@@ -317,6 +317,7 @@ try:
     # that league, the roster too -- read by independent_law from the ranking files on its own
     from independent_law import in_top_half as _in_half2
     _TH2 = keep_config.rule_enabled('pvp_top_half')
+    _THM2 = keep_config.rule_enabled('pvp_top_half_ml')    # (2026-11-18) Best ML: the same test on the Master League list
     for _lg, _rk, _st, _cap in (('GL', 'gl_rank', 'gl_stage', _G2), ('UL', 'ul_rank', 'ul_stage', _U2),
                                 ('ML', 'ml_rank', 'ml_stage', _M2)):
         q = set()
@@ -334,11 +335,12 @@ try:
                             or _pv2(_bx['species_name'], _bx.get('form') or 0) in _META2[_lg.lower()]):
                         q.add(_bx['uid_hex'])
                 continue
-            _c = [x for x in _l if x.get(_rk) is not None and (x.get(_rk) <= _BRF or x['pokemon_id'] in _RARE_M)]
+            _c = ([x for x in _l if x.get(_rk) is not None and (x.get(_rk) <= _BRF or x['pokemon_id'] in _RARE_M)]
+                  if _in_half2('ml', _pv2(_l[0]['species_name'], _l[0].get('form') or 0), 0, _THM2) else [])   # an ML species only
             if _c:
                 q.add(min(_c, key=lambda x: (0 if _via(x.get(_st), _cap) else 1, x[_rk], -(x.get('iv_total') or 0), x['uid_hex']))['uid_hex'])
         if _lg == 'ML':                     # the Best ML chip skips hundos (2026-09-23) and Variant #1 (2026-10-25); the keep does not
-            q = {u for u in q if (rows[u].get('iv_total') or 0) != 45} - load('Variant_#1')
+            q = {u for u in q if (rows[u].get('iv_total') or 0) != 45} - (set() if _THM2 else load('Variant_#1'))   # (2026-11-18) gated: Variant #1 wears it too
         q -= _evolve_labelled()             # (2026-11-15) no Best chip on a copy told to evolve: a Best is about the stage it is leaving
         t = load('Best_%s' % _lg)
         verdict('Best %s' % _lg, t - q, (q - t) - pile,

@@ -60,7 +60,11 @@ print("=== TAG AUDIT (keep_policy reason <-> build_tagsets file) ===")
 # Variant #1 (2026-10-25, user picked "B": your top-IV copy is its stage's best ML copy -- the chip repeated Variant #1)
 # (2026-11-15) no Best chip (GL / UL / ML) on a copy told to evolve: it wears its ONE evolve tag
 _evl = fu('Evolve_to_Mid.txt') | fu('Evolve_to_Final.txt') | fu('Evolve_Needs_Item.txt') | fu('Evolve_Needs_Task.txt')
-_bm_r, _bm_f = ru('pvp_best_ml') - ru('hundo') - fu('Variant_#1.txt') - _evl, fu('Best_ML.txt')
+if ROOT not in sys.path:
+    sys.path.insert(0, ROOT)
+import keep_config as _kc_bm                          # (2026-11-18) gated to Master League species (rules.pvp_top_half_ml) the chip
+_bm_v1 = set() if _kc_bm.rule_enabled('pvp_top_half_ml') else fu('Variant_#1.txt')   # also sits on a Variant #1 copy
+_bm_r, _bm_f = ru('pvp_best_ml') - ru('hundo') - _bm_v1 - _evl, fu('Best_ML.txt')
 if _bm_r != _bm_f:
     problems.append(f"Best ML: reason-minus-hundo-and-Variant-#1 != file (missing={len(_bm_r - _bm_f)}, extra={len(_bm_f - _bm_r)})")
 print(f"  {'Best ML':<15} reason-minus-hundo={len(_bm_r)} file={len(_bm_f)}  {'OK' if _bm_r == _bm_f else 'DRIFT'}")

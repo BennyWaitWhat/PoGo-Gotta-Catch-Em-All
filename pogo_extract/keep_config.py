@@ -135,6 +135,11 @@ DEFAULTS = {
         #                                 a stage inside the top half of pvpoke's ranking list for that league; a species pvpoke does
         #                                 not rank is not competitive; Master League is not gated (pvp_iv_rule.competitive; user
         #                                 2026-11-16: "keep them if they're at least in the top half"); OFF = no such gate, as before
+        "pvp_top_half_ml": False,       # rule 15d, Best ML only -- an identity's best Master League copy is kept as such, and wears
+        #                                 the chip, only when its species is inside the top half of pvpoke's Master League list (a
+        #                                 species it does not rank is not competitive); the chip then also sits on a Variant #1
+        #                                 copy, never on a hundo (user 2026-11-18: "ml is confusing, because a lot of those pokemon
+        #                                 arent competitive in ML" -> "this but hundos not included"); OFF = every identity, as before
         "pvp_later_stage_owned": False, # rule 15 / 15b (15f) -- a spread that is top 5 ONLY as a stage it would evolve into is not
         #                                 kept for that rank when you already hold a copy AS each such stage ranked as well or better
         #                                 (pvp_iv_rule.behind_owned; user 2026-11-16: "yes"); OFF = every such spread kept, as before

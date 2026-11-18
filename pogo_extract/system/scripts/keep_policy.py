@@ -1870,7 +1870,12 @@ def main():
                 b = _pvp_own_winner(lst, lg)
                 if b is not None and (_pvp_own(b, lg)[1] <= _BRF or b['pokemon_id'] in RARE_PIDS) and _meta_best(b, lg):   # legendaries: no rank floor (user 2026-09-24)
                     won[b['uid_hex']].add(lg.upper())
-            cand = [r for r in lst if _v(r, 'ml_rank') is not None and (r['ml_rank'] <= _BRF or r['pokemon_id'] in RARE_PIDS)]
+            # BEST ML NEEDS A MASTER LEAGUE SPECIES (rules.pvp_top_half_ml; user 2026-11-18, the Master League party screen open:
+            # "ml is confusing, because a lot of those pokemon arent competitive in ML" -> "this but hundos not included"): the
+            # identity's own species must be inside the top half of pvpoke's Master League list -- every copy of the group
+            # shares it, so no other copy takes the reason. Off / an unknown list = no gate. Mirrored like the rest of 15d.
+            cand = ([r for r in lst if _v(r, 'ml_rank') is not None and (r['ml_rank'] <= _BRF or r['pokemon_id'] in RARE_PIDS)]
+                    if pvp_competitive('ml', _sid(lst[0])) else [])
             if cand:
                 b = min(cand, key=lambda r: (0 if _viable(r['ml_stage'], ML_CAP) else 1, r['ml_rank'], -(_v(r, 'iv_total') or 0), r['uid_hex']))
                 won[b['uid_hex']].add('ML')
