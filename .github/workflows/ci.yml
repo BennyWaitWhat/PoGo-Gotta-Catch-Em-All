@@ -58,6 +58,8 @@ jobs:
           python pogo_extract/system/scripts/refresh_gamemaster.py --selftest
           python AutoCatcher/tools/test_gym_stab.py
           python AutoCatcher/tools/test_gym_awareness.py
+          python AutoCatcher/tools/gym_status.py --selftest
+          python AutoCatcher/tools/test_gym_phone.py
           python AutoCatcher/tools/catcher_yield_sim.py
           python AutoCatcher/tools/catcher_apple_sim.py
           python AutoCatcher/tools/catcher_why_sim.py

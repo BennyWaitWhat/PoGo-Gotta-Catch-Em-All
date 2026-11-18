@@ -23,11 +23,18 @@ runs under node against mock Pokemon records.   python test_gym_awareness.py   (
      start or a jump since, or older than 15 s -- the phantom holds of 11-17 00:25 / 00:30), bans the never-proven member
      after two in a row with NO jump (never after a jump: a cooldown refuses dozens), never waits past 40 s, and starts a
      new streak after 2 min; the battle six is filled with picks that are neither fused nor banned first; every name the
-     tapper script reads is declared somewhere (a typo would throw on the phone).
+     tapper script reads is declared somewhere (a typo would throw on the phone);
+ 10. --on-open (the AutoCatcher app's Gym Battle switch, 11-18: "any gym i visit and enter it will automatically go drill
+     and finish and place shiny gyrados"): the decision for the gym HE has open (open_plan, case by case and over the
+     whole grid), free_slot = the picker's old rule, a jump of his own, the roaming options switched off -- and, read from
+     gym_run.py itself, that the mode reaches no joystick call (ch.api / mv.*) outside a takeover's hold.
 """
+import argparse
+import ast
 import contextlib
 import importlib.util
 import io
+import itertools
 import json
 import os
 import re
@@ -827,7 +834,10 @@ def misc_checks():
             check(gym_run.stop_waiting(td) is True and gym_run.stop_waiting(None) is True, "a stop read BEFORE the connection dropped still stands")
     finally:
         gym_run.STOP_ASKED[0], gym_run.ATTACHED[0] = was_stop, was_att
-    check(src.count("if ATTACHED[0] and stop_waiting(_inbox):") == 2 and src.index("if ATTACHED[0] and stop_waiting(_inbox):") < src.index("sess, pid = pg.get_session()"),
+    rs = src[src.index("def run(a, g, mv, done, t_start, enemy, goal):"):src.index("def _run(")]     # (11-18: --on-open takes the second check on a FIRST attach too)
+    first, second = "if ATTACHED[0] and stop_waiting(_inbox):", "if (ATTACHED[0] or a.on_open) and stop_waiting(_inbox):"
+    check(rs.count(first) == 1 and rs.count(second) == 1
+          and rs.index(first) < rs.index("pg.wait_ready_to_attach(") < rs.index(second) < rs.index("sess, pid = pg.get_session()"),
           "run(): on a re-attach a waiting stop ends the runner BEFORE it attaches again (checked before and after the wait for the game)")
     check("ATTACHED[0] += 1" in src and src.count("STOP_ASKED[0] = STOP_ASKED[0] or") == 2, "every stop that is read is remembered; attaches are counted")
 
@@ -997,6 +1007,182 @@ def stall_checks():
               "the slip-in deploys into the gap, not every second")
 
 
+def onopen_checks():
+    """--on-open (the AutoCatcher app's Gym Battle switch, 11-18): what happens to the gym HE has open, the one free-slot rule,
+    a jump of his own, the roaming options switched off -- and, read from the source, that this mode reaches no joystick
+    call outside a takeover."""
+    n0 = len(FAILS)
+    op, fs = gym_run.open_plan, gym_run.free_slot
+    E, ME, CAP, F = [1, 3], 2, 20, "aaaaaaaa11112222.16"
+
+    def rec(team=1, raid=0, slots=3, ib=0, lock=0):          # a map record: [team, age, lat, lng, raid, slots, in battle, cp, fin, lock, visited]
+        return [team, 200, 51.5007, -0.1246, raid, slots, ib, 9000, 0, lock, 0]
+
+    def plan(lv, screen="map", fid=F, mine=(), n=5, **k):
+        kw = dict(skipped=set(), dist=20.0, reach=70.0, his_battle=False, rest_s=0.0, last_team=None, autoplace=True)
+        kw.update(k)
+        return op(fid, lv, (lv[0] if lv else None) if screen == "map" else screen, E, ME, set(mine), n, CAP, **kw)
+
+    check(plan(rec(1)) == ("drill", "") and plan(rec(3))[0] == "drill", "an enemy gym he opens is drilled (the takeover)")
+    w = plan(rec(1), n=20)
+    check(w[0] == "drill" and "emptied" in w[1] and "20" in w[1], f"at the gym cap an enemy gym is still drilled, and the line says nothing can go in: {w}")
+    check(plan(rec(0, slots=6)) == ("place", ""), "an EMPTY gym: straight to Deploy")
+    check(plan(rec(0, slots=6), n=20)[0] == "leave", "an empty gym at the gym cap: hands off (nothing of his can go in)")
+    check(plan(rec(2, slots=2)) == ("join", ""), "his team's gym with a free slot and none of his: joined")
+    check(plan(rec(2, slots=2), n=None) == ("join", "") and plan(rec(0), n=None)[0] == "place", "a bag count not read yet does not block a join or a placement")
+    for lv, kw, what, word in ((rec(2, slots=0), {}, "full", "is full"), (rec(2, slots=2), {"mine": {F}}, "one of his is already in it", "already in it"),
+                               (rec(2, slots=2), {"n": 20}, "the gym cap", "slots are in use"),
+                               (rec(2, slots=2, lock=4000), {}, "a same-team deploy lockout", "lockout"),
+                               (rec(2, slots=2, ib=1), {}, "under attack", "under attack"),
+                               (rec(2, slots=2), {"rest_s": 1200.0}, "a refused Pokemon within the hour", "refused your Pokemon"),
+                               (rec(2, slots=2), {"autoplace": False}, "--no-autoplace", "auto-place is off")):
+        got = plan(lv, **kw)
+        check(got[0] == "leave" and word in got[1], f"his team's gym, {what}: hands off, and the line says exactly that: {got}")
+    check(plan(rec(2, slots=-1))[0] == "wait", "his team's gym whose free slots the map has not read yet: nothing is decided")
+    for t in (0, 1, 2, 3):
+        check(plan(rec(t, raid=60000))[0] == "leave", f"a raid (or its egg) on a team {t} gym: hands off")
+        check(plan(rec(t), skipped={F[:8]})[0] == "leave", f"a gym he told the runner to skip (team {t}): hands off, even when he opens it")
+        check(plan(rec(t), his_battle=True)[0] == "leave", f"a battle HE started (team {t}): it stays his")
+        check(plan(rec(t), dist=70.5)[0] == "leave", f"a team {t} gym out of reach: hands off -- the runner never walks him to it")
+    check(plan(rec(1), dist=70.0)[0] == "drill" and plan(rec(1), dist=None)[0] == "drill", "exactly at the reach it is taken over")
+    check(plan(rec(1), fid=None)[0] == "wait" and plan(None)[0] == "wait" and plan(None, fid=None)[0] == "wait",
+          "no gym id from the gym screen, or no map record of it: nothing is decided yet")
+    check(plan(rec(1), screen=0)[0] == "place" and plan(rec(0), screen=3)[0] == "drill" and plan(rec(1, slots=2), screen=2)[0] == "join",
+          "the gym screen's own team outranks a map record that is a refresh behind")
+    check(plan(rec(0, lock=5000))[0] == "leave" and plan(rec(0, lock=5000), last_team=2)[0] == "leave",
+          "an emptied gym with a same-team lockout that may be HIS team's: no deploy into a refusal")
+    check(plan(rec(0, lock=5000), last_team=1) == ("place", ""), "...the lockout of the team that lost it is not his: place at once")
+    check(plan(rec(0), rest_s=900.0)[0] == "leave" and plan(rec(1), rest_s=900.0)[0] == "drill",
+          "a gym that refused his Pokemon within the hour is not asked again; an enemy gym he opens is drilled whatever rested")
+    check(plan(rec(0), autoplace=False)[0] == "place" and plan(rec(1), autoplace=False)[0] == "drill", "--no-autoplace: Deploy still opens, the drill still runs")
+    check(op(F, rec(3), 3, [1], ME, set(), 5, CAP)[0] == "leave", "a team that is not on the --enemy list is left alone")
+    bad, n_join, n_act = [], 0, 0                            # the whole grid: an action only ever follows its own conditions
+    for team, raid, slots, ib, lock, mine, n, hb, sk, dist, rest, lt, ap, scr in itertools.product(
+            (0, 1, 2, 3), (0, 9000), (-1, 0, 1, 6), (0, 1), (0, 3000), ((), (F,)), (None, 5, 20), (False, True), (False, True),
+            (20.0, 200.0), (0.0, 600.0), (None, 1, 2), (True, False), ("map", 0, 2)):
+        lv = rec(team, raid, slots, ib, lock)
+        what, why = plan(lv, screen=scr, mine=mine, n=n, his_battle=hb, skipped={F[:8]} if sk else set(), dist=dist, rest_s=rest,
+                         last_team=lt, autoplace=ap)
+        t = team if scr == "map" else scr
+        capped = n is not None and n >= CAP
+        ok = what in ("drill", "place", "join", "leave", "wait") and (bool(why) or what in ("drill", "place", "join"))
+        if what in ("drill", "place", "join"):
+            n_act += 1
+            ok = ok and not (raid or hb or sk or dist > 70.0)
+        if what == "drill":
+            ok = ok and t in E
+        if what == "place":
+            ok = ok and t == 0 and not capped and rest <= 0 and not (lock and lt in (None, ME))
+        if what == "join":
+            n_join += 1
+            ok = ok and t == ME and not capped and rest <= 0 and not ib and not lock and slots > 0 and F not in mine and ap \
+                and fs([t] + lv[1:], F, set(mine), n, CAP, ME, ap)
+        if t in E and not (raid or hb or sk or dist > 70.0):
+            ok = ok and what == "drill"                      # nothing else ever stops the takeover of an enemy gym he opened
+        if not ok:
+            bad.append((team, raid, slots, ib, lock, mine, n, hb, sk, dist, rest, lt, ap, scr, what))
+    check(not bad and n_join > 0 and n_act > 1000, f"the decision over {n_act} acting cases of the grid: {len(bad)} break their own conditions, first {bad[:2]}")
+
+    def old_slot(v, f, mine, n, cap, team, autoplace):       # the rule as it stood inside the main loop before 11-18
+        return (autoplace and v[0] == team and len(v) > 5 and v[5] > 0 and f not in mine
+                and not (len(v) > 9 and v[9] > 0) and (n is None or n < cap))
+    diff = [(v, m, n, ap) for v in ([2, 1, 0.0, 0.0, 0], rec(2, slots=0), rec(2, slots=4), rec(2, slots=4, lock=9), rec(1, slots=4), rec(0, slots=6),
+                                    rec(2, slots=-1), rec(2, slots=4)[:9])
+            for m in (set(), {F}) for n in (None, 0, 19, 20, 21) for ap in (True, False)
+            if bool(old_slot(v, F, m, n, CAP, ME, ap)) != fs(v, F, m, n, CAP, ME, ap)]
+    check(not diff, f"free_slot is the picker's own rule, moved not changed: {diff[:2]}")
+
+    hj = gym_run.his_jump
+    check(hj(150, 5) and hj(755, 2) and hj(2000, 70), "150 m in 5 s, 755 m in 2 s, 2 km in 70 s: a jump of his")
+    check(not hj(149, 1) and not hj(50, 6) and not hj(583, 70) and not hj(300, 0) and not hj(0, 5),
+          "a short hop, a 30 km/h route (50 m in 6 s, 583 m in 70 s) or no time between the fixes: not a jump")
+    ns = argparse.Namespace(hop="1,2,300", route="1,2;3,4", join_first="abc", next_goal="1,2", start_lap_at=3, home=True, rscan=True,
+                            lap_every=2, battle=False, monitor=True, feed=False, topup=False, feed_mate=False, on_open=True)
+    gym_run.on_open_args(ns)
+    check((ns.hop, ns.route, ns.join_first, ns.next_goal, ns.start_lap_at, ns.home, ns.rscan, ns.lap_every, ns.battle)
+          == (None, None, None, None, None, False, False, 0, True), "--on-open switches every roaming option off, whatever else was typed")
+    check((ns.feed, ns.topup, ns.feed_mate) == (False, False, False), "...and leaves the berry switches as they were given")
+
+    with open(gym_run.__file__, encoding="utf-8") as f:
+        src = f.read()
+    tree = ast.parse(src)
+    mod = {n.name: n for n in tree.body if isinstance(n, (ast.FunctionDef, ast.ClassDef))}
+    run = mod["_run"]
+    nested = {n.name: n for n in ast.walk(run) if isinstance(n, ast.FunctionDef) and n is not run}
+    loop = [n for n in run.body if isinstance(n, ast.While)][-1]
+
+    def joy(nodes):                                          # every joystick call under these nodes: ch.api(...) or mv.<method>(...)
+        out = []
+        for nd in (nodes if isinstance(nodes, list) else [nodes]):
+            for x in ast.walk(nd):
+                if isinstance(x, ast.Call) and isinstance(x.func, ast.Attribute) and isinstance(x.func.value, ast.Name) \
+                        and ((x.func.value.id, x.func.attr) == ("ch", "api") or x.func.value.id == "mv"):
+                    out.append(ast.unparse(x))
+        return out
+    walks = [ast.unparse(x) for x in ast.walk(mod["Mover"]) if isinstance(x, ast.Call) and ast.unparse(x.func) == "ch.api"]
+    check("gpsjoystick" not in src and len(walks) == 1 and walks[0].startswith("ch.api('WALK'") and len(joy(tree)) >= 15,
+          f"every joystick command of the runner goes through ch.api, and the Mover's only one is WALK (so the checks below see them all): {walks}")
+    ks = [i for i, s in enumerate(loop.body) if isinstance(s, ast.If) and ast.unparse(s.test) == "a.on_open" and s.orelse]
+    if check(len(ks) == 1, "the main loop has ONE fork on a.on_open: the mode's own branch, and every other run under its else"):
+        k = ks[0]
+        eng = loop.body[k + 1:]
+        check(joy(loop.body[:k]) == [], f"the loop top and the wait for a gym he opens send the joystick nothing: {joy(loop.body[:k])[:2]}")
+        check(joy(loop.body[k].body) == [], f"the --on-open branch (the decision) sends the joystick nothing: {joy(loop.body[k].body)[:2]}")
+        check(len(joy(loop.body[k].orelse)) >= 10, "the picker, the walks, the hops and the jumps all sit under the else (never run in this mode)")
+        check(ast.unparse(eng[0]) == "fid, gpos, team = target", "the takeover step follows the fork directly")
+        gi = [i for i, s in enumerate(eng) if isinstance(s, ast.If) and ast.unparse(s.test) == "d > engage and a.on_open"
+              and isinstance(s.body[-1], ast.Continue) and not joy(s)]
+        fj = [i for i, s in enumerate(eng) if joy(s)]
+        if check(len(gi) == 1 and bool(fj) and gi[0] < fj[0], "a gym he moved away from is let go BEFORE the first joystick call of the takeover step"):
+            odd = [c for s in eng[gi[0]:] for c in joy(s)
+                   if not (isinstance(s, ast.If) and ast.unparse(s.test).startswith("d > engage")) and c != "mv.orbit(gpos, here, r=orbit_r)"]
+            check(odd == [], f"past that guard the takeover's only joystick call is the hold (the 25 m circle): {odd[:2]}")
+            holds = []
+            for x in ast.walk(run):                          # gpos_now[0] = <a position>: what makes the tick re-send the hold
+                if isinstance(x, ast.Assign):
+                    for tg in x.targets:
+                        tgs = tg.elts if isinstance(tg, ast.Tuple) else [tg]
+                        vals = x.value.elts if isinstance(tg, ast.Tuple) and isinstance(x.value, ast.Tuple) else [x.value] * len(tgs)
+                        holds += [(x.lineno, ast.unparse(v)) for g_, v in zip(tgs, vals)
+                                  if ast.unparse(g_) == "gpos_now[0]" and not (isinstance(v, ast.Constant) and v.value is None)]
+            check(len(holds) == 1 and holds[0][1] == "gpos" and holds[0][0] > eng[gi[0]].lineno,
+                  f"the hold is switched on in ONE place, inside the takeover step: {holds}")
+    check(joy(nested["tick"]) == ["mv.orbit(gpos_now[0], q[:2], r=orbit_r)"] and "if gpos_now[0] and time.time() - last_tick[0] > 2:" in src,
+          "the tick's only joystick call is that hold, and only while it is switched on")
+    check("if q and a.on_open and ch.meters(q[:2], gpos_now[0]) > rng + 20:" in src
+          and src.index("oo[\"gone\"] = True") < src.index("            elif q:\n                mv.orbit(gpos_now[0]"),
+          "when HE moves away mid-takeover the hold goes off instead of walking him back")
+    for nm in ("oo_cmd", "his_move", "let_go", "refresh_deployed", "quick_cmds", "pull", "urgent_cmd", "retry_lockout", "retry_join", "force_join",
+               "join_after_loss", "batch_check"):
+        check(nm in nested and joy(nested[nm]) == [], f"{nm}() (reachable in this mode) sends the joystick nothing")
+    for nm in ("open_plan", "free_slot", "his_jump", "on_open_args", "leave_gym", "drill", "autobattle", "e29_seen", "counter_push", "bag_status",
+               "note_jump"):
+        check(nm in mod and joy(mod[nm]) == [], f"{nm}() sends the joystick nothing")
+    for nm in ("retry_lockout", "retry_join", "force_join"):
+        check("let_go()" in ast.unparse(nested[nm]), f"{nm}() stops asking a gym he moved away from")
+    check(src.index("if a.on_open:                                            # (before anything reads them") < src.index('HOP["list"] = [tuple(float(v)')
+          < src.index('a.monitor = bool(a.monitor and HOP["list"])'), "the roaming options are switched off before --hop / --monitor are read")
+    check(src.count("and not a.on_open:") == 2 and "if g.has(\"GymState\") and a.on_open:" in src,
+          "a gym open at attach is neither adopted nor left in this mode: it is his, judged like any gym he opens")
+    check("if not (a.on_open and g.user_gym and g.has(\"GymState\")):" in src, "after a takeover a gym HE opened meanwhile is never backed out of")
+    check('his_battle=g.in_battle() or g.prep' in src and "skipped=USER_SKIP" in src and "reach=engage" in src,
+          "the loop hands the decision his own battle, the skip list and the reach")
+    check('_urgent = {"stop", "skip"} if a.on_open else {"go", "hunt", "stop", "spin", "lap", "skip"}' in src,
+          "in this mode only a stop or a skip ends a drill (there is no picker for a go / hunt / lap)")
+    g = gym_run.Game()
+    g.user_gym, g.open_fid, g.autoplaced, g.on_open = True, F, None, True
+    out, _ = said(g.on_msg, {"type": "send", "payload": {"k": "deployresult", "ok": False, "res": "ErrorTeamDeployLockout"}}, None)
+    check("--on-open" in out and "stands at that gym" not in out, f"his own refused deploy: the line promises only what this mode does: {out.strip()[:120]}")
+    g2 = gym_run.Game()
+    g2.user_gym, g2.open_fid, g2.autoplaced = True, F, None
+    out2, _ = said(g2.on_msg, {"type": "send", "payload": {"k": "deployresult", "ok": False, "res": "ErrorTeamDeployLockout"}}, None)
+    check(out2.rstrip().endswith("was refused (ErrorTeamDeployLockout) -- the runner takes it over for you: it stands at that gym, joins the moment "
+                                 "the server lets red in, and fights for it if it falls"), "every other run words that line exactly as before")
+    if len(FAILS) == n0:
+        print("ok: --on-open -- an enemy gym he opens is drilled, an empty one filled, a red one with room joined, everything else left to "
+              "him with a reason; the joystick gets the hold of a takeover and nothing else")
+
+
 def main():
     js = gym_tapper.JS
     real_time = gym_run.time
@@ -1016,6 +1202,7 @@ def main():
         dd_checks()
         misc_checks()
         stall_checks()
+        onopen_checks()
     finally:
         gym_run.time = real_time
     if FAILS:

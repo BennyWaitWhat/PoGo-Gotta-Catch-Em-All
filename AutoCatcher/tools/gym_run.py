@@ -9,6 +9,11 @@ to leave a Pokemon, unless you already have the cap (20) in gyms. It stops at on
 over a battle (the bug that hid the battles on 2026-09-25).
 
   python tools/gym_run.py [--enemy 1,3] [--speed 10.4] [--goal LAT,LNG] [--area 170] [--minutes 180]
+  python tools/gym_run.py --on-open      the AutoCatcher app's Gym Battle switch: ONLY a gym you open is touched (GYM.md)
+
+The same file runs ON the phone with no PC (Termux; ../run_gym.sh starts it): on_phone.py swaps adb for a root shell there.
+  python tools/gym_run.py --on-open --preflight --cmd tools/gym_state/runner_cmd.json     look only: can it work here? (GYM.md)
+  ... --on-open --switch /data/local/tmp/pogo_gym.on     the runner reads the app's switch itself: not 1 = a stop command
 """
 import argparse
 import subprocess
@@ -28,6 +33,12 @@ sys.path.insert(0, os.path.dirname(HERE))
 import cutoff_hunt as ch  # noqa: E402  (adb, fix, meters, api -- the joystick helpers)
 import gym_tapper as gt  # noqa: E402
 import pogo_il2cpp as pg  # noqa: E402
+import on_phone as op  # noqa: E402  (this runner ON the phone: a root shell instead of adb, the game's local gadget -- GYM.md)
+
+if op.ON_PHONE:                                          # Termux: the phone's pogo_il2cpp looks for the game through adb (there
+    op.install(pg)                                       # is none), and the game master sits inside ~/pogo. Nothing else differs.
+    gt.GM_PATH, gt.FORM_ENUM_PATH = (os.path.join(op.data_dir(HERE, "pogo_extract"), _n)
+                                     for _n in ("gamemaster_pokeminers.json", "form_enum.json"))
 
 BATTLE_STATES = ("GymBattleLauncherStateShim", "GymBattleState", "GymBattleIntroState", "GymBattleResultsState")
 ABORT = "abort"
@@ -424,8 +435,11 @@ class Game:
                     self.his_gym = None
             elif self.user_gym and self.open_fid and not self.autoplaced:   # YOUR deploy was refused (11-17 00:27, Benny: "try putting
                 self.his_gym = (self.open_fid, time.time(), str(p.get("res")))   # a gyarados into the gym im at"): that gym is ours to get
-                say(f"    your deploy into {self.open_fid[:8]} was refused ({p.get('res')}) -- the runner takes it over for you: it stands "
-                    f"at that gym, joins the moment the server lets red in, and fights for it if it falls")
+                say(f"    your deploy into {self.open_fid[:8]} was refused ({p.get('res')}) -- "
+                    + ("--on-open: keep this gym open and the runner puts yours in the moment the game's map shows it can "
+                       "(and drills it if another team takes it)" if getattr(self, "on_open", False) else
+                       "the runner takes it over for you: it stands "
+                       "at that gym, joins the moment the server lets red in, and fights for it if it falls"))
             if not p.get("ok") and self.autoplaced:        # the game said no: end the wait now, with the reason
                 self.placed[self.autoplaced] = {"ok": False, "id": self.autoplaced_id, "res": p["res"]}
                 self.deploy_refused = (self.autoplaced, p["res"])
@@ -693,6 +707,94 @@ def home_jump(home, homed):
     """--home: the phone is outside the area this run was sent to -- jump to its middle? Only once, and only at the start
     (before the run has been inside the area): later a position outside it is HIS move, and the area follows him."""
     return bool(home) and not homed
+
+
+def free_slot(v, f, mine, n, cap, team, autoplace=True):
+    """OUR team's gym with a free slot and none of ours in it: joined without a battle. v = the gym's map record ([0] team,
+    [5] free slots, [9] ms left of the same-team deploy lockout), mine = the gyms that hold one of yours, n = your Pokemon in
+    gyms (None: not read yet), cap = the gym cap. ONE rule for the picker, the passing join and --on-open."""
+    return bool(autoplace and v[0] == team and len(v) > 5 and v[5] > 0 and f not in mine
+                and not (len(v) > 9 and v[9] > 0)            # its same-team deploy lockout is running: it would refuse us
+                and (n is None or n < cap))
+
+
+def open_plan(fid, lv, screen_team, enemy, team, mine, n, cap, skipped=(), dist=None, reach=70.0, his_battle=False,
+              rest_s=0.0, last_team=None, autoplace=True):
+    """--on-open (the AutoCatcher app's Gym Battle switch; Benny 11-18: "any gym i visit and enter it will automatically go
+    drill and finish and place shiny gyrados"): what to do with the gym YOU have open. Pure -- every reading is handed in:
+    fid / screen_team = what the gym screen itself reports (None: not yet); lv = the gym's map record ([0] team, [4] raid ms
+    left, [5] free slots (-1: not read), [6] in battle, [9] ms left of a same-team deploy lockout); mine = the gyms that hold
+    one of yours; n / cap = your Pokemon in gyms / the gym cap; skipped = USER_SKIP; dist / reach = how far the gym is / how
+    far a battle reaches; his_battle = a battle or a party screen is up while no takeover runs (so it is YOURS); rest_s =
+    seconds left of the rest after the game refused a Pokemon of yours there; last_team = who held the gym last.
+    Returns (what, why):
+      "drill"  an enemy gym: the takeover -- counters, drill until it is empty, a shiny Gyarados in (at the gym cap it is
+               emptied only: why says so);
+      "place"  an EMPTY gym: straight to Deploy;
+      "join"   your team's gym with a free slot and none of yours in it (free_slot);
+      "leave"  hands off -- why is the one line that says it;
+      "wait"   no reading to decide on yet."""
+    capped = n is not None and n >= cap
+    if not fid:
+        return "wait", "the gym screen has not said which gym it is yet"
+    if fid[:8] in skipped:
+        return "leave", "you told the runner to skip this gym"
+    if his_battle:
+        return "leave", "you started a battle here yourself -- it stays yours (no GO, no team change, no Back from the runner)"
+    if not lv:
+        return "wait", "the game's map has no record of this gym yet"
+    if lv[4]:
+        return "leave", "a raid (or its egg) is on it -- no gym battle, nothing placed"
+    if dist is not None and dist > reach:
+        return "leave", f"it is out of reach (over {reach:.0f} m away) -- the runner never walks you to a gym"
+    t = lv[0] if screen_team is None else screen_team
+    if t in enemy:
+        return "drill", (f"all {cap} of your gym slots are in use: it gets emptied, nothing can be placed" if capped else "")
+    if t not in (0, team):
+        return "leave", f"team {t} is not on the list of teams to beat (--enemy)"
+    if t == team and fid in mine:
+        return "leave", "one of yours is already in it"
+    if capped:
+        return "leave", f"all {cap} of your gym slots are in use -- nothing of yours can go in"
+    if rest_s > 0:
+        return "leave", "the game refused your Pokemon here within the last hour (same kind already in, or yours already in)"
+    lock = len(lv) > 9 and lv[9] > 0
+    if t == 0:
+        if lock and last_team in (None, team):               # an emptied gym's same-team lockout binds only the team that
+            return "leave", ("a team's deploy lockout is running on it and it may be your team's -- the runner places the "   # lost
+                             "moment it ends, while you keep the gym open")                                                     # it
+        return "place", ""
+    slots = lv[5] if len(lv) > 5 else -1
+    if slots == 0:
+        return "leave", "it is full"
+    if slots < 0:
+        return "wait", "the game's map does not show its free slots yet"
+    if not autoplace:
+        return "leave", "auto-place is off (--no-autoplace): Deploy is yours"
+    if lock:
+        return "leave", "your team's deploy lockout is running on it -- the runner joins the moment it ends, while you keep the gym open"
+    if len(lv) > 6 and lv[6]:
+        return "leave", ("it is under attack and the server refuses a join during a battle -- the runner joins the moment the "
+                         "game's map shows the attack over, while you keep the gym open")
+    if not free_slot([t] + list(lv[1:]), fid, mine, n, cap, team, autoplace):
+        return "leave", "the game's map shows no slot for you in it"
+    return "join", ""
+
+
+def his_jump(m, dt, min_m=150.0, min_ms=15.0):
+    """--on-open: two joystick positions dt seconds apart lie m metres apart -- did YOU jump (a teleport), or is it a walk? A
+    walk or a route covers 3 to 9 m a second; a jump is far AND fast. The runner never jumps in this mode, so every jump is
+    yours: it is written down (note_jump), and a battle or a join the server refuses right after it is read as the server's
+    cooldown and asked again -- never as 'the six are the suspect' (that ban is for refusals with NO jump)."""
+    return m >= min_m and dt > 0 and m / dt >= min_ms
+
+
+def on_open_args(a):
+    """--on-open: the roaming options mean nothing in this mode. Every one of them is switched off before anything reads
+    it, so no line of the run can pick a gym, walk a route, hop, watch an area or jump home, whatever else was typed."""
+    a.hop, a.route, a.join_first, a.next_goal, a.start_lap_at = None, None, None, None, None
+    a.home, a.rscan, a.lap_every, a.battle = False, False, 0, True
+    return a
 
 
 def pick_any(enemy, skip, done, here, goal, live, detour, area_r, ok, now, areas=None, empty=True):
@@ -1092,7 +1194,7 @@ def rank_say(ro):
 # its HP, the first three in battle order (oldest placed first) twice: they meet the top three. Mechanics used: defenders
 # have doubled HP and fight with the CP their motivation leaves them (all stats scaled alike), a fast move every
 # duration + 2 s, 1 energy per 2 HP lost (game master BATTLE_SETTINGS).
-GM_DIR = os.path.join(os.path.dirname(os.path.dirname(HERE)), "pogo_extract")
+GM_DIR = op.data_dir(HERE, "pogo_extract")               # the PC: <repo>/pogo_extract, as always; the phone: ~/pogo/pogo_extract
 TYPES18 = ["NORMAL", "FIGHTING", "FLYING", "POISON", "GROUND", "ROCK", "BUG", "GHOST", "STEEL", "FIRE", "WATER", "GRASS",
            "ELECTRIC", "PSYCHIC", "ICE", "DRAGON", "DARK", "FAIRY"]
 TIDX = {t: i for i, t in enumerate(TYPES18)}
@@ -1854,7 +1956,34 @@ def main():
     ap.add_argument("--team", type=int, default=2, help="your team (2 = red): its gyms with a free slot are joined without a battle")
     ap.add_argument("--feed-at", type=float, default=0.34, help="feed a Golden Razz at this motivation or less (the last third)")
     ap.add_argument("--feed-hot", type=float, default=0.34, help="...or at this level when the gym was attacked in the last 5 min (the server allows ~10 berries per defender, so a buffer burns them)")
+    ap.add_argument("--preflight", action="store_true",
+                    help="look only, then leave (run it after a deploy, before the switch is ever flipped): one PASS / FAIL / WARN "
+                         "line per check -- where this runs, the state folder, the game master, the attack rank, the device "
+                         "shell, the joystick's fix, the game, the attach, the tapper's live reads, auto-place, your Pokemon "
+                         "in gyms, your Gyarados, your six, the gyms on the map, the unload. It presses nothing, places "
+                         "nothing, feeds nothing, sends the joystick nothing and changes no game setting. Exit code 0 = no FAIL")
+    ap.add_argument("--on-open", action="store_true",
+                    help="touch ONLY a gym YOU open (the AutoCatcher app's Gym Battle switch; Benny 11-18: 'any gym i visit and "
+                         "enter it will automatically go drill and finish and place shiny gyrados'). The runner picks no gym, "
+                         "scans none and sends your joystick nothing while it waits. Open an enemy gym: it drills it until it is "
+                         "empty and puts a shiny Gyarados in (your highest-CP shinies when no Gyarados is at full HP). Open an "
+                         "EMPTY gym: the Gyarados goes in at once. Open your team's gym with a free slot and none of yours: it "
+                         "joins. Anything else (full, yours already in, a raid, a gym you told it to skip, a battle you started "
+                         "yourself) stays yours, with one line that says why. While it works on a gym it holds you there (the "
+                         "25 m circle, the same WALK as always: a route you had running is replaced by it); when the gym is done "
+                         "it leaves the gym screen and sends the joystick nothing more. --goal / --area / --hop / --home / "
+                         "--route / --join-first / --lap-every / --no-battle mean nothing in this mode")
+    ap.add_argument("--switch", default=None,
+                    help="--on-open only: the switch file (run_gym.sh passes the app's, /data/local/tmp/pogo_gym.on). The "
+                         "runner reads it itself, at most once a second: when it no longer holds 1, that is a stop command -- "
+                         "exactly what {\"stop\": true} in the inbox is. OFF then stops the runner even when nothing is left "
+                         "to send it that stop")
     a = ap.parse_args()
+    if a.on_open:                                            # (before anything reads them: no roaming option survives)
+        on_open_args(a)
+    SWITCH[0] = a.switch if a.on_open else None              # (no other run ever reads a switch file)
+    if a.preflight:                                          # look only, then leave: nothing below this line runs
+        sys.exit(preflight(a))
     USER_SKIP.update(x.strip()[:8] for x in a.skip.split(",") if x.strip())
     enemy = [int(x) for x in a.enemy.split(",")]
     goal = [float(x) for x in a.goal.split(",")]               # a list: the next-goal switch survives a re-attach
@@ -1866,9 +1995,15 @@ def main():
             + (f" -- MONITOR: every gym in them is read every 12-45 s (by id, any island); the runner stands still and teleports "
                f"straight to the gym that needs it ({len(GREG['g'])} gyms known)" if a.monitor else
                f" -- the next one after {a.hop_idle:.0f} s with nothing to beat, join or guard"))
+    if a.on_open:
+        say("  ON-OPEN mode (the AutoCatcher app's Gym Battle switch): the runner picks no gym, scans none and sends your "
+            "joystick nothing while it waits. A gym YOU open is taken over: an enemy gym is drilled until it is empty and "
+            "gets a shiny Gyarados, an empty gym gets the Gyarados at once, your team's gym with a free slot is joined. "
+            "While it works on a gym it holds you there (a 25 m circle); after the gym the joystick gets nothing more")
     mv, done, t_start = Mover(a.speed, a.travel_speed), {}, time.time()
     while time.time() - t_start < a.minutes * 60:            # re-attach and carry on if the game connection drops
         g = Game()
+        g.on_open = a.on_open                                # (the Game words one message differently in this mode)
         try:
             run(a, g, mv, done, t_start, enemy, goal)
             return
@@ -1882,8 +2017,203 @@ def main():
             time.sleep(10)
 
 
+def gym_open(wh):
+    """The tapper's where() answer: is a gym screen (or a battle, or the party screen) up?"""
+    return bool(wh.get("inBattle") or wh.get("prepOpen") or "Gym" in str(wh.get("chain") or ""))
+
+
+def preflight(a):
+    """--preflight: can this runner work HERE -- on the phone after a deploy, or on the PC? One PASS / FAIL / WARN / SKIP line
+    per check; returns 0 when nothing FAILed. READ-ONLY: it attaches, loads the tapper with berries off (top-ups, direct
+    deploy and one-by-one are off until a run asks for them; no run starts here), arms no gym, opens none, presses nothing,
+    hands the tapper no team, changes no game setting (the attack report interval stays the game's), reads your Pokemon in
+    gyms, your shiny Gyarados, your six and the gyms on the map, and unloads the way a run ends. If a gym screen or a battle
+    of YOURS is up, the tapper is silenced the moment it says so. The switch file and the app's status line are not its
+    business (run_gym.sh --preflight looks at them, without writing either)."""
+    res = []
+
+    def line(level, name, detail):
+        res.append(level)
+        print(f"{level:<5} {name}: {detail}", flush=True)
+
+    ok, bad, warn = (lambda n, d: line("PASS", n, d)), (lambda n, d: line("FAIL", n, d)), (lambda n, d: line("WARN", n, d))
+    ok("where this runs", ("the phone itself (Termux: a root shell, the game's own gadget)" if op.ON_PHONE else "the PC (adb)")
+       + f"; python {sys.version.split()[0]}, frida {getattr(frida, '__version__', '?')}")
+    state = os.path.dirname(COOL_OBS)
+    dirs = [state] + ([os.path.join(os.path.dirname(a.cmd), "runner_inbox")] if a.cmd else [])
+    lost = [d for d in dirs if not (os.path.isdir(d) and os.access(d, os.W_OK))]
+    (bad if lost else ok)("state folder", f"cannot be written: {', '.join(lost)}" if lost else f"{state} and the inbox can be written")
+    if ct_load():
+        ok("game master", f"{len(CT['mv_id'])} moves, {len(CT['ps_base'])} species, the type chart and the CP multipliers ({GM_DIR})")
+    else:
+        warn("game master", f"not usable in {GM_DIR}: no counter team (the attack rank order fights), no legendary list for the "
+                            f"placement fallback, no same-type table")
+    rank_load(os.path.join(os.path.dirname(a.cmd), "attack_rank.json") if a.cmd else None, first=True)
+    (ok if RANK["score"] else warn)("attack rank", f"{len(RANK['score'])} Pokemon ranked ({RANK['path']})" if RANK["score"]
+                                    else "no attack_rank.json next to --cmd: the attack team is the highest CP")
+    who = ch.adb("id -u").strip()
+    if op.ON_PHONE:
+        (ok if who == "0" else bad)("root shell", "device commands run as root, in one shell" if who == "0"
+                                    else f"`id -u` gave {who!r}: Magisk must allow Termux")
+    else:
+        (ok if who else bad)("adb", f"the phone answers (uid {who})" if who else "no answer from the phone")
+    p = ch.fix()
+    (ok if p else bad)("joystick", f"GPS Joystick is spoofing ({p[0]:.4f},{p[1]:.4f})" if p
+                       else "no mock location: GPS Joystick is not spoofing (a run would wait for a fix)")
+    sess = sc = pid = None
+    try:
+        pid = pg.wait_ready_to_attach(timeout_s=20, min_age_s=45)
+        ok("game", f"pid {pid} is safe to attach (il2cpp loaded, at least 45 s old" + (", its gadget listening)" if op.ON_PHONE else ")"))
+    except Exception as e:
+        bad("game", f"{e} -- open the game, wait a minute, run this again")
+    if pid:
+        try:
+            pg.busy_acquire = lambda *_a, **_k: None         # (as run() does: the desktop marker never makes the attach wait)
+            sess, pid = pg.get_session()
+            ok("attach", f"a Frida session to pid {pid}")
+        except Exception as e:
+            bad("attach", f"{type(e).__name__}: {e}")
+    if sess is None:
+        line("SKIP", "tapper, bag, gyms", "nothing was attached")
+    else:
+        errs, quiet = [], False
+        try:
+            sc = sess.create_script(gt.JS)
+            sc.on("message", lambda m, d: errs.append(str(m.get("description") or m)) if m.get("type") == "error" else None)
+            sc.load()
+            phone_mark(True)                                 # the install's liveness scans stop the GC world: say so (advisory)
+            try:
+                r = sc.exports_sync.install()
+            finally:
+                phone_mark(False)
+            sc.exports_sync.feedcfg(False, a.feed_at, a.feed_hot, False)   # no berry, whatever the options say: this is a look
+            if not r.get("ok"):
+                bad("tapper", f"these could not be read live in this game version: {r.get('missing')}")
+            else:
+                ok("tapper", f"every class and field it needs was read live; fort range {r.get('range') or 80.0:.0f} m; "
+                             f"{r.get('gyms')} gyms in the game's map directory")
+                wh, end = {}, time.time() + 3
+                while time.time() < end and not wh.get("chain"):   # (the chain is read by the tapper's first frames)
+                    time.sleep(0.3)
+                    wh = sc.exports_sync.where() or {}
+                if gym_open(wh):
+                    sc.exports_sync.quiesce()
+                    quiet = True
+                ok("screen", f"{wh.get('chain') or 'not read yet'} (top: {wh.get('top')})"
+                             + ("; a gym screen or a battle is up -- the tapper was silenced at once" if quiet else ""))
+                pf = os.path.join(os.path.dirname(a.study) if a.study else (os.path.dirname(a.cmd) if (a.on_open and a.cmd) else HERE),
+                                  "pick_handler.json")           # (the same file _run reads)
+                try:
+                    pl = json.load(open(pf, encoding="utf-8")).get("name")
+                except Exception:
+                    pl = None
+                if pl and pl in (r.get("pickNames") or []) and pl != r.get("pickName") and sc.exports_sync.pickname(pl).get("ok"):
+                    r["autoplace"], r["pickName"], r["pickWhy"] = True, pl, "learned from a placement in an earlier run"
+                (ok if r.get("autoplace") else bad)(
+                    "auto-place", f"ON -- place handler {r.get('pickName')}: {r.get('pickWhy')}" if r.get("autoplace") else
+                    f"OFF -- an emptied gym would wait for YOUR hand: no place handler (shape matches {r.get('pickNames')}; "
+                    f"pick_handler.json says {pl or 'nothing'})")
+                gr = r.get("graph") or {}
+                age = (time.time() * 1000 - gr["ts"]) / 1000 if (gr.get("ts") or -1) > 0 else None
+                (ok if age is not None and not r.get("graphNotes") else warn)(
+                    "live service graph", f"{gr.get('graphs', '?')} graph(s), inventory last updated "
+                    + (f"{age:.0f} s ago" if age is not None else "(unreadable)") + (f"; {r['graphNotes']}" if r.get("graphNotes") else ""))
+                if r.get("team") is not True:
+                    warn("custom team", f"unavailable ({r.get('team')}): the game's own party would fight, no counters, no heal")
+                try:
+                    n, gy, ro, _dp, fa = bag_status(sess, sc)
+                    ready = [x for x in gy if x[2] >= x[3]]
+                    ok("bag", f"{n}/{a.max_deployed} of yours in gyms; shiny Gyarados at full HP and at home: {len(ready)}"
+                              + (f" (CP {', '.join(str(x[1]) for x in ready[:5])})" if ready else "") + f"; {len(fa)} fainted")
+                    six = ([x for x in ro if x[2] * 2 >= x[3]] + [x for x in ro if 0 < x[2] and x[2] * 2 < x[3]])[:6]
+                    (ok if len(six) == 6 else warn)("your six", (", ".join(f"{x[4]} {x[1]}" for x in six) or "nobody who can fight")
+                                                    + " (rank order; against a gym, its counters go first)")
+                    if not ready:
+                        fb = placement_fallback({"ro": ro})
+                        (warn if fb else bad)("placement", "no shiny Gyarados at full HP: these go in instead -- "
+                                              + ", ".join(f"{x[4]} {x[1]}" for x in fb[:5]) if fb else
+                                              "no shiny Gyarados at full HP and nobody else to place: an emptied gym would stay empty")
+                    if n >= a.max_deployed:
+                        warn("gym slots", f"all {a.max_deployed} are in use: a gym you open is emptied, nothing can go in until one comes home")
+                except Exception as e:
+                    bad("bag", f"{type(e).__name__}: {e}")
+                if quiet:
+                    line("SKIP", "gyms on the map", "a gym screen is up: run this again from the map")
+                else:
+                    tm, end = {}, time.time() + 8
+                    while time.time() < end and not tm and not quiet:
+                        time.sleep(0.5)
+                        if gym_open(sc.exports_sync.where() or {}):   # YOU opened a gym meanwhile: hands off at once
+                            sc.exports_sync.quiesce()
+                            quiet = True
+                        else:
+                            tm = sc.exports_sync.teams() or {}
+                    rows = sorted(((ch.meters(p[:2], (v[2], v[3])) if p else 0.0, f, v) for f, v in tm.items()), key=lambda x: x[0])
+                    near = "; ".join(f"{f[:8]} team {v[0]}, {d:.0f} m" + (f", {v[5]} free" if len(v) > 5 and v[5] >= 0 else "")
+                                     + (", raid" if v[4] else "") for d, f, v in rows[:5])
+                    (ok if tm else warn)("gyms on the map", f"{len(tm)} read live; nearest: {near}" if tm else
+                                         ("you opened a gym: not read" if quiet else "none on the map right now (none near you?)"))
+            if errs:
+                bad("tapper errors", "; ".join(errs[:3]))
+        except Exception as e:
+            bad("tapper", f"{type(e).__name__}: {e}")
+        finally:                                             # the way run() ends: quiet first, then unload, then detach
+            phone_mark(True)
+            try:
+                if sc is not None:
+                    sc.exports_sync.quiesce()
+                    time.sleep(1.0)
+            except Exception:
+                pass
+            left = []
+            for f in ([sc.unload] if sc is not None else []) + [sess.detach]:
+                try:
+                    f()
+                except Exception as e:
+                    left.append(f"{type(e).__name__}: {e}")
+            phone_mark(False)
+            (warn if left else ok)("unload", f"not clean: {'; '.join(left)}" if left else "the tapper is unloaded and the session detached, the way a run ends")
+    fails = res.count("FAIL")
+    print(f"PREFLIGHT runner: {'FAIL' if fails else 'PASS'} -- {len(res)} checks, {fails} failed, {res.count('WARN')} warning(s); "
+          f"nothing was pressed, placed, fed or sent to the joystick", flush=True)
+    return 1 if fails else 0
+
+
 ATTACHED = [0]                                           # attaches of THIS process: on a re-attach a stop in the inbox is OURS
 STOP_ASKED = [False]                                     # a {"stop": true} was read: it outlives a lost game connection
+ONOPEN_BOOT = [False]                                    # --on-open: the stops from before this process were thrown away (once)
+SWITCH = [None, 0.0]                                     # --on-open --switch FILE: the file, and when it was last read
+
+
+def switch_off(path, gap=0.3):
+    """Is the app's switch off? Off = the file does not hold 1 on two reads `gap` seconds apart (one read alone can land
+    between the app's truncate and its write). A file that is missing or cannot be read is off -- the way run_gym.sh reads it."""
+    for i in (0, 1):
+        try:
+            with open(path, encoding="utf-8", errors="replace") as f:
+                if f.read().strip() == "1":
+                    return False
+        except OSError:
+            pass
+        if i == 0:
+            time.sleep(gap)
+    return True
+
+
+def switch_stop():
+    """--switch: the runner reads the app's switch itself, at most once a second. True -- once -- when it is off and no stop
+    was asked yet; the caller then does exactly what it does with {"stop": true} from the inbox. (run_gym.sh sends that
+    same stop through the inbox. This read is what still stops the runner when no supervisor is left to send it.) Never
+    true without --switch: no PC run reads a switch file."""
+    if not SWITCH[0] or STOP_ASKED[0] or time.time() - SWITCH[1] < 1.0:
+        return False
+    SWITCH[1] = time.time()
+    if not switch_off(SWITCH[0]):
+        return False
+    STOP_ASKED[0] = True
+    say("  the Gym Battle switch is off (the runner read the switch file itself; no stop had come through the inbox): the "
+        "same as a stop command")
+    return True
 
 
 def stop_waiting(inbox):
@@ -1905,7 +2235,7 @@ def stop_waiting(inbox):
                     found = True
             except Exception:
                 pass
-    return found
+    return found or switch_stop()                            # (--switch: the switch went off and nothing sent the stop)
 
 
 def dd_said(why):
@@ -1920,8 +2250,26 @@ def run(a, g, mv, done, t_start, enemy, goal):
     if ATTACHED[0] and stop_waiting(_inbox):                 # a RE-attach with a stop behind it: do not wait for the game at all
         say("  COMMAND stop: it was asked before / while the game connection was down -- not attaching again; stopped")
         return
-    pg.wait_ready_to_attach(timeout_s=300, min_age_s=45)
-    if ATTACHED[0] and stop_waiting(_inbox):                 # ...or it came in during that wait: no attach just to stop
+    if a.on_open and not ATTACHED[0]:                        # --on-open, not attached yet: the switch can go off while the runner
+        if not ONOPEN_BOOT[0]:                               # still waits for the game. A stop from BEFORE this process is
+            ONOPEN_BOOT[0] = True                            # nobody's (thrown away, once); one that comes in after that ends
+            stop_waiting(_inbox)                             # the wait -- the runner never attaches just to stop
+        elif stop_waiting(_inbox):
+            say("  COMMAND stop: it came in before the runner ever attached -- not attaching; stopped")
+            return
+    if a.on_open:                                            # --on-open waits for the game in 10 s slices: a stop -- or the
+        _end = time.time() + 300                             # switch going off -- ends the wait within seconds, not when the
+        while not STOP_ASKED[0]:                             # five minutes are up. (Only the wait's own time-out is sliced:
+            try:                                             # any other error leaves as it always did.)
+                pg.wait_ready_to_attach(timeout_s=10, min_age_s=45)
+                break
+            except RuntimeError as _e:
+                if time.time() >= _end or "never became attach-safe" not in str(_e):
+                    raise
+                STOP_ASKED[0] = stop_waiting(_inbox)
+    else:
+        pg.wait_ready_to_attach(timeout_s=300, min_age_s=45)
+    if (ATTACHED[0] or a.on_open) and stop_waiting(_inbox):  # ...or it came in during that wait: no attach just to stop
         say("  COMMAND stop: it came in while the runner waited for the game -- not attaching again; stopped")
         return
     pg.busy_acquire = lambda *_a, **_k: None                 # the marker is advisory: get_session must never wait / refuse (phone_mark)
@@ -1954,6 +2302,8 @@ def _run(a, g, mv, done, t_start, enemy, goal, sess, pid, sc):
         r = sc.exports_sync.install()
     finally:
         phone_mark(False)                                    # steadily attached from here: exempt, like the on-phone catcher
+    if a.on_open:                                            # --on-open: berries follow the switch's options from the first frame
+        sc.exports_sync.feedcfg(a.feed, a.feed_at, a.feed_hot, a.feed_mate)   # (the tapper's own default is ON until the call further down)
     rng = r.get("range") or 80.0                             # FortSettings.InteractionRangeMeters, read live at install
     engage, orbit_r = rng - 10, 25.0                         # open it from 70 m while still walking in to the 25 m circle
     if not r.get("ok"):
@@ -1965,7 +2315,9 @@ def _run(a, g, mv, done, t_start, enemy, goal, sess, pid, sc):
         say(f"  gym-details request parameters: {r['detailsParams']}")
     if r.get("team") is not True:
         say(f"  !! custom team / heal unavailable: {r.get('team')}")
-    _pf = os.path.join(os.path.dirname(a.study) if a.study else HERE, "pick_handler.json")   # a place handler learned in an earlier run
+    _pf = os.path.join(os.path.dirname(a.study) if a.study else (os.path.dirname(a.cmd) if (a.on_open and a.cmd) else HERE),
+                       "pick_handler.json")                  # a place handler learned in an earlier run (--on-open runs with no
+                                                             # --study: next to its command file, where the study runs keep it)
     try:
         _pl = json.load(open(_pf, encoding="utf-8")).get("name")
     except Exception:
@@ -2036,6 +2388,19 @@ def _run(a, g, mv, done, t_start, enemy, goal, sess, pid, sc):
     say(f"starting in state: {g.chain or 'unknown'} / top {g.top}")
     target, said = None, None
     dep = {"n": None, "at": 0.0, "gy": [], "ro": [], "dp": [], "fa": [], "fb": []}   # deployed, Gyarados, roster, defenders, fainted -- OFF the critical path
+    oo = {"told": None, "seen": 0.0, "back_at": 0.0, "fix_at": 0.0, "pos": None, "gone": False, "name_at": 0.0, "dok": 0.0}   # --on-open's notes
+
+    def let_go():                                            # --on-open: YOU moved away from the gym mid-takeover (the tick saw
+        return bool(a.on_open and oo["gone"])                # it): no more requests to a gym out of reach, nothing walks you back
+
+    def his_move(q):                                         # --on-open: where YOU are now (a joystick fix). The runner never
+        _pp, oo["pos"] = oo["pos"], (q[0], q[1], time.time())   # jumps in this mode, so a jump is yours: written down like
+        if _pp:                                              # one of its own, so the server's refusals right after it are
+            _m = ch.meters(_pp[:2], q[:2])                   # read as its cooldown (asked again), never as a bad team
+            if his_jump(_m, oo["pos"][2] - _pp[2]):
+                note_jump(_m, (q[0], q[1]))
+                say(f"  ON-OPEN: you jumped {_m:.0f} m -- written down: a battle or a join the server refuses right after a "
+                    f"jump is its cooldown (it is asked again, no team change)")
 
     def refresh_deployed(force=False, every=600):
         """The live bag: which gyms hold one of yours (`mine`), the placement stock, the roster. Every 10 min, after each
@@ -2073,6 +2438,9 @@ def _run(a, g, mv, done, t_start, enemy, goal, sess, pid, sc):
                 g.names.update({x[0]: f"{x[2]} {x[1]}" for x in dep["dp"]})
                 nfa = len(dep["fa"])
                 batch = [x[0] for x in dep["fa"]] if a.heal_batch and nfa >= a.heal_batch and not g.batch_active else []   # none until 30 fainted
+                _later = bool(batch) and a.on_open and target is None   # --on-open with no gym of yours open: no item is used
+                if _later:                                   # while the runner only waits. The batch comes with the gym you
+                    batch = []                               # open (batch_check, in the drill).
                 g.names.update({x[0]: f"{x[2]} {x[1]}" for x in dep["fa"]})
                 _its = getattr(g, "items", None) or {}
                 _rev = _its.get("MaxRevive", 1) + _its.get("Revive", 0)   # (unknown until the tapper's first item read: assume some)
@@ -2095,6 +2463,9 @@ def _run(a, g, mv, done, t_start, enemy, goal, sess, pid, sc):
                     g.batch_active = True
                     say(f"  {nfa} fainted (batch at {a.heal_batch}) -- reviving ALL of them now, one Max Revive each while they last")
                     STATS["batches"] = STATS.get("batches", 0) + 1
+                elif _later:
+                    say(f"  fainted: {nfa} (batch at {a.heal_batch}) -- no revive while the runner only waits: they come with "
+                        f"the next gym you open")
                 else:
                     say(f"  fainted: {nfa}/{a.heal_batch} -- no heals or revives until {a.heal_batch}")
                 dep["nfa"] = nfa
@@ -2132,6 +2503,8 @@ def _run(a, g, mv, done, t_start, enemy, goal, sess, pid, sc):
         stays empty. The moment another team places, return False: the caller battles it NOW (1 defender)."""
         t_stop, tries = time.time() + 180, 0
         while time.time() < t_stop:
+            if let_go():
+                return False
             try:
                 lv = sc.exports_sync.teams().get(fid) or []
             except Exception:
@@ -2180,6 +2553,8 @@ def _run(a, g, mv, done, t_start, enemy, goal, sess, pid, sc):
         cooldown for that jump), and stop the moment he takes the screen."""
         t_first = time.time()
         for _try in range(36):                               # 36 refreshes x 5 s = the 3-min bound of the lockout retry
+            if let_go():
+                return False
             if g.user_gym or (g.has("GymState") and g.open_fid not in (None, fid)):
                 sc.exports_sync.autodeploy(None)             # his screen now (review 11-16): never Back out of it, never place on it
                 return False
@@ -2234,6 +2609,8 @@ def _run(a, g, mv, done, t_start, enemy, goal, sess, pid, sc):
         t_stop, n_try, last_res, last_try, told = time.time() + budget_s, 0, "", 0.0, 0.0
         refresh_deployed(every=10)
         while time.time() < t_stop:
+            if let_go():
+                return False
             try:
                 lv = sc.exports_sync.teams().get(fid) or []
             except Exception:
@@ -2368,10 +2745,10 @@ def _run(a, g, mv, done, t_start, enemy, goal, sess, pid, sc):
             sc.exports_sync.roster(roster_ids(dep), a.heal_top, ids, [x[0] for x in dep["gy"]])
             STATS["batches"] = STATS.get("batches", 0) + 1
             say(f"  {n} fainted (batch at {a.heal_batch}) -- reviving ALL of them now, one Max Revive each")
-    if g.has("GymState") and not a.adopt:                    # open at start = the previous runner's gym: leave it after this battle
+    if g.has("GymState") and not a.adopt and not a.on_open:  # open at start = the previous runner's gym: leave it after this battle
         g.wait_for(lambda: g.open_fid is not None, 3)
         g.user_gym = False
-    if g.has("GymState") and a.adopt:                        # attached mid-gym (restart / re-attach): adopt THAT gym
+    if g.has("GymState") and a.adopt and not a.on_open:      # attached mid-gym (restart / re-attach): adopt THAT gym
         g.wait_for(lambda: g.open_fid is not None, 8)
         lv = sc.exports_sync.teams().get(g.open_fid) if g.open_fid else None
         g.user_gym = False                                   # this one is ours (adopted), not the user's
@@ -2381,6 +2758,9 @@ def _run(a, g, mv, done, t_start, enemy, goal, sess, pid, sc):
         else:                                                # any other gym open at start (red, or a battle whose gym we cannot
             g.user_gym = True                                # read yet) is YOURS: a graceful restart leaves its own gym first.
                                                              # Never Back out of it, never walk off from it (11-16 23:00 / 23:08)
+    if g.has("GymState") and a.on_open:                      # --on-open: a gym open when the runner attaches is YOURS -- it is
+        g.wait_for(lambda: g.open_fid is not None, 8)        # judged like any gym you open: never adopted blind, never left
+        g.user_gym = True                                    # by a Back of the runner
     last_tick = [0.0]
     scan_at, scan_said, scan_logged, scan_seen = [0.0], {}, {}, {}
     rscan_at, rscan_warned, idle_anchor = [0.0], [False], [None]   # --monitor: last remote sweep / told it is missing / where we stand
@@ -2413,7 +2793,9 @@ def _run(a, g, mv, done, t_start, enemy, goal, sess, pid, sc):
         for _n in sorted(os.listdir(inbox)):                 # a stop meant for the LAST runner, or anything > 5 min old, is not replayed
             _p = os.path.join(inbox, _n)
             try:
-                if _n.endswith(".json") and (time.time() - os.path.getmtime(_p) > 300 or json.load(open(_p, encoding="utf-8")).get("stop")):
+                if _n.endswith(".json") and (time.time() - os.path.getmtime(_p) > 300 or (json.load(open(_p, encoding="utf-8")).get("stop")
+                                                                                          and not a.on_open)):   # (--on-open: run() threw the old stops away;
+                                                                                                                 # one found HERE came in during this attach: taken)
                     os.remove(_p)
                     say(f"  (a stale command {_n} discarded at startup)")
             except Exception as _e:
@@ -2424,6 +2806,8 @@ def _run(a, g, mv, done, t_start, enemy, goal, sess, pid, sc):
     gpos_now = [None]
 
     def pull():                                              # new commands -> cmdq in arrival order; each file read ONCE, then removed
+        if switch_stop():                                    # --switch: the app's switch is off and nothing sent the stop
+            cmdq.append({"stop": True})
         if RANK["path"] and rank_load(RANK["path"]) and BAG_RO_ALL:    # attack_rank.json changed: re-sort the last walk, hand the tapper the new roster
             dep["ro"] = rank_sort(BAG_RO_ALL)[:80]
             try:
@@ -2477,7 +2861,8 @@ def _run(a, g, mv, done, t_start, enemy, goal, sess, pid, sc):
 
     def urgent_cmd():                                        # a queued command that should end a drill
         pull()
-        return g.graph_stale or any(set(c) & {"go", "hunt", "stop", "spin", "lap", "skip"} for c in cmdq)
+        _urgent = {"stop", "skip"} if a.on_open else {"go", "hunt", "stop", "spin", "lap", "skip"}   # (--on-open has no picker:
+        return g.graph_stale or any(set(c) & _urgent for c in cmdq)                                   # a go / hunt / lap ends no drill)
 
     def tick():                                              # keep circling the current gym while waiting on it
         quick_cmds()
@@ -2507,12 +2892,44 @@ def _run(a, g, mv, done, t_start, enemy, goal, sess, pid, sc):
             battles_count(getattr(g, "open_fid", None), "the server accepted a deploy", sc)
         elif _dok > LAST_ACT["t"]:                           # every accepted deploy is a counted action: the next jump's
             LAST_ACT.update(t=_dok, pos=act_pos(getattr(g, "open_fid", None)) or LAST_ACT.get("pos"))   # cooldown runs from it
+        if a.on_open and target and target[0][:8] not in NAMES and time.time() - oo["name_at"] > 2:
+            oo["name_at"] = time.time()                      # --on-open runs no park scan: the gym's name comes from the
+            _nv = sc.exports_sync.scanned().get(target[0])   # takeover's own readings of it (one look every 2 s until known)
+            if _nv and len(_nv) > 7 and _nv[7]:
+                NAMES[target[0][:8]] = _nv[7]
         if gpos_now[0] and time.time() - last_tick[0] > 2:
             last_tick[0] = time.time()
             q = ch.fix()
-            if q:
+            if q and a.on_open:
+                his_move(q)                                  # (a jump of yours mid-takeover is written down too)
+            if q and a.on_open and ch.meters(q[:2], gpos_now[0]) > rng + 20:   # --on-open: YOU moved away mid-takeover (a jump, a
+                oo["gone"] = True                            # route of your own): the hold is off and stays off -- the runner
+                say(f"  ON-OPEN: you are {ch.meters(q[:2], gpos_now[0]):.0f} m from the gym now -- the hold is off (the runner "
+                    f"never walks or jumps you back to a gym); this takeover ends at its next step")
+                gpos_now[0] = None
+            elif q:
                 mv.orbit(gpos_now[0], q[:2], r=orbit_r)
                 sc.exports_sync.pos(q[0], q[1])
+
+    def oo_cmd(_cmd):                                        # --on-open: a command with no picker behind it (a stop is taken
+        if _cmd.get("skip"):                                 # at the top of the loop, buddy / topup alone by quick_cmds)
+            for _s in ([_cmd["skip"]] if isinstance(_cmd["skip"], str) else _cmd["skip"]):
+                USER_SKIP.add(str(_s)[:8])
+            say(f"  COMMAND skip: {sorted(USER_SKIP)} left alone for the rest of this run, also when you open them")
+        if "feed" in _cmd:                                   # (the same switch as in every run)
+            a.feed = bool(_cmd["feed"])
+            if not hasattr(a, "feed_mate0"):
+                a.feed_mate0 = a.feed_mate
+            a.feed_mate = a.feed_mate0 and a.feed
+            _fc = sc.exports_sync.feedcfg(a.feed, a.feed_at, a.feed_hot, a.feed_mate)
+            say(f"  COMMAND feed: {'ON' if a.feed else 'OFF'} -- berries to your defenders {'on' if a.feed else 'stopped'} ({_fc})")
+        if "topup" in _cmd:
+            a.topup = bool(_cmd["topup"])
+            _tu = sc.exports_sync.topup(a.topup, a.topup_reserve)
+            say(f"  COMMAND topup: {'ON' if _tu.get('on') else 'OFF'} (keeping {a.topup_reserve} of each; bag {_tu.get('berries')})")
+        _no = sorted(set(_cmd) & {"go", "hunt", "lap", "spin"})
+        if _no:
+            say(f"  COMMAND {' / '.join(_no)}: not in --on-open mode (it would pick a gym or move you) -- ignored")
 
     while time.time() - t_start < a.minutes * 60:
         if g.detached:
@@ -2526,6 +2943,34 @@ def _run(a, g, mv, done, t_start, enemy, goal, sess, pid, sc):
                 leave_gym(g, sc, tick)
             say("  COMMAND stop: no battle in progress -- stopped cleanly; the tapper unloads and the session detaches now")
             return
+        if a.on_open and target is None:                     # --on-open, no takeover running: commands, then the wait for a gym
+            quick_cmds()                                     # YOU open. Nothing in this block picks a gym, scans one or sends
+            for _cmd in [_c for _c in cmdq if not _c.get("stop")]:   # the joystick a thing (a stop stays queued: the lines
+                cmdq.remove(_cmd)                            # above take it the moment no battle of yours is running)
+                oo_cmd(_cmd)
+            if g.graph_stale and not g.in_battle() and not g.prep:
+                say("  stopped cleanly: the game rebuilt its services (a fresh run reads the live ones) -- the tapper unloads now")
+                return
+            if g.has("GymState") and not g.user_gym:         # a gym screen the RUNNER opened is still up (its Back did not
+                if not g.in_battle() and not g.prep and time.time() - oo["back_at"] > 3:   # land): leave it, as always
+                    oo["back_at"] = time.time()
+                    if not leave_gym(g, sc, tick):
+                        say(f"  could not leave the gym screen ({g.chain} / top {g.top}) -- retrying")
+                g.wait_for(lambda: g.user_gym or not g.has("GymState"), 1.0)
+                continue
+            if not g.has("GymState"):                        # no gym screen: the plain wait
+                oo["told"], oo["seen"] = None, 0.0
+                refresh_deployed(every=60)                   # (the live bag only: which gyms hold yours, the Gyarados stock)
+                if time.time() - oo["fix_at"] > 5:           # where you are, every 5 s -- a read; his_move writes a jump down
+                    oo["fix_at"] = time.time()
+                    _q = ch.fix()
+                    if _q:
+                        his_move(_q)
+                if said != "on-open":
+                    say("  ON-OPEN: watching for a gym you open")
+                    said = "on-open"
+                g.wait_for(lambda: g.has("GymState"), 1.0)
+                continue
         p = ch.fix()
         if not p:
             if said != "nofix":
@@ -2536,495 +2981,545 @@ def _run(a, g, mv, done, t_start, enemy, goal, sess, pid, sc):
         here = p[:2]
         sc.exports_sync.pos(here[0], here[1])                # (the direct deploy sends the player's position)
         mv.fast = ch.meters(here, goal) > a.area                 # the far trip only: normal speed once inside the goal area
-        if g.has("GymState") and g.user_gym:                 # the user opened a gym
-            _of, _lv = g.open_fid, None
-            try:
-                _lv = sc.exports_sync.teams().get(_of) if _of else None
-            except Exception:
-                _lv = None
-            if _lv and _lv[0] in enemy and not _lv[4] and (_of[:8] not in USER_SKIP):   # Benny 11-16 23:10: "you need to start with
-                g.user_gym = False                           # the gym im at right now" -- his open ENEMY gym is OUR target: drill it
-                done.pop(_of, None)                          # from here (counters, every Battle press, a Gyarados when it falls)
+        if a.on_open:                                        # --on-open: ONLY a gym YOU have open is ever worked on
+            his_move(p)
+            if target is None:                               # (a target carried over = the same gym again, see the loop's end)
+                if not (g.has("GymState") and g.user_gym):
+                    continue
+                oo["seen"] = oo["seen"] or time.time()
+                try:
+                    live = sc.exports_sync.teams()
+                except Exception:
+                    live = {}
+                _of = g.open_fid
+                _lv = live.get(_of) if _of else None
+                for _lf, _lw in live.items():                # who held each gym last (an emptied gym's same-team lockout
+                    if _lw[0]:                               # binds only them)
+                        LAST_TEAM[_lf] = _lw[0]
+                _what, _why = open_plan(
+                    _of, _lv, g.gym_team, enemy, a.team, {x[5] for x in dep["dp"] if len(x) > 5}, dep["n"], a.max_deployed,
+                    skipped=USER_SKIP, dist=ch.meters(here, (_lv[2], _lv[3])) if _lv else None, reach=engage,
+                    his_battle=g.in_battle() or g.prep, rest_s=(done.get(_of, 0) - time.time()) if _of else 0.0,
+                    last_team=LAST_TEAM.get(_of), autoplace=a.autoplace)
+                _dok = getattr(g, "deploy_ok_at", 0.0)        # a Pokemon of yours went in by hand since the last bag walk:
+                if _what in ("place", "join") and _dok > dep["at"] and _dok != oo["dok"]:   # read the bag first (once per
+                    oo["dok"] = _dok                         # deploy), so a gym you just filled yourself is never asked again
+                    refresh_deployed(True)
+                    continue
+                if _what in ("wait", "leave"):               # hands off: your screen stays exactly as it is
+                    if oo["told"] != (_of, _why) and (_what == "leave" or time.time() - oo["seen"] > 5):
+                        oo["told"] = (_of, _why)
+                        say(f"  ON-OPEN: you have {_of[:8] if _of else 'a gym'} open -- "
+                            f"{'hands off' if _what == 'leave' else 'not acting yet'}: {_why}")
+                    said = None
+                    refresh_deployed(every=30)               # (the live bag: a gym you fill by hand meanwhile is known at once)
+                    g.wait_for(lambda: not g.has("GymState") or g.open_fid != _of, 1.0 if _what == "leave" else 0.3)
+                    continue
+                _tm = _lv[0] if g.gym_team is None else g.gym_team
+                g.user_gym = False                           # ours from here: the drill presses Battle, the phone places
+                done.pop(_of, None)
                 TAKEN.pop(_of, None)
-                target, gpos_now[0], said, user_anchor[0] = (_of, (_lv[2], _lv[3]), _lv[0]), None, None, None
-                say(f"  you opened {_of[:8]}{' (' + NAMES[_of[:8]] + ')' if _of[:8] in NAMES else ''} (team {_lv[0]}) -- taking it "
-                    f"over: drilling it from here, then a Gyarados in")
-                continue
-            if said != "user-gym":
-                say("  you have a gym open -- standing still next to it until you leave it")
-                said = "user-gym"
-            HOP["idle"] = None                               # you are playing HERE: never --hop you away from it
-            if user_anchor[0] is None:                       # NEVER walk you away from your gym (Benny 11-16 23:12, after the
-                user_anchor[0] = (_lv[2], _lv[3]) if _lv else (here[0], here[1])   # old code circled ITS target 160 m off)
-            mv.orbit(user_anchor[0], here, r=10)
-            time.sleep(1)
-            continue
-        user_anchor[0] = None
-        if g.has("GymState") and not g.in_battle() and not (target and g.open_fid == target[0]):   # never walk off with a gym screen open
-            if not leave_gym(g, sc, tick):
-                say(f"  could not leave the gym screen ({g.chain} / top {g.top}) -- retrying")
-                time.sleep(2)
-                continue
-        _out = a.monitor and len(HOP["list"]) == 1 and not g.in_battle() and follow_him(here, goal, a.area)
-        if _out and home_jump(a.home, HOMED[0]):             # --home: this run was SENT to an area he named ("Only the Avalon
-            HOMED[0] = True                                  # area dude", 11-17 03:52: the last run had taken the phone 1.2 km
-            _hd = ch.meters(here, goal)                      # out of it). Once, at the start: the runner's own jump back in.
-            say(f">> HOME: the phone is {_hd:.0f} m from the middle of the area this run was sent to (its edge: {a.area:.0f} m) -- "
-                f"teleporting to the middle, once; after that the area follows you only when YOU jump away")
-            ch.api("TELEPORT", f"--ef lat {goal[0]} --ef lng {goal[1]}")
-            note_jump(_hd, (goal[0], goal[1]))
-            mv.key, gpos_now[0], said, target, idle_anchor[0] = None, None, None, None, (goal[0], goal[1])
-            _land(goal[0], goal[1], a.area)
-            continue
-        HOMED[0] = True                                      # (inside once, or sent home once: from here on a way out is HIS move)
-        if _out:
-            say(f">> FOLLOW: you took the phone {ch.meters(here, goal):.0f} m from the middle of the area I watched (its edge: "
-                f"{a.area:.0f} m) -- nothing moves you back: the {a.area:.0f} m around YOU is the area now")
-            first_done[0] = True                             # (a waiting 'go' to a gym of the place he left is dropped with it)
-            goal[:] = [here[0], here[1]]
-            HOP["list"][0] = (here[0], here[1], a.area)
-            HOP["i"], HOP["ready"], HOP["idle"] = 0, True, None
-            if a.feed_zone:
-                sc.exports_sync.feedzone(here[0], here[1], a.area)
-            if target and ch.meters(here, target[1]) > 300:   # (a gym of the place he left: never a jump back onto it)
-                target, gpos_now[0] = None, None
-            said, idle_anchor[0], last_gym[0], mv.key, mv.fast = None, None, None, None, False
-            STATS["area_t0"] = time.time()
-        live = sc.exports_sync.teams()
-        if time.time() - scan_at[0] > 15:                    # verified park state: the map record of a far gym can be stale
-            scan_at[0] = time.time()
-            sc.exports_sync.scan([f for f, v in live.items() if ch.meters((v[2], v[3]), goal) <= a.area]
-                                 + [f for f, v in live.items() if f[:8] not in NAMES and ch.meters((v[2], v[3]), here) <= 300][:6])
-        if target and time.time() - tscan_at[0] > 5:         # the gym we are walking to: re-verified every 5 s
-            tscan_at[0] = time.time()
-            sc.exports_sync.scan([target[0]])
-        verified = set()                                     # scan < 30 s old: its free slot is real
-        _scn = sc.exports_sync.scanned()
-        for f, sv in _scn.items():                           # [team, age ms, in battle, defenders, CP now, ours, motivations, name]
-            if len(sv) > 7 and sv[7]:
-                NAMES[f[:8]] = sv[7]
-            if f in live and sv[1] < 30000:
-                verified.add(f)
-            if f in live and sv[1] < 45000 and not (len(live[f]) > 10 and live[f][10]
-                                                    and live[f][10] > time.time() * 1000 - sv[1] + 2000):
-                v = live[f]                                  # (never over a map record that changed AFTER this scan -- 11-16 22:36:
-                                                             # a 34 s old "empty" scan hid blue's new Walrein: "drill it (team 0)")
-                if (v[0], 6 - sv[3]) != (sv[0], v[5]) and scan_said.get(f) != (sv[0], sv[3]):
-                    scan_said[f] = (sv[0], sv[3])
-                    say(f"    scan {f[:8]}: team {sv[0]}, {sv[3]} defender(s), {sv[4]} CP now{' (in battle)' if sv[2] else ''}"
-                        f" -- the map had team {v[0]}, {6 - v[5] if v[5] >= 0 else '?'} defender(s)")
-                v[0], v[5], v[6] = sv[0], 6 - sv[3], sv[2]
-                if len(v) > 7:
-                    v[7] = sv[4]
-                if scan_seen.get(f) != round(time.time() * 1000 - sv[1], -3):   # a NEW scan of it: update its contest level
-                    scan_seen[f] = round(time.time() * 1000 - sv[1], -3)
-                    BUSY[f] = 0.9 * BUSY.get(f, 0.5) + 0.1 * sv[2]
-                if g.study_f and scan_logged.get(f) != sv[1] // 15000:
-                    scan_logged[f] = sv[1] // 15000
-                    g.study_f.write(json.dumps({"k": "study", "src": "scan", "t": int(time.time() * 1000) - sv[1], "fid": f,
-                                                "team": sv[0], "ib": sv[2], "n": sv[3], "cp": sv[4], "ours": sv[5], "mots": sv[6]}) + "\n")
-        if a.monitor:                                        # --monitor: WATCH every gym of every --hop area, never walk through them
-            _nowms = time.time() * 1000
-            for f, v in live.items():                        # the game's own map: positions (and raids) of this island's gyms
-                if v[1] < 60000 and hop_area((v[2], v[3])) is not None:
-                    greg_note(f, v[2], v[3], True)
-                    if v[4]:
-                        GREG["raid"][f] = _nowms + v[4]
-            for x in dep["dp"]:                              # your defenders' gyms: known positions on any island
-                if len(x) > 5 and x[5] and hop_area((x[3], x[4])) is not None:
-                    greg_note(x[5], x[3], x[4], False)
-            greg_save()
-            if a.rscan and time.time() - rscan_at[0] > 3:    # gyms off this island: by id + position, 12 s apart (45 s for a full red one)
-                rscan_at[0] = time.time()
-                _due = []
-                for f, gr in GREG["g"].items():
-                    if (f in live and live[f][1] < 20000 and ch.meters((gr[0], gr[1]), goal) <= a.area) or hop_area((gr[0], gr[1])) is None:
-                        continue                             # (this island's gyms: the map + the 15 s park scan above)
-                    sv = _scn.get(f)
-                    ivl = 45000 if (sv and sv[0] == a.team and sv[3] >= 6 and not sv[2]) else 12000
-                    if (not sv or sv[1] > ivl) and time.time() - rscan_sent.get(f, 0.0) > ivl / 1000.0:
-                        _due.append([f, gr[0], gr[1]])       # (never re-asked sooner than its interval, even with no answer)
-                        rscan_sent[f] = time.time()
-                if _due:
-                    _r = sc.exports_sync.rscan(_due)
-                    if not _r.get("il") and not rscan_warned[0]:   # (a missing service right after attach is NOT permanent)
-                        rscan_warned[0] = True
-                        say("  MONITOR: this game build has no il2cpp string export -- off-map gyms are not read")
-                        a.rscan = False
-            for f, gr in GREG["g"].items():                  # their readings join the map as gyms we can pick and jump to
-                if f in live and live[f][1] < 60000:
-                    continue
-                sv = _scn.get(f)
-                if not sv or sv[1] > 45000 or hop_area((gr[0], gr[1])) is None:
-                    continue
-                live[f] = [sv[0], sv[1], gr[0], gr[1], max(0, int(GREG["raid"].get(f, 0) - _nowms)), 6 - sv[3], sv[2], sv[4], 0, 0, 0, 0]
-        for f in live:                                       # gyms Benny said to skip: left alone for the rest of the run (a hard rest:
-            if f[:8] in USER_SKIP and done.get(f, 0) < time.time() + 3600:   # never picked, not even with nothing else to beat)
-                done[f] = time.time() + 12 * 3600
-                TAKEN.pop(f, None)
-        skip, _back = rested(done, TAKEN, _scn, enemy, time.time())
-        for f, sv in _back:                                  # an enemy team holds a gym we emptied: no rest, it is a target now
-            done.pop(f, None)
-            TAKEN.pop(f, None)
-            say(f"  {f[:8]} is team {sv[0]} again ({sv[3]} defender(s), {sv[4]} CP) -- no rest: it is a target now")
-        for f in cap_back(CAP_LEFT, dep["n"], a.max_deployed, live):   # a slot is free again: the gym left empty at the cap is next
-            done.pop(f, None)
-            TAKEN.pop(f, None)
-            skip.discard(f)
-            say(f"  {f[:8]}{' (' + NAMES[f[:8]] + ')' if f[:8] in NAMES else ''} was left EMPTY at the cap and one of yours "
-                f"came home ({dep['n']}/{a.max_deployed} in gyms): placing there now")
-        mine = {x[5] for x in dep["dp"] if len(x) > 5}
-        for _lf, _lv in live.items():                        # who held each gym last (an emptied gym's same-team lockout binds only them)
-            if _lv[0]:
-                LAST_TEAM[_lf] = _lv[0]
+                target, gpos_now[0], said = (_of, (_lv[2], _lv[3]), _tm), None, None
+                mv.key = None                                # the hold's WALK goes out anew: yours may have replaced the last
+                oo["told"], oo["gone"] = None, False
+                say(f"  ON-OPEN: you have {_of[:8]} open (team {_tm}) -- taking it over: "
+                    + {"drill": "drilling it until it is empty" + (f"; {_why}" if _why else ", then a shiny Gyarados in"),
+                       "place": "it is EMPTY, a shiny Gyarados goes in now",
+                       "join": "your team's gym with a free slot, joining it (no battle)"}[_what])
+            else:
+                live = sc.exports_sync.teams()
+            mine, skip = {x[5] for x in dep["dp"] if len(x) > 5}, set()
 
-        def slot(f, v):                                  # OUR team's gym with a free slot and none of ours: join it, no battle
-            return (a.autoplace and v[0] == a.team and len(v) > 5 and v[5] > 0 and f not in mine
-                    and not (len(v) > 9 and v[9] > 0)            # its same-team deploy lockout is running: it would refuse us
-                    and (dep["n"] is None or dep["n"] < a.max_deployed))
-        passing = None                                   # the avatar's reflex: a red gym in reach with room for him -> join it now
-        if not g.in_battle() and not g.has("GymState"):
-            near = sorted((ch.meters(here, (v[2], v[3])), f) for f, v in live.items()
-                          if f not in skip and v[1] < 60000 and not v[4] and not (len(v) > 6 and v[6]) and slot(f, v)
-                          and ch.meters(here, (v[2], v[3])) <= (150 if f in verified else engage))   # a VERIFIED slot: worth a short detour
-            if near:
-                pf = near[0][1]
-                passing = (pf, (live[pf][2], live[pf][3]), live[pf][0])
-                if not target or target[0] != pf:
-                    say(f"passing {pf[:8]}: red, {live[pf][5]} free slot(s), {near[0][0]:.0f} m -- joining it on the way")
-                target = passing
-        feed_record()
-        pull()
-        while cmdq:                                          # live commands, in arrival order -- a queue, none is lost: no restart
-            _cmd = cmdq.pop(0)
-            if "lap" in _cmd and ROUTE:                      # {"lap": N}: a battle break -- walk the route from waypoint N now
-                lap["active"], route_i[0], target = True, max(0, min(len(ROUTE) - 1, int(_cmd["lap"] or 0))), None
-                say(f"  COMMAND lap: battle break -- walking the route from waypoint {route_i[0]}/{len(ROUTE)}, feeding continues; "
-                    f"battling again after the lap")
-            if _cmd.get("go"):
-                _g = str(_cmd["go"])
-                a.join_first = _g if _g in live else next((_f for _f in live if _f.startswith(_g)), None)
-                first_done[0], target = not a.join_first, None
-                say(f"  COMMAND go: {str(a.join_first)[:8] if a.join_first else _g + ' (not on the map)'}")
-            if _cmd.get("buddy"):                         # [[what, arg], ...] from the buddy session: queued in the tapper, one at a time
-                for _c in _cmd["buddy"]:
-                    _r = sc.exports_sync.buddy(_c[0], _c[1] if len(_c) > 1 else None)
-                say(f"  COMMAND buddy: {_cmd['buddy']} queued -- {_r}")
-            if _cmd.get("spin"):
-                _g = str(_cmd["spin"])
-                _at = _cmd.get("at")                      # a PokeStop: its coordinates (stops are not in the gym list)
-                spin_st.update(fid=_g if _g in live else next((_f for _f in live if _f.startswith(_g)), None) or (_g if _at else None),
-                               said=0.0, tries=0, at=tuple(_at) if _at else None, linger=0.0)
-                say(f"  COMMAND spin: {spin_st['fid'][:8] if spin_st['fid'] else _g + ' (not on the map)'}")
-            if _cmd.get("stop"):
-                stop_req[0] = True
-                say("  COMMAND stop: finishing any battle in progress, leaving the gym, then unloading from the game cleanly")
-            if _cmd.get("skip"):                             # {"skip": "4232f472"} or a list: leave those gyms alone this run
-                for _s in ([_cmd["skip"]] if isinstance(_cmd["skip"], str) else _cmd["skip"]):
-                    USER_SKIP.add(str(_s)[:8])
-                if target and target[0][:8] in USER_SKIP:
-                    target = None
-                say(f"  COMMAND skip: {sorted(USER_SKIP)} left alone for the rest of this run -- the nearest other gym next")
-            if "feed" in _cmd:                               # {"feed": false}: no berries to defenders (Golden Razz + the regular fallback)
-                a.feed = bool(_cmd["feed"])
-                if not hasattr(a, "feed_mate0"):
-                    a.feed_mate0 = a.feed_mate               # the start setting: feeding back ON restores it
-                a.feed_mate = a.feed_mate0 and a.feed
-                _fc = sc.exports_sync.feedcfg(a.feed, a.feed_at, a.feed_hot, a.feed_mate)
-                say(f"  COMMAND feed: {'ON' if a.feed else 'OFF'} -- berries to your defenders {'on' if a.feed else 'stopped'} ({_fc})")
-            if "topup" in _cmd:
-                a.topup = bool(_cmd["topup"])                # kept: a re-attach after a game crash re-installs with THIS (11-16 22:38 it came back ON)
-                _tu = sc.exports_sync.topup(a.topup, a.topup_reserve)
-                say(f"  COMMAND topup: {'ON' if _tu.get('on') else 'OFF'} (keeping {a.topup_reserve} of each; bag {_tu.get('berries')})")
-            if _cmd.get("hunt"):
-                _hr = float(_cmd["hunt"])
-                _near = sorted((ch.meters(here, (_v[2], _v[3])), _f) for _f, _v in live.items() if not _v[4])
-                _near = [_f for _d, _f in _near if _d <= _hr][:16]
-                sc.exports_sync.scan(_near)
-                cmd_st["hunt"] = (time.time() + 5, _hr, bool(_cmd.get("drill")))   # drill: enemy gyms only (the user: 'drill it')
-                say(f"  COMMAND hunt: verifying {len(_near)} gym(s) within {_hr:.0f} m with the game's own gym details")
-        if spin_st["fid"] and not g.in_battle() and not g.prep:   # spin one fort's photo disc, then carry on
-            _sf = spin_st["fid"]
-            _sv = live.get(_sf)
-            if not _sv and spin_st.get("at"):              # a PokeStop: walk right next to it and linger; the auto-catcher spins it
-                _sp = spin_st["at"]
-                if ch.meters(here, _sp) > 12:
+            def slot(f, v):                                  # (asked of the gym the takeover works on, as in every run)
+                return free_slot(v, f, mine, dep["n"], a.max_deployed, a.team, a.autoplace)
+        else:                                                # every other run: the picker, the walks, the scans (as before)
+            if g.has("GymState") and g.user_gym:                 # the user opened a gym
+                _of, _lv = g.open_fid, None
+                try:
+                    _lv = sc.exports_sync.teams().get(_of) if _of else None
+                except Exception:
+                    _lv = None
+                if _lv and _lv[0] in enemy and not _lv[4] and (_of[:8] not in USER_SKIP):   # Benny 11-16 23:10: "you need to start with
+                    g.user_gym = False                           # the gym im at right now" -- his open ENEMY gym is OUR target: drill it
+                    done.pop(_of, None)                          # from here (counters, every Battle press, a Gyarados when it falls)
+                    TAKEN.pop(_of, None)
+                    target, gpos_now[0], said, user_anchor[0] = (_of, (_lv[2], _lv[3]), _lv[0]), None, None, None
+                    say(f"  you opened {_of[:8]}{' (' + NAMES[_of[:8]] + ')' if _of[:8] in NAMES else ''} (team {_lv[0]}) -- taking it "
+                        f"over: drilling it from here, then a Gyarados in")
+                    continue
+                if said != "user-gym":
+                    say("  you have a gym open -- standing still next to it until you leave it")
+                    said = "user-gym"
+                HOP["idle"] = None                               # you are playing HERE: never --hop you away from it
+                if user_anchor[0] is None:                       # NEVER walk you away from your gym (Benny 11-16 23:12, after the
+                    user_anchor[0] = (_lv[2], _lv[3]) if _lv else (here[0], here[1])   # old code circled ITS target 160 m off)
+                mv.orbit(user_anchor[0], here, r=10)
+                time.sleep(1)
+                continue
+            user_anchor[0] = None
+            if g.has("GymState") and not g.in_battle() and not (target and g.open_fid == target[0]):   # never walk off with a gym screen open
+                if not leave_gym(g, sc, tick):
+                    say(f"  could not leave the gym screen ({g.chain} / top {g.top}) -- retrying")
+                    time.sleep(2)
+                    continue
+            _out = a.monitor and len(HOP["list"]) == 1 and not g.in_battle() and follow_him(here, goal, a.area)
+            if _out and home_jump(a.home, HOMED[0]):             # --home: this run was SENT to an area he named ("Only the Avalon
+                HOMED[0] = True                                  # area dude", 11-17 03:52: the last run had taken the phone 1.2 km
+                _hd = ch.meters(here, goal)                      # out of it). Once, at the start: the runner's own jump back in.
+                say(f">> HOME: the phone is {_hd:.0f} m from the middle of the area this run was sent to (its edge: {a.area:.0f} m) -- "
+                    f"teleporting to the middle, once; after that the area follows you only when YOU jump away")
+                ch.api("TELEPORT", f"--ef lat {goal[0]} --ef lng {goal[1]}")
+                note_jump(_hd, (goal[0], goal[1]))
+                mv.key, gpos_now[0], said, target, idle_anchor[0] = None, None, None, None, (goal[0], goal[1])
+                _land(goal[0], goal[1], a.area)
+                continue
+            HOMED[0] = True                                      # (inside once, or sent home once: from here on a way out is HIS move)
+            if _out:
+                say(f">> FOLLOW: you took the phone {ch.meters(here, goal):.0f} m from the middle of the area I watched (its edge: "
+                    f"{a.area:.0f} m) -- nothing moves you back: the {a.area:.0f} m around YOU is the area now")
+                first_done[0] = True                             # (a waiting 'go' to a gym of the place he left is dropped with it)
+                goal[:] = [here[0], here[1]]
+                HOP["list"][0] = (here[0], here[1], a.area)
+                HOP["i"], HOP["ready"], HOP["idle"] = 0, True, None
+                if a.feed_zone:
+                    sc.exports_sync.feedzone(here[0], here[1], a.area)
+                if target and ch.meters(here, target[1]) > 300:   # (a gym of the place he left: never a jump back onto it)
+                    target, gpos_now[0] = None, None
+                said, idle_anchor[0], last_gym[0], mv.key, mv.fast = None, None, None, None, False
+                STATS["area_t0"] = time.time()
+            live = sc.exports_sync.teams()
+            if time.time() - scan_at[0] > 15:                    # verified park state: the map record of a far gym can be stale
+                scan_at[0] = time.time()
+                sc.exports_sync.scan([f for f, v in live.items() if ch.meters((v[2], v[3]), goal) <= a.area]
+                                     + [f for f, v in live.items() if f[:8] not in NAMES and ch.meters((v[2], v[3]), here) <= 300][:6])
+            if target and time.time() - tscan_at[0] > 5:         # the gym we are walking to: re-verified every 5 s
+                tscan_at[0] = time.time()
+                sc.exports_sync.scan([target[0]])
+            verified = set()                                     # scan < 30 s old: its free slot is real
+            _scn = sc.exports_sync.scanned()
+            for f, sv in _scn.items():                           # [team, age ms, in battle, defenders, CP now, ours, motivations, name]
+                if len(sv) > 7 and sv[7]:
+                    NAMES[f[:8]] = sv[7]
+                if f in live and sv[1] < 30000:
+                    verified.add(f)
+                if f in live and sv[1] < 45000 and not (len(live[f]) > 10 and live[f][10]
+                                                        and live[f][10] > time.time() * 1000 - sv[1] + 2000):
+                    v = live[f]                                  # (never over a map record that changed AFTER this scan -- 11-16 22:36:
+                                                                 # a 34 s old "empty" scan hid blue's new Walrein: "drill it (team 0)")
+                    if (v[0], 6 - sv[3]) != (sv[0], v[5]) and scan_said.get(f) != (sv[0], sv[3]):
+                        scan_said[f] = (sv[0], sv[3])
+                        say(f"    scan {f[:8]}: team {sv[0]}, {sv[3]} defender(s), {sv[4]} CP now{' (in battle)' if sv[2] else ''}"
+                            f" -- the map had team {v[0]}, {6 - v[5] if v[5] >= 0 else '?'} defender(s)")
+                    v[0], v[5], v[6] = sv[0], 6 - sv[3], sv[2]
+                    if len(v) > 7:
+                        v[7] = sv[4]
+                    if scan_seen.get(f) != round(time.time() * 1000 - sv[1], -3):   # a NEW scan of it: update its contest level
+                        scan_seen[f] = round(time.time() * 1000 - sv[1], -3)
+                        BUSY[f] = 0.9 * BUSY.get(f, 0.5) + 0.1 * sv[2]
+                    if g.study_f and scan_logged.get(f) != sv[1] // 15000:
+                        scan_logged[f] = sv[1] // 15000
+                        g.study_f.write(json.dumps({"k": "study", "src": "scan", "t": int(time.time() * 1000) - sv[1], "fid": f,
+                                                    "team": sv[0], "ib": sv[2], "n": sv[3], "cp": sv[4], "ours": sv[5], "mots": sv[6]}) + "\n")
+            if a.monitor:                                        # --monitor: WATCH every gym of every --hop area, never walk through them
+                _nowms = time.time() * 1000
+                for f, v in live.items():                        # the game's own map: positions (and raids) of this island's gyms
+                    if v[1] < 60000 and hop_area((v[2], v[3])) is not None:
+                        greg_note(f, v[2], v[3], True)
+                        if v[4]:
+                            GREG["raid"][f] = _nowms + v[4]
+                for x in dep["dp"]:                              # your defenders' gyms: known positions on any island
+                    if len(x) > 5 and x[5] and hop_area((x[3], x[4])) is not None:
+                        greg_note(x[5], x[3], x[4], False)
+                greg_save()
+                if a.rscan and time.time() - rscan_at[0] > 3:    # gyms off this island: by id + position, 12 s apart (45 s for a full red one)
+                    rscan_at[0] = time.time()
+                    _due = []
+                    for f, gr in GREG["g"].items():
+                        if (f in live and live[f][1] < 20000 and ch.meters((gr[0], gr[1]), goal) <= a.area) or hop_area((gr[0], gr[1])) is None:
+                            continue                             # (this island's gyms: the map + the 15 s park scan above)
+                        sv = _scn.get(f)
+                        ivl = 45000 if (sv and sv[0] == a.team and sv[3] >= 6 and not sv[2]) else 12000
+                        if (not sv or sv[1] > ivl) and time.time() - rscan_sent.get(f, 0.0) > ivl / 1000.0:
+                            _due.append([f, gr[0], gr[1]])       # (never re-asked sooner than its interval, even with no answer)
+                            rscan_sent[f] = time.time()
+                    if _due:
+                        _r = sc.exports_sync.rscan(_due)
+                        if not _r.get("il") and not rscan_warned[0]:   # (a missing service right after attach is NOT permanent)
+                            rscan_warned[0] = True
+                            say("  MONITOR: this game build has no il2cpp string export -- off-map gyms are not read")
+                            a.rscan = False
+                for f, gr in GREG["g"].items():                  # their readings join the map as gyms we can pick and jump to
+                    if f in live and live[f][1] < 60000:
+                        continue
+                    sv = _scn.get(f)
+                    if not sv or sv[1] > 45000 or hop_area((gr[0], gr[1])) is None:
+                        continue
+                    live[f] = [sv[0], sv[1], gr[0], gr[1], max(0, int(GREG["raid"].get(f, 0) - _nowms)), 6 - sv[3], sv[2], sv[4], 0, 0, 0, 0]
+            for f in live:                                       # gyms Benny said to skip: left alone for the rest of the run (a hard rest:
+                if f[:8] in USER_SKIP and done.get(f, 0) < time.time() + 3600:   # never picked, not even with nothing else to beat)
+                    done[f] = time.time() + 12 * 3600
+                    TAKEN.pop(f, None)
+            skip, _back = rested(done, TAKEN, _scn, enemy, time.time())
+            for f, sv in _back:                                  # an enemy team holds a gym we emptied: no rest, it is a target now
+                done.pop(f, None)
+                TAKEN.pop(f, None)
+                say(f"  {f[:8]} is team {sv[0]} again ({sv[3]} defender(s), {sv[4]} CP) -- no rest: it is a target now")
+            for f in cap_back(CAP_LEFT, dep["n"], a.max_deployed, live):   # a slot is free again: the gym left empty at the cap is next
+                done.pop(f, None)
+                TAKEN.pop(f, None)
+                skip.discard(f)
+                say(f"  {f[:8]}{' (' + NAMES[f[:8]] + ')' if f[:8] in NAMES else ''} was left EMPTY at the cap and one of yours "
+                    f"came home ({dep['n']}/{a.max_deployed} in gyms): placing there now")
+            mine = {x[5] for x in dep["dp"] if len(x) > 5}
+            for _lf, _lv in live.items():                        # who held each gym last (an emptied gym's same-team lockout binds only them)
+                if _lv[0]:
+                    LAST_TEAM[_lf] = _lv[0]
+
+            def slot(f, v):                                  # OUR team's gym with a free slot and none of ours: join it, no battle
+                return free_slot(v, f, mine, dep["n"], a.max_deployed, a.team, a.autoplace)   # (ONE rule: --on-open asks it too)
+            passing = None                                   # the avatar's reflex: a red gym in reach with room for him -> join it now
+            if not g.in_battle() and not g.has("GymState"):
+                near = sorted((ch.meters(here, (v[2], v[3])), f) for f, v in live.items()
+                              if f not in skip and v[1] < 60000 and not v[4] and not (len(v) > 6 and v[6]) and slot(f, v)
+                              and ch.meters(here, (v[2], v[3])) <= (150 if f in verified else engage))   # a VERIFIED slot: worth a short detour
+                if near:
+                    pf = near[0][1]
+                    passing = (pf, (live[pf][2], live[pf][3]), live[pf][0])
+                    if not target or target[0] != pf:
+                        say(f"passing {pf[:8]}: red, {live[pf][5]} free slot(s), {near[0][0]:.0f} m -- joining it on the way")
+                    target = passing
+            feed_record()
+            pull()
+            while cmdq:                                          # live commands, in arrival order -- a queue, none is lost: no restart
+                _cmd = cmdq.pop(0)
+                if "lap" in _cmd and ROUTE:                      # {"lap": N}: a battle break -- walk the route from waypoint N now
+                    lap["active"], route_i[0], target = True, max(0, min(len(ROUTE) - 1, int(_cmd["lap"] or 0))), None
+                    say(f"  COMMAND lap: battle break -- walking the route from waypoint {route_i[0]}/{len(ROUTE)}, feeding continues; "
+                        f"battling again after the lap")
+                if _cmd.get("go"):
+                    _g = str(_cmd["go"])
+                    a.join_first = _g if _g in live else next((_f for _f in live if _f.startswith(_g)), None)
+                    first_done[0], target = not a.join_first, None
+                    say(f"  COMMAND go: {str(a.join_first)[:8] if a.join_first else _g + ' (not on the map)'}")
+                if _cmd.get("buddy"):                         # [[what, arg], ...] from the buddy session: queued in the tapper, one at a time
+                    for _c in _cmd["buddy"]:
+                        _r = sc.exports_sync.buddy(_c[0], _c[1] if len(_c) > 1 else None)
+                    say(f"  COMMAND buddy: {_cmd['buddy']} queued -- {_r}")
+                if _cmd.get("spin"):
+                    _g = str(_cmd["spin"])
+                    _at = _cmd.get("at")                      # a PokeStop: its coordinates (stops are not in the gym list)
+                    spin_st.update(fid=_g if _g in live else next((_f for _f in live if _f.startswith(_g)), None) or (_g if _at else None),
+                                   said=0.0, tries=0, at=tuple(_at) if _at else None, linger=0.0)
+                    say(f"  COMMAND spin: {spin_st['fid'][:8] if spin_st['fid'] else _g + ' (not on the map)'}")
+                if _cmd.get("stop"):
+                    stop_req[0] = True
+                    say("  COMMAND stop: finishing any battle in progress, leaving the gym, then unloading from the game cleanly")
+                if _cmd.get("skip"):                             # {"skip": "4232f472"} or a list: leave those gyms alone this run
+                    for _s in ([_cmd["skip"]] if isinstance(_cmd["skip"], str) else _cmd["skip"]):
+                        USER_SKIP.add(str(_s)[:8])
+                    if target and target[0][:8] in USER_SKIP:
+                        target = None
+                    say(f"  COMMAND skip: {sorted(USER_SKIP)} left alone for the rest of this run -- the nearest other gym next")
+                if "feed" in _cmd:                               # {"feed": false}: no berries to defenders (Golden Razz + the regular fallback)
+                    a.feed = bool(_cmd["feed"])
+                    if not hasattr(a, "feed_mate0"):
+                        a.feed_mate0 = a.feed_mate               # the start setting: feeding back ON restores it
+                    a.feed_mate = a.feed_mate0 and a.feed
+                    _fc = sc.exports_sync.feedcfg(a.feed, a.feed_at, a.feed_hot, a.feed_mate)
+                    say(f"  COMMAND feed: {'ON' if a.feed else 'OFF'} -- berries to your defenders {'on' if a.feed else 'stopped'} ({_fc})")
+                if "topup" in _cmd:
+                    a.topup = bool(_cmd["topup"])                # kept: a re-attach after a game crash re-installs with THIS (11-16 22:38 it came back ON)
+                    _tu = sc.exports_sync.topup(a.topup, a.topup_reserve)
+                    say(f"  COMMAND topup: {'ON' if _tu.get('on') else 'OFF'} (keeping {a.topup_reserve} of each; bag {_tu.get('berries')})")
+                if _cmd.get("hunt"):
+                    _hr = float(_cmd["hunt"])
+                    _near = sorted((ch.meters(here, (_v[2], _v[3])), _f) for _f, _v in live.items() if not _v[4])
+                    _near = [_f for _d, _f in _near if _d <= _hr][:16]
+                    sc.exports_sync.scan(_near)
+                    cmd_st["hunt"] = (time.time() + 5, _hr, bool(_cmd.get("drill")))   # drill: enemy gyms only (the user: 'drill it')
+                    say(f"  COMMAND hunt: verifying {len(_near)} gym(s) within {_hr:.0f} m with the game's own gym details")
+            if spin_st["fid"] and not g.in_battle() and not g.prep:   # spin one fort's photo disc, then carry on
+                _sf = spin_st["fid"]
+                _sv = live.get(_sf)
+                if not _sv and spin_st.get("at"):              # a PokeStop: walk right next to it and linger; the auto-catcher spins it
+                    _sp = spin_st["at"]
+                    if ch.meters(here, _sp) > 12:
+                        if g.has("GymState"):
+                            leave_gym(g, sc, tick)
+                        gpos_now[0] = None
+                        mv.orbit(_sp, here, r=6)
+                        if time.time() - spin_st["said"] > 30:
+                            spin_st["said"] = time.time()
+                            say(f"  SPIN stop {_sf[:8]}: walking to it ({ch.meters(here, _sp):.0f} m)")
+                        time.sleep(1)
+                        continue
+                    spin_st["linger"] = spin_st["linger"] or time.time()
+                    mv.orbit(_sp, here, r=6)
+                    if time.time() - spin_st["linger"] < 45:
+                        time.sleep(1)
+                        continue
+                    say(f"  SPIN stop {_sf[:8]}: stood within 12 m for 45 s (the auto-catcher spins stops in range) -- back to what I was doing")
+                    spin_st["fid"] = None
+                    continue
+                if not _sv or (len(_sv) > 10 and _sv[10]) or spin_st["tries"] >= 3:
+                    say(f"  SPIN {_sf[:8]}: " + ("not on the map any more" if not _sv else "DONE -- its Visited flag is set" if _sv[10]
+                                                  else "3 tries without the Visited flag -- giving up") + "; back to what I was doing")
+                    spin_st["fid"] = None
+                elif ch.meters(here, (_sv[2], _sv[3])) > 35:  # walk to it (a gym disc needs the avatar within range)
                     if g.has("GymState"):
                         leave_gym(g, sc, tick)
                     gpos_now[0] = None
-                    mv.orbit(_sp, here, r=6)
+                    mv.orbit((_sv[2], _sv[3]), here, r=15)
                     if time.time() - spin_st["said"] > 30:
                         spin_st["said"] = time.time()
-                        say(f"  SPIN stop {_sf[:8]}: walking to it ({ch.meters(here, _sp):.0f} m)")
+                        say(f"  SPIN {_sf[:8]}: walking to it ({ch.meters(here, (_sv[2], _sv[3])):.0f} m)")
                     time.sleep(1)
                     continue
-                spin_st["linger"] = spin_st["linger"] or time.time()
-                mv.orbit(_sp, here, r=6)
-                if time.time() - spin_st["linger"] < 45:
-                    time.sleep(1)
+                else:                                         # open it, its own disc button, a finger's swipe across the disc
+                    spin_st["tries"] += 1
+                    if not (g.has("GymState") and g.open_fid == _sf):
+                        sc.exports_sync.open(_sf)
+                    if g.wait_for(lambda: g.open_fid == _sf and g.leaf() == "GymApproachState", 12, tick):
+                        time.sleep(1.2)
+                        sc.exports_sync.act("pokestop")
+                        time.sleep(2.5)
+                        try:
+                            _png = subprocess.run(op.SCREENCAP if op.ON_PHONE else ["adb", "-s", os.environ.get("ADB_TARGET", ch.DEV), "exec-out", "screencap", "-p"],
+                                                  capture_output=True, timeout=20).stdout   # the phone, by name (a TV / the cloud bridge share adb)
+                            open(os.path.join(os.path.dirname(a.study) if a.study else ".", f"spin_{_sf[:8]}_{spin_st['tries']}.png"), "wb").write(_png)
+                        except Exception:
+                            pass
+                        ch.adb("input swipe 200 1430 1080 1430 150")
+                        time.sleep(3.0)
+                        say(f"  SPIN {_sf[:8]}: disc button pressed + swiped (try {spin_st['tries']}); checking its Visited flag")
+                    else:
+                        say(f"  SPIN {_sf[:8]}: the gym did not open (top '{g.top}') -- try {spin_st['tries']}/3")
+                    leave_gym(g, sc, tick)
                     continue
-                say(f"  SPIN stop {_sf[:8]}: stood within 12 m for 45 s (the auto-catcher spins stops in range) -- back to what I was doing")
-                spin_st["fid"] = None
-                continue
-            if not _sv or (len(_sv) > 10 and _sv[10]) or spin_st["tries"] >= 3:
-                say(f"  SPIN {_sf[:8]}: " + ("not on the map any more" if not _sv else "DONE -- its Visited flag is set" if _sv[10]
-                                              else "3 tries without the Visited flag -- giving up") + "; back to what I was doing")
-                spin_st["fid"] = None
-            elif ch.meters(here, (_sv[2], _sv[3])) > 35:  # walk to it (a gym disc needs the avatar within range)
+            if g.graph_stale:                                    # a frozen service graph: a clean stop (a restart re-picks it)
+                stop_req[0] = True
+            if stop_req[0] and not g.in_battle() and not g.prep:   # a CLEAN stop: never a hard kill mid-battle (03:39 deadlock)
                 if g.has("GymState"):
                     leave_gym(g, sc, tick)
-                gpos_now[0] = None
-                mv.orbit((_sv[2], _sv[3]), here, r=15)
-                if time.time() - spin_st["said"] > 30:
-                    spin_st["said"] = time.time()
-                    say(f"  SPIN {_sf[:8]}: walking to it ({ch.meters(here, (_sv[2], _sv[3])):.0f} m)")
-                time.sleep(1)
-                continue
-            else:                                         # open it, its own disc button, a finger's swipe across the disc
-                spin_st["tries"] += 1
-                if not (g.has("GymState") and g.open_fid == _sf):
-                    sc.exports_sync.open(_sf)
-                if g.wait_for(lambda: g.open_fid == _sf and g.leaf() == "GymApproachState", 12, tick):
-                    time.sleep(1.2)
-                    sc.exports_sync.act("pokestop")
-                    time.sleep(2.5)
-                    try:
-                        _png = subprocess.run(["adb", "-s", os.environ.get("ADB_TARGET", ch.DEV), "exec-out", "screencap", "-p"],
-                                              capture_output=True, timeout=20).stdout   # the phone, by name (a TV / the cloud bridge share adb)
-                        open(os.path.join(os.path.dirname(a.study) if a.study else ".", f"spin_{_sf[:8]}_{spin_st['tries']}.png"), "wb").write(_png)
-                    except Exception:
-                        pass
-                    ch.adb("input swipe 200 1430 1080 1430 150")
-                    time.sleep(3.0)
-                    say(f"  SPIN {_sf[:8]}: disc button pressed + swiped (try {spin_st['tries']}); checking its Visited flag")
-                else:
-                    say(f"  SPIN {_sf[:8]}: the gym did not open (top '{g.top}') -- try {spin_st['tries']}/3")
-                leave_gym(g, sc, tick)
-                continue
-        if g.graph_stale:                                    # a frozen service graph: a clean stop (a restart re-picks it)
-            stop_req[0] = True
-        if stop_req[0] and not g.in_battle() and not g.prep:   # a CLEAN stop: never a hard kill mid-battle (03:39 deadlock)
-            if g.has("GymState"):
-                leave_gym(g, sc, tick)
-            say("  stopped cleanly -- the tapper unloads and the session detaches now; a new runner can attach")
-            return
-        if cmd_st["hunt"] and time.time() >= cmd_st["hunt"][0]:   # the hunt: the cheapest VERIFIED gym in range, now
-            _hr, _drill, cmd_st["hunt"], _best = cmd_st["hunt"][1], cmd_st["hunt"][2], None, None
-            for _f, _s in sc.exports_sync.scanned().items():  # [team, age ms, in battle, defenders, CP now, ours, motivations]
-                _v = live.get(_f)
-                if not _v or _s[1] > 20000 or _v[4] or ch.meters(here, (_v[2], _v[3])) > _hr:
-                    continue
-                _dm = ch.meters(here, (_v[2], _v[3]))
-                if _s[0] in enemy:
-                    _c = _dm * 0.35 + _s[4] * 0.03
-                elif not _drill and (_s[0] == 0 or (_s[0] == a.team and slot(_f, _v))):   # the SAME placement test the go-to uses
-                    _c = _dm * 0.35 - 60
-                else:
-                    continue
-                if _best is None or _c < _best[0]:
-                    _best = (_c, _f, _s, _dm)
-            if _best:
-                a.join_first, first_done[0], target = _best[1], False, None
-                _s = _best[2]
-                say(f"  HUNT: {_best[1][:8]} -- team {_s[0]}, {_s[3]} defender(s), {_s[4]} CP now, motivations {_s[6]}, {_best[3]:.0f} m -- going")
-            else:
-                say("  HUNT: nothing beatable or joinable in range right now")
-        if not first_done[0] and not g.in_battle() and (not g.has("GymState") or g.open_fid == a.join_first):   # go there first
-            _jv = live.get(a.join_first)
-            if _jv and not _jv[4] and (_jv[0] in enemy + [0] or slot(a.join_first, _jv)):   # beat + place, or join
-                if not target or target[0] != a.join_first:
-                    _what = "join it" if _jv[0] == a.team else f"drill it (team {_jv[0]}, {_jv[7] if len(_jv) > 7 else '?'} CP) and place"
-                    say(f"going to {a.join_first[:8]} ({ch.meters(here, (_jv[2], _jv[3])):.0f} m) to {_what} -- then back to the lap")
-                passing = target = (a.join_first, (_jv[2], _jv[3]), _jv[0])
-            elif _jv is not None:
-                first_done[0] = True
-                say(f"  {a.join_first[:8]} is team {_jv[0]} now{' (raid)' if _jv[4] else ''} -- nothing to do there; back to the lap")
-        if (not a.battle or lap["active"]) and not passing:   # battle break / a lap: keep moving, keep feeding, fight nothing
-            if g.in_battle() or g.has("GymState"):
-                time.sleep(0.5)                              # (the session in progress finishes; its gym screen is left above)
-                continue
-            gpos_now[0] = None
-            if route_i[0] < len(ROUTE):                      # a one-way route: always toward the NEXT waypoint, never back
-                if ch.meters(here, ROUTE[route_i[0]]) < 20:
-                    route_i[0] += 1
-                    say(f"  route: waypoint {route_i[0]}/{len(ROUTE)} reached" + (" -- lap done" if route_i[0] >= len(ROUTE) else ""))
-                    if route_i[0] >= len(ROUTE) and a.battle:  # the lap is over: back to the gyms
-                        lap["active"], lap["placed"] = False, 0
-                        say(f"  LAP DONE -- battling again (next lap after {a.lap_every} more placements)")
+                say("  stopped cleanly -- the tapper unloads and the session detaches now; a new runner can attach")
+                return
+            if cmd_st["hunt"] and time.time() >= cmd_st["hunt"][0]:   # the hunt: the cheapest VERIFIED gym in range, now
+                _hr, _drill, cmd_st["hunt"], _best = cmd_st["hunt"][1], cmd_st["hunt"][2], None, None
+                for _f, _s in sc.exports_sync.scanned().items():  # [team, age ms, in battle, defenders, CP now, ours, motivations]
+                    _v = live.get(_f)
+                    if not _v or _s[1] > 20000 or _v[4] or ch.meters(here, (_v[2], _v[3])) > _hr:
                         continue
-                if route_i[0] < len(ROUTE):
-                    key = ("route", route_i[0])
-                    if mv.key != key or mv.due(here):
-                        mv._walk(key, ROUTE[route_i[0]:], here)
-                    time.sleep(1)
-                    continue
-            mv.orbit(goal, here, r=60)
-            refresh_deployed()                               # (every 10 min: the defender list for the feeder)
-            if said != "break":
-                say("  BATTLE BREAK -- walking in the park, still feeding your defenders + one teammate per gym")
-                said = "break"
-            time.sleep(2)
-            continue
-        if cmd_st["hunt"] and target is None and not g.in_battle():   # Benny 11-16 "find an easy gym": the hunt verifies gyms for ~5 s --
-            g.wait_for(lambda: False, 0.3, tick)                       # wait for ITS pick; never grab the nearest gym meanwhile
-            continue
-        tv = live.get(target[0]) if target else None
-        if target is None or target[0] in skip or not tv or tv[4] or not (tv[0] in enemy + [0] or slot(target[0], tv)):
-            target, _was_resting = pick_any(enemy, skip, done, here, goal, live, a.detour, a.area, slot, time.time(),
-                                            areas=HOP["list"] if a.monitor else None,   # an empty gym: straight to Deploy
-                                            empty=dep["n"] is None or dep["n"] < a.max_deployed)   # (never at the gym cap)
-            if target and _was_resting:                      # nothing else to beat: its rest ends now
-                done.pop(target[0], None)
-                TAKEN.pop(target[0], None)
-                say(f"target {target[0][:8]} team {target[2]} (it was resting -- nothing else to beat), {ch.meters(here, target[1]):.0f} m away")
-            elif target:
-                say(f"target {target[0][:8]} team {target[2]}, {ch.meters(here, target[1]):.0f} m away")
-        if not target:                                       # nothing to beat right now: keep moving
-            gpos_now[0] = None
-            refresh_deployed(every=30)                       # idle: which gyms still hold yours, read live (a knocked-out one = a
-                                                             # gym to join or retake), and the Gyarados back from gyms get revived
-            if not HOP.get("ready", True):                   # (11-17 00:32: "map NOT ready" after a jump read as "nothing here" --
-                if any(v[1] < 5000 and ch.meters((v[2], v[3]), goal) <= a.area for v in live.values()) \
-                        or time.time() - HOP.get("landed", 0.0) > 60:   # three island jumps in 21 s; the 60 s is only a give-up bound)
-                    HOP["ready"] = True
-                else:
-                    if said != "landing":
-                        say("  waiting for this island's gyms to show on the game's map -- no second jump on an empty map")
-                        said = "landing"
-                    time.sleep(1)
-                    continue
-            if ch.meters(here, goal) > a.area and not a.monitor:   # (--monitor never WALKS to its goal: it stands and watches)
-                mv.travel(goal, here)
-                msg = "no enemy gym on the way yet -- walking toward the goal"
-            else:
-                soon = [(v[4], fid, (v[2], v[3])) for fid, v in live.items()          # a non-red gym whose raid ends soon:
-                        if v[0] in enemy + [0] and 0 < v[4] <= a.prewait * 60000        # wait ON it, battle the second it ends
-                        and ch.meters((v[2], v[3]), goal) <= a.area and fid not in skip]
-                _hg = g.his_gym[0] if (g.his_gym and time.time() - g.his_gym[1] < 1800) else None
-                guard = sorted(((f != _hg, f in mine, (6 - v[5]) if len(v) > 5 and v[5] >= 0 else 6, ch.meters(here, (v[2], v[3]))), f)
-                               for f, v in live.items()                                             # a red gym being drained by another
-                               if v[0] == a.team and f not in skip and not v[4]                     # team: stand at it -- the moment it
-                               and ch.meters((v[2], v[3]), goal) <= a.area                          # falls we are in range to fight for
-                               and ((len(v) > 6 and v[6]) or (len(v) > 9 and v[9] > 0)))           # it (11-16 22:35, the ferry gym).
-                # Which one (11-17 00:27, "a lot more situational awareness"): the gym YOUR deploy was refused at first, then one
-                # with NONE of yours (the moment the attack ends we join it -- one with yours gives us nothing), then the one
-                # closest to falling (fewest defenders), then the nearest. 00:27 it stood at 8e12222d while 951dc951 fell.
-                if soon:
-                    left, sfid, spos = min(soon)
-                    gpos_now[0] = None
-                    mv.orbit(spos, here, r=orbit_r)
-                    msg = f"in the goal area, nothing to beat now -- circling {sfid[:8]}, its raid ends in {left / 60000:.1f} min"
-                elif guard:
-                    gf = guard[0][1]
-                    mv.orbit((live[gf][2], live[gf][3]), here, r=orbit_r)
-                    _gw = ("you tried to place here" if gf == _hg else "yours is in it" if gf in mine
-                           else "none of yours in it: we join the moment the attack ends")
-                    msg = (f"in the goal area, nothing to beat -- standing by red {gf[:8]}{' (' + NAMES[gf[:8]] + ')' if gf[:8] in NAMES else ''} "
-                           f"({_gw}): another team is attacking it; the second it falls we fight for it"
-                           + (f" [{len(guard) - 1} more red gym(s) under attack]" if len(guard) > 1 else ""))
-                    if gf not in mine and len(live[gf]) > 5 and live[gf][5] > 0 and not g.in_battle() \
-                            and ch.meters(here, (live[gf][2], live[gf][3])) <= engage \
-                            and (dep["n"] is None or dep["n"] < a.max_deployed) and not (g.user_gym and g.has("GymState")):
-                        if msg != said:                      # room and none of yours: slip one in between the attacker's battles
-                            say(msg)
-                            said = msg
-                        if force_join(gf) is not None:
-                            said = None
-                        time.sleep(0.3)
-                        continue
-                _undisc = [i for i in range(len(HOP["list"]))   # --monitor + --rscan: an island this run never saw on the map -> look once
-                           if not any(gr[2] and hop_area((gr[0], gr[1])) == i for gr in GREG["g"].values())] if (a.monitor and a.rscan) else []
-                _gy_ready = bool(place_ids(dep)) and (dep["n"] is None or dep["n"] < a.max_deployed) and not cool_wait()
-                _cur_i = HOP["i"] if HOP["i"] is not None else (hop_area(tuple(goal)) or 0)
-                if a.monitor and not a.rscan and not soon and not guard and _gy_ready and len(HOP["list"]) > 1 \
-                        and len(HOP.setdefault("empty", set()) | {_cur_i}) < len(HOP["list"]):   # (every island empty: stay)
-                    HOP["empty"].add(_cur_i)
-                    _nx = (_cur_i + 1) % len(HOP["list"])
-                    hl, hg, hr = HOP["list"][_nx]            # nothing to beat or fill HERE and a Gyarados to place: the next island
-                    say(f">> NEXT ISLAND {_nx + 1}/{len(HOP['list'])}: nothing to beat or fill here and a Gyarados is ready -- "
-                        f"teleporting to {hl:.5f},{hg:.5f}")
-                    ch.api("TELEPORT", f"--ef lat {hl} --ef lng {hg}")
-                    note_jump(ch.meters(here, (hl, hg)), (hl, hg))
-                    goal[:] = [hl, hg]
-                    a.area, HOP["i"] = hr, _nx
-                    mv.key, gpos_now[0], said, target, idle_anchor[0] = None, None, None, None, None
-                    STATS["area_t0"] = time.time()
-                    HOP["ready"], HOP["landed"] = _land(hl, hg, hr), time.time()   # not ready = wait for its map, never hop on
-                    continue
-                if a.monitor and _undisc and not soon and not guard and HOP["i"] != _undisc[0]:
-                    hl, hg, hr = HOP["list"][_undisc[0]]
-                    say(f">> LOOK: island {_undisc[0] + 1}/{len(HOP['list'])} has gyms this run never saw -- teleporting there once "
-                        f"to list them (then they are watched from anywhere)")
-                    ch.api("TELEPORT", f"--ef lat {hl} --ef lng {hg}")
-                    note_jump(ch.meters(here, (hl, hg)), (hl, hg))
-                    goal[:] = [hl, hg]
-                    a.area, HOP["i"] = hr, _undisc[0]
-                    mv.key, gpos_now[0], said, target, idle_anchor[0] = None, None, None, None, None
-                    STATS["area_t0"] = time.time()
-                    _land(hl, hg, hr)                        # until its gyms are on the game's map (no fixed wait)
-                    continue
-                _idle_done = False
-                if a.monitor and not soon and not guard:     # nothing to beat or fill: stand still, watch (never loop the gyms)
-                    if idle_anchor[0] is not None and ch.meters(here, idle_anchor[0]) > 40:   # our idle circle is 8 m wide:
-                        idle_anchor[0], mv.key = (here[0], here[1]), None                     # HE moved -- stand where he is now
-                        say("  you moved yourself -- standing still HERE now (nothing walks you back to the old spot)")
-                    if idle_anchor[0] is None:
-                        _mid = (goal[0], goal[1])
-                        _ours = mid_jump(here, _mid, a.area, (JUMPED.get("to"), last_gym[0]))   # (never from a spot HE moved to)
-                        if _ours and not cool_wait() and not g.has("GymState") and not g.in_battle():
-                            say(f">> MIDDLE: nothing to beat or fill in view from here -- teleporting {ch.meters(here, _mid):.0f} m "
-                                f"to the middle of the area: from there the game's map shows every gym of it")
-                            ch.api("TELEPORT", f"--ef lat {_mid[0]} --ef lng {_mid[1]}")
-                            note_jump(ch.meters(here, _mid), _mid)
-                            mv.key, gpos_now[0], said, target, idle_anchor[0] = None, None, None, None, _mid
-                            _land(_mid[0], _mid[1], a.area)
-                            continue
-                        idle_anchor[0] = (here[0], here[1])
-                    mv.orbit(idle_anchor[0], here, r=8)
-                    _nw = sum(1 for v in live.values() if ch.meters((v[2], v[3]), goal) <= a.area)
-                    _capped = dep["n"] is not None and dep["n"] >= a.max_deployed
-                    msg = (f"watching the {_nw} gyms of this island on the game's map -- nothing to beat or fill"
-                           + (f" (all {a.max_deployed} gym slots of yours are in use: an empty gym waits for one to come home)"
-                              if _capped else "" if _gy_ready else " (no Gyarados left to place)") + ": standing still")
-                    _idle_done = True
-                elif HOP["list"] and not soon and not guard:   # --hop: nothing to do here -> the next area, by TELEPORT
-                    HOP["idle"] = HOP["idle"] or time.time()
-                    if time.time() - HOP["idle"] >= a.hop_idle:
-                        HOP["idle"] = None
-                        if HOP["i"] is None:
-                            HOP["i"] = min(range(len(HOP["list"])), key=lambda i: ch.meters(goal, HOP["list"][i][:2]))
-                        HOP["i"] = (HOP["i"] + 1) % len(HOP["list"])
-                        hl, hg, hr = HOP["list"][HOP["i"]]
-                        say(f">> HOP {HOP['i'] + 1}/{len(HOP['list'])}: nothing to beat, join or guard here for {a.hop_idle:.0f} s -- "
-                            f"teleporting to {hl:.5f},{hg:.5f} (area {hr:.0f} m) to retake and fill its gyms")
-                        ch.api("TELEPORT", f"--ef lat {hl} --ef lng {hg}")
-                        note_jump(ch.meters(here, (hl, hg)), (hl, hg))   # (this hop was never written down: its cooldown had no anchor)
-                        goal[:] = [hl, hg]
-                        a.area = hr
-                        if a.feed_zone:
-                            sc.exports_sync.feedzone(hl, hg, hr)
-                        mv.key, gpos_now[0], said, target = None, None, None, None
-                        STATS["area_t0"] = time.time()
-                        time.sleep(3)                        # the game loads the new area's gyms
-                        continue
-                else:
-                    HOP["idle"] = None
-                if soon or guard or _idle_done:              # (11-16 review: the monitor's stand-still fell through into the
-                    if not _idle_done:                       # gym ring below -- it still walked through all of them)
-                        idle_anchor[0] = None                # (we stand by another gym now: the next idle anchors afresh)
-                else:
-                    ring = sorted([(v[2], v[3]) for v in live.values() if ch.meters((v[2], v[3]), goal) <= a.area],
-                                  key=lambda q: math.atan2((q[1] - goal[1]) * math.cos(math.radians(goal[0])), q[0] - goal[0]))
-                    if len(ring) >= 3:
-                        mv.loop(ring, here)
+                    _dm = ch.meters(here, (_v[2], _v[3]))
+                    if _s[0] in enemy:
+                        _c = _dm * 0.35 + _s[4] * 0.03
+                    elif not _drill and (_s[0] == 0 or (_s[0] == a.team and slot(_f, _v))):   # the SAME placement test the go-to uses
+                        _c = _dm * 0.35 - 60
                     else:
-                        mv.orbit(goal, here, r=60)
-                    msg = "in the goal area, nothing to beat (raids or red) -- looping its gyms"
-            if msg != said:
-                say(msg)
-                said = msg
-            time.sleep(2)
-            continue
+                        continue
+                    if _best is None or _c < _best[0]:
+                        _best = (_c, _f, _s, _dm)
+                if _best:
+                    a.join_first, first_done[0], target = _best[1], False, None
+                    _s = _best[2]
+                    say(f"  HUNT: {_best[1][:8]} -- team {_s[0]}, {_s[3]} defender(s), {_s[4]} CP now, motivations {_s[6]}, {_best[3]:.0f} m -- going")
+                else:
+                    say("  HUNT: nothing beatable or joinable in range right now")
+            if not first_done[0] and not g.in_battle() and (not g.has("GymState") or g.open_fid == a.join_first):   # go there first
+                _jv = live.get(a.join_first)
+                if _jv and not _jv[4] and (_jv[0] in enemy + [0] or slot(a.join_first, _jv)):   # beat + place, or join
+                    if not target or target[0] != a.join_first:
+                        _what = "join it" if _jv[0] == a.team else f"drill it (team {_jv[0]}, {_jv[7] if len(_jv) > 7 else '?'} CP) and place"
+                        say(f"going to {a.join_first[:8]} ({ch.meters(here, (_jv[2], _jv[3])):.0f} m) to {_what} -- then back to the lap")
+                    passing = target = (a.join_first, (_jv[2], _jv[3]), _jv[0])
+                elif _jv is not None:
+                    first_done[0] = True
+                    say(f"  {a.join_first[:8]} is team {_jv[0]} now{' (raid)' if _jv[4] else ''} -- nothing to do there; back to the lap")
+            if (not a.battle or lap["active"]) and not passing:   # battle break / a lap: keep moving, keep feeding, fight nothing
+                if g.in_battle() or g.has("GymState"):
+                    time.sleep(0.5)                              # (the session in progress finishes; its gym screen is left above)
+                    continue
+                gpos_now[0] = None
+                if route_i[0] < len(ROUTE):                      # a one-way route: always toward the NEXT waypoint, never back
+                    if ch.meters(here, ROUTE[route_i[0]]) < 20:
+                        route_i[0] += 1
+                        say(f"  route: waypoint {route_i[0]}/{len(ROUTE)} reached" + (" -- lap done" if route_i[0] >= len(ROUTE) else ""))
+                        if route_i[0] >= len(ROUTE) and a.battle:  # the lap is over: back to the gyms
+                            lap["active"], lap["placed"] = False, 0
+                            say(f"  LAP DONE -- battling again (next lap after {a.lap_every} more placements)")
+                            continue
+                    if route_i[0] < len(ROUTE):
+                        key = ("route", route_i[0])
+                        if mv.key != key or mv.due(here):
+                            mv._walk(key, ROUTE[route_i[0]:], here)
+                        time.sleep(1)
+                        continue
+                mv.orbit(goal, here, r=60)
+                refresh_deployed()                               # (every 10 min: the defender list for the feeder)
+                if said != "break":
+                    say("  BATTLE BREAK -- walking in the park, still feeding your defenders + one teammate per gym")
+                    said = "break"
+                time.sleep(2)
+                continue
+            if cmd_st["hunt"] and target is None and not g.in_battle():   # Benny 11-16 "find an easy gym": the hunt verifies gyms for ~5 s --
+                g.wait_for(lambda: False, 0.3, tick)                       # wait for ITS pick; never grab the nearest gym meanwhile
+                continue
+            tv = live.get(target[0]) if target else None
+            if target is None or target[0] in skip or not tv or tv[4] or not (tv[0] in enemy + [0] or slot(target[0], tv)):
+                target, _was_resting = pick_any(enemy, skip, done, here, goal, live, a.detour, a.area, slot, time.time(),
+                                                areas=HOP["list"] if a.monitor else None,   # an empty gym: straight to Deploy
+                                                empty=dep["n"] is None or dep["n"] < a.max_deployed)   # (never at the gym cap)
+                if target and _was_resting:                      # nothing else to beat: its rest ends now
+                    done.pop(target[0], None)
+                    TAKEN.pop(target[0], None)
+                    say(f"target {target[0][:8]} team {target[2]} (it was resting -- nothing else to beat), {ch.meters(here, target[1]):.0f} m away")
+                elif target:
+                    say(f"target {target[0][:8]} team {target[2]}, {ch.meters(here, target[1]):.0f} m away")
+            if not target:                                       # nothing to beat right now: keep moving
+                gpos_now[0] = None
+                refresh_deployed(every=30)                       # idle: which gyms still hold yours, read live (a knocked-out one = a
+                                                                 # gym to join or retake), and the Gyarados back from gyms get revived
+                if not HOP.get("ready", True):                   # (11-17 00:32: "map NOT ready" after a jump read as "nothing here" --
+                    if any(v[1] < 5000 and ch.meters((v[2], v[3]), goal) <= a.area for v in live.values()) \
+                            or time.time() - HOP.get("landed", 0.0) > 60:   # three island jumps in 21 s; the 60 s is only a give-up bound)
+                        HOP["ready"] = True
+                    else:
+                        if said != "landing":
+                            say("  waiting for this island's gyms to show on the game's map -- no second jump on an empty map")
+                            said = "landing"
+                        time.sleep(1)
+                        continue
+                if ch.meters(here, goal) > a.area and not a.monitor:   # (--monitor never WALKS to its goal: it stands and watches)
+                    mv.travel(goal, here)
+                    msg = "no enemy gym on the way yet -- walking toward the goal"
+                else:
+                    soon = [(v[4], fid, (v[2], v[3])) for fid, v in live.items()          # a non-red gym whose raid ends soon:
+                            if v[0] in enemy + [0] and 0 < v[4] <= a.prewait * 60000        # wait ON it, battle the second it ends
+                            and ch.meters((v[2], v[3]), goal) <= a.area and fid not in skip]
+                    _hg = g.his_gym[0] if (g.his_gym and time.time() - g.his_gym[1] < 1800) else None
+                    guard = sorted(((f != _hg, f in mine, (6 - v[5]) if len(v) > 5 and v[5] >= 0 else 6, ch.meters(here, (v[2], v[3]))), f)
+                                   for f, v in live.items()                                             # a red gym being drained by another
+                                   if v[0] == a.team and f not in skip and not v[4]                     # team: stand at it -- the moment it
+                                   and ch.meters((v[2], v[3]), goal) <= a.area                          # falls we are in range to fight for
+                                   and ((len(v) > 6 and v[6]) or (len(v) > 9 and v[9] > 0)))           # it (11-16 22:35, the ferry gym).
+                    # Which one (11-17 00:27, "a lot more situational awareness"): the gym YOUR deploy was refused at first, then one
+                    # with NONE of yours (the moment the attack ends we join it -- one with yours gives us nothing), then the one
+                    # closest to falling (fewest defenders), then the nearest. 00:27 it stood at 8e12222d while 951dc951 fell.
+                    if soon:
+                        left, sfid, spos = min(soon)
+                        gpos_now[0] = None
+                        mv.orbit(spos, here, r=orbit_r)
+                        msg = f"in the goal area, nothing to beat now -- circling {sfid[:8]}, its raid ends in {left / 60000:.1f} min"
+                    elif guard:
+                        gf = guard[0][1]
+                        mv.orbit((live[gf][2], live[gf][3]), here, r=orbit_r)
+                        _gw = ("you tried to place here" if gf == _hg else "yours is in it" if gf in mine
+                               else "none of yours in it: we join the moment the attack ends")
+                        msg = (f"in the goal area, nothing to beat -- standing by red {gf[:8]}{' (' + NAMES[gf[:8]] + ')' if gf[:8] in NAMES else ''} "
+                               f"({_gw}): another team is attacking it; the second it falls we fight for it"
+                               + (f" [{len(guard) - 1} more red gym(s) under attack]" if len(guard) > 1 else ""))
+                        if gf not in mine and len(live[gf]) > 5 and live[gf][5] > 0 and not g.in_battle() \
+                                and ch.meters(here, (live[gf][2], live[gf][3])) <= engage \
+                                and (dep["n"] is None or dep["n"] < a.max_deployed) and not (g.user_gym and g.has("GymState")):
+                            if msg != said:                      # room and none of yours: slip one in between the attacker's battles
+                                say(msg)
+                                said = msg
+                            if force_join(gf) is not None:
+                                said = None
+                            time.sleep(0.3)
+                            continue
+                    _undisc = [i for i in range(len(HOP["list"]))   # --monitor + --rscan: an island this run never saw on the map -> look once
+                               if not any(gr[2] and hop_area((gr[0], gr[1])) == i for gr in GREG["g"].values())] if (a.monitor and a.rscan) else []
+                    _gy_ready = bool(place_ids(dep)) and (dep["n"] is None or dep["n"] < a.max_deployed) and not cool_wait()
+                    _cur_i = HOP["i"] if HOP["i"] is not None else (hop_area(tuple(goal)) or 0)
+                    if a.monitor and not a.rscan and not soon and not guard and _gy_ready and len(HOP["list"]) > 1 \
+                            and len(HOP.setdefault("empty", set()) | {_cur_i}) < len(HOP["list"]):   # (every island empty: stay)
+                        HOP["empty"].add(_cur_i)
+                        _nx = (_cur_i + 1) % len(HOP["list"])
+                        hl, hg, hr = HOP["list"][_nx]            # nothing to beat or fill HERE and a Gyarados to place: the next island
+                        say(f">> NEXT ISLAND {_nx + 1}/{len(HOP['list'])}: nothing to beat or fill here and a Gyarados is ready -- "
+                            f"teleporting to {hl:.5f},{hg:.5f}")
+                        ch.api("TELEPORT", f"--ef lat {hl} --ef lng {hg}")
+                        note_jump(ch.meters(here, (hl, hg)), (hl, hg))
+                        goal[:] = [hl, hg]
+                        a.area, HOP["i"] = hr, _nx
+                        mv.key, gpos_now[0], said, target, idle_anchor[0] = None, None, None, None, None
+                        STATS["area_t0"] = time.time()
+                        HOP["ready"], HOP["landed"] = _land(hl, hg, hr), time.time()   # not ready = wait for its map, never hop on
+                        continue
+                    if a.monitor and _undisc and not soon and not guard and HOP["i"] != _undisc[0]:
+                        hl, hg, hr = HOP["list"][_undisc[0]]
+                        say(f">> LOOK: island {_undisc[0] + 1}/{len(HOP['list'])} has gyms this run never saw -- teleporting there once "
+                            f"to list them (then they are watched from anywhere)")
+                        ch.api("TELEPORT", f"--ef lat {hl} --ef lng {hg}")
+                        note_jump(ch.meters(here, (hl, hg)), (hl, hg))
+                        goal[:] = [hl, hg]
+                        a.area, HOP["i"] = hr, _undisc[0]
+                        mv.key, gpos_now[0], said, target, idle_anchor[0] = None, None, None, None, None
+                        STATS["area_t0"] = time.time()
+                        _land(hl, hg, hr)                        # until its gyms are on the game's map (no fixed wait)
+                        continue
+                    _idle_done = False
+                    if a.monitor and not soon and not guard:     # nothing to beat or fill: stand still, watch (never loop the gyms)
+                        if idle_anchor[0] is not None and ch.meters(here, idle_anchor[0]) > 40:   # our idle circle is 8 m wide:
+                            idle_anchor[0], mv.key = (here[0], here[1]), None                     # HE moved -- stand where he is now
+                            say("  you moved yourself -- standing still HERE now (nothing walks you back to the old spot)")
+                        if idle_anchor[0] is None:
+                            _mid = (goal[0], goal[1])
+                            _ours = mid_jump(here, _mid, a.area, (JUMPED.get("to"), last_gym[0]))   # (never from a spot HE moved to)
+                            if _ours and not cool_wait() and not g.has("GymState") and not g.in_battle():
+                                say(f">> MIDDLE: nothing to beat or fill in view from here -- teleporting {ch.meters(here, _mid):.0f} m "
+                                    f"to the middle of the area: from there the game's map shows every gym of it")
+                                ch.api("TELEPORT", f"--ef lat {_mid[0]} --ef lng {_mid[1]}")
+                                note_jump(ch.meters(here, _mid), _mid)
+                                mv.key, gpos_now[0], said, target, idle_anchor[0] = None, None, None, None, _mid
+                                _land(_mid[0], _mid[1], a.area)
+                                continue
+                            idle_anchor[0] = (here[0], here[1])
+                        mv.orbit(idle_anchor[0], here, r=8)
+                        _nw = sum(1 for v in live.values() if ch.meters((v[2], v[3]), goal) <= a.area)
+                        _capped = dep["n"] is not None and dep["n"] >= a.max_deployed
+                        msg = (f"watching the {_nw} gyms of this island on the game's map -- nothing to beat or fill"
+                               + (f" (all {a.max_deployed} gym slots of yours are in use: an empty gym waits for one to come home)"
+                                  if _capped else "" if _gy_ready else " (no Gyarados left to place)") + ": standing still")
+                        _idle_done = True
+                    elif HOP["list"] and not soon and not guard:   # --hop: nothing to do here -> the next area, by TELEPORT
+                        HOP["idle"] = HOP["idle"] or time.time()
+                        if time.time() - HOP["idle"] >= a.hop_idle:
+                            HOP["idle"] = None
+                            if HOP["i"] is None:
+                                HOP["i"] = min(range(len(HOP["list"])), key=lambda i: ch.meters(goal, HOP["list"][i][:2]))
+                            HOP["i"] = (HOP["i"] + 1) % len(HOP["list"])
+                            hl, hg, hr = HOP["list"][HOP["i"]]
+                            say(f">> HOP {HOP['i'] + 1}/{len(HOP['list'])}: nothing to beat, join or guard here for {a.hop_idle:.0f} s -- "
+                                f"teleporting to {hl:.5f},{hg:.5f} (area {hr:.0f} m) to retake and fill its gyms")
+                            ch.api("TELEPORT", f"--ef lat {hl} --ef lng {hg}")
+                            note_jump(ch.meters(here, (hl, hg)), (hl, hg))   # (this hop was never written down: its cooldown had no anchor)
+                            goal[:] = [hl, hg]
+                            a.area = hr
+                            if a.feed_zone:
+                                sc.exports_sync.feedzone(hl, hg, hr)
+                            mv.key, gpos_now[0], said, target = None, None, None, None
+                            STATS["area_t0"] = time.time()
+                            time.sleep(3)                        # the game loads the new area's gyms
+                            continue
+                    else:
+                        HOP["idle"] = None
+                    if soon or guard or _idle_done:              # (11-16 review: the monitor's stand-still fell through into the
+                        if not _idle_done:                       # gym ring below -- it still walked through all of them)
+                            idle_anchor[0] = None                # (we stand by another gym now: the next idle anchors afresh)
+                    else:
+                        ring = sorted([(v[2], v[3]) for v in live.values() if ch.meters((v[2], v[3]), goal) <= a.area],
+                                      key=lambda q: math.atan2((q[1] - goal[1]) * math.cos(math.radians(goal[0])), q[0] - goal[0]))
+                        if len(ring) >= 3:
+                            mv.loop(ring, here)
+                        else:
+                            mv.orbit(goal, here, r=60)
+                        msg = "in the goal area, nothing to beat (raids or red) -- looping its gyms"
+                if msg != said:
+                    say(msg)
+                    said = msg
+                time.sleep(2)
+                continue
         fid, gpos, team = target
         last_gym[0] = (gpos[0], gpos[1])
         HOP["idle"] = None                                   # work here: no hop
@@ -3043,6 +3538,10 @@ def _run(a, g, mv, done, t_start, enemy, goal, sess, pid, sc):
                 gpos_now[0], target, said = None, None, None
                 continue
         d = ch.meters(here, gpos)
+        if d > engage and a.on_open:                         # --on-open never walks or jumps you to a gym: you moved away
+            say(f"  ON-OPEN: {fid[:8]} is {d:.0f} m away now -- letting it go (the runner never walks you to a gym)")
+            gpos_now[0], target, said = None, None, None
+            continue
         if d > engage and a.monitor and not g.in_battle() and not g.has("GymState") and not cool_wait():   # --monitor: TELEPORT onto it
             _ji = hop_area(gpos)
             _nm = NAMES.get(fid[:8])
@@ -3151,7 +3650,8 @@ def _run(a, g, mv, done, t_start, enemy, goal, sess, pid, sc):
             if n is not None and n >= a.max_deployed:
                 CAP_LEFT.add(fid)                            # filled the moment one of yours comes home (cap_back)
                 say(f"  EMPTY -- you already have {n} Pokemon in gyms (cap {a.max_deployed}): moving on; "
-                    f"it gets one of yours the moment a slot is free")
+                    + ("nothing of yours can go in (--on-open fills no gym by itself: open it again when one is home)"
+                       if a.on_open else "it gets one of yours the moment a slot is free"))
             else:
                 if g.deploy_open != fid and not g.wait_for(lambda: g.deploy_open == fid, 3, tick):
                     sc.exports_sync.autodeploy(None)         # disarm FIRST: never a Deploy list over a late auto-place
@@ -3183,7 +3683,7 @@ def _run(a, g, mv, done, t_start, enemy, goal, sess, pid, sc):
                             f"on a retry ({dep['n']}/{a.max_deployed} in gyms now) -- next gym")
                     elif friendly:
                         why = (g.placed.get(fid) or {}).get("res", "no answer")
-                        say(f"  the red gym did not take it ({why}) -- moving on, tried again in 60 s")
+                        say(f"  the red gym did not take it ({why}) -- moving on" + ("" if a.on_open else ", tried again in 60 s"))
                         done[fid] = time.time() - 540                # never a 10-min rest on a red gym with room (Benny 11-16 22:55)
                     elif g.leaf() == "GymApproachState" and (g.open_fid != fid or g.gym_team in (0, None)):
                         say("  auto-place did not land -- opening Deploy for you")
@@ -3263,8 +3763,28 @@ def _run(a, g, mv, done, t_start, enemy, goal, sess, pid, sc):
             if a.lap_every and ROUTE and lap["placed"] >= a.lap_every:   # the user's cycle: every N placements, a lap
                 lap["active"], route_i[0] = True, 0
                 say(f"  {lap['placed']} gyms taken and placed -- LAP TIME ({len(ROUTE)} waypoints), feeding continues")
-        leave_gym(g, sc, tick)
+        if not (a.on_open and g.user_gym and g.has("GymState")):   # (--on-open: a gym YOU opened meanwhile is never backed out of)
+            leave_gym(g, sc, tick)
         gpos_now[0], target, said = None, None, None
+        if a.on_open:                                        # --on-open: no picker follows a gym -- say where things stand
+            _nv = sc.exports_sync.scanned().get(fid)         # (its name, for the log and the app's status line)
+            if _nv and len(_nv) > 7 and _nv[7]:
+                NAMES[fid[:8]] = _nv[7]
+            _rv = None
+            if retake and not oo["gone"]:                    # another team got in before your Pokemon: the same takeover goes on
+                try:
+                    _rv = sc.exports_sync.teams().get(fid)
+                except Exception:
+                    _rv = None
+            if _rv and _rv[0] in enemy and not _rv[4]:
+                target = (fid, (_rv[2], _rv[3]), _rv[0])
+                say(f"  ON-OPEN: team {_rv[0]} got into {fid[:8]} before your Pokemon -- drilling it again (the same takeover)")
+            else:
+                say(f"  ON-OPEN: done with {fid[:8]} -- watching for the next gym you open; the joystick gets nothing more "
+                    f"from the runner" + ("" if oo["gone"] else " (it keeps circling this gym until you move it)"))
+                said = "on-open"
+    if a.on_open:                                            # (the loop above ends only when --minutes are up)
+        say(f"  ON-OPEN: the run's {a.minutes:.0f} minutes are up -- stopping; the tapper unloads now")
 
 
 if __name__ == "__main__":
