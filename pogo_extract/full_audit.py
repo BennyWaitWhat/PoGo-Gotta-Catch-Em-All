@@ -1481,7 +1481,8 @@ def _main():
     # 1-3 deletions). FAIL-SOFT: never changes this run's rc. Since 2026-09-30 it runs inside the post-push session
     # above (every pass: its plan() does the grace bookkeeping, then deletes only a retired / due-empty shell that is
     # actually on the device). A census alarm right after the push ('Transfer 9 -> 0') was HIM releasing the pile in
-    # those seconds, not collateral -- retire stops on it either way, which is the safe side.
+    # those seconds, not collateral. Since 2026-11-18 retire reads WHO left: a member that is gone from the bag is his
+    # release (one plain line, the run goes on); a Pokemon that left a tag and is still in the bag stops it as before.
     # THE REASON, NOT JUST THE TALLY (2026-09-23: "deleted 3 ... 7 left" was printed with no reason). retire_tags
     # prints a DeleteTag refusal, a collateral-census stop and its problem lines, a regained-member skip, a shell
     # that still holds members, or an uncleared DB mirror ABOVE its last line -- echo each of those, then the tally.

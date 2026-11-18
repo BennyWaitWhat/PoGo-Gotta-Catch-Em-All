@@ -933,6 +933,23 @@ def _adb_unitymain_wchan(devser, pid):
         return ''
 
 
+def _wchan_asked_again(devser, pid, tries=3, gap_s=0.4, budget_s=6.0):
+    """_adb_unitymain_wchan, asked again when it answers with nothing -> (value, reads made). ONE EMPTY READ IS NOT A
+    VERDICT (Benny 2026-11-18 17:44, "DUDE, whats with these warnings?!?!?! fix them"): at 17:40 a single adb read came
+    back empty while the game ran fine (same pid before and after), and the cull printed '!! freeze probe ... could not
+    read the game'. adb over Tailscale drops a reply now and then, and three tools share it. A read that is still empty
+    after `tries` asks is reported exactly as before; so is one that used up `budget_s` (a real timeout: the phone is not
+    answering, and asking again would only make a dead phone slower to report)."""
+    import time as _t
+    t0, w = _t.time(), ''
+    for k in range(tries):
+        w = _adb_unitymain_wchan(devser, pid)
+        if w or k + 1 >= tries or _t.time() - t0 > budget_s:
+            return w, k + 1
+        _t.sleep(gap_s)
+    return w, tries
+
+
 _FREEZE_PROBE = {'unreadable': None}    # why game_world_frozen's last probe could not read the game, else None (H06-10)
 
 
@@ -952,9 +969,10 @@ def game_world_frozen(pid=None, samples=3, gap_s=1.0):
         _FREEZE_PROBE['unreadable'] = 'no PoGo pid'
         return False
     for i in range(samples):
-        _w = _adb_unitymain_wchan(devser, pid)
+        _w, _n = _wchan_asked_again(devser, pid)
         if not _w:                             # '' = the read itself failed (adb / su / timeout) or found no UnityMain thread
-            _FREEZE_PROBE['unreadable'] = "UnityMain's wait channel read back empty (adb, su or a timeout failed, or pid %s is gone)" % pid
+            _FREEZE_PROBE['unreadable'] = ("UnityMain's wait channel read back empty on %d read(s) (adb, su or a timeout failed, "
+                                           "or pid %s is gone)" % (_n, pid))
             return False
         if 'sigsuspend' not in _w:
             return False
