@@ -114,8 +114,8 @@ public class MainActivity extends Activity {
      * It starts no activity, sends no input and writes nothing outside the app's own files folder
      * (/data/data/com.benny.autocatcher/files): render_top.png is the first screenful, render_full.png is everything,
      * as if scrolled out. It reads the same /data/local/tmp files the real screen reads, so the picture shows the
-     * phone's real state. `-e help 1` draws it with the "What each switch does" fold-out open; `-e demo 1` or
-     * `-e demo 2` draws a made-up state instead (see demo()).
+     * phone's real state. `-e help 1` draws it with the "What each switch does" fold-out open; `-e demo 1`, `2` or
+     * `3` draws a made-up state instead (see demo()).
      */
     public static class RenderProbe extends Instrumentation {
         private boolean openHelp;
@@ -172,17 +172,22 @@ public class MainActivity extends Activity {
         }
 
         /** A made-up reading of the phone, for a picture of states the phone is not in right now. Nothing is written:
-         *  it only replaces what the screen was told it read. 1 = everything on, a blocking why, few balls, the PC
-         *  answering, Transfer on Catch set up; 2 = switched on but neither the catcher nor the PC answers. */
+         *  it only replaces what the screen was told it read. 1 = everything on, a blocking why, few balls, the gym
+         *  runner answering, Catch only 700+ (and the catcher doing it), Transfer on Catch set up; 2 = switched on but
+         *  neither the catcher nor the gym runner answers; 3 = the phone's real state, but Catch only switched to 500+
+         *  while the catcher does not report it. */
         static Screen.Snap demo(Screen.Snap s, int kind) {
             long now = s.now;
-            if (kind == 1) {
-                s.flags = new String[]{"1", "1", "1", "1", "1", "1"};   // catch, spin, perfect, tap, gym, berries
+            if (kind == 3) {
+                s.flags[0] = "1";
+                s.flags[6] = "500";
+            } else if (kind == 1) {
+                s.flags = new String[]{"1", "1", "1", "1", "1", "1", "700"};   // catch, spin, perfect, tap, gym, berries, dust
                 s.state = "caught=1234 fled=56 spins=789 xp=1234567 items=4321 ready=0 cooling=3 rate=0.0 up=7200 "
-                        + "dust=1250000 balls=12/3/4 pinap=0 razz=0 sp=1 why=out of balls: 12 Poke, 3 Great, 4 Ultra left "
-                        + "(it saves the last 15/5/5 for you)";
+                        + "dust=1250000 balls=12/3/4 pinap=0 razz=0 sp=1 only=700 why=out of balls: 12 Poke, 3 Great, "
+                        + "4 Ultra left (it saves the last 15/5/5 for you)";
                 s.stateMs = now - 3000;
-                s.gym = "battling gym 3 of 11 (Avalon Park): defender 2 of 6 is down";
+                s.gym = "15:31:07 battling Avalon Park: defender 2 of 6 is down";
                 s.gymMs = now - 5000;
                 s.cull = "running since 15:02";
                 s.cullMs = now - 20000;
@@ -190,7 +195,7 @@ public class MainActivity extends Activity {
                 s.tocExists = true;
                 s.toc = Logic.tocJson(1, 1, 85);
             } else {
-                s.flags = new String[]{"1", "0", "0", "0", "1", "razz"};
+                s.flags = new String[]{"1", "0", "0", "0", "1", "razz", "1000"};
                 s.apples = "0";
                 s.state = "caught=57 fled=3 spins=12 xp=8400 items=40 ready=2 cooling=1";   // an older catcher: no extra keys
                 s.stateMs = now - 5 * 60000;
@@ -366,6 +371,51 @@ final class Logic {
         return (wantsPinap && pinap == 0) || (wantsRazz && razz == 0) ? WAIT : DIM;
     }
 
+    // ---- Catch only (pogo_dust.on): 0 = everything, N = only species worth N+ stardust a catch, plus every shiny -----
+
+    /** The Catch-only file: a whole number. No file, 0 or anything that is not a whole number = everything ("0"). */
+    static String dustNorm(String text) {
+        String t = text == null ? "" : text.trim();
+        if (t.length() == 0 || t.length() > 7) return "0";
+        for (int i = 0; i < t.length(); i++) if (t.charAt(i) < '0' || t.charAt(i) > '9') return "0";
+        return String.valueOf(Integer.parseInt(t));
+    }
+
+    /** only=N in the state line: the catcher reports that it catches only species worth N+ stardust (and shinies).
+     *  0 = it does not say so (the mode is off, or this catcher does not know it). */
+    static long only(String state) {
+        return Math.max(0, longOf(val(counters(state), "only"), 0));
+    }
+
+    /** The Auto-Catch tile's words while it is on: what the catcher itself reports it catches. */
+    static String catchLine(String state, boolean reporting) {
+        long n = reporting ? only(state) : 0;
+        return n >= 1 ? "only " + num(String.valueOf(n)) + "+ stardust and shinies" : "catching nearby";
+    }
+
+    /** What a Catch-only step means, in species ("" for everything). */
+    static String dustHint(String value) {
+        if (value.equals("0")) return "";
+        if (value.equals("500")) return "final evolutions and bonus-stardust species, plus every shiny";
+        if (value.equals("700")) return "bonus-stardust species (Minior, Sableye, Trubbish, Combee...), plus every shiny";
+        if (value.equals("1000")) return "Minior, Shellder, Chimecho, Cloyster, Audino, plus every shiny";
+        return "species worth " + num(value) + "+ stardust a catch, plus every shiny";
+    }
+
+    /** The switch asks for N+, Auto-Catch is on and the catcher is reporting, but its line does not say only=N: the
+     *  running catcher is not doing it (an older catcher does not know the switch). "" = nothing to warn about. Not
+     *  within 30 s of a tap: the catcher rewrites its line every ~10 s. */
+    static String dustWarn(String value, boolean catchOn, String state, long stateAgeMs, long tapAgoMs) {
+        long n = longOf(value, 0);
+        if (n < 1 || !catchOn) return "";
+        if (state.length() == 0 || stateAgeMs < 0 || stateAgeMs > STATE_STALE_MS) return "";   // nobody is reporting
+        if (tapAgoMs >= 0 && tapAgoMs <= 30000) return "";
+        long doing = only(state);
+        if (doing == n) return "";
+        return doing == 0 ? "The running catcher is not doing this yet: it still catches everything."
+                          : "The running catcher still reports only " + num(String.valueOf(doing)) + "+.";
+    }
+
     /** sp=: 1 = the last catch paid with a Star Piece, 0 = without one, -1 = the catcher did not say. */
     static int starPiece(String state) {
         String v = val(counters(state), "sp");
@@ -392,19 +442,26 @@ final class Logic {
         return new String[]{"catcher running", "" + GOOD, ""};
     }
 
-    /** The line of the Gym Battle tile after ON / off: {text, tone}. The gym runner lives on the PC; its listener
-     *  writes one status line to the phone. statusAgeMs below 0 = no status file; tapAgoMs below 0 = not switched on
-     *  from this screen. A status older than GYM_STALE_MS is never shown as if it were live. */
+    /** A status line without its leading clock time ("15:31:07 STOPPED: ..." -> "STOPPED: ..."). */
+    static String afterTime(String line) {
+        return line == null ? "" : line.trim().replaceFirst("^\\d{1,2}:\\d{2}(:\\d{2})?\\s+", "");
+    }
+
+    /** The gym runner says it stopped: its line reads STOPPED right after the clock time. Nothing else is red. */
+    static boolean gymStopped(String line) {
+        return afterTime(line).startsWith("STOPPED");
+    }
+
+    /** The line of the Gym Battle tile after ON / off: {text, tone}. The gym runner runs on the phone (the switch
+     *  starts its supervisor, run_gym.sh) and writes ONE status line. statusAgeMs below 0 = no status file; tapAgoMs
+     *  below 0 = not switched on from this screen. A line older than GYM_STALE_MS is never shown as if it were live:
+     *  switched on it then reads "not answering", switched off it reads nothing. */
     static String[] gym(boolean on, String status, long statusAgeMs, long tapAgoMs) {
         boolean fresh = status.length() > 0 && statusAgeMs >= 0 && statusAgeMs <= GYM_STALE_MS;
-        if (fresh) {
-            String l = status.toLowerCase(Locale.US);
-            boolean bad = l.contains("error") || l.contains("fail") || l.contains("stopped");
-            return new String[]{status, "" + (bad ? BAD : on ? GOOD : DIM)};
-        }
-        if (!on) return new String[]{"needs the PC on", "" + DIM};
-        if (tapAgoMs >= 0 && tapAgoMs <= GYM_STALE_MS) return new String[]{"waiting for the PC...", "" + WAIT};
-        return new String[]{"the PC is not answering -- is it on?", "" + BAD};
+        if (fresh) return new String[]{status, "" + (gymStopped(status) ? BAD : on ? GOOD : DIM)};
+        if (!on) return new String[]{"", "" + DIM};
+        if (tapAgoMs >= 0 && tapAgoMs <= GYM_STALE_MS) return new String[]{"starting the gym runner...", "" + WAIT};
+        return new String[]{"the gym runner is not answering", "" + BAD};
     }
 
     /** The PC's cull status line: {text, tone, "1" when the button may be tapped}. A tap the PC has not answered yet
@@ -472,9 +529,13 @@ final class Screen {
     static final String CATCHFLAG = T + "pogo_catch.on", SPINFLAG = T + "pogo_spin.on",
                         PERFECTFLAG = T + "pogo_perfect.on", TAPFLAG = T + "pogo_tap.on",
                         APPLEFLAG = T + "pogo_apples.on";
-    // Gym Battle: the switch only writes this flag (catcher_ctl.sh gym-on / gym-off). The gym runner lives on the PC,
-    // whose listener reads the flag over adb and writes ONE status line back; nothing on the phone runs for it.
+    // Gym Battle: the switch writes this flag through catcher_ctl.sh. gym-on also starts the phone's gym supervisor
+    // (run_gym.sh); gym-off only writes the flag and the supervisor stops by itself. The gym runner writes ONE status
+    // line, which the tile shows.
     static final String GYMFLAG = T + "pogo_gym.on", GYM_STATUS = T + "pogo_gym_status.txt";
+    // Catch only: a whole number. 0 (or no file) = everything; N = only species worth N+ stardust a catch, plus every
+    // shiny. The catcher reads it; catcher_ctl.sh dust-off / dust-<N> write it.
+    static final String DUSTFLAG = T + "pogo_dust.on";
     // Berries: 1 = Pinap + Razz, pinap, razz, anything else = none. The catcher reads it every second.
     static final String BERRYFLAG = T + "pogo_berries.on";
     static final String STATE = T + "pogo_state.txt";
@@ -491,8 +552,9 @@ final class Screen {
 
     /** One flag file: what the screen shows for it, and a tap that is still being applied. */
     private static final class Flag {
+        static final int SWITCH = 0, BERRIES = 1, NUMBER = 2;   // the file holds 1 / 0, a berry mode, a whole number
         final String path;
-        final boolean berries;
+        final int kind;
         String file = "0";       // what the file held at the last read (normalised)
         String shown = "0";      // what the screen shows: a tap in flight outranks the file
         String want;             // a tap in flight: the value it asked for (null = none)
@@ -501,13 +563,13 @@ final class Screen {
         volatile int gen;        // a newer tap makes an older one stop retrying
         boolean failed;          // the last tap never took
 
-        Flag(String path, boolean berries) {
+        Flag(String path, int kind) {
             this.path = path;
-            this.berries = berries;
+            this.kind = kind;
         }
 
         String norm(String text) {
-            return berries ? Logic.berryNorm(text) : Logic.flagNorm(text);
+            return kind == BERRIES ? Logic.berryNorm(text) : kind == NUMBER ? Logic.dustNorm(text) : Logic.flagNorm(text);
         }
 
         boolean applying() {
@@ -575,30 +637,29 @@ final class Screen {
         }
     };
 
-    private final Flag catchF = new Flag(CATCHFLAG, false), spinF = new Flag(SPINFLAG, false),
-                       perfectF = new Flag(PERFECTFLAG, false), tapF = new Flag(TAPFLAG, false),
-                       gymF = new Flag(GYMFLAG, false), berryF = new Flag(BERRYFLAG, true);
-    private final Flag[] flags = {catchF, spinF, perfectF, tapF, gymF, berryF};
+    private final Flag catchF = new Flag(CATCHFLAG, Flag.SWITCH), spinF = new Flag(SPINFLAG, Flag.SWITCH),
+                       perfectF = new Flag(PERFECTFLAG, Flag.SWITCH), tapF = new Flag(TAPFLAG, Flag.SWITCH),
+                       gymF = new Flag(GYMFLAG, Flag.SWITCH), berryF = new Flag(BERRYFLAG, Flag.BERRIES),
+                       dustF = new Flag(DUSTFLAG, Flag.NUMBER);
+    private final Flag[] flags = {catchF, spinF, perfectF, tapF, gymF, berryF, dustF};
     private final ArrayList<Tile> tiles = new ArrayList<Tile>();
-    private Tile gymTile;
+    private Tile catchTile, gymTile;
 
     private GradientDrawable headDot;
     private TextView headWords, bigNum, bigWords, sFled, sSpins, sXp, sItems, dustText, spChip, ballsText, whyLine;
     private LinearLayout numbers, extraRow;
     private int spPainted = -2;
-    private TextView[] berryBtns;
-    private String[] berryVals;
-    private String berryPainted = null;
-    private TextView berryStock, berryNote;
+    private Bar berryBar, dustBar;
+    private TextView berryStock, dustNote, dustHint, dustWarn;
     private LinearLayout tocRow1, tocRow2;
     private Toggle tocToggle;
-    private TextView tocIv, tocMinus, tocPlus, tocDry, tocNote;
+    private TextView tocIv, tocDry, tocNote;
     private int tocDryPainted = -1;
     private TextView rewardBtn, cullBtn, rewardStatus, cullStatus;
     private TextView helpOpen, helpBody;
 
     private Snap last;
-    private long gymTapMs = 0, cullTapMs = 0, catcherOnTapMs = 0;
+    private long gymTapMs = 0, cullTapMs = 0, catcherOnTapMs = 0, dustTapMs = 0;
     private boolean rewardBusy = false;
 
     Screen(Context c) {
@@ -622,22 +683,37 @@ final class Screen {
         wl.setMargins(dp(4), dp(10), dp(4), 0);
         content.addView(whyLine, wl);
 
-        Tile tCatch = tile("Auto-Catch", catchF, "catch-on", "catch-off", "catching nearby", "", 2);
+        catchTile = tile("Auto-Catch", catchF, "catch-on", "catch-off", "catching nearby", "", 2);
         Tile tSpin = tile("Auto-Spin", spinF, "spin-on", "spin-off", "spinning stops", "", 2);
         Tile tPerfect = tile("Perfect Throw", perfectF, "perfect-on", "perfect-off", "Excellent + curve", "", 2);
         Tile tTap = tile("Tap to Move", tapF, "tap-on", "tap-off", "tap the map to move", "", 2);
-        content.addView(tileRow(tCatch, tSpin), lp(MATCH, WRAP, 14, 0));
+        content.addView(tileRow(catchTile, tSpin), lp(MATCH, WRAP, 14, 0));
         content.addView(tileRow(tPerfect, tTap), lp(MATCH, WRAP, 10, 0));
-        gymTile = tile("Gym Battle", gymF, "gym-on", "gym-off", "", "needs the PC on", 3);
+        gymTile = tile("Gym Battle", gymF, "gym-on", "gym-off", "", "", 3);
         content.addView(gymTile.box, lp(MATCH, WRAP, 10, 0));
+
+        // Catch only (Benny 2026-11-18: "a catch mode that only catches high stardust pokemon (+ shinies)")
+        dustNote = text("", 12, DIMC, false);
+        dustNote.setSingleLine(true);
+        content.addView(section("CATCH ONLY", dustNote), sectionLp());
+        dustBar = new Bar(dustF, new String[][]{{"Everything", "0", "dust-off"}, {"500+", "500", "dust-500"},
+                                                {"700+", "700", "dust-700"}, {"1,000+", "1000", "dust-1000"}});
+        content.addView(dustBar.view, lp(MATCH, WRAP, 0, 0));
+        content.addView(dustBar.note, noteLp());
+        dustHint = text("", 12, DIMC, false);        // which species the chosen step means
+        dustHint.setVisibility(View.GONE);
+        content.addView(dustHint, noteLp());
+        dustWarn = text("", 12, AMBER, false);       // the switch says one thing, the running catcher reports another
+        dustWarn.setVisibility(View.GONE);
+        content.addView(dustWarn, noteLp());
 
         berryStock = text("", 12, DIMC, false);
         berryStock.setSingleLine(true);
         content.addView(section("BERRIES", berryStock), sectionLp());
-        content.addView(berries(), lp(MATCH, WRAP, 0, 0));
-        berryNote = text("", 12, AMBER, false);      // only while a tap is being applied, or when it did not take
-        berryNote.setVisibility(View.GONE);
-        content.addView(berryNote, lp(MATCH, WRAP, 6, 0));
+        berryBar = new Bar(berryF, new String[][]{{"Off", "0", "berries-off"}, {"Pinap", "pinap", "berries-pinap"},
+                                                  {"Razz", "razz", "berries-razz"}, {"Both", "1", "berries-on"}});
+        content.addView(berryBar.view, lp(MATCH, WRAP, 0, 0));
+        content.addView(berryBar.note, noteLp());
 
         content.addView(section("TRANSFER ON CATCH", null), sectionLp());
         content.addView(tocCard(), lp(MATCH, WRAP, 0, 0));
@@ -733,6 +809,7 @@ final class Screen {
             }
             paintStatus(s);
             for (int i = 0; i < tiles.size(); i++) paintTile(tiles.get(i), s);
+            paintDust(s);
             paintBerries(s);
             paintToc(s);
             paintReward(s.reward);
@@ -831,6 +908,9 @@ final class Screen {
             String[] g = Logic.gym(on, s.gym, gAge, tapAgo);
             rest = g[0];
             restColor = color(Integer.parseInt(g[1]));
+        } else if (t == catchTile && on) {   // what the catcher itself reports: everything, or only N+ stardust
+            long ageMs = s.stateMs > 0 ? Math.max(0, s.now - s.stateMs) : -1;
+            rest = Logic.catchLine(s.state, ageMs >= 0 && ageMs <= Logic.STATE_STALE_MS);
         } else {
             rest = on ? t.onText : t.offText;
         }
@@ -838,25 +918,24 @@ final class Screen {
     }
 
     private void paintBerries(Snap s) {
-        String sel = berryF.shown;
-        if (!sel.equals(berryPainted)) {
-            berryPainted = sel;
-            for (int i = 0; i < berryBtns.length; i++) {
-                boolean on = berryVals[i].equals(sel);
-                berryBtns[i].setBackground(on ? rounded(YELLOW, 0, 10, 0f) : tappable(Color.TRANSPARENT, 0, 10, 0f));
-                berryBtns[i].setTextColor(on ? INK : DIMC);
-            }
-        }
-        line(berryStock, Logic.berryStock(s.state), color(Logic.berryStockTone(sel, s.state)));
-        if (berryF.applying()) {
-            line(berryNote, "applying...", AMBER);
-            berryNote.setVisibility(View.VISIBLE);
-        } else if (berryF.failed) {
-            line(berryNote, "did not take -- tap again", RED);
-            berryNote.setVisibility(View.VISIBLE);
-        } else {
-            berryNote.setVisibility(View.GONE);
-        }
+        berryBar.paint();
+        line(berryStock, Logic.berryStock(s.state), color(Logic.berryStockTone(berryF.shown, s.state)));
+    }
+
+    private void paintDust(Snap s) {
+        dustBar.paint();
+        String v = dustF.shown;
+        line(dustNote, v.equals("0") ? "every Pokemon" : "", DIMC);
+        String hint = Logic.dustHint(v);
+        dustHint.setText(hint);
+        dustHint.setVisibility(hint.length() > 0 ? View.VISIBLE : View.GONE);
+        // The switch is the file; what the catcher does is in its own line. When the two disagree, say so.
+        long ageMs = s.stateMs > 0 ? Math.max(0, s.now - s.stateMs) : -1;
+        long tapAgo = dustTapMs > 0 ? Math.max(0, s.now - dustTapMs) : -1;
+        String warn = dustF.want != null ? ""
+                : Logic.dustWarn(dustF.file, catchF.shown.equals("1"), s.state, ageMs, tapAgo);
+        dustWarn.setText(warn);
+        dustWarn.setVisibility(warn.length() > 0 ? View.VISIBLE : View.GONE);
     }
 
     private void paintToc(Snap s) {
@@ -871,13 +950,10 @@ final class Screen {
             tocDry.setTextColor(dry == 1 ? AMBER : DIMC);
             tocDry.setBackground(tappable(dry == 1 ? AMBER_FILL : Color.TRANSPARENT, dry == 1 ? AMBER : LINE, 14, 1f));
         }
-        // Not set up = no settings file on the phone: nothing reads the card, so it must not look like it works.
-        tocRow1.setAlpha(setUp ? 1f : 0.4f);
-        tocRow2.setAlpha(setUp ? 1f : 0.4f);
-        tocRow1.setClickable(setUp);
-        tocMinus.setClickable(setUp);
-        tocPlus.setClickable(setUp);
-        tocDry.setClickable(setUp);
+        // Not set up = no settings file on the phone: nothing reads the card, so it must not look like it works. It
+        // folds down to the one line that says so.
+        tocRow1.setVisibility(setUp ? View.VISIBLE : View.GONE);
+        tocRow2.setVisibility(setUp ? View.VISIBLE : View.GONE);
         tocNote.setVisibility(setUp ? View.GONE : View.VISIBLE);
     }
 
@@ -1172,32 +1248,72 @@ final class Screen {
         return r;
     }
 
-    /** Off | Pinap | Razz | Both -- one rounded bar, the chosen segment filled. It shows the file's real value. */
-    private View berries() {
-        LinearLayout seg = new LinearLayout(ctx);
-        seg.setOrientation(LinearLayout.HORIZONTAL);
-        seg.setPadding(dp(4), dp(4), dp(4), dp(4));
-        seg.setBackground(rounded(CARD, LINE, 14, 1f));
-        final String[][] opts = {{"Off", "0", "berries-off"}, {"Pinap", "pinap", "berries-pinap"},
-                                 {"Razz", "razz", "berries-razz"}, {"Both", "1", "berries-on"}};
-        berryBtns = new TextView[opts.length];
-        berryVals = new String[opts.length];
-        for (int i = 0; i < opts.length; i++) {
-            final String val = opts[i][1], verb = opts[i][2];
-            TextView b = centred(text(opts[i][0], 14, DIMC, true));
-            b.setClickable(true);
-            b.setOnClickListener(new View.OnClickListener() {
-                public void onClick(View v) {
-                    if (berryF.want == null && berryF.shown.equals(val)) return;   // already there
-                    tick(v);
-                    send(berryF, verb, val);
-                }
-            });
-            seg.addView(b, new LinearLayout.LayoutParams(0, dp(40), 1f));
-            berryBtns[i] = b;
-            berryVals[i] = val;
+    /** A segmented bar bound to one flag file (Berries, Catch only): one rounded bar, equal segments, the chosen one
+     *  filled yellow. It shows what the file really holds, so a value that is none of the segments lights none. Under
+     *  it sits a note that only shows while a tap is being applied or when it did not take. */
+    private final class Bar {
+        final Flag flag;
+        final LinearLayout view;
+        final TextView note;
+        private final TextView[] btns;
+        private final String[] vals;
+        private String painted;
+
+        Bar(Flag f, String[][] opts) {   // {the segment's label, the file value it stands for, its control verb}
+            flag = f;
+            view = new LinearLayout(ctx);
+            view.setOrientation(LinearLayout.HORIZONTAL);
+            view.setPadding(dp(4), dp(4), dp(4), dp(4));
+            view.setBackground(rounded(CARD, LINE, 14, 1f));
+            btns = new TextView[opts.length];
+            vals = new String[opts.length];
+            for (int i = 0; i < opts.length; i++) {
+                final String val = opts[i][1], verb = opts[i][2];
+                TextView b = centred(text(opts[i][0], 14, DIMC, true));
+                b.setClickable(true);
+                b.setOnClickListener(new View.OnClickListener() {
+                    public void onClick(View v) {
+                        if (flag.want == null && flag.shown.equals(val)) return;   // already there
+                        tick(v);
+                        if (flag == dustF) dustTapMs = System.currentTimeMillis();
+                        send(flag, verb, val);
+                    }
+                });
+                view.addView(b, new LinearLayout.LayoutParams(0, dp(40), 1f));
+                btns[i] = b;
+                vals[i] = val;
+            }
+            note = text("", 12, AMBER, false);
+            note.setVisibility(View.GONE);
         }
-        return seg;
+
+        void paint() {
+            String sel = flag.shown;
+            if (!sel.equals(painted)) {
+                painted = sel;
+                for (int i = 0; i < btns.length; i++) {
+                    boolean on = vals[i].equals(sel);
+                    btns[i].setBackground(on ? rounded(YELLOW, 0, 10, 0f) : tappable(Color.TRANSPARENT, 0, 10, 0f));
+                    btns[i].setTextColor(on ? INK : DIMC);
+                }
+            }
+            if (flag.applying()) {
+                line(note, "applying...", AMBER);
+                note.setVisibility(View.VISIBLE);
+            } else if (flag.failed) {
+                line(note, "did not take -- tap again", RED);
+                note.setVisibility(View.VISIBLE);
+            } else {
+                note.setVisibility(View.GONE);
+            }
+        }
+    }
+
+    /** Where a small note sits under a bar. */
+    private LinearLayout.LayoutParams noteLp() {
+        LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(MATCH, WRAP);
+        p.setMargins(dp(3), dp(6), dp(3), 0);
+        return p;
     }
 
     private View tocCard() {
@@ -1225,10 +1341,8 @@ final class Screen {
         tocIv.setSingleLine(true);
         tocIv.setEllipsize(TextUtils.TruncateAt.END);
         tocRow2.addView(tocIv, new LinearLayout.LayoutParams(0, WRAP, 1f));
-        tocMinus = stepBtn("-", -5);
-        tocRow2.addView(tocMinus, stepLp(0));
-        tocPlus = stepBtn("+", 5);
-        tocRow2.addView(tocPlus, stepLp(8));
+        tocRow2.addView(stepBtn("-", -5), stepLp(0));
+        tocRow2.addView(stepBtn("+", 5), stepLp(8));
         // Dry run: decisions are logged but no tag is written. Leave ON until the log looks right.
         tocDry = centred(text("Dry run: on", 12, AMBER, true));
         tocDry.setPadding(dp(11), 0, dp(11), 0);
@@ -1242,9 +1356,9 @@ final class Screen {
         tocRow2.addView(tocDry, dl);
         card.addView(tocRow2, lp(MATCH, WRAP, 10, 0));
 
-        tocNote = text("Not set up on this phone -- nothing is tagged.", 12, DIMC, false);
+        tocNote = text("Not set up on this phone -- nothing is tagged.", 12.5f, DIMC, false);
         tocNote.setVisibility(View.GONE);
-        card.addView(tocNote, lp(MATCH, WRAP, 8, 0));
+        card.addView(tocNote);
         return card;
     }
 
@@ -1348,7 +1462,8 @@ final class Screen {
             {"Auto-Spin", "Spins stops as you pass them. Skips ones already spun or cooling down."},
             {"Perfect Throw", "Every throw scores Excellent + curveball, including the ones you throw by hand."},
             {"Tap to Move", "Tap a spot on the map to move there, so you can reach things that are out of range."},
-            {"Gym Battle", "Open any gym and it is battled down for you, then a shiny Gyarados goes in. It runs on the PC, so the PC must be on."},
+            {"Gym Battle", "A gym you open is battled until it is empty, then a shiny Gyarados goes in. An empty gym or a red gym with room gets one straight away. It never moves you to a gym. Runs on the phone."},
+            {"Catch only", "Leaves low-stardust Pokemon alone to save bag space. It still catches every shiny."},
             {"Berries", "What is fed before the throw. Pinap: a Pinap on every Pokemon. Razz: a Razz on the hard ones only. Both: Razz on the hard ones, Pinap on the rest. Never a Golden Razz or a Silver Pinap."},
             {"Transfer on Catch", "Tags junk the moment you catch it, so less piles up for the cull. It only tags; it never releases anything."},
             {"Catch Rewards", "Clears stacked Field Research reward encounters that piled up while your box was full."},
