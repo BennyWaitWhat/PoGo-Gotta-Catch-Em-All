@@ -1,6 +1,6 @@
 """Offline test of the BALL-SAVER and of STARDUST ONLY in catch_loop_fast.py (no phone): python tools/catcher_ballsave_sim.py
-Python side: the greedy cut (ballsave_skip) and the ball count (usable_balls); the stardust switch, its species table, the
-weather-boost record. JS side (node): the species list from the config, a spawn left alone counted once, its 20 s
+Python side: the greedy cut (ballsave_skip) and the ball count (usable_balls); the stardust switch, its species table (and
+the child process that keeps it current), the weather-boost record. JS side (node): the species list from the config, a spawn left alone counted once, its 20 s
 look-again, its ledger record, the shiny look, the weather flag. Exit code 1 when any check fails."""
 import json
 import os
@@ -22,7 +22,8 @@ for name in ("usable_balls", "ballsave_skip", "plan_reserve", "plan_live", "floo
              "ballsave_now", "ballsave_log", "cfg_now", "starpiece_seen", "balls_why", "starpiece_why", "berry_mode",
              "state_extra", "dust_min", "dust_levels_text", "dust_levels_write", "dust_table", "wx_judge", "wx_verdict", "wx_load",
              "wx_seen", "wx_close", "wx_tick", "game_version", "dust_boost_note", "dust_skip", "dust_news", "dust_log", "dust_only",
-             "dust_why", "shiny_look"):   # (wx_load's text ends with the WX_CATCH pattern that follows it)
+             "dust_why", "shiny_look", "dust_state", "dust_checked", "dust_update_said", "dust_update_step",
+             "dust_update"):   # (wx_load's text ends with the WX_CATCH pattern that follows it)
     exec(re.search(rf"^def {name}\(.*?(?=^\n\ndef )", src, re.S | re.M).group(0), ns)
 for pat in (r"^SPIN_WHY = .*$", r"^WX = .*$", r"^WX_NEED = \d+"):
     exec(re.search(pat, src, re.M).group(0), ns)
@@ -237,7 +238,7 @@ check("status keys: the run's first second, an empty bag reading, the last catch
 check("status keys: no '=' with a space in it, no 'why=' (the app splits on spaces; why= must stay last)",
       all("=" in t and not t.startswith("why=") for t in sx(5, {"dust": 9}, {"1": 1, "2": 2, "3": 3}, 61, False).split()), True)
 check("the status line carries them, before why=",
-      'cooling={sp[\'cooling\']} "\n                + state_extra(c, st, it, time.time() - t0, SP.get("last"), dust_only())).rstrip())' in src, True)
+      'cooling={sp[\'cooling\']} "\n                + state_extra(c, st, it, time.time() - t0, SP.get("last"), dust_only(), dust_checked(time.time()))).rstrip())' in src, True)
 sp0 = dict(ns["SP"])
 ns["SP"].update(on=False, off=False, since=None, bare=0, last=None)
 ns["starpiece_seen"]("CATCH Wild #1 ball=1 p=0.5 att=1 berry=0 0.5s dust=50 candy=3", lambda s: None)
@@ -334,14 +335,23 @@ def fresh(table=None, switch=None, look="ok", wx="proven"):
     ns["WX"].update(dict(WX0, found=wx != "nofield", key="0.435.2 offsets 56/216/32", b=b, u=u, bad=bad, rows={}, ver={}))
 
 
-# the switch's text -- read the way catcher_ctl.sh's dust_mode() reads it: white space dropped, 1 to 7 digits, else off
+# the switch's text -- read the way the APP reads it: its readFile() joins the file's lines (every line end dropped) and
+# trims, its dustNorm() takes 1 to 7 digits and nothing else. Anything else = off.
 SWITCH = ((None, 0), ("0", 0), ("", 0), ("1", 1), ("1\n", 1), ("500", 500), ("700\n", 700), (" 1000 ", 1000), ("\t500\r\n", 500), ("0700", 700),
-          ("7 00", 700), ("junk", 0), ("-5", 0), ("+700", 0), ("700.0", 0), ("7e2", 0), ("on", 0), ("9999999", 9999999), ("12345678", 0),
-          ("9" * 25, 0), (b"\xff\xfe1", 0), ("1" * 60, 0))
+          ("7\n00", 700), ("7\r\n00\n", 700), ("\n\n700", 700), ("7 00", 0), ("7\t00", 0), ("junk", 0), ("-5", 0), ("+700", 0), ("700.0", 0),
+          ("7e2", 0), ("on", 0), ("9999999", 9999999), ("12345678", 0), ("9" * 25, 0), (b"\xff\xfe1", 0), (b"\xef\xbb\xbf700", 0), ("1" * 60, 0))
 for text, want in SWITCH:
     fresh(switch=text)
     check(f"dust switch {text if text is None or len(text) < 12 else text[:9] + '...'!r} -> {want}", ns["dust_min"](), want)
-# ...and the app's side of the same file: catcher_ctl.sh's own dust_mode(), run on the same texts, says the same numbers
+# ...the app's own code: if it changes how it reads the number, dust_min() has to change with it
+java = open(os.path.join(HERE, os.pardir, "ondevice_toggle", "apk", "src", "com", "benny", "autocatcher", "MainActivity.java"), encoding="utf-8").read()
+check("dust switch: the app's dustNorm() still reads what dust_min() mirrors (trimmed, 1 to 7 digits, else 0)",
+      bool(re.search(r'static String dustNorm\(String text\) \{\s*String t = text == null \? "" : text\.trim\(\);\s*'
+                     r'return digits\(t\) && t\.length\(\) <= 7 \? String\.valueOf\(Integer\.parseInt\(t\)\) : "0";', java)), True)
+# ...and catcher_ctl.sh, which WRITES the file (plain digits only): its own dust_mode(), run on the same texts, says the same
+# numbers -- but for white space INSIDE the text, which it drops (700) where the app and the catcher say off. No writer
+# produces that; the catcher sides with what the app shows.
+CTL_OTHER = {"7 00": 700, "7\t00": 700}
 ctl = re.search(r"^dust_mode\(\) \{.*\}$", open(os.path.join(HERE, os.pardir, "catcher_ctl.sh"), encoding="utf-8").read(), re.M)
 paths = []
 for i, (text, _want) in enumerate(SWITCH):
@@ -351,7 +361,8 @@ for i, (text, _want) in enumerate(SWITCH):
             fh.write(text if isinstance(text, bytes) else text.encode())
 rs = subprocess.run([shutil.which("bash") or "bash", "-c", (ctl.group(0) if ctl else "dust_mode() { echo missing; }") + '\nfor f in "$@"; do DUSTFLAG=$f; dust_mode; done',
                      "dust_mode", *paths], capture_output=True, text=True)
-check("dust switch: catcher_ctl.sh's dust_mode() reads every one of those texts as the same number", rs.stdout.split(), [str(w) for _t, w in SWITCH])
+check("dust switch: catcher_ctl.sh's dust_mode() says the same number for every text but the two with white space inside",
+      rs.stdout.split(), [str(CTL_OTHER.get(t, w)) for t, w in SWITCH])
 
 # OFF = the config the JS gets is byte for byte what it was before the mode existed (the old cfg_now, kept here verbatim)
 exec(r'''def cfg_before():
@@ -711,6 +722,256 @@ check("the catcher's lines keep the shapes their readers use (star piece, ball-s
 check("this attach's shiny check gates the mode; the table is loaded at the start, PoGo open or not",
       (bool(re.search(r'\n    SHINYFIELD\["checked"\] = False[^\n]*\n    t_att = time\.time\(\)\n    sess, _ = pg\.get_session\(\)', src)),
        bool(re.search(r'catcher start \(rebuilt\)[^\n]*\n    dust_table\(time\.time\(\)\)[^\n]*\n    dust_news\(w\)', src))), (True, True))
+
+# ---- THE TABLE KEEPS ITSELF CURRENT (Benny 11-18: "make sure that table is always updated"): the catcher starts
+#      catch_dust_table.py --auto as a CHILD PROCESS at an attach and every 6 hours (never in its own process), logs what
+#      it said, and tells the app how old the last successful check is (dustchk=, right after only=)
+for pat in (r"^DUST_UPD = .*$", r"^DUST_EVERY_S, DUST_ATTACH_S = .*$"):
+    exec(re.search(pat, src, re.M).group(0), ns)
+stf, outf, logf = os.path.join(dd, "catch_dust.state.json"), os.path.join(dd, "dust_update.out"), os.path.join(dd, "catch_loop.log")
+ns.update(DUST_STATE=stf, DUST_OUT=outf, LOG=logf, HERE=GW, sys=sys)
+UPD0 = dict(ns["DUST_UPD"])
+NOWU = 1_795_050_000.0
+check("the updater's record sits next to the table, where the builder writes it; a check every 6 hours, at an attach when 15 minutes old",
+      ('DUST_STATE = os.path.splitext(DUST_TABLE)[0] + ".state.json"' in src,
+       'state=os.path.splitext(table)[0] + ".state.json"' in open(BUILDER, encoding="utf-8").read(), ns["DUST_EVERY_S"], ns["DUST_ATTACH_S"]),
+      (True, True, 21600, 900))
+
+
+class FakeProc:
+    def __init__(self, cmd, kw):
+        self.cmd, self.kw, self.returncode, self.killed = cmd, kw, None, 0
+
+    def poll(self):
+        return self.returncode
+
+    def kill(self):
+        self.killed += 1
+        self.returncode = -9
+
+
+class FakeSub:
+    """subprocess, as far as dust_update_step() uses it. fail = what each Popen call raises, in order (None = it starts)."""
+    DEVNULL, STDOUT, SubprocessError = subprocess.DEVNULL, subprocess.STDOUT, subprocess.SubprocessError
+
+    def __init__(self, fail=()):
+        self.calls, self.fail, self.proc = [], list(fail), None
+
+    def Popen(self, cmd, **kw):
+        self.calls.append(cmd)
+        err = self.fail.pop(0) if self.fail else None
+        if err:
+            raise err
+        self.proc = FakeProc(cmd, kw)
+        return self.proc
+
+
+def updater(state=None, fail=(), mtime=None):
+    """A catcher that has just started: no child yet; the updater's record as given (None = no file, a str = that text);
+    what the catcher knows of its table file ((mtime, size), "none", or None = not looked at yet)."""
+    if os.path.exists(stf):
+        os.remove(stf)
+    if state is not None:
+        with open(stf, "w", encoding="utf-8") as fh:
+            fh.write(state if isinstance(state, str) else json.dumps(state))
+    ns["DUST_UPD"].clear()
+    ns["DUST_UPD"].update(UPD0)
+    ns["_DUST"]["mtime"] = mtime
+    ns["subprocess"] = FakeSub(fail)
+    return ns["subprocess"]
+
+
+def said_of(ans, rc=0, now=NOWU):
+    """What the catcher logs once the child has ended with this output."""
+    with open(outf, "w", encoding="utf-8", errors="replace") as fh:
+        fh.write(ans if isinstance(ans, str) else json.dumps(ans) + "\n")
+    out = []
+    ns["dust_update_said"](out.append, rc, now)
+    return out
+
+
+# dustchk= : whole hours since the table was last known to be upstream's newest
+dc = ns["dust_checked"]
+chk = lambda state, mtime=None, now=NOWU: (updater(state, mtime=mtime), dc(now))[1]
+check("dustchk: whole hours since this phone's last successful check (ok_ts in the updater's record)",
+      [chk({"ok_ts": NOWU - 5 * 3600 - 10, "checked_ts": NOWU - 60}), chk({"ok_ts": NOWU - 3599}), chk({"ok_ts": int(NOWU) - 73 * 3600})], [5, 0, 73])
+check("dustchk: no record and no table file -> no key; a record that is not one, or a time from the future -> no key, no error",
+      [chk(None), chk(None, "none"), chk("{half"), chk("[1, 2]"), chk({"ok_ts": True}), chk({"ok_ts": "1795000000"}), chk({"ok_ts": NOWU + 301}),
+       chk({"checked_ts": NOWU - 60}), chk(None, (NOWU + 9999, 1))], [None] * 9)
+check("dustchk: before this phone's first successful check it counts from when the table file last changed (a deploy pushes "
+      "it right after the PC's own check)", [chk(None, (NOWU - 100 * 3600, 24732)), chk({"checked_ts": NOWU - 60, "ok": False}, (NOWU - 7200, 1))], [100, 2])
+check("dustchk: the later of the two counts (a check that found nothing new; a table that was just replaced)",
+      [chk({"ok_ts": NOWU - 2 * 3600}, (NOWU - 50 * 3600, 1)), chk({"ok_ts": NOWU - 50 * 3600}, (NOWU - 3600, 1)), chk({"ok_ts": NOWU + 200})], [2, 1, 0])
+updater({"ok_ts": NOWU - 3 * 3600})
+first = dc(NOWU)
+with open(stf, "w", encoding="utf-8") as fh:
+    json.dump({"ok_ts": NOWU - 1}, fh)
+check("dustchk: the record is read at most once a minute (the status line is written every 10 s)", (first, dc(NOWU + 30), dc(NOWU + 61)), (3, 3, 0))
+check("status keys: dustchk=H comes right after only=N, and only with it (off, or not applied: neither key)",
+      (sx(109, {"dust": 74725}, {"1": 2280, "2": 6, "3": 6, "705": 202, "701": 10}, 474.2, True, 700, 5),
+       sx(5, {}, {}, 0.2, None, 1, 0), sx(5, {}, {}, 0.2, None, 1, None), sx(5, {}, {}, 0.2, None, 0, 5), sx(5, {}, {}, 0.2, None, 1000, 100)),
+      ("rate=13.8 up=474 dust=74725 balls=2280/6/6 pinap=202 razz=10 sp=1 only=700 dustchk=5", "only=1 dustchk=0", "only=1", "", "only=1000 dustchk=100"))
+
+# the child process: started at an attach and every 6 hours, one at a time
+said = []
+fs = updater()
+ns["dust_update"](NOWU, said.append, attach=True)
+proc = fs.proc
+check("updater: at an attach it starts the builder's --auto as a child at the lowest priority, told which table and which log",
+      (fs.calls, said), ([["nice", "-n", "19", sys.executable, os.path.join(GW, "catch_dust_table.py"), "--table", tb, "--auto", logf]], []))
+check("updater: the child gets no stdin, writes to its own file (appending), and inherits none of the catcher's sockets (close_fds)",
+      (proc.kw["stdin"] == subprocess.DEVNULL, proc.kw["stderr"] == subprocess.STDOUT, proc.kw["close_fds"],
+       os.path.normpath(proc.kw["stdout"].name) == os.path.normpath(outf), proc.kw["stdout"].mode), (True, True, True, True, "ab"))
+ns["dust_update"](NOWU + 1, said.append)
+ns["dust_update"](NOWU + 2, said.append, attach=True)
+check("updater: never two at once (the loop's look, and a second attach, while the child runs: nothing started, nothing said)", (len(fs.calls), said), (1, []))
+ANS = {"ok": True, "line": "batch 1794878074575 (2026-11-17 01:14 UTC) is upstream's newest (alexelgt): nothing to download", "batch": 1794878074575,
+       "catches": 2514, "checked": 2490, "species": 143, "above": []}
+with open(outf, "w", encoding="utf-8") as fh:
+    fh.write(json.dumps(ANS) + "\n")
+proc.returncode = 0
+ns["_DUST"]["tcheck"] = NOWU
+ns["dust_update"](NOWU + 5, said.append)
+check("updater: once the child has ended, ONE line says what upstream said and that the last day's catches fit the table", said,
+      ["DUST TABLE check: batch 1794878074575 (2026-11-17 01:14 UTC) is upstream's newest (alexelgt): nothing to download; "
+       "the last day's 2,514 catches (143 species): none paid more than the table says"])
+check("updater: ...and the table file is looked at now (not within the minute), the record is read again, the child's file is closed",
+      (ns["_DUST"]["tcheck"], ns["DUST_UPD"]["proc"], ns["DUST_UPD"]["st"], proc.kw["stdout"].closed), (0, None, None, True))
+at = lambda sec, **kw: (ns["dust_update"](NOWU + sec, said.append, **kw), len(fs.calls))[1]
+check("updater: the next one starts 6 hours after the last", [at(6 * 3600 - 1), at(6 * 3600)], [1, 2])
+fs = updater({"checked_ts": NOWU - 100, "ok_ts": NOWU - 100})
+check("updater: a catcher that restarts inside 15 minutes of the last check starts none at its attach -- the record says when that "
+      "was, whoever ran it", [at(0, attach=True), at(799, attach=True), at(800, attach=True)], [0, 0, 1])
+fs = updater({"checked_ts": NOWU - 100})
+check("updater: in the loop it waits the 6 hours from the record's time, across restarts", [at(6 * 3600 - 101), at(6 * 3600 - 100)], [0, 1])
+fs = updater({"checked_ts": NOWU + 9999})
+check("updater: a record from the future (a wrong clock) is not believed", at(0, attach=True), 1)
+fs = updater("{half a rec")
+check("updater: a record that does not read = no record: the check runs", at(0), 1)
+said = []
+fs = updater(fail=[FileNotFoundError(2, "No such file or directory: 'nice'")])
+ns["dust_update"](NOWU, said.append, attach=True)
+check("updater: a system without nice -> the same command at the catcher's own priority, nothing said",
+      ([c[0] for c in fs.calls], fs.calls[1] == fs.calls[0][3:], said, ns["DUST_UPD"]["proc"] is fs.proc), (["nice", sys.executable], True, [], True))
+fs = updater(fail=[FileNotFoundError(2, "no nice"), PermissionError(13, "Permission denied")])
+ns["dust_update"](NOWU, said.append, attach=True)
+n1 = (at(1), at(2, attach=True), ns["DUST_UPD"]["proc"])
+check("updater: it cannot be started at all -> one line, and no new try every second; the next attach 15 minutes on tries again",
+      (said, n1, at(900, attach=True)), (["DUST TABLE check not started: [Errno 13] Permission denied"], (2, 2, None), 3))
+said = []
+fs = updater()
+ns["DUST_OUT"] = os.path.join(dd, "no_such_dir", "dust_update.out")
+ns["dust_update"](NOWU, said.append, attach=True)
+ns["DUST_OUT"] = outf
+check("updater: its output file cannot be opened -> said, nothing started", (len(said), said[0][:30], fs.calls), (1, "DUST TABLE check not started: ", []))
+said = []
+fs = updater()
+ns["dust_update"](NOWU, said.append, attach=True)
+proc = fs.proc
+ns["dust_update"](NOWU + 1200, said.append)
+k0 = proc.killed
+ns["dust_update"](NOWU + 1201, said.append)
+ns["dust_update"](NOWU + 1202, said.append)
+check("updater: a child still running after 20 minutes is stopped, and that is said; it then counts as a run without an answer",
+      (k0, proc.killed, said, ns["DUST_UPD"]["proc"]),
+      (0, 1, ["DUST TABLE check still running after 20 minutes: stopped", "DUST TABLE check ended without an answer (exit -9): no output"], None))
+said, went = [], []
+fs = updater(fail=[RuntimeError("boom"), RuntimeError("boom")])
+for sec in (0, 1, 6 * 3600):
+    try:
+        ns["dust_update"](NOWU + sec, said.append, attach=True)
+        went.append(True)
+    except Exception as e:   # noqa: BLE001
+        went.append(repr(e))
+check("updater: whatever goes wrong inside it never reaches the catch loop -- one line, said once; the next try is the next round",
+      (went, said, len(fs.calls)), ([True, True, True], ["DUST TABLE check skipped: RuntimeError: boom"], 2))
+
+
+def no_log(_line):
+    raise OSError("the log is gone")
+
+
+fs = updater(fail=[FileNotFoundError(2, "x"), FileNotFoundError(2, "x")])
+try:
+    ns["dust_update"](NOWU, no_log, attach=True)
+    went = "no exception"
+except Exception as e:   # noqa: BLE001
+    went = repr(e)
+check("updater: not even its own log line failing reaches the catch loop", went, "no exception")
+
+# what the child said -> the log
+updater()
+MISS2 = dict(ANS, above=[{"dex": 21, "name": "Spearow", "table": 100, "over": 4, "n": 4, "a": 525, "ref": 125},
+                         {"dex": 316, "name": "Gulpin", "table": 500, "over": 3, "n": 5, "a": 2525, "ref": 150}])
+check("a species paid more than the table says: the check line counts it, and ONE more line names it with its numbers", said_of(MISS2),
+      ["DUST TABLE check: batch 1794878074575 (2026-11-17 01:14 UTC) is upstream's newest (alexelgt): nothing to download; "
+       "the last day's 2,514 catches (143 species): 2 species paid more than the table says",
+       "DUST TABLE MISS: #21 Spearow is in the table at 100, but 4 of its 4 catches in the last day paid twice that or more (typically 525 where a normal catch paid 125); "
+       "#316 Gulpin is in the table at 500, but 3 of its 5 catches in the last day paid twice that or more (typically 2525 where a normal catch paid 150)"
+       " -- the table is too low there: until it is fixed, STARDUST ONLY may leave that species alone"])
+one = dict(MISS2, above=MISS2["above"][:1])
+check("...that line once a day while it names the same species (the check runs every 6 hours); other species, or another batch: at once",
+      [len(said_of(MISS2, now=NOWU + 6 * 3600)), len(said_of(MISS2, now=NOWU + 86399)), len(said_of(MISS2, now=NOWU + 86400)),
+       len(said_of(one, now=NOWU + 86401)), len(said_of(dict(one, batch=5), now=NOWU + 86402)), len(said_of(ANS, now=NOWU + 86403))], [1, 1, 2, 2, 2, 1])
+updater()
+many = dict(ANS, above=[{"dex": 100 + i, "name": f"Mon {i}", "table": 100, "over": 3, "n": 3, "a": 525, "ref": 125} for i in range(10)])
+check("more than 8 such species: the first 8 by name, the rest counted",
+      (said_of(many)[1].count(" is in the table at "), "; and 2 more -- the table is too low there" in said_of(many, now=NOWU + 90000)[1]), (8, True))
+check("the catches could not be held against the table: said in the same line",
+      said_of({"ok": False, "line": "no upstream answered (pokeminers: timed out; alexelgt: timed out) -- the table is kept (batch 7)", "batch": 7, "verify_error": "no table"}),
+      ["DUST TABLE check: no upstream answered (pokeminers: timed out; alexelgt: timed out) -- the table is kept (batch 7); "
+       "the last day's catches could not be held against it (no table)"])
+updater()
+junk = [said_of(t, rc) for t, rc in (("", 1), ('Traceback (most recent call last):\n  File "x.py", line 1, in <module>\nValueError: no table\n', 1), ("[1, 2]\n", 0),
+                                     ('"text"\n', 0), ('{"ok": true}\n', 0), ("\x00\x01{", 0), ("Usage:\n  --check   ...\nOne update at a time.\n", 2))]
+check("an answer that is not one (no output, a crash, other json, an older builder's usage text): one line with its last line, never an error",
+      junk, [["DUST TABLE check ended without an answer (exit 1): no output"], ["DUST TABLE check ended without an answer (exit 1): ValueError: no table"],
+             ["DUST TABLE check ended without an answer (exit 0): [1, 2]"], ['DUST TABLE check ended without an answer (exit 0): "text"'],
+             ['DUST TABLE check ended without an answer (exit 0): {"ok": true}'], ["DUST TABLE check ended without an answer (exit 0): \x00\x01{"],
+             ["DUST TABLE check ended without an answer (exit 2): One update at a time. -- catch_dust_table.py on this phone is missing or "
+              "older than this catcher: deploy it"]])
+odd = said_of('{"line": "x", "catches": "many", "species": null, "above": [5, {"dex": "a"}]}\n')
+check("an answer with the wrong kinds of values: still lines, no error; and no line carries a traceback's first words",
+      (odd[0], len(odd), [ln for ln in sum(junk, []) + odd if "Traceback" in ln]),
+      ("DUST TABLE check: x; the last day's 0 catches (0 species): 1 species paid more than the table says", 2, []))
+
+# end to end: the real builder as the real child (no network asked), the real files
+E_TD = {16: 100, 19: 100, 21: 100, 41: 100, 774: 1000}
+with open(tb, "w", encoding="ascii", newline="\n") as fh:   # a batch nothing on this PC can be newer than
+    fh.write(dt.table_text(E_TD, {d: f"Mon {d}" for d in E_TD}, 9_000_000_000_000))
+with open(logf, "w", encoding="utf-8", newline="\n") as fh:
+    fh.write("".join("20:%02d:01 CATCH Wild #16 ball=1 p=0.50 att=1 berry=0 0.6s dust=125 candy=3 wx=0\n"
+                     "20:%02d:02 CATCH Wild #21 ball=1 p=0.50 att=1 berry=0 0.6s dust=525 candy=3 wx=0\n" % (i, i) for i in range(4)))
+updater()
+ns["subprocess"] = subprocess
+said, env0 = [], os.environ.get("CATCH_DUST_NO_NET")
+os.environ["CATCH_DUST_NO_NET"] = "1"
+t_run = time.time()
+ns["dust_update"](t_run, said.append, attach=True)
+started = ns["DUST_UPD"]["proc"] is not None
+while ns["DUST_UPD"]["proc"] is not None and time.time() - t_run < 120:
+    time.sleep(0.1)
+    ns["dust_update"](time.time(), said.append)
+if ns["DUST_UPD"]["proc"] is not None:
+    ns["DUST_UPD"]["proc"].kill()
+os.environ.pop("CATCH_DUST_NO_NET") if env0 is None else os.environ.update(CATCH_DUST_NO_NET=env0)
+check("end to end (the real builder as a child process, no network): it starts, ends, and the catcher logs its two lines",
+      (started, ns["DUST_UPD"]["proc"], said),
+      (True, None, ["DUST TABLE check: upstream not asked -- the table is kept (batch 9000000000000); the last day's 8 catches (2 species): "
+                    "1 species paid more than the table says",
+                    "DUST TABLE MISS: #21 Mon 21 is in the table at 100, but 4 of its 4 catches in the last day paid twice that or more "
+                    "(typically 525 where a normal catch paid 125) -- the table is too low there: until it is fixed, STARDUST ONLY may leave that species alone"]))
+rec = dt.read_state(stf)
+check("end to end: the child left its record next to the table (when it ran; not a successful check), no lock, no download, the table as it was",
+      (abs(rec.get("checked_ts", 0) - t_run) < 300, rec.get("ok"), "ok_ts" in rec, os.path.exists(tb + ".lock"), os.path.exists(tb + ".download"),
+       dt.read_table(tb)["batch"]), (True, False, False, False, False, 9_000_000_000_000))
+ns["dust_update"](time.time(), said.append, attach=True)
+ns["dust_table"](time.time())
+check("end to end: with that record a second attach starts nothing; until a check succeeds dustchk counts from the table file",
+      (ns["DUST_UPD"]["proc"], len(said), sx(5, {}, {}, 0.2, None, 1, dc(time.time()))), (None, 2, "only=1 dustchk=0"))
+check("the session starts the updater at its attach (after that attach's config is pushed) and looks at it once a loop",
+      (bool(re.search(r'\n    dust_update\(time\.time\(\), w, attach=True\)[^\n]*\n    last_rep, last_frame, idle = 0, None, 0\n    while dropped\["why"\] is None:\n', src)),
+       "        wx_tick(time.time(), w)\n        dust_update(time.time(), w)\n        dust_log(w)\n" in src, src.count("dust_update(time.time(), w")), (True, True, 2))
 shutil.rmtree(dd, ignore_errors=True)
 
 # ---- JS (node): applyCfg + ballsave()

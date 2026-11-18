@@ -51,6 +51,11 @@ BALLSAVE_FILE = "/data/local/tmp/pogo_ballsave.json"
 DUST_FILE = "/data/local/tmp/pogo_dust.on"
 DUST_TABLE = os.path.join(HERE, "catch_dust.json")
 DUST_LEVELS = "/data/local/tmp/pogo_dust_levels.txt"
+# THE TABLE KEEPS ITSELF CURRENT (Benny 11-18: "make sure that table is always updated"): dust_update() starts
+# catch_dust_table.py --auto as a child process at an attach and every 6 hours; its record and its one-line answer:
+DUST_STATE = os.path.splitext(DUST_TABLE)[0] + ".state.json"
+DUST_OUT = os.path.join(AN, "dust_update.out")
+DUST_EVERY_S, DUST_ATTACH_S = 6 * 3600, 15 * 60   # every 6 h; at an attach when the last check is 15 min old or more
 WX_PROOF = os.path.join(AN, "dust_wx_proof.json")   # the weather-boost read's track record, per game version (wx_seen)
 COLD_AGE_S = 12      # attach once PoGo is this old; install() then retries every 3 s until the map has loaded.
                      # (30 s was for the old catcher's heavy RPC-thread setup; this one does metadata + one lookup.)
@@ -1641,6 +1646,8 @@ _DUST = {"n": 0, "state": "off", "skip": [], "skipwx": [], "kept": 0, "note": ""
 # version -- boosted catches that paid the +25%, unboosted ones that did not, catches that paid against their flag
 WX = {"found": False, "key": "", "b": 0, "u": 0, "bad": 0, "min": None, "rows": {}, "said": None, "saved": None, "savet": 0, "ver": {}}
 WX_NEED = 12   # boosted AND unboosted catches that must agree with the server's pay before the flag may decide anything
+DUST_UPD = {"proc": None, "fh": None, "t": 0.0, "st": None, "stt": 0.0}   # the table's updater: its child process, when it was
+# last started, and its record (catch_dust.state.json) as last read; later also what it last said (miss, misst, err)
 SPIN_WHY = ("spins are being refused", "the daily spin limit")   # why_idle()'s spin parts: logged as NOT SPINNING
 SP = {"on": False, "off": False, "since": None, "bare": 0, "last": None}   # last: did the newest catch pay with one
 
@@ -1801,13 +1808,16 @@ def ballsave_log(w, now):
 
 def dust_min():
     """What the STARDUST ONLY switch holds (DUST_FILE): a whole number 1 or more = on; 0, no file, or anything that is
-    not a whole number = off. Read the way catcher_ctl.sh's dust_mode() reads it (white space dropped, 1 to 7 digits), so
-    the app and the catcher never disagree about the one file."""
+    not a whole number = off. Read the way the APP reads it, so what its switch shows and what the catcher does never
+    differ over the one file: the app's readFile() joins the file's lines (every line end dropped) and its dustNorm()
+    trims both ends, then takes 1 to 7 digits and nothing else. (catcher_ctl.sh, which writes the file, only ever writes
+    plain digits; its own dust_mode() also drops white space INSIDE the text, which no writer produces.)"""
     try:
-        with open(DUST_FILE, encoding="ascii", errors="replace") as fh:
-            v = "".join(fh.read(4096).split())
+        with open(DUST_FILE, encoding="ascii", errors="replace", newline="") as fh:
+            v = fh.read(4096).replace("\r", "").replace("\n", "")
     except (OSError, ValueError):
         return 0
+    v = v.strip("".join(map(chr, range(33))))   # Java's String.trim(): every char up to the space, at both ends
     return int(v) if re.fullmatch(r"[0-9]{1,7}", v) else 0
 
 
@@ -2109,6 +2119,135 @@ def dust_log(w):
         w("DUST ONLY " + _DUST["note"])
 
 
+def dust_state(now):
+    """The updater's own record (catch_dust.state.json next to the table: catch_dust_table.py writes it at the end of
+    every check), read at most once a minute. {} = none yet."""
+    if DUST_UPD["st"] is None or not 0 <= now - DUST_UPD["stt"] < 60:
+        DUST_UPD["stt"] = now
+        try:
+            with open(DUST_STATE, encoding="utf-8") as fh:
+                st = json.load(fh)
+        except (OSError, ValueError):
+            st = None
+        DUST_UPD["st"] = st if isinstance(st, dict) else {}
+    return DUST_UPD["st"]
+
+
+def dust_checked(now):
+    """dustchk= for the app: whole hours since the table was last known to be upstream's newest -- this phone's last
+    successful check (ok_ts in the updater's record), or the moment the table file itself last changed when that is
+    later (a deploy pushes it right after the PC's own check; the phone's updater writes it from a fresh batch).
+    None = neither is known: no key."""
+    ts = dust_state(now).get("ok_ts")
+    ts = ts if isinstance(ts, (int, float)) and not isinstance(ts, bool) and 0 < ts <= now + 300 else 0
+    m = _DUST["mtime"]
+    if isinstance(m, tuple) and 0 < m[0] <= now + 300:
+        ts = max(ts, m[0])
+    return max(0, int((now - ts) // 3600)) if ts else None
+
+
+def dust_update_said(w, rc, now):
+    """The finished updater's one json line -> the log: ONE "DUST TABLE check" line (what upstream said, and whether the
+    last day's catches fit the table), and ONE "DUST TABLE MISS" line when a species paid more than the table says --
+    that one at most once a day while it names the same species. Whatever the file holds, this never raises."""
+    text = ""
+    try:
+        with open(DUST_OUT, encoding="utf-8", errors="replace") as fh:
+            text = fh.read(65536).strip()
+        res = json.loads(text.splitlines()[-1])
+        num = lambda v: v if isinstance(v, int) and not isinstance(v, bool) else 0
+        above = [a for a in (res.get("above") or []) if isinstance(a, dict)]
+        if "catches" in res:
+            tail = (f"; the last day's {num(res['catches']):,} catches ({num(res.get('species'))} species): "
+                    + (f"{len(above)} species paid more than the table says" if above else "none paid more than the table says"))
+        else:
+            tail = f"; the last day's catches could not be held against it ({str(res.get('verify_error'))[:120]})"
+        lines = [f"DUST TABLE check: {str(res['line'])[:400]}{tail}"]
+        key = (num(res.get("batch")), tuple(sorted(num(a.get("dex")) for a in above)))
+        if above and (key != DUST_UPD.get("miss") or not 0 <= now - DUST_UPD.get("misst", 0) < 86400):
+            DUST_UPD.update(miss=key, misst=now)
+            lines.append("DUST TABLE MISS: " + "; ".join(
+                f"#{num(a.get('dex'))} {str(a.get('name'))[:24]} is in the table at {num(a.get('table'))}, but {num(a.get('over'))} of its "
+                f"{num(a.get('n'))} catches in the last day paid twice that or more (typically {num(a.get('a'))} where a normal catch paid {num(a.get('ref'))})"
+                for a in above[:8]) + (f"; and {len(above) - 8} more" if len(above) > 8 else "")
+                + " -- the table is too low there: until it is fixed, STARDUST ONLY may leave that species alone")
+    except Exception:   # noqa: BLE001  (no output, half a line, not json, a list where a dict belongs)
+        # its last line only: its error -- never a traceback's first line (that word in this log means the CATCHER crashed).
+        # Exit 2 = python found no such file, or a builder from before --auto printed its usage text.
+        hint = " -- catch_dust_table.py on this phone is missing or older than this catcher: deploy it" if rc == 2 else ""
+        lines = [f"DUST TABLE check ended without an answer (exit {rc}): {(text.splitlines() or ['no output'])[-1].strip()[:300]}{hint}"]
+    for ln in lines:
+        w(ln)
+
+
+def dust_update_step(now, w, attach):
+    """One look at the table's updater: catch_dust_table.py --auto as a CHILD PROCESS at the lowest priority -- at an
+    attach when the last check is 15 minutes old or more, and every 6 hours -- so a slow network or a 20 MB download
+    never holds up a throw. The child asks both upstreams (a few bytes), rebuilds the table only when a batch is newer,
+    and holds the last day's catches against the table. This process only starts it and, once it has ended, logs its
+    answer; a changed table is picked up by dust_table()'s re-read. Never two at once."""
+    p = DUST_UPD["proc"]
+    if p is not None:
+        if p.poll() is None:
+            if now - DUST_UPD["t"] > 1200:   # far past its own time limits (its download has 4 minutes): a dead run
+                DUST_UPD["t"] = now
+                w("DUST TABLE check still running after 20 minutes: stopped")
+                try:
+                    p.kill()
+                except OSError:
+                    pass
+            return
+        DUST_UPD.update(proc=None, st=None)   # its record is new: read it again
+        try:
+            DUST_UPD["fh"].close()
+        except (OSError, AttributeError):
+            pass
+        dust_update_said(w, p.returncode, now)
+        _DUST["tcheck"] = 0   # and look at the table file now, not within the minute
+        return
+    # the end of the last run, whoever started it (the record survives a restart), or this process's own last start
+    last = max([x for x in (DUST_UPD["t"], dust_state(now).get("checked_ts"))
+                if isinstance(x, (int, float)) and not isinstance(x, bool) and x <= now + 300] or [0])
+    if now - last < (DUST_ATTACH_S if attach else DUST_EVERY_S):
+        return
+    DUST_UPD["t"] = now   # also when it cannot be started: the next try is the next round, not the next second
+    cmd = [sys.executable, os.path.join(HERE, "catch_dust_table.py"), "--table", DUST_TABLE, "--auto", LOG]
+    try:
+        open(DUST_OUT, "wb").close()   # emptied, then opened to APPEND: a run orphaned by a catcher restart may still
+        fh = open(DUST_OUT, "ab")      # write to it, and two writers at offset 0 would overwrite each other's line
+    except OSError as e:
+        w(f"DUST TABLE check not started: {e}")
+        return
+    err = None
+    for pre in (["nice", "-n", "19"], []):   # (a system without nice: at this process's own priority)
+        try:
+            # close_fds: the child must hold none of this process's sockets -- a second holder of the gadget's connection
+            # would keep it open after this catcher has gone, and the next attach would time out
+            DUST_UPD.update(proc=subprocess.Popen(pre + cmd, stdin=subprocess.DEVNULL, stdout=fh, stderr=subprocess.STDOUT,
+                                                  close_fds=True), fh=fh)
+            return
+        except (OSError, ValueError, subprocess.SubprocessError) as e:
+            err = e
+    fh.close()
+    w(f"DUST TABLE check not started: {err}")
+
+
+def dust_update(now, w, attach=False):
+    """THE TABLE KEEPS ITSELF CURRENT (dust_update_step). Nothing in it may stop a catch or end a session: whatever goes
+    wrong is one log line (said once), and the next try is the next round."""
+    try:
+        dust_update_step(now, w, attach)
+    except Exception as e:   # noqa: BLE001
+        DUST_UPD.update(proc=None, t=now)
+        text = f"DUST TABLE check skipped: {type(e).__name__}: {str(e)[:120]}"
+        if text != DUST_UPD.get("err"):
+            DUST_UPD["err"] = text
+            try:
+                w(text)
+            except Exception:   # noqa: BLE001
+                pass
+
+
 def dust_only():
     """The app's status key only=N (1 = every above-normal species, 500 / 700 / 1000 = a level): the switch is on AND the
     mode is applied. 0 = no key."""
@@ -2344,12 +2483,13 @@ def starpiece_why(why, now):
     return why
 
 
-def state_extra(c, st, it, up, sp_last, only=0):
+def state_extra(c, st, it, up, sp_last, only=0, dustchk=None):
     """The optional keys of the app's status card (app 1.3; Benny 11-18 asked "status?" and "how long til 1mil" by hand
     all day): catches per minute and the seconds of this run, the stardust it gained, the three ball counts, the berries
     left, whether the newest catch paid with a Star Piece, and only=N while STARDUST ONLY is applied (1 = every species
-    above a normal catch, 500 / 700 / 1000 = a level). A number the game has not reported yet is left out, never guessed
-    -- the app shows a part only when its key is there. They sit after the old counters and before why=."""
+    above a normal catch, 500 / 700 / 1000 = a level) followed by dustchk=H, the whole hours since its species table was
+    last checked against upstream (the app warns past 72). A number the game has not reported yet is left out, never
+    guessed -- the app shows a part only when its key is there. They sit after the old counters and before why=."""
     out = []
     if up >= 1:
         out.append(f"rate={c / (up / 60.0):.1f} up={int(up)}")
@@ -2365,6 +2505,8 @@ def state_extra(c, st, it, up, sp_last, only=0):
         out.append(f"sp={1 if sp_last else 0}")
     if only:
         out.append(f"only={only}")
+        if dustchk is not None:
+            out.append(f"dustchk={dustchk}")
     return " ".join(out)
 
 
@@ -2439,7 +2581,7 @@ def report(w, stt, t0, base):
     why = dust_why(starpiece_why(why, time.time()), list(hist), flag("catch"))
     state(why, (f"caught={c} fled={st['fled']} spins={sp['ok']} xp={sp['xp']} items={sp['items']} "
                 f"ready={max(0, sp['inRange'] - sp['cooling'])} cooling={sp['cooling']} "
-                + state_extra(c, st, it, time.time() - t0, SP.get("last"), dust_only())).rstrip())
+                + state_extra(c, st, it, time.time() - t0, SP.get("last"), dust_only(), dust_checked(time.time()))).rstrip())
 
 
 def session_loop(w, done_ids, base):
@@ -2514,6 +2656,7 @@ def session_loop(w, done_ids, base):
     sc.exports_sync.cfg(cfg)   # the install ran before this attach's shiny check: push its outcome either way
     if cfg.get("abKey"):   # the arm in force from the start (a restart mid-block logs no flip)
         w(f"A/B {cfg['abKey']}={cfg[cfg['abKey']]} (block of {cfg.get('abBlockS')} s, at start)")
+    dust_update(time.time(), w, attach=True)   # the species table: checked against upstream, in a child process
     last_rep, last_frame, idle = 0, None, 0
     while dropped["why"] is None:
         c = cfg_now()
@@ -2527,6 +2670,7 @@ def session_loop(w, done_ids, base):
             sc.exports_sync.cfg(c)
         ballsave_log(w, time.time())
         wx_tick(time.time(), w)
+        dust_update(time.time(), w)
         dust_log(w)
         d = sc.exports_sync.drain()
         for line in d["log"]:

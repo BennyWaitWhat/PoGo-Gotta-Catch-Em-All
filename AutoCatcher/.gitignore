@@ -81,7 +81,10 @@ system/map/routes/unspun_*
 # ball-saver shower data (ballsave_go.py --save-prior): spawn records with positions -- never committed
 system/analysis/showers/
 
-# STARDUST ONLY: when the species table was last checked against upstream, and a game master mid-download (state, not
-# code; the table itself -- catch_dust.json -- IS tracked: it is the seed a fresh checkout and CI read)
+# STARDUST ONLY: when the species table was last checked against upstream, a game master mid-download, the lock of an
+# update that is running, and what the catcher's own update child last answered (state, not code; the table itself --
+# catch_dust.json -- IS tracked: it is the seed a fresh checkout and CI read)
 system/scripts/game_write/catch_dust.state.json
 system/scripts/game_write/catch_dust.json.download
+system/scripts/game_write/catch_dust.json.lock
+system/analysis/pokemod/dust_update.out
