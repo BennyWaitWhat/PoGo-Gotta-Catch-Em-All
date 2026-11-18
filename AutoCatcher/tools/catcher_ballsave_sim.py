@@ -1375,6 +1375,24 @@ api.set('NWOFF', {X: {res: 1, pk: 2, cp: 3}});
 api.set('E', {a: {pid: 10, st: 'open'}}); api.set('NWQ', [{enc: 'a', t: NOW}]); api.set('LASTNW', {t: 0, sig: ''});
 api.call('onOtherEncounterOut', {add: (o) => ({readS32: () => 1, readPointer: () => (o === 2 ? pkX(10, 0, 2) : NUL)})}, 'X');
 res.wxRead.push(api.get('RESP.a') ? api.get('RESP.a').wx : null);
+// PAYERS FIRST (11-18): a spawn that gets a ball is opened before the spawns opened only for a look; each group keeps its order
+const pfq = (cfg, ents, items) => { const a = mk(), op = [];
+  a.call('applyCfg', Object.assign({catch: true, floors: {'1': 5, '2': 5, '3': 5}, openMs: 0, maxOpen: 12, readyMs: 150, nearWait: 0}, cfg));
+  a.set('walk', () => {}); a.set('ITEMC', items || {1: 100, 2: 50, 3: 50});
+  a.set('openOne', (enc, e, o, now) => { op.push(enc); e.st = 'open'; e.tOpen = now; e.opens++; }); a.set('throwAt', () => {});
+  const live = {}; Object.keys(ents).forEach(k => { live[k] = {}; });
+  a.set('E', ents); a.set('NE', Object.keys(ents).length); a.set('PEND', Object.keys(ents)); a.set('LIVE', live);
+  const same = a.get('PEND'); a.call('catchTick', NOW); return [op, a.get('PEND') === same]; };
+const exp = (pid, ms) => Object.assign(ent(pid), {exp: NOW + ms});
+res.pf = [
+  pfq({skipSp: [10], peek: true}, {a1: ent(10), k1: ent(774), a2: ent(10), k2: ent(774), a3: ent(10)}),            // looks and payers mixed
+  pfq({}, {x1: ent(10), x2: ent(774), x3: ent(10)}),                                                                 // no plan, no mode: arrival order
+  pfq({skipSp: [10], peek: false}, {n1: ent(10), n2: ent(774)})[0],                                                  // left alone without a look: only the payer is opened
+  pfq({skipSp: [10], peek: true, order: 'despawn'}, {l1: exp(10, 3000), p1: exp(774, 9000), l2: exp(10, 2000), p2: exp(774, 4000)})[0],   // despawn-first inside each group
+  pfq({skipSp: [10], peek: true}, {o1: ent(10), o2: ent(774)}, {1: 5, 2: 5, 3: 5})[0],                               // no ball to spend: every open is a look, arrival order
+  pfq({skipSp: [10], peek: true}, {q1: ent(774), q2: ent(774), q3: ent(10), q4: ent(10)}),                           // already in order: the queue is not rewritten
+  pfq({skipSp: [10], peek: true}, {r1: ent(10), r2: Object.assign(ent(774), {retryAt: NOW + 4000}), r3: ent(774)})[0],   // a payer that must wait does not block the rest
+];
 console.log(JSON.stringify(res));
 """)
 import random
@@ -1415,7 +1433,7 @@ check("JS: SHINYOFF: hold at the keep, queued one left", got2.get("shinyOffTick"
 check("JS: looks in flight at the latch: no throw", got2.get("latchInFlight"), [True, [], 3, False])
 check("JS: Mighty hold on G/U only; its Razz kept", got2.get("mightyHold"), [True, 0, False])
 check("JS: walk tracks a look, ledgers a looked one", got2.get("walk"), [["r1"], ["r1"], {"ballsave": 1}, [["r2", "ballsave", 0, 10]]])
-check("JS: left-alone species opened for a look", got2.get("open"), [["s1", "s2", "k1"], 1, 1, 0])
+check("JS: left-alone species opened for a look -- after the spawn that gets a ball (payers first)", got2.get("open"), [["k1", "s1", "s2"], 1, 1, 0])
 check("JS: not shiny left; shiny kept + logged", got2.get("reply"),
       [True, 1, 1, [["s1", "ballsave", 1]], "ready", 1, 1, 1, True])
 check("JS: the shiny gets Ultra; k1 waits (reserve)", got2.get("thrown"), [[3], "ready"])
@@ -1425,11 +1443,23 @@ B, K = DUSTJS["base"], DUSTJS["kept"]
 check("JS dust: the real list arrives (every normal-level species); an empty weather list still means 'applied'",
       got2.get("dustCfg"), [True, "{}", True, 1, 0])
 check("JS dust: every spawn is opened -- a left-alone species' as a look, a kept species' as a catch",
-      got2.get("dustOpen"), [["b1", "b2", "b3", "b4", "k1", "b6"], [1, 1, 1, 1, 0, 1]])
+      got2.get("dustOpen"), [["k1", "b1", "b2", "b3", "b4", "b6"], [1, 1, 1, 1, 0, 1]])
 check("JS dust: not boosted -> left (its record: looked, wx 0); boosted -> a throw; shiny and Mighty stay; a flag that did not read -> a throw",
       got2.get("dustReply"), [True, 1, [["b1", "ballsave", 1, 0]], 1, 0, 1, 1, 1, 2, 0, 1])
 check("JS dust: thrown at: the boosted one, the shiny, the Mighty, the kept species, the unread one -- never the plain one",
       got2.get("dustThrown"), ["b2", "b3", "b4", "k1", "b6"])
+pf = got2.get("pf") or [None] * 7
+check("JS payers first: looks and payers mixed -> the payers are opened first, each group in its arrival order; the queue is the same array",
+      pf[0], [["k1", "k2", "a1", "a2", "a3"], True])
+check("JS payers first: no plan and no mode (nothing is left alone) -> arrival order, the queue untouched", pf[1], [["x1", "x2", "x3"], True])
+check("JS payers first: a species left alone WITHOUT a look is never opened; the payer is", pf[2], ["n2"])
+check("JS payers first: with despawn-first each group keeps its soonest-first order", pf[3], ["p2", "p1", "l2", "l1"])
+check("JS payers first: no ball to spend (every open is a look) -> arrival order", pf[4], ["o1", "o2"])
+check("JS payers first: payers already in front -> nothing is rewritten", pf[5], [["q1", "q2", "q3", "q4"], True])
+check("JS payers first: a payer that must wait for its retry does not hold up the others", pf[6], ["r3", "r1"])
+check("JS payers first: the catch loop calls it only while a look is on and a ball can be spent, after despawn-first",
+      (src.count("payersFirst();"), src.find("if (peekOn() && !PEEKONLY && PEND.length > 1 && !holding) payersFirst();")
+       > src.find("if (CFG.order === 'despawn' && PEND.length > 1 && !holding) despawnFirst(now);") > 0), (1, True))
 check("JS dust: CATCH lines: [boosted] + wx= on the boosted one, wx=0 on the kept species, [boost?] and no wx= when it did not read",
       got2.get("dustCatch"), [f"CATCH Wild #{B} ball=1 p=0.50 att=1 berry=0 1.6s [boosted] dust=275 candy=3 wx=3",
                               f"CATCH Wild #{K} ball=1 p=0.50 att=1 berry=0 1.6s dust=4225 candy=3 wx=0",
