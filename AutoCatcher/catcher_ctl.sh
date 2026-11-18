@@ -33,10 +33,11 @@ GYMRUN="$HOME/pogo/run_gym.sh"
 # Berries (catch_loop_fast.berry_mode, read every second): 1 = Pinap and Razz, pinap = Pinap only, razz = Razz only,
 # anything else = none. Only the catcher reads it; it keeps no process alive either.
 BERRYFLAG=/data/local/tmp/pogo_berries.on
-# Catch only (Benny 2026-11-18: "a catch mode that only catches high stardust pokemon (+ shinies) that can be toggled
-# on"). A whole number: 0 (or no file, or anything else) = catch everything; N >= 1 = only species whose base catch
-# stardust is N or more, plus every shiny. Only the catcher reads it: like the berries flag it keeps no process alive,
-# and run_catch.sh's on() does not count it.
+# High stardust only (Benny 2026-11-18: "a catch mode that only catches high stardust pokemon (+ shinies) that can be
+# toggled on", "inclusive of EVERY higher than avg stardust pokemon for that mode"). A whole number: 0 (or no file, or
+# anything else) = catch everything; 1 = every species that pays more than the normal catch; N >= 2 = only species
+# whose base catch stardust is N or more. Every shiny is always caught. Only the catcher reads it: like the berries
+# flag it keeps no process alive, and run_catch.sh's on() does not count it.
 DUSTFLAG=/data/local/tmp/pogo_dust.on
 
 # [c]/[r] trick: the patterns never match this grep's own cmdline (avoids the pgrep self-match false positive).
@@ -46,7 +47,7 @@ running() { ps -ef 2>/dev/null | grep -qE "[c]atch_phone\.py|[r]un_catch\.sh"; }
 flag_on() { [ "$(cat "$1" 2>/dev/null | tr -d '[:space:]')" = "1" ]; }
 # What the berries flag says, the way the catcher reads it: 1 / pinap / razz, anything else = 0 (none).
 berry_mode() { b=$(cat "$BERRYFLAG" 2>/dev/null | tr -d '[:space:]'); case "$b" in 1|pinap|razz) echo "$b" ;; *) echo 0 ;; esac; }
-# What the Catch-only flag says: its whole number, anything else (or no file) = 0 (everything).
+# What the high-stardust flag says: its whole number, anything else (or no file) = 0 (everything).
 dust_mode() { d=$(cat "$DUSTFLAG" 2>/dev/null | tr -d '[:space:]'); case "$d" in ''|*[!0-9]*|????????*) echo 0 ;; *) echo "$((10#$d))" ;; esac; }
 
 # AUDIT: every flag transition is logged with the verb that caused it, so a toggle that silently
@@ -184,9 +185,10 @@ case "$1" in
   berries-razz)  setflag "$BERRYFLAG" razz "berries-razz" ;;
   berries-on)    setflag "$BERRYFLAG" 1 "berries-on" ;;
   dust-off)   setflag "$DUSTFLAG" 0 "dust-off" ;;                # the flag only: the catcher reads it
+  dust-on)    setflag "$DUSTFLAG" 1 "dust-on" ;;                 # every species that pays more than the normal catch
   dust-*)     n=${1#dust-}                                       # dust-500 / dust-700 / dust-1000: a whole number, nothing else
               case "$n" in
-                ''|*[!0-9]*|????????*) echo "usage: catcher_ctl.sh dust-off | dust-<whole number>" ;;
+                ''|*[!0-9]*|????????*) echo "usage: catcher_ctl.sh dust-off | dust-on | dust-<whole number>" ;;
                 *) setflag "$DUSTFLAG" "$((10#$n))" "dust-$n" ;;
               esac ;;
   restart)    stop_proc; sleep 1; start_proc ;;
@@ -208,5 +210,5 @@ case "$1" in
     ;;
   toggle)     if flag_on "$CATCHFLAG"; then echo 0 > "$CATCHFLAG"; else echo 1 > "$CATCHFLAG"; fi; reconcile ;;
   status)     echo "proc=$(running && echo up || echo down) catch=$(flag_on "$CATCHFLAG" && echo 1 || echo 0) spin=$(flag_on "$SPINFLAG" && echo 1 || echo 0) perfect=$(flag_on "$PERFFLAG" && echo 1 || echo 0) tap=$(flag_on "$TAPFLAG" && echo 1 || echo 0) apples=$(flag_on "$APPLEFLAG" && echo 1 || echo 0) gym=$(flag_on "$GYMFLAG" && echo 1 || echo 0) berries=$(berry_mode) dust=$(dust_mode)" ;;
-  *) echo "usage: catcher_ctl.sh start|stop|restart|reconcile|catch-on|catch-off|spin-on|spin-off|perfect-on|perfect-off|tap-on|tap-off|apples-on|apples-off|gym-on|gym-off|berries-off|berries-pinap|berries-razz|berries-on|dust-off|dust-<N>|rewards|toggle|status" ;;
+  *) echo "usage: catcher_ctl.sh start|stop|restart|reconcile|catch-on|catch-off|spin-on|spin-off|perfect-on|perfect-off|tap-on|tap-off|apples-on|apples-off|gym-on|gym-off|berries-off|berries-pinap|berries-razz|berries-on|dust-off|dust-on|dust-<N>|rewards|toggle|status" ;;
 esac

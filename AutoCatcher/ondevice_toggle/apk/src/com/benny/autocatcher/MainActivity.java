@@ -114,8 +114,8 @@ public class MainActivity extends Activity {
      * It starts no activity, sends no input and writes nothing outside the app's own files folder
      * (/data/data/com.benny.autocatcher/files): render_top.png is the first screenful, render_full.png is everything,
      * as if scrolled out. It reads the same /data/local/tmp files the real screen reads, so the picture shows the
-     * phone's real state. `-e help 1` draws it with the "What each switch does" fold-out open; `-e demo 1`, `2` or
-     * `3` draws a made-up state instead (see demo()).
+     * phone's real state. `-e help 1` draws it with the "What each switch does" fold-out open; `-e demo 1` to `4`
+     * draws a made-up state instead (see demo()).
      */
     public static class RenderProbe extends Instrumentation {
         private boolean openHelp;
@@ -173,19 +173,31 @@ public class MainActivity extends Activity {
 
         /** A made-up reading of the phone, for a picture of states the phone is not in right now. Nothing is written:
          *  it only replaces what the screen was told it read. 1 = everything on, a blocking why, few balls, the gym
-         *  runner answering, Catch only 700+ (and the catcher doing it), Transfer on Catch set up; 2 = switched on but
-         *  neither the catcher nor the gym runner answers; 3 = the phone's real state, but Catch only switched to 500+
-         *  while the catcher does not report it. */
+         *  runner answering, High stardust 700+ with the catcher doing it, a levels file and an old stardust list,
+         *  Transfer on Catch set up; 2 = switched on but neither the catcher nor the gym runner answers, no levels
+         *  file; 3 = the phone's real state, but High stardust switched to All (with a levels file) while the catcher
+         *  does not report it; 4 = the real state with a custom number in the switch file. The species in LEVELS are a
+         *  sample for the picture, not the game's list. */
+        static final String LEVELS = "base=100 species=1024 batch=sample\n1 476\n500 133\n"
+                + "700 20 Audino, Chimecho, Cloyster, Combee, Delibird, Garbodor, Meowth, Minior, Paras, Parasect, Persian, "
+                + "Sableye, Shellder, Shroomish, Staryu, Starmie, Trubbish, Vespiquen, Breloom, Foongus\n"
+                + "1000 5 Audino, Cloyster, Shellder, Chimecho, Minior\n";
+
         static Screen.Snap demo(Screen.Snap s, int kind) {
             long now = s.now;
             if (kind == 3) {
                 s.flags[0] = "1";
-                s.flags[6] = "500";
+                s.flags[6] = "1";
+                s.levels = LEVELS;
+            } else if (kind == 4) {
+                s.flags[6] = "250";
+                s.levels = LEVELS;
             } else if (kind == 1) {
                 s.flags = new String[]{"1", "1", "1", "1", "1", "1", "700"};   // catch, spin, perfect, tap, gym, berries, dust
                 s.state = "caught=1234 fled=56 spins=789 xp=1234567 items=4321 ready=0 cooling=3 rate=0.0 up=7200 "
-                        + "dust=1250000 balls=12/3/4 pinap=0 razz=0 sp=1 only=700 why=out of balls: 12 Poke, 3 Great, "
-                        + "4 Ultra left (it saves the last 15/5/5 for you)";
+                        + "dust=1250000 balls=12/3/4 pinap=0 razz=0 sp=1 only=700 dustchk=100 why=out of balls: 12 Poke, "
+                        + "3 Great, 4 Ultra left (it saves the last 15/5/5 for you)";
+                s.levels = LEVELS;
                 s.stateMs = now - 3000;
                 s.gym = "15:31:07 battling Avalon Park: defender 2 of 6 is down";
                 s.gymMs = now - 5000;
@@ -196,6 +208,7 @@ public class MainActivity extends Activity {
                 s.toc = Logic.tocJson(1, 1, 85);
             } else {
                 s.flags = new String[]{"1", "0", "0", "0", "1", "razz", "1000"};
+                s.levels = "";
                 s.apples = "0";
                 s.state = "caught=57 fled=3 spins=12 xp=8400 items=40 ready=2 cooling=1";   // an older catcher: no extra keys
                 s.stateMs = now - 5 * 60000;
@@ -371,18 +384,25 @@ final class Logic {
         return (wantsPinap && pinap == 0) || (wantsRazz && razz == 0) ? WAIT : DIM;
     }
 
-    // ---- Catch only (pogo_dust.on): 0 = everything, N = only species worth N+ stardust a catch, plus every shiny -----
+    // ---- High stardust only (pogo_dust.on). 0 = catch everything; 1 = every species that pays more than the normal
+    //      catch; N >= 2 = only species worth N+ stardust a catch. Every shiny is always caught. -------------------------
 
-    /** The Catch-only file: a whole number. No file, 0 or anything that is not a whole number = everything ("0"). */
-    static String dustNorm(String text) {
-        String t = text == null ? "" : text.trim();
-        if (t.length() == 0 || t.length() > 7) return "0";
-        for (int i = 0; i < t.length(); i++) if (t.charAt(i) < '0' || t.charAt(i) > '9') return "0";
-        return String.valueOf(Integer.parseInt(t));
+    /** Digits and nothing else, at least one. */
+    static boolean digits(String t) {
+        if (t == null || t.length() == 0) return false;
+        for (int i = 0; i < t.length(); i++) if (t.charAt(i) < '0' || t.charAt(i) > '9') return false;
+        return true;
     }
 
-    /** only=N in the state line: the catcher reports that it catches only species worth N+ stardust (and shinies).
-     *  0 = it does not say so (the mode is off, or this catcher does not know it). */
+    /** The switch file: a whole number. No file, 0 or anything that is not a whole number = everything ("0"). */
+    static String dustNorm(String text) {
+        String t = text == null ? "" : text.trim();
+        return digits(t) && t.length() <= 7 ? String.valueOf(Integer.parseInt(t)) : "0";
+    }
+
+    /** only=N in the state line: what the catcher itself reports. 1 = only high-stardust species, N >= 2 = only species
+     *  worth N+ stardust (always with every shiny). 0 = it does not say so: the mode is off, or this catcher does not
+     *  know it. */
     static long only(String state) {
         return Math.max(0, longOf(val(counters(state), "only"), 0));
     }
@@ -390,21 +410,64 @@ final class Logic {
     /** The Auto-Catch tile's words while it is on: what the catcher itself reports it catches. */
     static String catchLine(String state, boolean reporting) {
         long n = reporting ? only(state) : 0;
-        return n >= 1 ? "only " + num(String.valueOf(n)) + "+ stardust and shinies" : "catching nearby";
+        if (n == 1) return "only high-stardust Pokemon and shinies";
+        return n >= 2 ? "only " + num(String.valueOf(n)) + "+ stardust and shinies" : "catching nearby";
     }
 
-    /** What a Catch-only step means, in species ("" for everything). */
-    static String dustHint(String value) {
-        if (value.equals("0")) return "";
-        if (value.equals("500")) return "final evolutions and bonus-stardust species, plus every shiny";
-        if (value.equals("700")) return "bonus-stardust species (Minior, Sableye, Trubbish, Combee...), plus every shiny";
-        if (value.equals("1000")) return "Minior, Shellder, Chimecho, Cloyster, Audino, plus every shiny";
-        return "species worth " + num(value) + "+ stardust a catch, plus every shiny";
+    /** One level of the catcher's pogo_dust_levels.txt: {count, names ("" when the file gives none)}, or null when the
+     *  file has no good line for it. The file: line 1 "base=100 species=1024 batch=<id>", then one line per level 1, 500,
+     *  700 and 1000: "<N> <count>", followed by one space and the names joined with ", " only when there are 25 or
+     *  fewer. Lines that do not fit are skipped. */
+    static String[] dustLevel(String levels, String n) {
+        if (levels == null) return null;
+        String[] lines = levels.split("\n");
+        for (int i = 0; i < lines.length; i++) {
+            String l = lines[i].trim();
+            if (!l.startsWith(n + " ")) continue;
+            String rest = l.substring(n.length() + 1).trim();
+            int sp = rest.indexOf(' ');
+            String count = sp < 0 ? rest : rest.substring(0, sp);
+            if (!digits(count) || count.length() > 6) continue;
+            return new String[]{count, sp < 0 ? "" : rest.substring(sp + 1).trim()};
+        }
+        return null;
     }
 
-    /** The switch asks for N+, Auto-Catch is on and the catcher is reporting, but its line does not say only=N: the
-     *  running catcher is not doing it (an older catcher does not know the switch). "" = nothing to warn about. Not
-     *  within 30 s of a tap: the catcher rewrites its line every ~10 s. */
+    /** base= from the first line of the levels file (what a normal catch pays), or "" when it is not there. */
+    static String dustBase(String levels) {
+        if (levels == null || levels.length() == 0) return "";
+        String b = val(levels.split("\n")[0].trim(), "base");
+        return b != null && longOf(b, -1) > 0 ? b : "";
+    }
+
+    /** The hint under the High stardust row for what the switch file holds. The counts and the names come from the
+     *  catcher's levels file, never from text in this app: the species change with the game. Without that file (it is
+     *  not there until a catcher that writes it runs) the hint has no numbers. */
+    static String dustHint(String value, String levels) {
+        if (value.equals("0")) return "catching every Pokemon";
+        if (!(value.equals("1") || value.equals("500") || value.equals("700") || value.equals("1000")))
+            return "custom: " + num(value) + "+";
+        String[] lv = dustLevel(levels, value);
+        if (value.equals("1")) {
+            if (lv == null) return "only Pokemon that pay more than the normal catch, plus every shiny";
+            String base = dustBase(levels);
+            return "only the " + num(lv[0]) + " species that pay more than the normal "
+                    + (base.length() > 0 ? num(base) + " " : "") + "stardust, plus every shiny";
+        }
+        if (lv == null) return "only Pokemon worth " + num(value) + "+ stardust, plus every shiny";
+        return "only " + num(lv[0]) + " species" + (lv[1].length() > 0 ? ": " + lv[1] : "") + ", plus every shiny";
+    }
+
+    /** dustchk=<hours> in the state line: how long ago the catcher last checked its stardust list. Above 72 hours the
+     *  row says so ("" otherwise, when the key is not there, or when nobody is reporting). */
+    static String dustStale(String state, boolean reporting) {
+        long h = reporting ? longOf(val(counters(state), "dustchk"), -1) : -1;
+        return h > 72 ? "stardust list not checked for " + (h / 24) + " days" : "";
+    }
+
+    /** The switch asks for a mode, Auto-Catch is on and the catcher is reporting, but its line does not say only=<the
+     *  same number>: the running catcher is not doing it (an older catcher does not know the switch). "" = nothing to
+     *  warn about. Not within 30 s of a tap: the catcher rewrites its line every ~10 s. */
     static String dustWarn(String value, boolean catchOn, String state, long stateAgeMs, long tapAgoMs) {
         long n = longOf(value, 0);
         if (n < 1 || !catchOn) return "";
@@ -412,8 +475,9 @@ final class Logic {
         if (tapAgoMs >= 0 && tapAgoMs <= 30000) return "";
         long doing = only(state);
         if (doing == n) return "";
-        return doing == 0 ? "The running catcher is not doing this yet: it still catches everything."
-                          : "The running catcher still reports only " + num(String.valueOf(doing)) + "+.";
+        if (doing == 0) return "The running catcher is not doing this yet: it still catches everything.";
+        return "The running catcher reports another setting: "
+                + (doing == 1 ? "all high-stardust species" : num(String.valueOf(doing)) + "+") + ".";
     }
 
     /** sp=: 1 = the last catch paid with a Star Piece, 0 = without one, -1 = the catcher did not say. */
@@ -533,9 +597,11 @@ final class Screen {
     // (run_gym.sh); gym-off only writes the flag and the supervisor stops by itself. The gym runner writes ONE status
     // line, which the tile shows.
     static final String GYMFLAG = T + "pogo_gym.on", GYM_STATUS = T + "pogo_gym_status.txt";
-    // Catch only: a whole number. 0 (or no file) = everything; N = only species worth N+ stardust a catch, plus every
-    // shiny. The catcher reads it; catcher_ctl.sh dust-off / dust-<N> write it.
-    static final String DUSTFLAG = T + "pogo_dust.on";
+    // High stardust only: a whole number. 0 (or no file) = everything; 1 = every species that pays more than the normal
+    // catch; N = only species worth N+ stardust. Every shiny is always caught. The catcher reads it; catcher_ctl.sh
+    // dust-off / dust-on / dust-<N> write it. What each step means today (how many species, which ones) is in a file the
+    // catcher writes, DUST_LEVELS: the species change with the game, so no list is baked into this app.
+    static final String DUSTFLAG = T + "pogo_dust.on", DUST_LEVELS = T + "pogo_dust_levels.txt";
     // Berries: 1 = Pinap + Razz, pinap, razz, anything else = none. The catcher reads it every second.
     static final String BERRYFLAG = T + "pogo_berries.on";
     static final String STATE = T + "pogo_state.txt";
@@ -619,7 +685,7 @@ final class Screen {
     static final class Snap {
         long now;
         String[] flags;
-        String state = "", gym = "", reward = "", cull = "", toc = "", apples = "";
+        String state = "", gym = "", reward = "", cull = "", toc = "", apples = "", levels = "";
         long stateMs, gymMs, cullMs;
         boolean tocExists;
     }
@@ -650,7 +716,7 @@ final class Screen {
     private LinearLayout numbers, extraRow;
     private int spPainted = -2;
     private Bar berryBar, dustBar;
-    private TextView berryStock, dustNote, dustHint, dustWarn;
+    private TextView berryStock, dustHint, dustWarn;
     private LinearLayout tocRow1, tocRow2;
     private Toggle tocToggle;
     private TextView tocIv, tocDry, tocNote;
@@ -692,18 +758,17 @@ final class Screen {
         gymTile = tile("Gym Battle", gymF, "gym-on", "gym-off", "", "", 3);
         content.addView(gymTile.box, lp(MATCH, WRAP, 10, 0));
 
-        // Catch only (Benny 2026-11-18: "a catch mode that only catches high stardust pokemon (+ shinies)")
-        dustNote = text("", 12, DIMC, false);
-        dustNote.setSingleLine(true);
-        content.addView(section("CATCH ONLY", dustNote), sectionLp());
-        dustBar = new Bar(dustF, new String[][]{{"Everything", "0", "dust-off"}, {"500+", "500", "dust-500"},
-                                                {"700+", "700", "dust-700"}, {"1,000+", "1000", "dust-1000"}});
+        // High stardust only (Benny 2026-11-18: "a catch mode that only catches high stardust pokemon (+ shinies)",
+        // "inclusive of EVERY higher than avg stardust pokemon for that mode")
+        content.addView(section("HIGH STARDUST ONLY", null), sectionLp());
+        dustBar = new Bar(dustF, new String[][]{{"Off", "0", "dust-off"}, {"All", "1", "dust-on"},
+                                                {"500+", "500", "dust-500"}, {"700+", "700", "dust-700"},
+                                                {"1,000+", "1000", "dust-1000"}});
         content.addView(dustBar.view, lp(MATCH, WRAP, 0, 0));
         content.addView(dustBar.note, noteLp());
-        dustHint = text("", 12, DIMC, false);        // which species the chosen step means
-        dustHint.setVisibility(View.GONE);
+        dustHint = text("", 12, DIMC, false);        // what the lit step means today (from the catcher's levels file)
         content.addView(dustHint, noteLp());
-        dustWarn = text("", 12, AMBER, false);       // the switch says one thing, the running catcher reports another
+        dustWarn = text("", 12, AMBER, false);       // an old stardust list; the catcher reporting another setting
         dustWarn.setVisibility(View.GONE);
         content.addView(dustWarn, noteLp());
 
@@ -780,6 +845,7 @@ final class Screen {
         Snap s = empty();
         for (int i = 0; i < flags.length; i++) s.flags[i] = readFile(flags[i].path);
         s.apples = readFile(APPLEFLAG);
+        s.levels = readText(DUST_LEVELS);
         s.state = readFile(STATE);
         s.stateMs = new File(STATE).lastModified();          // 0 when missing
         s.gym = readFile(GYM_STATUS);
@@ -908,7 +974,7 @@ final class Screen {
             String[] g = Logic.gym(on, s.gym, gAge, tapAgo);
             rest = g[0];
             restColor = color(Integer.parseInt(g[1]));
-        } else if (t == catchTile && on) {   // what the catcher itself reports: everything, or only N+ stardust
+        } else if (t == catchTile && on) {   // what the catcher itself reports: everything, or high stardust only
             long ageMs = s.stateMs > 0 ? Math.max(0, s.now - s.stateMs) : -1;
             rest = Logic.catchLine(s.state, ageMs >= 0 && ageMs <= Logic.STATE_STALE_MS);
         } else {
@@ -924,18 +990,17 @@ final class Screen {
 
     private void paintDust(Snap s) {
         dustBar.paint();
-        String v = dustF.shown;
-        line(dustNote, v.equals("0") ? "every Pokemon" : "", DIMC);
-        String hint = Logic.dustHint(v);
-        dustHint.setText(hint);
-        dustHint.setVisibility(hint.length() > 0 ? View.VISIBLE : View.GONE);
-        // The switch is the file; what the catcher does is in its own line. When the two disagree, say so.
+        dustHint.setText(Logic.dustHint(dustF.shown, s.levels));
         long ageMs = s.stateMs > 0 ? Math.max(0, s.now - s.stateMs) : -1;
         long tapAgo = dustTapMs > 0 ? Math.max(0, s.now - dustTapMs) : -1;
+        // Two things worth an amber line: the catcher's stardust list is old; the switch (the file) says one thing and
+        // the running catcher reports another.
+        String old = Logic.dustStale(s.state, ageMs >= 0 && ageMs <= Logic.STATE_STALE_MS);
         String warn = dustF.want != null ? ""
                 : Logic.dustWarn(dustF.file, catchF.shown.equals("1"), s.state, ageMs, tapAgo);
-        dustWarn.setText(warn);
-        dustWarn.setVisibility(warn.length() > 0 ? View.VISIBLE : View.GONE);
+        String both = old.length() > 0 && warn.length() > 0 ? old + "\n" + warn : old + warn;
+        dustWarn.setText(both);
+        dustWarn.setVisibility(both.length() > 0 ? View.VISIBLE : View.GONE);
     }
 
     private void paintToc(Snap s) {
@@ -1183,7 +1248,7 @@ final class Screen {
 
     private LinearLayout.LayoutParams sectionLp() {
         LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(MATCH, WRAP);
-        p.setMargins(dp(2), dp(16), dp(2), dp(7));
+        p.setMargins(dp(2), dp(14), dp(2), dp(7));
         return p;
     }
 
@@ -1199,7 +1264,7 @@ final class Screen {
         t.box = new LinearLayout(ctx);
         t.box.setOrientation(LinearLayout.VERTICAL);
         t.box.setPadding(dp(12), dp(10), dp(12), dp(10));
-        t.box.setMinimumHeight(dp(72));
+        t.box.setMinimumHeight(dp(70));
         t.box.setClickable(true);
         t.box.setOnClickListener(new View.OnClickListener() {
             public void onClick(View v) {
@@ -1248,7 +1313,7 @@ final class Screen {
         return r;
     }
 
-    /** A segmented bar bound to one flag file (Berries, Catch only): one rounded bar, equal segments, the chosen one
+    /** A segmented bar bound to one flag file (Berries, High stardust only): one rounded bar, equal segments, the chosen one
      *  filled yellow. It shows what the file really holds, so a value that is none of the segments lights none. Under
      *  it sits a note that only shows while a tap is being applied or when it did not take. */
     private final class Bar {
@@ -1463,7 +1528,7 @@ final class Screen {
             {"Perfect Throw", "Every throw scores Excellent + curveball, including the ones you throw by hand."},
             {"Tap to Move", "Tap a spot on the map to move there, so you can reach things that are out of range."},
             {"Gym Battle", "A gym you open is battled until it is empty, then a shiny Gyarados goes in. An empty gym or a red gym with room gets one straight away. It never moves you to a gym. Runs on the phone."},
-            {"Catch only", "Leaves low-stardust Pokemon alone to save bag space. It still catches every shiny."},
+            {"High stardust only", "Leaves normal-stardust Pokemon alone. Every shiny is still caught. The list updates itself."},
             {"Berries", "What is fed before the throw. Pinap: a Pinap on every Pokemon. Razz: a Razz on the hard ones only. Both: Razz on the hard ones, Pinap on the rest. Never a Golden Razz or a Silver Pinap."},
             {"Transfer on Catch", "Tags junk the moment you catch it, so less piles up for the cull. It only tags; it never releases anything."},
             {"Catch Rewards", "Clears stacked Field Research reward encounters that piled up while your box was full."},
@@ -1630,6 +1695,22 @@ final class Screen {
             return lastLine;
         } catch (Exception e) {
             Log.e(TAG, "shell fail: " + e);
+            return "";
+        }
+    }
+
+    /** A small text file with its line breaks kept (readFile joins the lines into one). "" when it is not there. */
+    static String readText(String path) {
+        try {
+            File f = new File(path);
+            if (!f.exists()) return "";
+            BufferedReader r = new BufferedReader(new FileReader(f));
+            StringBuilder sb = new StringBuilder();
+            String line;
+            while ((line = r.readLine()) != null && sb.length() < 20000) sb.append(line).append('\n');
+            r.close();
+            return sb.toString();
+        } catch (Exception e) {
             return "";
         }
     }
