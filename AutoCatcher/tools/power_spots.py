@@ -19,6 +19,7 @@ The boss's gender is the catch's gender (14 of 14 on 2026-11-16).
   python AutoCatcher/tools/power_spots.py --from FILE [--at LAT,LNG]   redo the comparison from a saved read (no phone)
   python AutoCatcher/tools/power_spots.py --selftest               offline checks (CI)
   --data DIR   the pogo_extract folder holding the game master and pokemon.db (default: the one next to AutoCatcher)
+  --radius M   only Power Spots within M metres count (default 3000: the game keeps an earlier place's spots too)
 Writes AutoCatcher/system/analysis/scans/power_spots_<stamp>.json (the read) and .html (the page: offline, phone width).
 That folder is git-ignored: a read holds his whole Pokedex.
 """
@@ -45,6 +46,8 @@ DEX = "Holoholo.Rpc.PokedexEntryProto"
 MON = "Holoholo.Rpc.PokemonProto"
 SLOW_SCAN_MS = 2500        # a slower heap scan skips the rest of the reads (protects the game)
 MIN_DEX = 100              # fewer Pokedex entries = an incomplete read: no tier is claimed from it
+RADIUS_M = 3000            # the game keeps the Power Spots of the place he was before (London, seen from New York,
+                           # 11-18): only spots within this distance of him count
 
 MODE = {1: "Dynamax", 2: "Gigantamax"}
 DEX_CAT = {1: "BREAD_MODE", 2: "BREAD_DOUGH_MODE"}
@@ -272,7 +275,7 @@ def blocked(sp, dex, gm):
     return out
 
 
-def compare(read, gm, forms, looks, bag, at=None, bag_at=None):
+def compare(read, gm, forms, looks, bag, at=None, bag_at=None, radius=RADIUS_M):
     """The whole answer from one read: spots with distances, gaps by tier, what the map can't give."""
     data = read.get("data") or {}
     here = tuple(at or read.get("here") or ()) or None
@@ -280,6 +283,8 @@ def compare(read, gm, forms, looks, bag, at=None, bag_at=None):
     sp = spots(data.get(STATION), forms)
     for s in sp:
         s["dist"] = meters(here, (s["lat"], s["lng"])) if here else None
+    far = [s for s in sp if s["dist"] is not None and s["dist"] > radius]
+    sp = [s for s in sp if s["dist"] is None or s["dist"] <= radius]
     sp.sort(key=lambda s: (s["dist"] is None, s["dist"] or 0, s["name"]))
     held = collections.defaultdict(list)
     for pid, mode, fk, g in bag:
@@ -311,7 +316,8 @@ def compare(read, gm, forms, looks, bag, at=None, bag_at=None):
             "tier1": [g for g in t12.values() if g["tier"] == 1], "tier2": [g for g in t12.values() if g["tier"] == 2],
             "tier3": list(t3.values()), "blocked": blocked(sp, dex, gm) if complete else [], "kinds": kinds,
             "not_held": not_held, "change_ms": ends.most_common(1)[0][0] if ends else 0, "gm": gm,
-            "errors": list(read.get("errors") or []), "post": (read.get("meta") or {}).get("post"), "bag_at": bag_at}
+            "errors": list(read.get("errors") or []), "post": (read.get("meta") or {}).get("post"), "bag_at": bag_at,
+            "far": len(far), "far_km": min((s["dist"] for s in far), default=0) / 1000, "radius": radius}
 
 
 def _dist(s):
@@ -333,6 +339,10 @@ def summary(res):
     out = ["Power Spots read %s: %d out to %.1f km, %d boss kinds (%s). Bosses change %s." % (
         (res["read_at"] or "?")[11:16], len(sp), far / 1000, len(res["kinds"]), ", ".join("%d %s" % (n, m) for m, n in modes.most_common()),
         time.strftime("%a %H:%M", time.localtime(res["change_ms"] / 1000)) if res["change_ms"] else "?")]
+    if res["far"]:
+        out.append("Left out: %d spots %.0f+ km away (the game keeps the place you were before; --radius %d m)." % (res["far"], res["far_km"], res["radius"]))
+    if not res["here"]:
+        out.append("WARNING: your position was not read -- every spot the game holds counts, near or far.")
     if not res["complete"]:
         out.append("STOP: only %d Pokedex entries were read (want %d+) -- no tier is claimed from an incomplete read." % (res["dex_n"], MIN_DEX))
         return out + ["error: " + e for e in res["errors"]]
@@ -392,6 +402,8 @@ def page_html(res):
     head = "Read from the game %s. %d Power Spots out to %.1f km, %d boss kinds. Distances from where you stood then. Bosses change %s." % (
         (res["read_at"] or "?")[11:16], len(sp), far / 1000, len(res["kinds"]),
         time.strftime("%a %H:%M", time.localtime(res["change_ms"] / 1000)) if res["change_ms"] else "?")
+    if res["far"]:
+        head += " Left out: %d Power Spots %.0f+ km away, from a place you were before." % (res["far"], res["far_km"])
     if res.get("bag_at"):
         head += " Your bag: the last walk (%s) plus catches since; an evolution since then is not seen." % time.strftime("%m-%d %H:%M", time.localtime(res["bag_at"]))
     body = ['<h1>Dynamax near you</h1><p class="mut">%s</p>' % e(head)]
@@ -765,12 +777,13 @@ def selftest(data=DATA):
         return s
     stations = [station(1, 25, 598, 2, 1, 0.005, boss=False), station(1, 25, 598, 2, 1, 0.005), station(1, 25, 598, 2, 1, 0.005),
                 station(2, 111, 0, 1, 1, 0.002), station(3, 215, 797, 1, 2, 0.003), station(4, 415, 1715, 1, 1, 0.004),
-                station(5, 884, 3208, 2, 4, 0.010)]
+                station(5, 884, 3208, 2, 4, 0.010), station(7, 415, 1715, 2, 1, 0.9)]   # spot 7: ~100 km away, an earlier place
     bag = [(112, 1, "", 1), (112, 1, "", 2), (111, 1, "", 1), (215, 1, "", 2), (215, 1, "", 2), (415, 1, "", 1), (25, 1, "", 1)]
     read = {"read_at": "2026-11-18 15:31:00", "here": list(here), "data": {STATION: stations, DEX: entries},
             "new_mons": {"rows": [{"id_": "9", "pokemonId_": 415, "pokemonDisplay_": {"BreadModeEnum": 1, "Gender": 2, "Form": 1715}}]}}
     res = compare(read, gm, forms, looks, bag)
-    assert len(res["spots"]) == 5, "duplicate spot records count once and the record with the boss wins"
+    assert len(res["spots"]) == 5, "duplicate spot records count once and the record with the boss wins; a far spot never counts"
+    assert res["far"] == 1 and "Left out: 1 spots" in "\n".join(summary(res)), "the earlier place's spot is left out and said"
     assert [g["key"] for g in res["tier1"]] == ["Dynamax Duraludon"]
     assert sorted(g["key"] for g in res["tier2"]) == ["female Dynamax Pikachu", "female Dynamax Raichu"], res["tier2"]
     t3 = {gm.label(t): tg for grp in res["tier3"] for t, tg in grp["targets"].items()}
@@ -813,6 +826,7 @@ def main(argv=None):
     ap.add_argument("--from", dest="src", help="a saved read (power_spots_*.json): redo the comparison, no phone")
     ap.add_argument("--at", help="LAT,LNG to measure distances from (with --from)")
     ap.add_argument("--data", default=DATA, help="the pogo_extract folder (game master, form names, gender looks, pokemon.db)")
+    ap.add_argument("--radius", type=float, default=RADIUS_M, help="only Power Spots within this many metres count (default %(default)s)")
     ap.add_argument("--selftest", action="store_true", help="offline checks (CI)")
     a = ap.parse_args(argv)
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -834,7 +848,7 @@ def main(argv=None):
         stem = os.path.join(OUT_DIR, "power_spots_" + time.strftime("%Y-%m-%d_%H%M"))
         with open(stem + ".json", "w", encoding="utf-8") as fh:
             json.dump(read, fh, indent=0)
-    res = compare(read, gm, forms, looks, bag, at=at, bag_at=bag_at)
+    res = compare(read, gm, forms, looks, bag, at=at, bag_at=bag_at, radius=a.radius)
     if bag_at:
         print("bag as of %s (pokemon.db), plus Dynamax catches read since" % time.strftime("%m-%d %H:%M", time.localtime(bag_at)))
     print("\n".join(summary(res)))
