@@ -70,6 +70,7 @@ jobs:
           python AutoCatcher/tools/ballsave_plan.py --selftest
           python AutoCatcher/tools/ballsave_go.py --selftest
           python AutoCatcher/tools/power_spots.py --selftest
+          python AutoCatcher/tools/stamp_collector.py --selftest
 
       - name: Safety guards hold
         working-directory: pogo_extract
