@@ -151,48 +151,120 @@ reconcile() {
   if flag_on "$CATCHFLAG" || flag_on "$SPINFLAG" || flag_on "$TAPFLAG" || flag_on "$PERFFLAG" || flag_on "$APPLEFLAG"; then start_proc; else stop_proc; fi
 }
 
-# ONE reward run at a time. A reward run holds the lock below for minutes, and that lock lets a waiting verb through
-# after ~20 s "rather than lose the command": on 2026-11-18 16:06 a second Catch Rewards tap, 18 s after the first,
-# started a second reward catcher on the same game (reward_stdout.log: both attached to one pid and worked the same
-# encounters) and PoGo died three times in 100 s. So a rewards verb that finds a reward run alive does nothing; the
-# run that is alive keeps writing its own status line. Checked here, before the lock, so that tap neither waits nor
-# touches the lock, and once more inside the verb for a tap that sat out the lock while the other run was starting.
+# Each supervisor by its switch: the catcher while one of its five switches is on, the gym runner while its switch is
+# on. The boot hook's work, and the last thing a reward run does.
+settle() { reconcile; if flag_on "$GYMFLAG"; then start_gym; fi; }
+
+# ---- NEVER TWO GAME CLIENTS ------------------------------------------------------------------------------------------
+# The reward catcher needs the game to ITSELF: the auto-catcher, the gym runner and a second reward catcher are each
+# one client too many. 2026-11-18 16:06, two Catch Rewards taps 18 s apart: the second reward catcher attached to the
+# same game, which crashed 7 s later (APP CRASH NATIVE) and, started again, froze under the two (ANR); and the first
+# run's end started the auto-catcher while the second reward catcher was still attached. The lock further down cannot
+# prevent that: a waiting verb goes ahead after ~20 s "rather than lose the command", and a reward run takes minutes.
+# So the rewards verb makes a MARKER for as long as it runs, and while a run is in flight
+#   - another rewards verb does nothing (the run that is alive keeps writing its own status line);
+#   - every other verb writes its flag as always and does NO process work: nothing starts, stops or restarts the
+#     catcher or the gym runner, and nothing waits for the lock. The run's end follows the flags as they are then.
+# The rewards verb itself does not run while Gym Battle is on or one of its processes is alive: nothing here ever parks
+# or kills a gym process (see GYMFLAG), so he switches Gym Battle off first.
+RWSTAT=/data/local/tmp/pogo_rewards.txt   # the app shows this line under Catch Rewards
+RWMARK="$HOME/pogo/.reward.run"           # a directory: mkdir is atomic, so two taps cannot both make it
+# Seconds between one client letting go of the game and the next one attaching. A quick re-attach is a crash roll for
+# the gadget (the crash notes of 2026-10-23 and 10-29 name no number; on 2026-11-18 16:10 the catcher re-attached 2 s
+# after a reward run let go, and he closed the game 17 s later).
+REATTACH_GAP=5
+VERB=$1
+note() { echo "$(date '+%H:%M:%S') $* (verb=$VERB pid=$$)" >> "$FLAGLOG"; }
 reward_running() { ps -ef 2>/dev/null | grep -qE "[r]eward_phone\.py"; }
-reward_refuse() {
-  echo "$(date '+%H:%M:%S') rewards: a reward run is already alive, this tap does nothing (pid=$$)" >> "$FLAGLOG"
-  exit 0
+# A gym process is alive on this phone: the supervisor (it can start a runner at any moment), a runner (it outlives its
+# supervisor while it unloads), or run_gym.sh --preflight, whose second half attaches to the game as well.
+gym_busy() { ps -ef 2>/dev/null | grep -qE "[r]un_gym\.sh|[g]ym_run\.py"; }
+# In flight = the marker is younger than 15 min AND (reward_phone.py is alive OR the marker is younger than 30 s: a run
+# parks the catcher before its python starts, and makes its marker young again for its last seconds). Any other marker
+# is stale -- its run died without cleaning up, or has hung for 15 min -- and is removed here, with a line in flags.log,
+# so a dead run can never block the switches.
+reward_in_flight() {
+  [ -d "$RWMARK" ] || return 1
+  age=$(( $(date +%s) - $(date -r "$RWMARK" +%s 2>/dev/null || echo 0) ))
+  if [ "$age" -ge 0 ] && [ "$age" -lt 900 ]; then
+    [ "$age" -lt 30 ] && return 0
+    reward_running && return 0
+  fi
+  alive=gone; reward_running && alive="still alive"
+  rmdir "$RWMARK" 2>/dev/null && note "rewards: stale reward marker removed (${age} s old, reward_phone.py $alive)"
+  return 1
 }
-if [ "$1" = rewards ] && reward_running; then reward_refuse; fi
+reward_refuse() { note "rewards: a reward run is in flight, this tap does nothing"; exit 0; }
+
+# What THIS run of the script made is removed when it exits, and nothing else: a verb that went ahead without the lock
+# must not remove the lock of the verb that holds it. TERM and INT do not end the script (they never did: the old trap
+# ran its rmdir and the script went on): a reward run has to reach its end, where the catcher starts again by the
+# flags. kill -9 leaves the marker and the lock behind: the marker goes stale by the rule above, the lock after 2 min.
+LOCK="$HOME/pogo/.ctl.lock"
+OWNLOCK=; OWNMARK=
+cleanup() {
+  [ -n "$OWNMARK" ] && rmdir "$RWMARK" 2>/dev/null
+  [ -n "$OWNLOCK" ] && rmdir "$LOCK" 2>/dev/null
+  return 0
+}
+trap cleanup EXIT
+trap : INT TERM
 
 # Serialize control ops (mkdir is atomic) so concurrent taps can't spawn two processes.
 # MUST WAIT, NEVER DROP: an earlier version exited 0 when the lock was held, so a toggle tapped
 # while start_proc was mid-dedupe was silently swallowed — the switch looked ON but the flag stayed OFF.
-LOCK="$HOME/pogo/.ctl.lock"
-i=0
-while ! mkdir "$LOCK" 2>/dev/null; do
-  if [ -n "$(find "$LOCK" -maxdepth 0 -mmin +2 2>/dev/null)" ]; then rmdir "$LOCK" 2>/dev/null; continue; fi
-  i=$((i+1)); [ "$i" -ge 40 ] && break   # ~20s max, then proceed anyway rather than lose the command
-  sleep 0.5
-done
-trap 'rmdir "$LOCK" 2>/dev/null' EXIT INT TERM
+take_lock() {
+  i=0
+  while :; do
+    if mkdir "$LOCK" 2>/dev/null; then OWNLOCK=1; return 0; fi
+    if [ -n "$(find "$LOCK" -maxdepth 0 -mmin +2 2>/dev/null)" ]; then rmdir "$LOCK" 2>/dev/null && continue; fi
+    i=$((i+1)); [ "$i" -ge 40 ] && return 0   # ~20s max, then proceed anyway rather than lose the command
+    sleep 0.5
+  done
+}
+
+# Is a reward run in flight? Asked BEFORE the lock, so a tap during a run does not sit out the lock's ~20 s first, and
+# once more after a wait for the lock: a run may have started meanwhile (it holds the lock for minutes).
+HOLD=
+gate() {
+  HOLD=
+  if reward_in_flight; then HOLD=1; return 0; fi
+  [ -n "$OWNLOCK" ] || take_lock
+  if reward_in_flight; then HOLD=1; fi
+  return 0
+}
+gate
+[ -n "$HOLD" ] && [ "$1" = rewards ] && reward_refuse
+
+# While a reward run is in flight a verb is flag only: one line in flags.log says so, and what the run's end will do.
+# Called AFTER the verb wrote its flag, and it looks at the marker once more: a run removes its marker and only THEN
+# reads the flags, so a flag written while the marker was still there is always seen by that run's end. Marker gone =
+# the run ended and may have missed this flag, so the verb does its own work after all (gate again: lock, look again).
+held() {
+  if [ -n "$HOLD" ] && [ ! -d "$RWMARK" ]; then gate; fi
+  [ -n "$HOLD" ] || return 1
+  note "$VERB: reward run in flight: flag only -- $1"
+  return 0
+}
+LATER="the catcher starts or stops by the flags when it ends"
 
 # Flags are written BEFORE taking any slow path, so a toggle is never lost even if the process
 # work below is interrupted.
 
 case "$1" in
-  start)      echo 1 > "$CATCHFLAG"; stop_proc; sleep 1; start_proc ;;   # legacy: hard restart, catching on
-  stop)       echo 0 > "$CATCHFLAG"; echo 0 > "$SPINFLAG"; stop_proc ;;  # legacy: everything off
-  catch-on)   setflag "$CATCHFLAG" 1 "catch-on"; ensure_live ;;
-  catch-off)  setflag "$CATCHFLAG" 0 "catch-off"; reconcile ;;
-  spin-on)    setflag "$SPINFLAG" 1 "spin-on"; ensure_live ;;
-  spin-off)   setflag "$SPINFLAG" 0 "spin-off"; reconcile ;;
-  perfect-on)  setflag "$PERFFLAG" 1 "perfect-on"; ensure_live ;;
-  perfect-off) setflag "$PERFFLAG" 0 "perfect-off"; reconcile ;;
-  tap-on)     setflag "$TAPFLAG" 1 "tap-on"; ensure_live ;;
-  tap-off)    setflag "$TAPFLAG" 0 "tap-off"; reconcile ;;
-  apples-on)  setflag "$APPLEFLAG" 1 "apples-on"; ensure_live ;;
-  apples-off) setflag "$APPLEFLAG" 0 "apples-off"; reconcile ;;
-  gym-on)     setflag "$GYMFLAG" 1 "gym-on"; start_gym ;;
+  start)      echo 1 > "$CATCHFLAG"; held "$LATER" || { stop_proc; sleep 1; start_proc; } ;;   # legacy: hard restart, catching on
+  stop)       echo 0 > "$CATCHFLAG"; echo 0 > "$SPINFLAG"; held "$LATER" || stop_proc ;;      # legacy: everything off
+  catch-on)   setflag "$CATCHFLAG" 1 "catch-on"; held "$LATER" || ensure_live ;;
+  catch-off)  setflag "$CATCHFLAG" 0 "catch-off"; held "$LATER" || reconcile ;;
+  spin-on)    setflag "$SPINFLAG" 1 "spin-on"; held "$LATER" || ensure_live ;;
+  spin-off)   setflag "$SPINFLAG" 0 "spin-off"; held "$LATER" || reconcile ;;
+  perfect-on)  setflag "$PERFFLAG" 1 "perfect-on"; held "$LATER" || ensure_live ;;
+  perfect-off) setflag "$PERFFLAG" 0 "perfect-off"; held "$LATER" || reconcile ;;
+  tap-on)     setflag "$TAPFLAG" 1 "tap-on"; held "$LATER" || ensure_live ;;
+  tap-off)    setflag "$TAPFLAG" 0 "tap-off"; held "$LATER" || reconcile ;;
+  apples-on)  setflag "$APPLEFLAG" 1 "apples-on"; held "$LATER" || ensure_live ;;
+  apples-off) setflag "$APPLEFLAG" 0 "apples-off"; held "$LATER" || reconcile ;;
+  gym-on)     setflag "$GYMFLAG" 1 "gym-on"; held "the gym runner starts when it ends" || start_gym ;;
   gym-off)    setflag "$GYMFLAG" 0 "gym-off" ;;   # the flag ONLY: run_gym.sh sees it and stops by itself (see GYMFLAG)
   berries-off)   setflag "$BERRYFLAG" 0 "berries-off" ;;        # the flag only: the catcher reads it every second
   berries-pinap) setflag "$BERRYFLAG" pinap "berries-pinap" ;;
@@ -205,25 +277,43 @@ case "$1" in
                 ''|*[!0-9]*|????????*) echo "usage: catcher_ctl.sh dust-off | dust-on | dust-<whole number>" ;;
                 *) setflag "$DUSTFLAG" "$((10#$n))" "dust-$n" ;;
               esac ;;
-  restart)    stop_proc; sleep 1; start_proc ;;
-  reconcile)  reconcile; if flag_on "$GYMFLAG"; then start_gym; fi ;;   # boot hook: starts each supervisor only if its toggle was left on
+  restart)    held "$LATER" || { stop_proc; sleep 1; start_proc; } ;;
+  reconcile)  held "$LATER" || settle ;;   # boot hook: starts each supervisor only if its toggle was left on
   rewards)
-    # One-shot: clear stacked Field-Research ("Today") reward encounters. The reward catcher needs the
-    # gadget to ITSELF (single client), so park the auto-catcher, run it, then restore both toggles.
-    # The app shows this status file. A cleanup can delete it and Termux can't create it, so root remakes it.
-    reward_running && reward_refuse           # one run at a time (see reward_running above)
-    RWSTAT=/data/local/tmp/pogo_rewards.txt
+    # One-shot: clear stacked Field-Research ("Today") reward encounters. The reward catcher needs the game to ITSELF
+    # (NEVER TWO GAME CLIENTS, above): park the auto-catcher, run it, then let the flags decide what runs.
+    # The app shows the status file. A cleanup can delete it and Termux can't create it, so root remakes it.
+    if reward_running; then   # a reward catcher with no marker (its run went stale, or it was started by hand) is a client too
+      note "rewards: reward_phone.py is alive without a marker, this tap does nothing"
+      exit 0
+    fi
+    if flag_on "$GYMFLAG" || gym_busy; then
+      if flag_on "$GYMFLAG"; then t="Gym Battle is on: switch it off first"; else t="Gym Battle is still running: tap again when it has stopped"; fi
+      t="$t @ $(date +%H:%M:%S)"
+      { echo "$t" > "$RWSTAT"; } 2>/dev/null || mkflag "$RWSTAT" "'$t'"
+      note "rewards: not run, Gym Battle is on or a gym process is alive"
+      exit 0
+    fi
+    mkdir "$RWMARK" 2>/dev/null || reward_refuse   # atomic: of two taps that both got this far, one makes it
+    OWNMARK=1
     { echo "queued $(date +%H:%M:%S)" > "$RWSTAT"; } 2>/dev/null || mkflag "$RWSTAT" queued
-    was_c=$(cat "$CATCHFLAG" 2>/dev/null | tr -d '[:space:]')
-    was_s=$(cat "$SPINFLAG"  2>/dev/null | tr -d '[:space:]')
-    stop_proc; sleep 2
+    stop_proc; sleep "$REATTACH_GAP"
     LD_LIBRARY_PATH=$HOME/applibs:$PREFIX/lib "${PY:-$PREFIX/bin/python3}" \
       "$HOME/pogo/system/scripts/game_write/reward_phone.py" "$2" \
       >> "$HOME/pogo/system/analysis/pokemod/reward_stdout.log" 2>&1
-    setflag "$CATCHFLAG" "$was_c" "rewards"; setflag "$SPINFLAG" "$was_s" "rewards"
-    reconcile
+    # Its last seconds are in flight too: the marker is young again (and back, if a verb removed it as stale during a
+    # run of more than 15 min), so nothing attaches during the gap. touch -c never makes a file.
+    mkdir "$RWMARK" 2>/dev/null; touch -c "$RWMARK" 2>/dev/null
+    sleep "$REATTACH_GAP"
+    # After minutes the lock looks abandoned (2 min): young again, so a verb that comes now waits for the line below.
+    [ -n "$OWNLOCK" ] && touch -c "$LOCK" 2>/dev/null
+    # The flags as they are NOW decide. A switch he flipped during the run was written at once (flag only) and is
+    # honoured here. Until 2026-11-18 this restored Catch and Spin to what they were BEFORE the run and so undid such a
+    # tap; neither reward_phone.py nor reward_catcher.py writes those flags, so there is nothing to restore.
+    rmdir "$RWMARK" 2>/dev/null; OWNMARK=
+    settle
     ;;
-  toggle)     if flag_on "$CATCHFLAG"; then echo 0 > "$CATCHFLAG"; else echo 1 > "$CATCHFLAG"; fi; reconcile ;;
+  toggle)     if flag_on "$CATCHFLAG"; then echo 0 > "$CATCHFLAG"; else echo 1 > "$CATCHFLAG"; fi; held "$LATER" || reconcile ;;
   status)     echo "proc=$(running && echo up || echo down) catch=$(flag_on "$CATCHFLAG" && echo 1 || echo 0) spin=$(flag_on "$SPINFLAG" && echo 1 || echo 0) perfect=$(flag_on "$PERFFLAG" && echo 1 || echo 0) tap=$(flag_on "$TAPFLAG" && echo 1 || echo 0) apples=$(flag_on "$APPLEFLAG" && echo 1 || echo 0) gym=$(flag_on "$GYMFLAG" && echo 1 || echo 0) berries=$(berry_mode) dust=$(dust_mode)" ;;
   *) echo "usage: catcher_ctl.sh start|stop|restart|reconcile|catch-on|catch-off|spin-on|spin-off|perfect-on|perfect-off|tap-on|tap-off|apples-on|apples-off|gym-on|gym-off|berries-off|berries-pinap|berries-razz|berries-on|dust-off|dust-on|dust-<N>|rewards|toggle|status" ;;
 esac
