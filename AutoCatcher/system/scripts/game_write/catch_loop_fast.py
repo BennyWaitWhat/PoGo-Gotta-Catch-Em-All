@@ -1666,18 +1666,55 @@ DUST_UPD = {"proc": None, "fh": None, "t": 0.0, "st": None, "stt": 0.0}   # the 
 # last started, and its record (catch_dust.state.json) as last read; later also what it last said (miss, misst, err)
 SPIN_WHY = ("spins are being refused", "the daily spin limit")   # why_idle()'s spin parts: logged as NOT SPINNING
 SP = {"on": False, "off": False, "since": None, "bare": 0, "last": None}   # last: did the newest catch pay with one
+SP_MULTS = (1, 2, 3, 4, 5, 6, 7, 8)   # the event multipliers on catch stardust the pay rule is worked out for (1 = no event)
+
+
+def sp_bare_odd(values):
+    """The awards WITHOUT a Star Piece that are NOT a multiple of 25, for these species stardust values (the table's).
+    The server's pay, held against 29,623 real catches (2026-11-18; it explains 29,495 of them, the others carry
+    another catch's award or a first-catch bonus), n = species stardust x event multiplier:
+      without a Star Piece   n + 25 + a quarter of n when weather-boosted, the quarter cut to a whole number
+      with one               each of the three parts x 1.5, EACH cut to a whole number (25 -> 37)
+    So 125 / 150 on a plain day, 225 / 275 in a 2x event; with a Star Piece 187 / 224 (not 225) and 337 / 412.
+    A quarter that is not whole happens at 750 and 950 with an odd multiplier: 962, 1212, 2837, 3587 ...
+    An award that some species also pays WITH a Star Piece is left out (none today: the table may change)."""
+    bare, star = set(), set()
+    for t in set(values):
+        for m in SP_MULTS:
+            n = m * t
+            bare.add(n + 25 + n // 4)
+            star.update((n * 3 // 2 + 37, n * 3 // 2 + 37 + n * 3 // 8))
+    return frozenset(a for a in bare - star if a % 25)
+
+
+def sp_paid(award):
+    """Was this catch paid with a Star Piece? Read off its award.
+    With one, an award is never a multiple of 25 (337, 412, 3037, 2287; 187 and 224 on a day without an event);
+    without one it is a multiple (225, 275, 2025; 125, 150) -- 29,636 catches checked, 7,400 of them on 11-16.
+    The exception, found 2026-11-18 when a review of this test was held against those catches (the review's own case,
+    "a boosted catch with a Star Piece and no event pays 225", is not real: 568 of them paid 224): a weather-boosted
+    catch WITHOUT a Star Piece of a species at 750 or 950 (Combee, Trubbish, Staryu, Meowth, Sableye; Vespiquen,
+    Garbodor, Starmie, Persian) on a day without an event pays 962 or 1212. Read as "with one", it switched the app's
+    chip to Star Piece ON, and the next ordinary catch rang the app's "The Star Piece ran out" alert: 44 such catches in
+    the logs (38 Combee, 4 Trubbish, 2 on another catch's line), all on days before the alert existed.
+    Those awards come from the table's own values (sp_bare_odd: no species list to go stale), and the award alone
+    decides -- the result queue hands about 1 award in 250 to another catch's line. No table: the plain test."""
+    if award % 25 == 0:
+        return False
+    tab = _DUST["table"]
+    return not tab or award not in sp_bare_odd(tab["dust"].values())
 
 
 def starpiece_seen(line, w):
     """STAR PIECE (2026-11-16: it ran out 18:47-19:09 and nobody saw it -- 227 catches paid a third less, ~64K stardust).
-    A catch WITH one pays an award that is not a multiple of 25 (337, 412, 3037, 2287 ...); WITHOUT one, a multiple
-    (225, 275, 2025, 2525 ...) -- 7,400 catches checked. Two bare catches in a row after one with it = it ran out; one
-    STARPIECE line per change. Silent until a catch has paid with one (no Star Piece at all is not news)."""
+    Whether a catch was paid with one is read off its award (sp_paid). Two bare catches in a row after one with it =
+    it ran out; one STARPIECE line per change. Silent until a catch has paid with one (no Star Piece at all is not news)."""
     m = re.search(r"(?:^|\s)CATCH \S+ #\d+ .*?dust=(\d+)", line)   # drain() hands the JS lines over without a time
     if not m or int(m.group(1)) < 100:
         return
-    SP["last"] = bool(int(m.group(1)) % 25)   # the app's "Star Piece ON / OFF" chip (state_extra)
-    if int(m.group(1)) % 25:
+    paid = sp_paid(int(m.group(1)))
+    SP["last"] = paid   # the app's "Star Piece ON / OFF" chip (state_extra)
+    if paid:
         SP["bare"] = 0
         if SP["off"]:
             w("STARPIECE on again: catches pay the Star Piece's 1.5x")
