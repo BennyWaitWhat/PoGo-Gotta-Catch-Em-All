@@ -324,7 +324,10 @@ def game_news_step():
         _o = subprocess.run(['adb', '-s', _pg.ADB_TARGET, 'shell', 'dumpsys package com.nianticlabs.pokemongo'],
                             capture_output=True, text=True, timeout=30).stdout
         _v = next((l.split('=', 1)[1].strip() for l in _o.splitlines() if 'versionName=' in l), None)
-        # when that version was installed (phone local time): an alexelgt game master names no APK, so I2.7 compares times
+        _c = next(((l.split('versionCode=', 1)[1].split() or [None])[0] for l in _o.splitlines() if 'versionCode=' in l), None)
+        # when the game was last INSTALLED (phone local time). That is not when it last CHANGED: the same version installed
+        # again moves it too (0.435.2 twice on 2026-11-18), so gm_guard.game_version_record also keeps `since`, the install
+        # time of the first pass that saw this version (name + code). I2.7 holds the game master's batch time against that
         _u = next((l.split('=', 1)[1].strip() for l in _o.splitlines() if 'lastUpdateTime=' in l), None)
         _vp = os.path.join('system', 'analysis', 'game_version.json')
         _pdoc = json.load(open(_vp, encoding='utf-8')) if os.path.exists(_vp) else {}
@@ -342,7 +345,8 @@ def game_news_step():
             if _pm and _pdoc.get('pokemod') and _pdoc.get('pokemod') != _pm:
                 say('POKEMOD UPDATED %s -> %s: re-verify size_line.showcase_points against a Pokemod screen before trusting '
                     'any XXL top-2 change (its showcaseScoreMath is where the +178 XXL bonus comes from)' % (_pdoc.get('pokemod'), _pm))
-            json.dump({'version': _v, 'updated': _u, 'pokemod': _pm or _pdoc.get('pokemod'), 'seen': time.strftime('%Y-%m-%d %H:%M')},
+            import gm_guard as _ggv
+            json.dump(_ggv.game_version_record(_pdoc, _v, _c, _u, _pm, time.strftime('%Y-%m-%d %H:%M')),
                       open(_vp, 'w', encoding='utf-8'))
     except Exception as _e:
         say('game version: not read (%s)' % _e)

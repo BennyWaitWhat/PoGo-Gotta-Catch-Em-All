@@ -1363,12 +1363,16 @@ def check_staleness(con, kc, cfm):
             _gm_gv = None
         _gm_f = _gg.freshness_findings(_gm_meta, _gm_gv)
         for _lvl, _msg, _do in _gm_f:
-            fail(WARN, _msg, _do)
+            if _lvl == 'NOTE':      # the game is newer than the newest published game data: a WARN on the first cull after
+                ok(_msg)            # the update (gm_guard.freshness_findings), then this line -- nothing is owed
+            else:
+                fail(WARN, _msg, _do)
         if not _gm_f:
             ok('the client game master is stamped: batch %s UTC from %s (APK %s), last compared with upstream %s UTC, game %s'
-               ' (installed %s)' % (_gm_meta['batch_utc'], _gm_meta.get('source', 'pokeminers'), _gm_meta.get('apk') or '?',
-                                    _gm_meta.get('checked_at', '?'), (_gm_gv or {}).get('version', '?'),
-                                    (_gm_gv or {}).get('updated') or '?'))
+               ' (on the phone since %s, last installed %s)' % (
+                   _gm_meta['batch_utc'], _gm_meta.get('source', 'pokeminers'), _gm_meta.get('apk') or '?',
+                   _gm_meta.get('checked_at', '?'), (_gm_gv or {}).get('version', '?'),
+                   (_gm_gv or {}).get('since') or '?', (_gm_gv or {}).get('updated') or '?'))
     except Exception as e:
         fail(WARN, 'could not judge the client game master stamp (%s: %s)' % (type(e).__name__, e),
              'Check pogo_extract/gm_guard.py imports and gamemaster_pokeminers.json.meta.')
