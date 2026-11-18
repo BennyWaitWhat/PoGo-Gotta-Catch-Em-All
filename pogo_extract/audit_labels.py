@@ -23,8 +23,11 @@ CONSUMED = {'protected', 'legacy', 'location_card', 'xxl', 'mighty', 'dex_only_c
 # evolution). A PvP comb-up (bucket 2c) comes BEFORE the legendary (3), card (5), shadow (7) and XXL (8) buckets ("shadow or
 # not", "legendary roster exempt"), so only a bucket 0/1 keep is consumed by one. An engine promise (bucket 9) and a shiny
 # upgrade ("collectible, trophy and shadow shinies are never advised to evolve") keep the whole set.
+# THE HUNDO COMB-UP (LAW 2026-11-18, rules.hundo_combup): a 15/15/15 stays a hundo when it evolves, so 'hundo' is the one keep that
+# advice does not consume -- and it is the only producer that may name a hundo at all.
 CONSUMED_BY = {'size': CONSUMED - {'xxl'},
-               'combup': CONSUMED - {'rarity', 'location_card', 'shadow_best', 'xxl'}}
+               'combup': CONSUMED - {'rarity', 'location_card', 'shadow_best', 'xxl'},
+               'hundo': CONSUMED - {'hundo'}}
 
 
 def main():
@@ -139,8 +142,11 @@ def main():
                                       ', '.join(sorted(tags)) or ','.join(sorted(evo)), src)
         if r['pokemon_id'] in prot or r['uid_hex'] in keep_config.hand_kept():
             bad.append(name + ': PROTECTED species advised to evolve')
-        if (r['iv_total'] or 0) in (0, 45):
+        _hundo_ok = src == 'hundo' and (r['iv_total'] or 0) == 45 and keep_config.rule_enabled('hundo_combup')
+        if (r['iv_total'] or 0) in (0, 45) and not _hundo_ok:
             bad.append(name + ': trophy (hundo/nundo) advised to evolve')
+        if src == 'hundo' and not _hundo_ok:
+            bad.append(name + ': a hundo comb-up on a copy that is not 15/15/15, or with rules.hundo_combup off')
         hit = reasons & CONSUMED_BY.get(src, CONSUMED)
         if hit:
             bad.append(name + ': kept as %s, evolving consumes it' % '/'.join(sorted(hit)))
@@ -236,6 +242,41 @@ def main():
             bad.append('%s %d%% [%s]: the best shiny of its look (form %s, costume %s, gender %s) advised to evolve'
                        % (r['species_name'], (r['iv_total'] or 0) * 100 // 45, ', '.join(sorted(worn[u])), r['form'],
                           r['fresh_costume'] or 0, r['gender']))
+    # THE HUNDO COMB-UP (LAW 2026-11-18: "one for each stage filling in the final evo first"), re-derived from the bag: the stage
+    # a hundo is sent to holds no hundo that stays, ONE hundo per stage, and never a stage while a later one this copy can
+    # become is left without. Shadow hundos are a line of their own. Stages as the engine's graph names them (a gender suffix
+    # folded like the shadow / purified lines).
+    _hc = {u: e for u, e in (adv or {}).items() if e.get('source') == 'hundo' and u in rows}
+    if _hc and _graph is None:
+        bad.append('hundo comb-up: %d advised and the evolution graph is unavailable -- cannot be judged' % len(_hc))
+    elif _hc:
+        _hk = lambda s: _kp.align_key(s, _graph[3])
+        _hsh = lambda r: r['fresh_alignment'] == 1
+        _hnm = lambda u: '%s %d%% cp%s' % (rows[u]['species_name'], (rows[u]['iv_total'] or 0) * 100 // 45, rows[u]['cp'])
+        _hat, _hgo = collections.defaultdict(set), collections.defaultdict(list)
+        for _u, _r in rows.items():
+            if (_r['iv_total'] or 0) == 45 and _u not in _hc and not keep_config.is_fused_component(_r):
+                _hat[(_hsh(_r), _hk(pvid(_r['species_name'], _r['form'] or 0)))].add(_u)
+        for _u, _e in _hc.items():
+            if granular_tags.hundo_collectible(rows[_u]):
+                bad.append('hundo comb-up: %s is a collectible look (costume, background, card or Max) advised to evolve' % _hnm(_u))
+            if len(_e.get('targets') or []) != 1:
+                bad.append('hundo comb-up: %s names %d targets (one stage per hundo)' % (_hnm(_u), len(_e.get('targets') or [])))
+            for _t in _e.get('targets') or []:
+                _hgo[(_hsh(rows[_u]), _hk(_t))].append(_u)
+        for (_s, _t), _us in sorted(_hgo.items()):
+            if len(_us) > 1:
+                bad.append('hundo comb-up: %d hundos are sent to %s (one per stage): %s' % (len(_us), _t, ', '.join(map(_hnm, sorted(_us)))))
+            if _hat.get((_s, _t)):
+                bad.append('hundo comb-up: %s is sent to %s, which already holds a hundo that stays' % (_hnm(_us[0]), _t))
+        for _u, _e in sorted(_hc.items()):
+            _r = rows[_u]
+            _own, _ts = _hk(pvid(_r['species_name'], _r['form'] or 0)), [_hk(t) for t in _e.get('targets') or []]
+            for _x in sorted({_hk(x) for x in (_later(_r) or ())} - {_own}):
+                if _ts and _graph[2].get(_x, 0) < _graph[2].get(_ts[0], 0) and not _hat.get((_hsh(_r), _x)) \
+                        and (_hsh(_r), _x) not in _hgo:
+                    bad.append('hundo comb-up: %s is sent to %s while the later stage %s has no hundo (the final stage first)'
+                               % (_hnm(_u), _ts[0], _x))
     # NEVER "evolve" AND "No Evolve" ON ONE COPY (2026-09-30, user: "The tag is the bug")
     _noev = set(_members(granular_tags.NO_EVOLVE))
     for u in sorted(_noev & set(worn)):

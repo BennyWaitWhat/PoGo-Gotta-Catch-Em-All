@@ -393,7 +393,8 @@ print('\nEVOLVE TAGS (2026-09-29) -- one advice per kept copy, re-derived both d
 # producer is called HERE -- never read from evolve_advice.json, which is then checked against this. When a copy is in
 # several, the first fixes its target: (1) the engine's promises (policy_reasons evolve_1 / evolve_2 + promises.json),
 # (2) the PvP comb-ups (the pick above; pvp_combup_labels.json now / gated, hold = no tag), (3) the shiny upgrades
-# (refresh_evolve_shiny.compute_target), (4) the showcase picks (sync_evolve_size.picks, each copy's best score); a
+# (refresh_evolve_shiny.compute_target), (4) the showcase picks (sync_evolve_size.picks, each copy's best score), (5) under
+# rules.hundo_combup the hundo comb-up (granular_tags.hundo_advice: one 15/15/15 per stage, the final stage first); a
 # comb-up also adds its leagues. Tag: a gate on ANY stage of the way (evolvable_forms.gate_reason -- Happiny -> Chansey
 # -> Blissey is gated at Chansey) -> Evolve Needs Item (every gate an item / lure) or Evolve Needs Task, else Evolve to Final
 # (every target ends its line on the engine's graph) or Evolve to Mid (2026-10-25: where it ends, true after it too); + Evolve
@@ -458,6 +459,9 @@ try:
         if _SIZE_BLOCK & set(_polz.get(format(int(u, 16), '016x')) or ()):
             continue
         _put(u, e['target'], 'size')
+    if keep_config.rule_enabled('hundo_combup'):       # 5. the hundo comb-up (2026-11-18); audit_labels re-derives its three rules
+        for u, (_ht, _hw) in sorted(_gt.hundo_advice({u: r for u, r in _vis.items() if u not in pile}, _polz, set(_adv)).items()):
+            _put(u, _ht, 'hundo')
     for e in _adv.values():
         e['tags'] = ({('Evolve Needs Item' if e['item'] else 'Evolve Needs Task') if e['gated']
                       else ('Evolve to Final' if e['final'] else 'Evolve to Mid')})

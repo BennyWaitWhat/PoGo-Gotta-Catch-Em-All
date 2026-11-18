@@ -449,11 +449,131 @@ def steps_between(src, dst):
     return len(path_between(src, dst)) or None
 
 
+# THE HUNDO COMB-UP (rules.hundo_combup; user 2026-11-18: "i just want my hundos comb'd up to ya know? like if i have 3 hundo
+# charmamander, then id like one for each stage filling in the final evo first", and of a lone hundo Cyndaquil under a hundo
+# Typhlosion: "yes, thats how the logic works"). A hundo stays a hundo when it evolves, so 'hundo' is the ONE keep this advice
+# does not consume; every other reason and fact of the label law keeps the copy what it is (audit_labels judges the same list).
+HUNDO_STAYS = frozenset({'protected', 'legacy', 'location_card', 'xxl', 'mighty', 'dex_only_copy', 'species_min', 'pattern_min',
+                         'regular_min', 'align_line', 'rarity', 'adventure_effect', 'shadow_best', 'nundo', 'fused',
+                         'pvp_best_gl', 'pvp_best_ul'})
+_HUNDO_GRAPH = {}
+
+
+def hundo_collectible(r):
+    """LAW: a collectible (card / costume / background / Max) never wears an Evolve label -- a hundo comb-up included."""
+    import evolvable_forms
+    return bool((r.get('fresh_natural_art_bg') or 0) or (r.get('fresh_has_location_card') and (r.get('fresh_loc_card_enum') or 0))
+                or (r.get('fresh_costume') or 0) or is_costume_form(r.get('fresh_form')) or is_costume_form(r.get('form'))
+                or evolvable_forms.max_axis(r.get('fresh_bread_mode')))
+
+
+def hundo_advice(kept_by, reasons, taken=(), why_not=None):
+    """{uid: (target stage, why it stops there or None)}: game_opportunities.hundo_combup over the kept 15/15/15s, each judged by
+    the label law first. taken: copies another producer already advises. why_not: a dict to fill with {uid: why it stays}.
+    A hundo already BUILT as the stage it is -- its CP within one power-up of 500 / 1500 / 2500, or level 50 -- stays too:
+    evolving it would undo the build. So does a collectible look (hundo_collectible)."""
+    import contextlib, io
+    for _p in (HERE, os.path.join(HERE, 'system', 'scripts')):
+        if _p not in sys.path:
+            sys.path.insert(0, _p)
+    import ae_moves, evolvable_forms, game_opportunities as go, rank_cache as rc
+    from pvp_iv_rule import maxcp, GL_CAP, UL_CAP, READY_RANK, VIABILITY_MARGIN, competitive
+    with contextlib.redirect_stdout(io.StringIO()):       # keep_policy prints on import
+        import keep_policy as kp
+    if not _HUNDO_GRAPH:
+        gm = json.load(open(os.path.join(HERE, 'pvpoke_gamemaster.json'), encoding='utf-8'))
+        _HUNDO_GRAPH['bs'] = {p['speciesId']: p.get('baseStats') or {} for p in gm['pokemon']}
+        _HUNDO_GRAPH['g'] = kp.build_evo_graph(gm, {e['pid'] for e in json.load(
+            open(os.path.join(HERE, 'pokedex_hundos_live.json'), encoding='utf-8'))['entries']}, with_all=True)
+    BS, graph = _HUNDO_GRAPH['bs'], _HUNDO_GRAPH['g']
+    try:
+        legacy = {e['uid_hex'] for e in json.load(open(os.path.join(HERE, 'legacy_accurate.json'), encoding='utf-8'))}
+    except (OSError, ValueError, KeyError, TypeError):
+        return {}                                         # a legacy mover could not be seen: no hundo is told to evolve
+    hund = [r for r in kept_by.values() if r.get('iv_atk') == 15 and r.get('iv_def') == 15 and r.get('iv_sta') == 15]
+    if not hund:
+        return {}
+    key = lambda s: kp.align_key(s, graph[3])
+    own = lambda r: key(pvid(r['species_name'], r.get('form') or 0))
+    raw = {r['uid_hex']: set(kp.pvp_later_stages(r, graph)) for r in hund}
+    later = lambda r: {key(t) for t in raw[r['uid_hex']]} - {own(r)}
+    depth = lambda s: graph[2].get(s, 0)
+    prot, hk, ae = keep_config.protected_pids(), keep_config.hand_kept(), ae_moves.move_ids()
+    rows = list(kept_by.values())
+    base0 = _base_form_map(rows)
+    cf0 = lambda r: (r.get('form') or 0) or base0.get(r['pokemon_id'], 0)
+    form_n = collections.Counter((r['pokemon_id'], cf0(r)) for r in rows)
+    if keep_config.line_pool_all():
+        import pattern_pools as _ppl
+        plk = lambda r: _ppl.pool_key(r['pokemon_id'], r['species_name'], r.get('form') or 0, r.get('gender'))
+        pool_n = collections.Counter(plk(r) for r in rows if plk(r))
+    else:
+        plk, pool_n = (lambda r: None), collections.Counter()
+    fc0 = collections.defaultdict(set)                     # the best shiny of a look never evolves (audit_labels' own look)
+    for r in rows:
+        if (r.get('form') or 0) != 0:
+            fc0[r['pokemon_id']].add(r['form'])
+
+    def look(r):
+        f = r.get('form') or 0
+        if f == 0 and len(fc0.get(r['pokemon_id'], ())) == 1:
+            f = next(iter(fc0[r['pokemon_id']]))
+        return (r['pokemon_id'], f, r.get('fresh_costume') or 0, evolvable_forms.gender_key(r['pokemon_id'], r.get('gender')))
+    look_best = {}
+    for r in rows:
+        if r.get('fresh_shiny'):
+            k = look(r)
+            if k not in look_best or ((r.get('iv_total') or 0), r['uid_hex']) > look_best[k]:
+                look_best[k] = ((r.get('iv_total') or 0), r['uid_hex'])
+
+    def at_cap(r):
+        b, lvl = BS.get(pvid(r['species_name'], r.get('form') or 0)), r.get('level')
+        i = int(round((lvl - 1) * 2)) if lvl else -1
+        if i >= rc.MAX_LEVEL_IDX:
+            return True                                   # maxed as the stage it is (his level-50 Gastly): a finished build
+        if not b or i < 0 or not r.get('cp'):
+            return False
+        nxt = rc.compute_cp(b['atk'], b['def'], b['hp'], 15, 15, 15, rc.CPM[i + 1], False)
+        return any(r['cp'] <= cap < nxt for cap in (500, GL_CAP, UL_CAP))
+
+    def blocked(r):
+        u, sid = r['uid_hex'], pvid(r['species_name'], r.get('form') or 0)
+        sh = 1 if r.get('fresh_alignment') == 1 else 0
+        hit = set(reasons.get(u) or ()) & HUNDO_STAYS
+        w = ('another advice already has it' if u in taken else
+             'protected or kept by hand' if r['pokemon_id'] in prot or u in hk else
+             'kept as ' + '/'.join(sorted(hit)) if hit else
+             'a legacy move' if u in legacy else
+             'Mighty' if keep_config.rule_enabled('mighty') and r.get('fresh_is_strong') == 1 else
+             'an Adventure-Effect move' if keep_config.rule_enabled('adventure_effect') and ae and ae_moves.known(r, ae) else
+             'the last copy of its form' if (keep_config.rule_enabled('dex_only') and form_n[(r['pokemon_id'], cf0(r))] <= 1
+                                              and not (plk(r) and pool_n[plk(r)] > 1)) else
+             'the best shiny of its look' if r.get('fresh_shiny') and look_best.get(look(r), (None, None))[1] == u else
+             'a collectible look (costume, background, card or Max)' if hundo_collectible(r) else
+             'its form cannot evolve' if evolvable_forms.row_can_evolve(r) is False else
+             'an own-stage PvP asset' if any(
+                 r.get(lg + '_stage') == sid and r.get(lg + '_rank') is not None and r[lg + '_rank'] <= READY_RANK and sid in BS
+                 and maxcp(sid, BS) > cap + VIABILITY_MARGIN and (r[lg + '_rank'] == 1 or competitive(lg, sid, sh))
+                 for lg, cap in (('gl', GL_CAP), ('ul', UL_CAP))) else
+             'built to a league cap as the stage it is' if at_cap(r) else None)
+        if w and why_not is not None:
+            why_not[u] = w
+        return w
+    got = go.hundo_combup(hund, own, later, depth, blocked, lambda s: s.replace('_', ' ').title())
+    out = {}
+    for u, (t, why) in got.items():                       # the stage id the graph names (a gendered branch: its own id)
+        real = sorted((x for x in raw[u] if key(x) == t), key=lambda x: (x not in graph[2], x))
+        if real:
+            out[u] = (real[0], why)
+    return out
+
+
 def evolve_advice(kept, reasons, pile):
     """ONE TABLE for every evolve advice (2026-09-29): {uid: {targets, steps, gated, gate, leagues, source, tags}}.
     Producers, in priority order when a copy is in several: the engine's promises (reasons evolve_1 / evolve_2 +
     promises.json), the PvP comb-ups (pvp_combup_labels.json, status now / gated; hold = no tag), the shiny upgrades
-    (refresh_evolve_shiny.compute_target) and the showcase picks (sync_evolve_size.picks). A shiny or size rule that
+    (refresh_evolve_shiny.compute_target), the showcase picks (sync_evolve_size.picks) and, under rules.hundo_combup, the hundo
+    comb-up (hundo_advice: the only producer that may name a 15/15/15). A shiny or size rule that
     cannot run is a HARD stop -- silently dropping its members would strip their tags under the empty-set contract.
     Tags (evolve_tag): a target that evolves again -> Evolve to Mid, the end of its line -> Evolve to Final; a game gate on the
     way -> Evolve Needs Item / Evolve Needs Task instead; ONE tag per copy (2026-11-15: no league marker). Never a pile mon, never a
@@ -529,6 +649,9 @@ def evolve_advice(kept, reasons, pile):
         if _SIZE_BLOCK & set(reasons.get(pad(u)) or ()):
             continue
         put(pad(u), [e['target']], 'size', stop=e.get('stop'))
+    if keep_config.rule_enabled('hundo_combup'):         # 5. the hundo comb-up (2026-11-18): one hundo per stage, final first
+        for u, (t, why) in hundo_advice(kept_by, reasons, set(out)).items():
+            put(u, [t], 'hundo', stop={'text': why} if why else None)
     for u, e in out.items():
         e['tags'] = [evolve_tag(e['gated'], e['gate'], e['final'])]   # ONE tag per copy (2026-11-15): no league marker beside it
     return out
