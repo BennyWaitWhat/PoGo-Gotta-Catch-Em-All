@@ -379,13 +379,15 @@ if _BMT:
 # league, the roster too -- read by independent_law from the ranking files on its own (the engine asks pvp_iv_rule.competitive)
 from independent_law import in_top_half as _lc_in_half
 _LC_TH = keep_config.rule_enabled('pvp_top_half')
+_LC_THM = keep_config.rule_enabled('pvp_top_half_ml')    # (2026-11-18) Best ML: the same test on the Master League list
 for _l in _pbg.values():
     for _lg, _cap in (('gl', _PB_GL), ('ul', _PB_UL)):
         _w, _wr = _usable_winner_rk(_l, _lg, _cap, own_only=True)
         if _w and _lc_in_half(_lg, _sid_of[_w], 0, _LC_TH) and (_wr <= _BRF or _pid_of.get(_w) in _LAW_RARE) and (
                 not _BMT or _wr <= _RDY or _pid_of.get(_w) in _LAW_RARE or _PB_META.get(_lg) is None or _sid_of[_w] in _PB_META[_lg]):
             _pvp_best_keep.add(_w)
-    _c = [x for x in _l if (x['ml_rank'] if 'ml_rank' in x.keys() else None) is not None and (x['ml_rank'] <= _BRF or x['pokemon_id'] in _LAW_RARE)]
+    _c = ([x for x in _l if (x['ml_rank'] if 'ml_rank' in x.keys() else None) is not None and (x['ml_rank'] <= _BRF or x['pokemon_id'] in _LAW_RARE)]
+          if _lc_in_half('ml', _sid_of[_l[0]['uid_hex']], 0, _LC_THM) else [])   # an ML species only
     if _c:
         _pvp_best_keep.add(min(_c, key=lambda x: (0 if _pb_via(x['ml_stage'], _PB_ML) else 1, x['ml_rank'], -(x['iv_total'] or 0),
                                              x['uid_hex']))['uid_hex'])

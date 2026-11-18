@@ -925,7 +925,9 @@ def _pvp_best_uids(bag, cf_norm, BS, gm_ok):
                         _g(b, 'pokemon_id') in _RARE or (bk[1] <= _BRF and _meta_ok(   # legendaries: no rank floor, no meta gate
                         lg, _pv(b['species_name'], _g(b, 'form') or 0), bk[1]))):
                     won.setdefault(b['uid_hex'], set()).add(lg.upper())
-        cand = [r for r in lst if _g(r, 'ml_rank') is not None and (_g(r, 'ml_rank') <= _BRF or _g(r, 'pokemon_id') in _RARE)]
+        cand = ([r for r in lst if _g(r, 'ml_rank') is not None and (_g(r, 'ml_rank') <= _BRF or _g(r, 'pokemon_id') in _RARE)]
+                if _il_half('ml', _pv(lst[0]['species_name'], _g(lst[0], 'form') or 0), 0,   # (2026-11-18) Best ML: an ML species only
+                            keep_config.rule_enabled('pvp_top_half_ml')) else [])
         if cand:
             b = min(cand, key=lambda r: (0 if (gm_ok and _viable(r['ml_stage'], _MLC, BS)) else 1, r['ml_rank'],
                                          -(_g(r, 'iv_total') or 0), r['uid_hex']))   # an ML tie: the higher IV (2026-11-16)

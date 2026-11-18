@@ -671,6 +671,7 @@ def _pb_meta(lg, st, rk):
 # the comb-up law; layer 7. NEVER the 0/15/15 spread (his 11-16 correction: "no 0-15-15 pokemon should be cull'd"): its layer below stays unconditional.
 from independent_law import in_top_half as _in_half
 _AC_TH = keep_config.rule_enabled('pvp_top_half')
+_AC_THM = keep_config.rule_enabled('pvp_top_half_ml')    # (2026-11-18) Best ML: the same test on the Master League list
 _ac_half = lambda lg, st, sh=0: _in_half(lg, st, sh, _AC_TH)
 for lst in _pbg.values():
     for _lg, _cap in (('gl', _PB_GL), ('ul', _PB_UL)):
@@ -679,7 +680,8 @@ for lst in _pbg.values():
                 and (_wr <= _BRF or rows[_w]['pokemon_id'] in _RARE_PIDS) \
                 and (rows[_w]['pokemon_id'] in _RARE_PIDS or _pb_meta(_lg, _pb_pvid(rows[_w]['species_name'], rows[_w].get('form') or 0), _wr)):   # legendaries: no rank floor (2026-09-24), no meta gate
             _pvp_best_keep.add(_w)
-    _c = [x for x in lst if x.get('ml_rank') is not None and (x['ml_rank'] <= _BRF or x['pokemon_id'] in _RARE_PIDS)]
+    _c = ([x for x in lst if x.get('ml_rank') is not None and (x['ml_rank'] <= _BRF or x['pokemon_id'] in _RARE_PIDS)]
+          if _in_half('ml', _pb_pvid(lst[0]['species_name'], lst[0].get('form') or 0), 0, _AC_THM) else [])   # an ML species only
     if _c:
         _pvp_best_keep.add(min(_c, key=lambda x: (0 if _pb_via(x.get('ml_stage'), _PB_ML) else 1, x['ml_rank'], -(x.get('iv_total') or 0),
                                              x['uid_hex']))['uid_hex'])

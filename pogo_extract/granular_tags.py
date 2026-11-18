@@ -852,7 +852,11 @@ def build(rows, pile, reasons):
     T[SIMPLE['pvp_best_ml']] -= {u for u in T[SIMPLE['pvp_best_ml']] if 'hundo' in (reasons.get(u) or ())}
     # ... NOR WHERE IT IS VARIANT #1 (2026-10-25, user picked "B"): your top-IV copy of a stage is its best ML copy, so 420 of
     # the 476 chips repeated the Variant #1 chip beside them. Best ML stays where it is a different copy.
-    T[SIMPLE['pvp_best_ml']] -= T.get(VARIANT_LABELS[0], set())
+    # ... UNLESS BEST ML IS GATED TO MASTER LEAGUE SPECIES (rules.pvp_top_half_ml; user 2026-11-18: "ml is confusing, because a lot
+    # of those pokemon arent competitive in ML" -> "this but hundos not included"): then the chip is his Master League list --
+    # the best copy of every species in the top half of pvpoke's list, Variant #1 or not, still never a hundo.
+    if not keep_config.rule_enabled('pvp_top_half_ml'):
+        T[SIMPLE['pvp_best_ml']] -= T.get(VARIANT_LABELS[0], set())
     # --- EVOLVE ADVICE, ONE TABLE (2026-09-29, see evolve_advice above) ---
     global LAST_ADVICE
     LAST_ADVICE = evolve_advice(kept, reasons, pile)
