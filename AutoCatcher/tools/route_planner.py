@@ -32,7 +32,7 @@ import sqlite3
 import time
 import urllib.parse
 import urllib.request
-from collections import defaultdict
+from collections import Counter, defaultdict
 
 ROOT = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), os.pardir))
 WAYS = os.path.join(ROOT, "system", "map", "manhattan_ways.json")
@@ -342,6 +342,94 @@ def plan(bbox, km, near=None, candidates=900, source="map"):
     return result(path, real, len(tour), t0, ctx), ctx["spots"]
 
 
+def _edges(seg):
+    """The undirected street edges of a node path."""
+    return [(u, v) if u < v else (v, u) for u, v in zip(seg, seg[1:])]
+
+
+def _leg(a, b, ctx, cache):
+    """The walking path a -> b (cached): (nodes, metres)."""
+    if (a, b) not in cache:
+        seg, L = dijkstra(ctx["adj"], ctx["pos"], a, b)
+        cache[(a, b)] = (seg, L) if seg else ([a], float("inf"))
+    return cache[(a, b)]
+
+
+def _doubled(uses, pos):
+    """Metres of street the loop walks more than once."""
+    return sum((n - 1) * hav(pos[e[0]], pos[e[1]]) for e, n in uses.items() if n > 1)
+
+
+def loop_uses(tour, ctx, cache):
+    """How often the closed walk uses each street edge, and its real length."""
+    uses, real = Counter(), 0.0
+    for i in range(len(tour)):
+        seg, L = _leg(tour[i], tour[(i + 1) % len(tour)], ctx, cache)
+        uses.update(_edges(seg))
+        real += L
+    return uses, real
+
+
+def prune_repeats(tour, ctx, cache, banned, target):
+    """Drop the anchors that make the loop walk a street twice (a dead end walked in and back out, or two legs on the same
+    street), the worst first: most doubled metres saved per spot value lost. Stops when the doubled share is <= target.
+    Dropped anchors go into `banned` so the next growth round fills the length with anchors the loop can pass through."""
+    pos, anchors, val = ctx["pos"], ctx["anchors"], ctx["val"]
+    while len(tour) > 3:
+        uses, real = loop_uses(tour, ctx, cache)
+        dbl = _doubled(uses, pos)
+        if dbl <= target * real:
+            return tour
+        cnt = Counter(s for a in tour for s in anchors[a])
+        best, bscore = None, 0.0
+        for i in range(1, len(tour)):                                  # tour[0] stays first
+            p, c, n = tour[i - 1], tour[i], tour[(i + 1) % len(tour)]
+            u2 = uses.copy()
+            u2.subtract(_edges(_leg(p, c, ctx, cache)[0]) + _edges(_leg(c, n, ctx, cache)[0]))
+            u2.update(_edges(_leg(p, n, ctx, cache)[0]))
+            saved = dbl - _doubled(u2, pos)
+            if saved <= 5.0:
+                continue
+            lost = sum(val[s] for s in anchors[c] if cnt[s] == 1)
+            score = saved / (lost + 0.5)
+            if score > bscore:
+                best, bscore = c, score
+        if best is None:
+            return tour
+        tour.remove(best)
+        banned.add(best)
+    return tour
+
+
+def plan_no_repeat(bbox, km, near=None, candidates=900, source="map", target=0.01, rounds=12):
+    """plan(), but the loop walks no street twice where it can avoid it (Benny 2026-11-18, Umeda: the first loop walked
+    the same street twice on 18% of its length -- dead ends in and back out; Midtown had 5%). Grow, 2-opt, drop the
+    anchors that double a street, grow again without them; repeat until nothing more is dropped."""
+    t0 = time.time()
+    ctx = prepare(bbox, source)
+    pos, anchors, val = ctx["pos"], ctx["anchors"], ctx["val"]
+    ranked = sorted(anchors, key=lambda a: -sum(val[s] for s in anchors[a]))[:candidates]
+    if near:
+        ranked.sort(key=lambda a: hav(pos[a], near) / 400.0 - sum(val[s] for s in anchors[a]))
+    start = ranked[0]
+    partner = max(ranked[1:60], key=lambda a: sum(val[s] for s in set(anchors[a]) - set(anchors[start])) / (hav(pos[a], pos[start]) + 50))
+    tour, banned, cache = [start, partner], set(), {}
+    for _ in range(rounds):
+        straight = sum(hav(pos[tour[i]], pos[tour[(i + 1) % len(tour)]]) for i in range(len(tour))) * DET
+        covered = {s for a in tour for s in anchors[a]}
+        tour, _ = grow(tour, straight, [a for a in ranked if a not in tour and a not in banned], covered, km * 1000.0, ctx)
+        tour = two_opt(tour, pos)
+        before = len(banned)
+        tour = prune_repeats(tour, ctx, cache, banned, target)
+        if len(banned) == before:
+            break
+    path, real = walk(tour, ctx)
+    res = result(path, real, len(tour), t0, ctx)
+    uses, _ = loop_uses(tour, ctx, cache)
+    res["doubled_m"] = _doubled(uses, pos)
+    return res, ctx["spots"]
+
+
 def bearing(a, b):
     """Compass bearing a -> b in degrees (0 = north, clockwise)."""
     p1, p2, dl = math.radians(a[0]), math.radians(b[0]), math.radians(b[1] - a[1])
@@ -496,6 +584,8 @@ def main():
     ap.add_argument("--spots", choices=["map", "bank"], default="map")
     ap.add_argument("--pattern", choices=["loop", "clover"], default="loop")
     ap.add_argument("--petals", type=int, default=4)
+    ap.add_argument("--no-repeat", action="store_true",
+                    help="loop: walk no street twice where avoidable (no dead ends in and back out; Benny 2026-11-18)")
     ap.add_argument("--n", type=int, default=5)
     ap.add_argument("--sep", type=float, default=1200.0)
     a = ap.parse_args()
@@ -507,12 +597,15 @@ def main():
         return
     if a.pattern == "clover":
         res, spots = plan_clover(bbox, a.km, a.petals, near, source=a.spots)
+    elif a.no_repeat:
+        res, spots = plan_no_repeat(bbox, a.km, near, source=a.spots)
     else:
         res, spots = plan(bbox, a.km, near, source=a.spots)
     name = a.name or f"midtown_{a.km:g}km"
     way = export(res, spots, name)
     print(f"{name}: {res['km']:.2f} km | stops {res['stops']} gyms {res['gyms']} = {(res['stops'] + res['gyms']) / res['km']:.1f}/km"
-          f" | lured {res['lured']} rocket {res['rocket']} as of {res['read_at']} ({res['age_txt']} old) | anchors {res['anchors']} | waypoints {len(way)} | {res['secs']:.0f}s")
+          f" | lured {res['lured']} rocket {res['rocket']} as of {res['read_at']} ({res['age_txt']} old) | anchors {res['anchors']} | waypoints {len(way)} | {res['secs']:.0f}s"
+          + (f" | street walked twice {res['doubled_m']:.0f} m = {100 * res['doubled_m'] / (res['km'] * 1000):.1f}%" if "doubled_m" in res else ""))
     if res.get("petals"):
         print(f"  clover hub {res['hub'][0]:.6f},{res['hub'][1]:.6f} ({res['hub_spots']} spots in range) | petals "
               + ", ".join(f"{L:.2f} km = {L / 10.6 * 60:.0f} min" for L in res["petals"]))
