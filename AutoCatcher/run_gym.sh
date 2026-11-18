@@ -254,6 +254,9 @@ while :; do
     else
       log "the runner (pid $pid) ended by itself after $ran s (exit code $rc)"
       if [ "$ran" -lt "$QUICK_S" ]; then quick=$((quick + 1)); else quick=0; fi
+      # exit code 86 = the runner gave up by its own rule (its code failed 3 sessions in a row): starting it again would
+      # only repeat the three attaches, so this is STOPPED at once
+      if [ "$rc" = 86 ]; then quick=$QUICK_MAX; fi
       if [ "$quick" -ge "$QUICK_MAX" ]; then
         why=$("$PY" -S "$P/tools/gym_status.py" --why "$LOG" 2>/dev/null | head -1); why=${why%$'\r'}
         latched=${why:-the gym runner quit $quick times in a row -- flip the switch off and on}

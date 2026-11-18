@@ -2057,8 +2057,12 @@ def dust_skip(now):
       notable  switched on, but there is no readable table: everything is caught, and the app is told why
       nolook   switched on, but the shiny read cannot be trusted (not found at this attach, or suspended for this run): a
                left-alone shiny could not be seen, so NOTHING is left alone until it can ("+ shinies" comes first).
-      nowx     switched on, a boost matters at this N, but the weather read is not found / not proven yet / proven wrong:
-               a boosted spawn could not be told, so nothing is left alone until it can. Never "skip and hope"."""
+      nowx     switched on, but the weather read is not found / not proven yet / proven wrong, and a boost could lift
+               EVERY left-alone species to N (the plain switch: 100 x 1.25 is above a normal catch): a boosted spawn could
+               not be told, so nothing is left alone until it can. Never "skip and hope".
+               At a level where a boost could lift only SOME species (1,000: the six at 800 to 950) those are simply
+               caught, boosted or not, until the read is proven -- the level itself applies at once (review 11-18: at
+               1,000+ the whole mode waited for 12 + 12 matching catches while balls went into commons)."""
     n = dust_min()
     tab = dust_table(now)
     look = bool(SHINYFIELD["ok"] and SHINYFIELD.get("checked"))
@@ -2092,7 +2096,10 @@ def dust_skip(now):
         skip = sorted(d for d in dust if not pays(d) and d not in prio)
         pk = sum(1 for d in prio if d in dust and not pays(d))
         lifted = [d for d in skip if 5 * dust[d] > 4 * base and 5 * dust[d] >= 4 * n]   # x1.25 puts it above the base AND at N
-        if lifted and wxv != "proven":   # the flag would decide here and cannot be trusted: leave nothing alone
+        unsure = len(lifted) if wxv != "proven" else 0
+        if unsure:   # the flag would decide for these and cannot be trusted: they are simply CAUGHT, boosted or not
+            skip, lifted = [d for d in skip if d not in set(lifted)], []
+        if unsure and not skip:   # that was every left-alone species (the plain switch): nothing is left alone, and the app is told why
             st, skip, kept = "nowx", [], 0
             long, short = {"nofield": ("the weather-boost field was not found in this game version", "it cannot read the weather boost in this game version"),
                            "wrong": (f"the weather-boost read was proven WRONG on live catches ({WX['bad']} paid against their flag)",
@@ -2110,7 +2117,8 @@ def dust_skip(now):
                 head = f"(every above-normal species, {kept:,} of {len(dust):,}, and every weather-boosted spawn)"
                 wxs = "and every weather-boosted spawn"
             else:
-                wxs = f"{len(lifted)} more when weather-boosted" if lifted else f"no weather boost reaches {n}"
+                wxs = (f"{unsure} more caught whatever the weather until the weather read is proven" if unsure
+                       else f"{len(lifted)} more when weather-boosted" if lifted else f"no weather boost reaches {n}")
                 head = f"{n}+ ({kept:,} of {len(dust):,} species, {wxs})"
             note = (f"{head}: leaving {len(skip):,} alone" + (f" ({pk} priority species stay caught)" if pk else "")
                     + "; a shiny or a Mighty of any of them is still caught")

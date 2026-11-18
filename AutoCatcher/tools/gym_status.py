@@ -105,6 +105,10 @@ def scan(lines):
         if re.search(r'COMMAND stop|stopped cleanly', msg):   # (first: a stop that came in while the game was away says both)
             st['phase'] = 'stopping'
             continue
+        m = re.match(r'STOP: the gym runner failed \d+ times in a row \((\w+)', msg)
+        if m:                                                # its own code keeps failing: it stopped itself (gym_run.py main)
+            st.update(phase='ended', end='the gym runner keeps failing (%s) -- ask Claude' % m.group(1))
+            continue
         if re.search(r'lost the game connection|session failed', msg):
             st.update(phase='lost', note=None)
             continue
@@ -299,6 +303,10 @@ def selftest():
     assert status_from_log(bad) == end_reason(bad) == 'the runner cannot read this game version -- ask Claude'
     tb = L + ['Traceback (most recent call last):', '  File "gym_run.py", line 1, in <module>', 'ModuleNotFoundError: No module named \'frida\'']
     assert status_from_log(tb) == end_reason(tb) == 'the gym runner crashed -- ask Claude'
+    kf = L + ['12:08:00 session failed (KeyError: \'x\') -- retrying in 10 s', '12:08:13 session failed (KeyError: \'x\') -- retrying in 10 s',
+              '12:08:26 STOP: the gym runner failed 3 times in a row (KeyError: \'x\') -- not attaching again']
+    assert status_from_log(kf[:-1]).startswith('lost the game connection') and end_reason(kf[:-1]) == ''
+    assert status_from_log(kf) == end_reason(kf) == 'the gym runner keeps failing (KeyError) -- ask Claude'
     nr = L[:1] + ['12:00:02   !! phone root shell: no answer to a device command (OSError: the shell closed) -- device commands return nothing until it is back']
     assert status_from_log(nr) == 'no root shell on the phone (Magisk) -- ask Claude'
     assert status_from_log(nr + ['12:05:02 session failed (RuntimeError: PoGo never became attach-safe in 300s (no pid yet)) -- retrying in 10 s']) \

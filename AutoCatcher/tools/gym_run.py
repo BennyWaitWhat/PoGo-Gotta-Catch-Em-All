@@ -2001,9 +2001,11 @@ def main():
             "gets a shiny Gyarados, an empty gym gets the Gyarados at once, your team's gym with a free slot is joined. "
             "While it works on a gym it holds you there (a 25 m circle); after the gym the joystick gets nothing more")
     mv, done, t_start = Mover(a.speed, a.travel_speed), {}, time.time()
+    fails = 0                                                # sessions in a row that FAILED (not: lost the game) inside 60 s
     while time.time() - t_start < a.minutes * 60:            # re-attach and carry on if the game connection drops
         g = Game()
         g.on_open = a.on_open                                # (the Game words one message differently in this mode)
+        t_sess = time.time()
         try:
             run(a, g, mv, done, t_start, enemy, goal)
             return
@@ -2012,9 +2014,21 @@ def main():
             dd_said(dd_guard())
             time.sleep(3)
         except Exception as e:                               # never die: a relaunched / recovering game is re-attached by itself
+            fails = fails + 1 if time.time() - t_sess < 60 else 1
+            if a.on_open and fails >= FAIL_MAX:
+                # ON THE PHONE NOBODY WATCHES (review 2026-11-18, before the mode's first live run): an error in the runner's
+                # own code came back as an attach + install() every ~13 s until --minutes (100000) were up, with the app
+                # saying "lost the game connection" over a game that was fine. Three in a row = stop; exit code 86 tells
+                # run_gym.sh not to start it again (it says STOPPED until the switch is flipped).
+                dd_said(dd_guard())                          # (first: STOP has to be this log's LAST line -- gym_status.py
+                say(f"STOP: the gym runner failed {fails} times in a row ({type(e).__name__}: {e}) -- not attaching again")   # reads the reason from it)
+                sys.exit(86)
             say(f"session failed ({type(e).__name__}: {e}) -- retrying in 10 s")
             dd_said(dd_guard())
             time.sleep(10)
+
+
+FAIL_MAX = 3   # --on-open: this many failed sessions in a row (each inside 60 s) end the runner: see main()
 
 
 def gym_open(wh):
