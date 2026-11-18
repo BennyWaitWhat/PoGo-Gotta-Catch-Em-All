@@ -2,7 +2,11 @@ package com.benny.autocatcher;
 
 import android.app.Activity;
 import android.app.Instrumentation;
+import android.app.NotificationManager;
 import android.content.Context;
+import android.content.Intent;
+import android.content.SharedPreferences;
+import android.content.pm.PackageManager;
 import android.content.res.ColorStateList;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
@@ -14,9 +18,11 @@ import android.graphics.drawable.ColorDrawable;
 import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
 import android.graphics.drawable.RippleDrawable;
+import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.provider.Settings;
 import android.text.SpannableStringBuilder;
 import android.text.Spanned;
 import android.text.TextUtils;
@@ -43,8 +49,10 @@ import java.util.ArrayList;
 import java.util.Locale;
 
 /**
- * PoGo Auto 1.3 -- the on-phone control page (Benny 2026-11-18: "fix the autocatcher app while youre at it the ui
+ * PoGo Auto 1.4 -- the on-phone control page (Benny 2026-11-18: "fix the autocatcher app while youre at it the ui
  * sucks ass" + "a gym battle toggle ... on my autoctcher app").
+ * Since 1.4 the same state is also in the notification shade, with Catch / Spin / Gym buttons and alerts, so it can be
+ * used without leaving the game: StatusService.java (the notification) and Alerts.java (when an alert is due).
  *
  * The page answers "is it working?" first (the header and one status card), then shows every switch as a big tile you
  * tap anywhere, a Berries picker, Transfer on Catch, and the two one-off actions. Three classes live in this file:
@@ -66,13 +74,16 @@ import java.util.Locale;
  * retries, because a held lock in catcher_ctl.sh once swallowed taps and left switches showing ON
  * while the backend stayed OFF. The tile shows the new state at once; the 4 s refresh shows the truth.
  */
-public class MainActivity extends Activity {
+public class MainActivity extends Activity implements Screen.Host {
+    private static final String POST = "android.permission.POST_NOTIFICATIONS";
 
     private Screen screen;
+    private SharedPreferences prefs;
 
     @Override
     protected void onCreate(Bundle b) {
         super.onCreate(b);
+        prefs = getSharedPreferences(StatusService.PREFS, MODE_PRIVATE);
         try {
             getWindow().setBackgroundDrawable(new ColorDrawable(Screen.BG));
             getWindow().setStatusBarColor(Screen.BG);
@@ -81,8 +92,9 @@ public class MainActivity extends Activity {
             Log.w(Screen.TAG, "window colours: " + t);
         }
         try {
-            screen = new Screen(this);
+            screen = new Screen(this, this);
             setContentView(screen.root);
+            askOnce();
         } catch (Throwable t) {   // never a bare crash on open: say what broke, on the screen and in logcat
             Log.e(Screen.TAG, "building the screen failed", t);
             screen = null;
@@ -105,6 +117,61 @@ public class MainActivity extends Activity {
     protected void onPause() {
         super.onPause();
         if (screen != null) screen.stop();
+    }
+
+    /** Android 13+: notifications need a yes. Asked ONCE, the first time the app is opened. After that the Alerts tile
+     *  says when they are not allowed, and a tap on it asks again (askNotifications). */
+    private void askOnce() {
+        try {
+            if (Build.VERSION.SDK_INT >= 33 && !prefs.getBoolean(StatusService.K_ASKED, false)
+                    && checkSelfPermission(POST) != PackageManager.PERMISSION_GRANTED) {
+                prefs.edit().putBoolean(StatusService.K_ASKED, true).apply();
+                requestPermissions(new String[]{POST}, 1);
+            }
+        } catch (Throwable t) {
+            Log.w(Screen.TAG, "asking for notifications: " + t);
+        }
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int code, String[] permissions, int[] results) {
+        super.onRequestPermissionsResult(code, permissions, results);
+        if (screen != null) screen.refresh();
+    }
+
+    // ---- Screen.Host ----------------------------------------------------------------------------------------------
+
+    /** The permission is there AND the app's notifications are not switched off in the phone's settings. */
+    public boolean notificationsAllowed() {
+        try {
+            NotificationManager nm = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
+            return nm == null || nm.areNotificationsEnabled();
+        } catch (Throwable t) {
+            return true;
+        }
+    }
+
+    /** Ask again while Android still lets an app ask (never asked, or refused once); after that only the phone's own
+     *  notification settings for this app can allow them, so open those. */
+    public void askNotifications() {
+        try {
+            if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission(POST) != PackageManager.PERMISSION_GRANTED
+                    && (!prefs.getBoolean(StatusService.K_ASKED, false) || shouldShowRequestPermissionRationale(POST))) {
+                prefs.edit().putBoolean(StatusService.K_ASKED, true).apply();
+                requestPermissions(new String[]{POST}, 1);
+                return;
+            }
+            Intent i = Build.VERSION.SDK_INT >= 26
+                    ? new Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE, getPackageName())
+                    : new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, android.net.Uri.parse("package:" + getPackageName()));
+            startActivity(i);
+        } catch (Throwable t) {
+            Log.w(Screen.TAG, "opening the notification settings: " + t);
+        }
+    }
+
+    public void startStatus() {
+        StatusService.ensure(this);
     }
 
     /**
@@ -154,7 +221,7 @@ public class MainActivity extends Activity {
 
         static String render(Context app, boolean openHelp, int demo) throws Exception {
             Context themed = new ContextThemeWrapper(app, android.R.style.Theme_Material_NoActionBar);
-            Screen s = new Screen(themed);
+            Screen s = new Screen(themed, host(app, demo));
             if (openHelp) s.showHelp(true);
             if (demo > 0) s.apply(demo(s.read(), demo));
             DisplayMetrics m = themed.getResources().getDisplayMetrics();
@@ -171,13 +238,32 @@ public class MainActivity extends Activity {
                     + " px tall, saved in " + dir;
         }
 
+        /** The picture's stand-in for the window. It answers the one question the screen asks while it is drawn -- are
+         *  notifications allowed? -- with the phone's real answer (demo 1: yes, demo 2: no) and does nothing else: the
+         *  screen is never started here, so it starts no service and asks for nothing. */
+        static Screen.Host host(final Context app, final int demo) {
+            return new Screen.Host() {
+                public boolean notificationsAllowed() {
+                    if (demo == 1 || demo == 2) return demo == 1;
+                    NotificationManager nm = (NotificationManager) app.getSystemService(Context.NOTIFICATION_SERVICE);
+                    return nm == null || nm.areNotificationsEnabled();
+                }
+
+                public void askNotifications() {
+                }
+
+                public void startStatus() {
+                }
+            };
+        }
+
         /** A made-up reading of the phone, for a picture of states the phone is not in right now. Nothing is written:
          *  it only replaces what the screen was told it read. 1 = everything on, a blocking why, few balls, the gym
          *  runner answering, High stardust 700+ with the catcher doing it, a levels file and an old stardust list,
-         *  Transfer on Catch set up; 2 = switched on but neither the catcher nor the gym runner answers, no levels
-         *  file; 3 = the phone's real state, but High stardust switched to All (with a levels file) while the catcher
-         *  does not report it; 4 = the real state with a custom number in the switch file. The species in LEVELS are a
-         *  sample for the picture, not the game's list. */
+         *  Transfer on Catch set up, notifications allowed; 2 = switched on but neither the catcher nor the gym runner
+         *  answers, no levels file, notifications not allowed; 3 = the phone's real state, but High stardust switched
+         *  to All (with a levels file) while the catcher does not report it and gives a long reason; 4 = the real state with a custom number in
+         *  the switch file. The species in LEVELS are a sample for the picture, not the game's list. */
         static final String LEVELS = "base=100 species=1024 batch=sample\n1 476\n500 133\n"
                 + "700 20 Audino, Chimecho, Cloyster, Combee, Delibird, Garbodor, Meowth, Minior, Paras, Parasect, Persian, "
                 + "Sableye, Shellder, Shroomish, Staryu, Starmie, Trubbish, Vespiquen, Breloom, Foongus\n"
@@ -189,6 +275,11 @@ public class MainActivity extends Activity {
                 s.flags[0] = "1";
                 s.flags[6] = "1";
                 s.levels = LEVELS;
+                if (s.state.length() > 0 && !s.state.contains(" why=")) {   // a long reason: it must wrap, never be cut
+                    s.state += " why=catching everything for now: the shiny and weather reads cannot be trusted yet on "
+                            + "this game version, so High stardust only is not applied (a sample text for the picture)";
+                    s.stateMs = now - 3000;
+                }
             } else if (kind == 4) {
                 s.flags[6] = "250";
                 s.levels = LEVELS;
@@ -384,8 +475,9 @@ final class Logic {
         return (wantsPinap && pinap == 0) || (wantsRazz && razz == 0) ? WAIT : DIM;
     }
 
-    // ---- High stardust only (pogo_dust.on). 0 = catch everything; 1 = every species that pays more than the normal
-    //      catch; N >= 2 = only species worth N+ stardust a catch. Every shiny is always caught. -------------------------
+    // ---- High stardust only (pogo_dust.on). 0 = catch everything; 1 = everything that pays more than a normal catch
+    //      (a higher-paying species, or anything weather-boosted: +25%); N >= 2 = only catches worth N+ stardust, a
+    //      weather boost counted. Every shiny is always caught. ------------------------------------------------------
 
     /** Digits and nothing else, at least one. */
     static boolean digits(String t) {
@@ -442,20 +534,22 @@ final class Logic {
 
     /** The hint under the High stardust row for what the switch file holds. The counts and the names come from the
      *  catcher's levels file, never from text in this app: the species change with the game. Without that file (it is
-     *  not there until a catcher that writes it runs) the hint has no numbers. */
+     *  not there until a catcher that writes it runs) the hint has no numbers. A weather-boosted spawn pays +25% and
+     *  counts as high stardust (Benny 2026-11-18: "yes include weather boosted too"), so every hint says so. */
     static String dustHint(String value, String levels) {
         if (value.equals("0")) return "catching every Pokemon";
         if (!(value.equals("1") || value.equals("500") || value.equals("700") || value.equals("1000")))
             return "custom: " + num(value) + "+";
         String[] lv = dustLevel(levels, value);
         if (value.equals("1")) {
-            if (lv == null) return "only Pokemon that pay more than the normal catch, plus every shiny";
+            if (lv == null) return "only what pays more than a normal catch, weather-boosted included, plus every shiny";
             String base = dustBase(levels);
-            return "only the " + num(lv[0]) + " species that pay more than the normal "
-                    + (base.length() > 0 ? num(base) + " " : "") + "stardust, plus every shiny";
+            return "only what pays more than the normal " + (base.length() > 0 ? num(base) + " " : "") + "stardust: "
+                    + num(lv[0]) + " species and anything weather-boosted, plus every shiny";
         }
-        if (lv == null) return "only Pokemon worth " + num(value) + "+ stardust, plus every shiny";
-        return "only " + num(lv[0]) + " species" + (lv[1].length() > 0 ? ": " + lv[1] : "") + ", plus every shiny";
+        if (lv == null) return "only catches worth " + num(value) + "+ stardust, plus every shiny";
+        return "only catches worth " + num(value) + "+ stardust: " + num(lv[0]) + " species"
+                + (lv[1].length() > 0 ? ": " + lv[1] : "") + " (weather boost counts), plus every shiny";
     }
 
     /** dustchk=<hours> in the state line: how long ago the catcher last checked its stardust list. Above 72 hours the
@@ -501,9 +595,110 @@ final class Logic {
             return new String[]{"catcher not reporting", "" + BAD,
                                 "No update from the catcher for " + ago(ageMs) + ". Is the game open?"};
         String why = why(state);
-        if (why.length() > 0)
-            return new String[]{"catcher waiting", "" + WAIT, Character.toUpperCase(why.charAt(0)) + why.substring(1)};
+        if (why.length() > 0) return new String[]{"catcher waiting", "" + WAIT, cap(why)};
         return new String[]{"catcher running", "" + GOOD, ""};
+    }
+
+    /** Capital first letter: the catcher's reasons start small ("out of balls: ..."). */
+    static String cap(String s) {
+        return s == null || s.length() == 0 ? "" : Character.toUpperCase(s.charAt(0)) + s.substring(1);
+    }
+
+    // ---- the notification and its alerts (app 1.4) -----------------------------------------------------------------
+
+    /** The ongoing notification: {its title, the line under it, the text when it is pulled open}. The title is the
+     *  catcher's own summary while it reports ("620 caught - 13.3/min - Star Piece OFF"), else what is wrong ("Catcher
+     *  not reporting"). The lines, most urgent first: the why= problem, the gym runner's line while Gym is on (or when
+     *  it STOPPED), the high-stardust mode, the stardust and the balls.
+     *  sinceOnTapMs / gymTapAgoMs = how long ago Catch or Spin / Gym was switched on from the notification (below 0:
+     *  it was not): until the catcher or the gym runner had time to answer, they read "starting", as on the screen. */
+    static String[] shade(boolean anyOn, String state, long ageMs, long sinceOnTapMs,
+                          boolean gymOn, String gym, long gymAgeMs, long gymTapAgoMs) {
+        String[] st = status(anyOn, state, ageMs, sinceOnTapMs);
+        boolean reporting = st[0].equals("catcher running") || st[0].equals("catcher waiting");
+        String title = cap(st[0]);
+        StringBuilder big = new StringBuilder(st[2]);
+        if (gymOn || (gymAgeMs >= 0 && gymAgeMs <= GYM_STALE_MS && gymStopped(gym))) {
+            String g = gym(gymOn, gym, gymAgeMs, gymTapAgoMs)[0];
+            big.append(big.length() > 0 ? "\n" : "").append("Gym: ").append(g.length() > 0 ? g : "off");
+        }
+        if (reporting) {
+            title = summary(state);
+            int sp = starPiece(state);
+            if (sp >= 0) title += sp == 1 ? " - Star Piece ON" : " - Star Piece OFF";
+            long only = only(state);
+            if (only >= 1)
+                big.append(big.length() > 0 ? "\n" : "")
+                   .append(only == 1 ? "High stardust only" : "Only " + num(String.valueOf(only)) + "+ stardust")
+                   .append(", plus every shiny");
+            String d = dustLine(state);
+            String[] b = balls(state);
+            String more = d + (d.length() > 0 && b != null ? " - " : "") + (b != null ? b[0] : "");
+            if (more.length() > 0) big.append(big.length() > 0 ? "\n" : "").append(more);
+        }
+        String all = big.toString();
+        int nl = all.indexOf('\n');
+        return new String[]{title, nl < 0 ? all : all.substring(0, nl), all};
+    }
+
+    /** why= without a leading Star Piece note: catch_loop_fast.starpiece_why puts "the Star Piece ran out at HH:MM:
+     *  catches pay a third less stardust" first, and the catching reason, when there is one, after "; ". */
+    static String whyCore(String why) {
+        if (!why.toLowerCase(Locale.US).startsWith("the star piece ran out")) return why;
+        int i = why.indexOf("; ");
+        return i >= 0 ? why.substring(i + 2).trim() : "";
+    }
+
+    /** The Star Piece note at the head of a why= ("" when it has none). */
+    static String whyStar(String why) {
+        if (!why.toLowerCase(Locale.US).startsWith("the star piece ran out")) return "";
+        int i = why.indexOf("; ");
+        return i >= 0 ? why.substring(0, i) : why;
+    }
+
+    /** The kind of a why= that STOPS the catching ("" = it does not, or it is routine). The texts are the catcher's:
+     *  catch_loop_fast.balls_why(), the holds of its JS, why_idle() and the state() calls of its attach loop.
+     *  NOT alerts, on purpose: "no Pokemon in range" / "no Pokemon worth a ball", "paused: Pokemon GO is not showing its
+     *  map" (every menu he opens), "spins are being refused" (every teleport cooldown), "PoGo is not open",
+     *  "starting: ...", "can't reach the game" (it retries). */
+    static String alertKind(String why) {
+        String w = whyCore(why).toLowerCase(Locale.US);
+        if (w.length() == 0) return "";
+        if (w.contains("storage is full")) return "storage";
+        if (w.startsWith("out of balls") || w.startsWith("out of poke balls") || w.startsWith("keeping the last")
+                || w.startsWith("holding the last")) return "balls";
+        if (w.contains("every throw is fleeing")) return "flee";
+        if (w.startsWith("the game is not answering")) return "silent";
+        if (w.contains("can't hook this game version")) return "version";
+        if (w.startsWith("safety pause")) return "safety";
+        if (w.contains("daily spin limit")) return "spinlimit";
+        return "";
+    }
+
+    static String alertTitle(String kind) {
+        if (kind.equals("storage")) return "Catching stopped: storage is full";
+        if (kind.equals("balls")) return "Catching stopped: no balls to throw";
+        if (kind.equals("flee")) return "Catching paused: every throw flees";
+        if (kind.equals("silent")) return "Catching stopped: the game is not answering";
+        if (kind.equals("version")) return "The catcher cannot run on this game version";
+        if (kind.equals("safety")) return "The catcher is in a safety pause";
+        if (kind.equals("spinlimit")) return "The daily spin limit is reached";
+        if (kind.equals("star")) return "The Star Piece ran out";
+        if (kind.equals("gym")) return "Gym Battle stopped";
+        return "PoGo Auto";
+    }
+
+    /** How long a reason must be gone before its return is a NEW stop worth another alert. The catcher's holds lapse
+     *  and come back (a full storage is a 60 s hold, re-armed by the next refused catch -- which can take minutes where
+     *  few Pokemon are around), so a short gap is the same state. Storage is the shortest: once he has made room, the
+     *  next fill-up is news. Balls is long: around the ball floor every spun stop makes "out of balls" go and come
+     *  back. */
+    static long alertQuietMs(String kind) {
+        if (kind.equals("storage")) return 5 * 60000L;
+        if (kind.equals("silent")) return 5 * 60000L;
+        if (kind.equals("version")) return 60 * 60000L;
+        if (kind.equals("spinlimit")) return 6 * 3600000L;
+        return 15 * 60000L;   // balls, flee, safety
     }
 
     /** A status line without its leading clock time ("15:31:07 STOPPED: ..." -> "STOPPED: ..."). */
@@ -579,7 +774,17 @@ final class Logic {
 /** The whole screen. Builds the views, reads the phone's files every 4 s, sends the taps. */
 final class Screen {
     static final String TAG = "AutoCatcher";
-    static final String VERSION = "1.3";
+    static final String VERSION = "1.4";
+
+    /** What the screen needs from the window it lives in (RenderProbe, which draws it off screen, passes a stand-in
+     *  that only answers the question). */
+    interface Host {
+        boolean notificationsAllowed();
+
+        void askNotifications();
+
+        void startStatus();
+    }
 
     // The palette of the sketch Benny approved (2026-11-18).
     static final int BG = 0xff0e1116, CARD = 0xff171c24, CARD_ON = 0xff12301f, LINE = 0xff262d38,
@@ -597,10 +802,11 @@ final class Screen {
     // (run_gym.sh); gym-off only writes the flag and the supervisor stops by itself. The gym runner writes ONE status
     // line, which the tile shows.
     static final String GYMFLAG = T + "pogo_gym.on", GYM_STATUS = T + "pogo_gym_status.txt";
-    // High stardust only: a whole number. 0 (or no file) = everything; 1 = every species that pays more than the normal
-    // catch; N = only species worth N+ stardust. Every shiny is always caught. The catcher reads it; catcher_ctl.sh
-    // dust-off / dust-on / dust-<N> write it. What each step means today (how many species, which ones) is in a file the
-    // catcher writes, DUST_LEVELS: the species change with the game, so no list is baked into this app.
+    // High stardust only: a whole number. 0 (or no file) = everything; 1 = everything that pays more than a normal
+    // catch (weather-boosted counts); N = only catches worth N+ stardust. Every shiny is always caught. The catcher
+    // reads it; catcher_ctl.sh dust-off / dust-on / dust-<N> write it. What each step means today (how many species,
+    // which ones) is in a file the catcher writes, DUST_LEVELS: the species change with the game, so no list is baked
+    // into this app.
     static final String DUSTFLAG = T + "pogo_dust.on", DUST_LEVELS = T + "pogo_dust_levels.txt";
     // Berries: 1 = Pinap + Razz, pinap, razz, anything else = none. The catcher reads it every second.
     static final String BERRYFLAG = T + "pogo_berries.on";
@@ -693,6 +899,11 @@ final class Screen {
     final Context ctx;
     final ScrollView root;          // what the Activity shows
     final LinearLayout content;     // everything inside it (RenderProbe draws this in full)
+    private final Host host;        // the window around this screen
+    private final SharedPreferences prefs;
+    private boolean active;         // between start() and stop(): the screen is in front
+    private boolean wasAllowed = true;
+    private long statusAskedMs;
     private final float density;
     private final Typeface medium = Typeface.create("sans-serif-medium", Typeface.NORMAL);
     private final Handler main = new Handler(Looper.getMainLooper());
@@ -709,7 +920,7 @@ final class Screen {
                        dustF = new Flag(DUSTFLAG, Flag.NUMBER);
     private final Flag[] flags = {catchF, spinF, perfectF, tapF, gymF, berryF, dustF};
     private final ArrayList<Tile> tiles = new ArrayList<Tile>();
-    private Tile catchTile, gymTile;
+    private Tile catchTile, gymTile, alertsTile;
 
     private GradientDrawable headDot;
     private TextView headWords, bigNum, bigWords, sFled, sSpins, sXp, sItems, dustText, spChip, ballsText, whyLine;
@@ -728,8 +939,10 @@ final class Screen {
     private long gymTapMs = 0, cullTapMs = 0, catcherOnTapMs = 0, dustTapMs = 0;
     private boolean rewardBusy = false;
 
-    Screen(Context c) {
+    Screen(Context c, Host h) {
         ctx = c;
+        host = h;
+        prefs = c.getSharedPreferences(StatusService.PREFS, Context.MODE_PRIVATE);
         density = c.getResources().getDisplayMetrics().density;
 
         root = new ScrollView(c);
@@ -786,6 +999,17 @@ final class Screen {
         content.addView(section("ACTIONS", null), sectionLp());
         content.addView(actions(), lp(MATCH, WRAP, 0, 0));
 
+        // App 1.4: the alerts of the status notification (StatusService) can be switched off here.
+        content.addView(section("NOTIFICATIONS", null), sectionLp());
+        alertsTile = plainTile("Alerts", 4);
+        alertsTile.box.setOnClickListener(new View.OnClickListener() {
+            public void onClick(View v) {
+                tick(v);
+                onAlerts();
+            }
+        });
+        content.addView(alertsTile.box, lp(MATCH, WRAP, 0, 0));
+
         content.addView(help(), lp(MATCH, WRAP, 12, 0));
 
         root.addView(content, new ScrollView.LayoutParams(ScrollView.LayoutParams.MATCH_PARENT,
@@ -804,11 +1028,13 @@ final class Screen {
 
     void start() {
         stop();
+        active = true;
         refresh();
         main.postDelayed(ticker, 4000);
     }
 
     void stop() {
+        active = false;
         main.removeCallbacks(ticker);
     }
 
@@ -880,6 +1106,8 @@ final class Screen {
             paintToc(s);
             paintReward(s.reward);
             paintCull(s);
+            paintAlerts();
+            startStatus(s);
         } catch (Throwable t) {
             Log.e(TAG, "painting failed", t);
         }
@@ -1022,6 +1250,48 @@ final class Screen {
         tocNote.setVisibility(setUp ? View.GONE : View.VISIBLE);
     }
 
+    private void paintAlerts() {
+        boolean on = prefs.getBoolean(StatusService.K_ALERTS, true);
+        boolean allowed = host == null || host.notificationsAllowed();
+        // Without the phone's yes nothing can show -- no alert and no status in the shade -- so the tile is not drawn
+        // as ON then, whatever the switch is set to: it is amber and a tap asks for the yes.
+        int look = !allowed ? 2 : on ? 1 : 0;
+        if (alertsTile.painted != look) {
+            alertsTile.painted = look;
+            alertsTile.box.setBackground(look == 1 ? tappable(CARD_ON, GREEN, 16, 1.5f)
+                                       : look == 2 ? tappable(CARD, AMBER, 16, 1.5f) : tappable(CARD, LINE, 16, 1f));
+            alertsTile.toggle.set(look == 1);
+        }
+        if (look == 2)
+            alertsTile.status.setText(two("NOT ALLOWED YET", AMBER,
+                    "Android has to allow this app's notifications first. Tap here to allow them.", AMBER));
+        else if (look == 1)
+            alertsTile.status.setText(two("ON", GREEN,
+                    "a banner with sound when catching stops, the Star Piece runs out or the gym run stops", GREEN));
+        else
+            alertsTile.status.setText(two("off", DIMC, "no banner, no sound. The status in the notification shade stays.", DIMC));
+    }
+
+    /** While a switch is on and this screen is in front, the status notification's service runs (it stops itself two
+     *  minutes after the last switch went off). Asked at most every 10 s; an off-screen picture never starts it.
+     *  A running service is asked once more right after notifications were allowed: Android dropped what it posted
+     *  until then, and it posts again only when its words change. */
+    private void startStatus(Snap s) {
+        if (!active || host == null) return;
+        boolean allowed = host.notificationsAllowed();
+        boolean justAllowed = allowed && !wasAllowed;
+        wasAllowed = allowed;
+        if (StatusService.running) {
+            if (justAllowed) host.startStatus();
+            return;
+        }
+        boolean on = catchF.shown.equals("1") || spinF.shown.equals("1") || perfectF.shown.equals("1")
+                || tapF.shown.equals("1") || gymF.shown.equals("1");
+        if (!on || s.now - statusAskedMs < 10000) return;
+        statusAskedMs = s.now;
+        host.startStatus();
+    }
+
     private void paintReward(String s) {
         if (rewardBusy) return;                    // "running..." stays until the tap's own read comes back
         if (s == null || s.length() == 0) {
@@ -1083,6 +1353,16 @@ final class Screen {
             catcherOnTapMs = now;
         }
         send(t.flag, turnOn ? t.onVerb : t.offVerb, turnOn ? "1" : "0");
+    }
+
+    private void onAlerts() {
+        if (host != null && !host.notificationsAllowed()) {   // first things first: without a yes nothing shows at all
+            host.askNotifications();
+            return;
+        }
+        boolean on = prefs.getBoolean(StatusService.K_ALERTS, true);
+        prefs.edit().putBoolean(StatusService.K_ALERTS, !on).apply();
+        repaint();
     }
 
     private void onReward() {
@@ -1254,24 +1534,31 @@ final class Screen {
 
     /** One switch tile: tap anywhere on it. statusLines = how many lines its status may take before it is cut. */
     private Tile tile(String name, Flag f, String onVerb, String offVerb, String onText, String offText, int statusLines) {
-        final Tile t = new Tile();
+        final Tile t = plainTile(name, statusLines);
         t.flag = f;
         t.onVerb = onVerb;
         t.offVerb = offVerb;
         t.onText = onText;
         t.offText = offText;
-
-        t.box = new LinearLayout(ctx);
-        t.box.setOrientation(LinearLayout.VERTICAL);
-        t.box.setPadding(dp(12), dp(10), dp(12), dp(10));
-        t.box.setMinimumHeight(dp(70));
-        t.box.setClickable(true);
         t.box.setOnClickListener(new View.OnClickListener() {
             public void onClick(View v) {
                 tick(v);
                 onTile(t);
             }
         });
+        tiles.add(t);
+        return t;
+    }
+
+    /** The views of a switch tile: its name top-left, a switch top-right, one status line at the bottom. Whoever makes
+     *  it gives it its tap. */
+    private Tile plainTile(String name, int statusLines) {
+        Tile t = new Tile();
+        t.box = new LinearLayout(ctx);
+        t.box.setOrientation(LinearLayout.VERTICAL);
+        t.box.setPadding(dp(12), dp(10), dp(12), dp(10));
+        t.box.setMinimumHeight(dp(70));
+        t.box.setClickable(true);
 
         LinearLayout top = new LinearLayout(ctx);
         top.setOrientation(LinearLayout.HORIZONTAL);
@@ -1294,8 +1581,6 @@ final class Screen {
         t.status.setMaxLines(statusLines);
         t.status.setEllipsize(TextUtils.TruncateAt.END);
         t.box.addView(t.status, lp(MATCH, WRAP, 6, 0));
-
-        tiles.add(t);
         return t;
     }
 
@@ -1528,11 +1813,13 @@ final class Screen {
             {"Perfect Throw", "Every throw scores Excellent + curveball, including the ones you throw by hand."},
             {"Tap to Move", "Tap a spot on the map to move there, so you can reach things that are out of range."},
             {"Gym Battle", "A gym you open is battled until it is empty, then a shiny Gyarados goes in. An empty gym or a red gym with room gets one straight away. It never moves you to a gym. Runs on the phone."},
-            {"High stardust only", "Leaves normal-stardust Pokemon alone. Every shiny is still caught. The list updates itself."},
+            {"High stardust only", "Catches only what pays more than a normal catch - evolved forms, bonus species and anything weather-boosted - plus every shiny. The list updates itself."},
             {"Berries", "What is fed before the throw. Pinap: a Pinap on every Pokemon. Razz: a Razz on the hard ones only. Both: Razz on the hard ones, Pinap on the rest. Never a Golden Razz or a Silver Pinap."},
             {"Transfer on Catch", "Tags junk the moment you catch it, so less piles up for the cull. It only tags; it never releases anything."},
             {"Catch Rewards", "Clears stacked Field Research reward encounters that piled up while your box was full."},
             {"Cull Now", "Asks the PC to run one cull. It only tags the Transfer pile; you release by hand. The PC must be on."},
+            {"In the notification shade", "While a switch is on, a notification shows the catch count and has Catch, Spin and Gym buttons, so you can flip them without leaving the game. It goes away two minutes after the last switch is off."},
+            {"Alerts", "A banner with sound when catching stops (storage full, no balls...), when the Star Piece runs out, or when the gym run stops. Once per change, never again while nothing changes."},
         };
         SpannableStringBuilder sb = new SpannableStringBuilder();
         for (int i = 0; i < items.length; i++) {

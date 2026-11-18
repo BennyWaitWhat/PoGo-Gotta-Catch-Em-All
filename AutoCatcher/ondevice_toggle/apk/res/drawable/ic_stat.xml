@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The small icon of the app's notifications: the launcher's ball as one flat shape (Android draws a status-bar icon
+     from its outline only, so a full-colour icon would come out as a filled square). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="24" android:viewportHeight="24">
+  <!-- the ring -->
+  <path android:fillColor="#FFFFFFFF" android:fillType="evenOdd"
+      android:pathData="M12,2 a10,10 0 1,0 0,20 a10,10 0 1,0 0,-20 z M12,4 a8,8 0 1,1 0,16 a8,8 0 1,1 0,-16 z"/>
+  <!-- the band, left and right of the middle -->
+  <path android:fillColor="#FFFFFFFF"
+      android:pathData="M3,11 L8.2,11 L8.2,13 L3,13 z M15.8,11 L21,11 L21,13 L15.8,13 z"/>
+  <!-- the middle -->
+  <path android:fillColor="#FFFFFFFF" android:fillType="evenOdd"
+      android:pathData="M12,8 a4,4 0 1,0 0,8 a4,4 0 1,0 0,-8 z M12,10 a2,2 0 1,1 0,4 a2,2 0 1,1 0,-4 z"/>
+</vector>
