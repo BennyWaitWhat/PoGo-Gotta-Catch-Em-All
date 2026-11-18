@@ -49,10 +49,12 @@ import java.util.ArrayList;
 import java.util.Locale;
 
 /**
- * PoGo Auto 1.4 -- the on-phone control page (Benny 2026-11-18: "fix the autocatcher app while youre at it the ui
+ * PoGo Auto 1.5 -- the on-phone control page (Benny 2026-11-18: "fix the autocatcher app while youre at it the ui
  * sucks ass" + "a gym battle toggle ... on my autoctcher app").
  * Since 1.4 the same state is also in the notification shade, with Catch / Spin / Gym buttons and alerts, so it can be
  * used without leaving the game: StatusService.java (the notification) and Alerts.java (when an alert is due).
+ * 1.5: one tap of Catch Rewards is one reward run. The button stays off while a run is in flight and shows the run's
+ * own line (Logic.reward); two runs at once crashed the game on 2026-11-18.
  *
  * The page answers "is it working?" first (the header and one status card), then shows every switch as a big tile you
  * tap anywhere, a Berries picker, Transfer on Catch, and the two one-off actions. Three classes live in this file:
@@ -294,7 +296,8 @@ public class MainActivity extends Activity implements Screen.Host {
                 s.gymMs = now - 5000;
                 s.cull = "running since 15:02";
                 s.cullMs = now - 20000;
-                s.reward = "error: no reward encounter was found";
+                s.reward = "running... (started 15:30:25)";
+                s.rewardMs = now - 42000;
                 s.tocExists = true;
                 s.toc = Logic.tocJson(1, 1, 85);
             } else {
@@ -307,7 +310,8 @@ public class MainActivity extends Activity implements Screen.Host {
                 s.gymMs = 0;
                 s.cull = "STOPPED 15:02: the game is not running -- open it and tap again";
                 s.cullMs = now - 60000;
-                s.reward = "";
+                s.reward = "FAILED: open Field Research (Today) in PoGo, then tap again @ 15:02:11";
+                s.rewardMs = now - 60000;
             }
             return s;
         }
@@ -335,6 +339,9 @@ final class Logic {
     static final long STARTING_MS = 45000L;          // after you switch a catcher feature on: its first report is due
     static final long GYM_STALE_MS = 60000L;         // the PC's gym listener must have written within this
     static final long CULL_LATE_MS = 45000L, CULL_STALE_MS = 15 * 60 * 1000L;
+    // Catch Rewards: the phone's script answers a tap within a second (20 s when another verb holds its lock); a run
+    // that died never says done; and a run that has just said done needs ~8 s more to hand the game back to the catcher.
+    static final long REWARD_LATE_MS = 30000L, REWARD_STALE_MS = 15 * 60 * 1000L, REWARD_END_MS = 12000L;
     static final int LOW_BALLS = 20;                 // Poke + Great + Ultra at or under this: the balls line turns amber
 
     private Logic() { }
@@ -741,6 +748,30 @@ final class Logic {
         return new String[]{text, "" + tone, busy ? "0" : "1"};
     }
 
+    /** The Catch Rewards line: {text, tone, "1" when the button may be tapped}. One tap is one reward run -- two at
+     *  once crashed the game (2026-11-18) -- so the button is off from the tap until the phone's script has answered,
+     *  while its line reads queued / running (15 minutes at most: a run that died never says done), and for the few
+     *  seconds a run that has just finished still needs to hand the game back to the catcher (catcher_ctl.sh throws a
+     *  tap away until then). statusMs = the status file's last-modified time (0: none); tapMs = when Catch Rewards was
+     *  tapped on this screen (0: not here). */
+    static String[] reward(String s, long statusMs, long tapMs, long now) {
+        if (tapMs > 0 && statusMs < tapMs - 2000) {   // the script has not written since the tap
+            boolean late = now - tapMs > REWARD_LATE_MS;
+            return new String[]{late ? "no answer from the phone -- tap again" : "sent -- starting...",
+                                "" + (late ? BAD : WAIT), late ? "1" : "0"};
+        }
+        if (s == null || s.length() == 0) return new String[]{"", "" + DIM, "1"};
+        String l = s.toLowerCase(Locale.US);
+        long age = statusMs > 0 ? now - statusMs : -1;
+        if (l.startsWith("queued") || l.startsWith("running")) {
+            if (age > REWARD_STALE_MS) return new String[]{s + " (no update for 15+ min)", "" + BAD, "1"};
+            return new String[]{age >= 0 ? s + " - " + ago(age) : s, "" + WAIT, "0"};
+        }
+        // "Gym Battle is ..." is catcher_ctl.sh saying why it started no run: nothing to wait for.
+        boolean ending = !l.startsWith("gym battle") && age >= 0 && age < REWARD_END_MS;
+        return new String[]{ending ? s + " - finishing..." : s, "" + rewardTone(s), ending ? "0" : "1"};
+    }
+
     /** Colour-code the reward run so a stuck or failed pass is obvious instead of silent. */
     static int rewardTone(String s) {
         String l = s.toLowerCase(Locale.US);
@@ -774,7 +805,7 @@ final class Logic {
 /** The whole screen. Builds the views, reads the phone's files every 4 s, sends the taps. */
 final class Screen {
     static final String TAG = "AutoCatcher";
-    static final String VERSION = "1.4";
+    static final String VERSION = "1.5";
 
     /** What the screen needs from the window it lives in (RenderProbe, which draws it off screen, passes a stand-in
      *  that only answers the question). */
@@ -892,7 +923,7 @@ final class Screen {
         long now;
         String[] flags;
         String state = "", gym = "", reward = "", cull = "", toc = "", apples = "", levels = "";
-        long stateMs, gymMs, cullMs;
+        long stateMs, gymMs, cullMs, rewardMs;
         boolean tocExists;
     }
 
@@ -936,8 +967,7 @@ final class Screen {
     private TextView helpOpen, helpBody;
 
     private Snap last;
-    private long gymTapMs = 0, cullTapMs = 0, catcherOnTapMs = 0, dustTapMs = 0;
-    private boolean rewardBusy = false;
+    private long gymTapMs = 0, cullTapMs = 0, catcherOnTapMs = 0, dustTapMs = 0, rewardTapMs = 0;
 
     Screen(Context c, Host h) {
         ctx = c;
@@ -1077,6 +1107,7 @@ final class Screen {
         s.gym = readFile(GYM_STATUS);
         s.gymMs = new File(GYM_STATUS).lastModified();
         s.reward = readFile(STATUS_REWARD);
+        s.rewardMs = new File(STATUS_REWARD).lastModified();
         s.cull = readFile(CULL_STATUS);
         s.cullMs = new File(CULL_STATUS).lastModified();
         s.tocExists = new File(TOCFILE).exists();
@@ -1104,7 +1135,7 @@ final class Screen {
             paintDust(s);
             paintBerries(s);
             paintToc(s);
-            paintReward(s.reward);
+            paintReward(s);
             paintCull(s);
             paintAlerts();
             startStatus(s);
@@ -1292,13 +1323,10 @@ final class Screen {
         host.startStatus();
     }
 
-    private void paintReward(String s) {
-        if (rewardBusy) return;                    // "running..." stays until the tap's own read comes back
-        if (s == null || s.length() == 0) {
-            line(rewardStatus, "", DIMC);
-            return;
-        }
-        line(rewardStatus, s, color(Logic.rewardTone(s)));
+    private void paintReward(Snap s) {
+        String[] r = Logic.reward(s.reward, s.rewardMs, rewardTapMs, s.now);
+        enable(rewardBtn, r[2].equals("1"));
+        line(rewardStatus, r[0], color(Integer.parseInt(r[1])));
     }
 
     private void paintCull(Snap s) {
@@ -1365,20 +1393,19 @@ final class Screen {
         repaint();
     }
 
+    /** One tap = one reward run. The button goes off here and stays off for as long as Logic.reward says a run is in
+     *  flight; until 1.4 it came back after 4 s, a second tap started a second reward catcher on the same game, and
+     *  the game crashed (2026-11-18 16:06). */
     private void onReward() {
         enable(rewardBtn, false);
-        rewardBusy = true;
-        line(rewardStatus, "running...", AMBER);
+        rewardTapMs = System.currentTimeMillis();
+        line(rewardStatus, "sent -- starting...", AMBER);
         new Thread(new Runnable() {
             public void run() {
                 shell(intent("rewards"));
-                sleep(4000);
-                final String s = readFile(STATUS_REWARD);
                 main.post(new Runnable() {
                     public void run() {
-                        rewardBusy = false;
-                        paintReward(s);
-                        enable(rewardBtn, true);
+                        refresh();
                     }
                 });
             }
@@ -1816,9 +1843,9 @@ final class Screen {
             {"High stardust only", "Catches only what pays more than a normal catch - evolved forms, bonus species and anything weather-boosted - plus every shiny. The list updates itself."},
             {"Berries", "What is fed before the throw. Pinap: a Pinap on every Pokemon. Razz: a Razz on the hard ones only. Both: Razz on the hard ones, Pinap on the rest. Never a Golden Razz or a Silver Pinap."},
             {"Transfer on Catch", "Tags junk the moment you catch it, so less piles up for the cull. It only tags; it never releases anything."},
-            {"Catch Rewards", "Clears stacked Field Research reward encounters that piled up while your box was full."},
+            {"Catch Rewards", "Clears stacked Field Research reward encounters that piled up while your box was full. One run at a time: the button stays off until the run is done, and the catcher pauses for it. Switch Gym Battle off first."},
             {"Cull Now", "Asks the PC to run one cull. It only tags the Transfer pile; you release by hand. The PC must be on."},
-            {"In the notification shade", "While a switch is on, a notification shows the catch count and has Catch, Spin and Gym buttons, so you can flip them without leaving the game. It goes away two minutes after the last switch is off."},
+            {"In the notification shade", "While a switch is on, a notification shows the catch count and has Catch, Spin and Gym buttons, so you can flip them without leaving the game. It stays for 30 minutes after the last switch went off, so Catch on is still one pull-down away."},
             {"Alerts", "A banner with sound when catching stops (storage full, no balls...), when the Star Piece runs out, or when the gym run stops. Once per change, never again while nothing changes."},
         };
         SpannableStringBuilder sb = new SpannableStringBuilder();
