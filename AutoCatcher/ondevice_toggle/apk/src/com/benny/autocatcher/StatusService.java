@@ -32,7 +32,8 @@ import java.util.List;
  * decides when; the "Alerts" switch in the app (SharedPreferences) turns the posts off.
  *
  * It is a foreground service of type specialUse (the manifest says what for). The Activity starts it while a switch is
- * on; it stops itself after Catch, Spin, Perfect Throw, Tap to Move and Gym have all been off for 2 minutes. Without the
+ * on; it stops itself after Catch, Spin, Perfect Throw, Tap to Move and Gym have all been off for 30 minutes (2 until
+ * app 1.4: with everything off, "Catch on" was gone from the shade before he wanted it back). Without the
  * notification permission (Android 13+) it still runs, but nothing shows until notifications are allowed in the app.
  *
  * It reads the same world-readable files as the screen, every 5 s, with plain Java file I/O (this app cannot use a
@@ -44,7 +45,7 @@ public class StatusService extends Service {
     static final int ID_STATUS = 1, ID_ALERT0 = 100;
     static final String PREFS = "autocatcher", K_ALERTS = "alerts", K_ALERT_STATE = "alert_state",
                         K_ASKED = "asked_notifications";
-    static final long POLL_MS = 5000L, OFF_STOP_MS = 2 * 60000L;
+    static final long POLL_MS = 5000L, OFF_STOP_MS = 30 * 60000L;
     static final String ACTION_FLIP = "com.benny.autocatcher.FLIP";   // followed by ":<catch|spin|gym>:<1|0>"
     private static final String[] KINDS = {"storage", "balls", "flee", "silent", "version", "safety", "spinlimit",
                                            "star", "gym"};            // an alert's notification id = ID_ALERT0 + its place here
@@ -202,13 +203,13 @@ public class StatusService extends Service {
     private void tick(boolean full) {
         Reading r = read();
         if (full) {
-            // It lives while a switch is on, and two minutes longer.
+            // It lives while a switch is on, and 30 minutes longer.
             if (r.catchOn || r.spinOn || r.perfectOn || r.tapOn || r.gymOn) {
                 offSince = 0;
             } else if (offSince == 0) {
                 offSince = r.now;
             } else if (r.now - offSince >= OFF_STOP_MS) {
-                Log.i(TAG, "status: every switch off for 2 minutes, stopping");
+                Log.i(TAG, "status: every switch off for 30 minutes, stopping");
                 stopping = true;
                 if (Build.VERSION.SDK_INT >= 24) stopForeground(STOP_FOREGROUND_REMOVE);
                 else stopForeground(true);
