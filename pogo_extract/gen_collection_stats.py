@@ -128,7 +128,7 @@ parts.append(sect('Size and showcases', table(['', 'Count'], [
     [row(r['species_name'], '%d%%' % P(r), '%.2f m' % (r['height_m'] or 0), '%.2f kg' % (r['weight_kg'] or 0), p) for p, r in xxl_pts[:10]]))
 parts.append(sect('PvP', table(['', 'Count'], [
     row('Great League rank 1', len(gl1)), row('Great League rank 1-5', len(gl5)), row('Ultra League rank 1', len(ul1)), row('Ultra League rank 1-5', len(ul5)),
-    row('Best GL / Best UL / Best ML tags', '%d / %d / %d' % (tags.get('Best GL', 0), tags.get('Best UL', 0), tags.get('Best ML', 0))),
+    row('My Best GL / My Best UL / My Best ML tags', '%d / %d / %d' % tuple(tags.get('My Best ' + _x, tags.get('Best ' + _x, 0)) for _x in ('GL', 'UL', 'ML'))),
     row('0-15-15 trophy spreads', tags.get('0-15-15', 0))])))
 parts.append(sect('Ladder quality', table(['', 'Value'], [
     row('Average IV of plain slot holders', '%.1f%%' % (mean([P(r) for r in plainish if 'variant_floor' in reasons.get(r['uid_hex'], ())]))),

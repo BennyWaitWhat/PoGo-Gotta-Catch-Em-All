@@ -171,9 +171,12 @@ SIMPLE = {
     # BACK 2026-09-23 as a KEEP AXIS (user: best GL + best UL of every species and species+form -> "'Best GL' +
     # 'Best UL'"). Retired 2026-09-09 as labels that decided nothing; they now label keep_policy rule 15d, so the
     # tag set equals the reason set exactly (audit_tags EXACT) and a pvp_best-only keeper is covered.
-    'pvp_best_gl': 'Best GL',
-    'pvp_best_ul': 'Best UL',
-    'pvp_best_ml': 'Best ML',     # Master League joins 2026-09-23
+    # SHOWN AS 'My Best ...' since 2026-11-18 (user: "I thought those only carried #1 in their rank pokemon"; the rename was
+    # offered, his "yes"): the tag is HIS best copy for that league, whatever its rank. Only the tag's name and file change --
+    # rule 15d, the reasons and the prose keep the word Best; the old names are in RETIRED_TAGS.
+    'pvp_best_gl': 'My Best GL',
+    'pvp_best_ul': 'My Best UL',
+    'pvp_best_ml': 'My Best ML',     # Master League joins 2026-09-23
     # 2026-09-24 (user: "expanded to everyone so all ul and gl get combed up"): keep rule 15e / pvp_combup.pick -- EVOLVE
     # this one: evolved, it becomes that species' Best GL / UL (2026-10-29). Rank-free. Named 'Evo Best
     # GL / UL' until 2026-09-30 (THE SECOND FOLD above).
@@ -190,6 +193,10 @@ SIMPLE = {
 # rate-limited to 1-3 per session and mass deletes caused collateral -- see tag_ops note 7). Re-adding a name here to
 # the vocabulary is a deliberate act: the guard in all_tags() refuses a name that is both.
 RETIRED_TAGS = {
+    # 2026-11-18 the Best tags are SHOWN AS 'My Best ...' (user: "yes"): prune moves the members, retire deletes these three
+    'Best GL':            'renamed My Best GL (2026-11-18): your best copy for the league, not rank #1',
+    'Best UL':            'renamed My Best UL (2026-11-18): your best copy for the league, not rank #1',
+    'Best ML':            'renamed My Best ML (2026-11-18): your best copy for the league, not rank #1',
     # 2026-11-15 ONE EVOLVE TAG PER POKEMON (user: "just fix the whole evo system and be clear"):
     'Evolve for GL':      'retired (2026-11-15): a copy to evolve wears ONE tag -- Evolve to Mid / to Final / Needs Item / Needs Task',
     'Evolve for UL':      'retired (2026-11-15): a copy to evolve wears ONE tag -- Evolve to Mid / to Final / Needs Item / Needs Task',
@@ -1055,6 +1062,10 @@ LEGACY_TAGS = {
     'Traded by E+F': ('Traded_by_E+F.txt', 7),
     'Legacy Moves':  ('Legacy_Moves.txt',  3),
     'Transfer':      ('Transfer.txt',      1),
+    # renamed 2026-11-18 from Best GL / UL / ML: each keeps the colour its old tag was made with (tag_order_probe.json, 09-24)
+    'My Best GL':    ('My_Best_GL.txt',    1),
+    'My Best UL':    ('My_Best_UL.txt',    2),
+    'My Best ML':    ('My_Best_ML.txt',    2),
 }
 
 # Tagset files that legitimately exist WITHOUT a prune_tags.PLAN entry. Every entry names the script

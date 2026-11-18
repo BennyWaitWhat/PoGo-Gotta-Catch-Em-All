@@ -198,6 +198,6 @@ python tools/triple_check.py
 
 ## ⚠️ Security, Safety & Legal Disclaimer
 
-- **Zero In-Game Release Primitive**: This software does not contain any code capable of transferring or deleting Pokémon. It writes descriptive tags (`Transfer`, `Best GL`, `Power Up to 1500`) directly to the game's tagging system. The user must manually review and confirm any batch transfer within the official Pokémon GO client.
+- **Zero In-Game Release Primitive**: This software does not contain any code capable of transferring or deleting Pokémon. It writes descriptive tags (`Transfer`, `My Best GL`, `Power Up to 1500`) directly to the game's tagging system. The user must manually review and confirm any batch transfer within the official Pokémon GO client.
 - **Account Risk**: Modifying memory or running automation on Pokémon GO violates Niantic's Terms of Service and may result in account penalties or permanent bans. This repository is provided strictly for educational and reverse-engineering research purposes.
 - **Intellectual Property**: Pokémon and Pokémon GO are registered trademarks of Nintendo, Creatures Inc., GAME FREAK inc., and Niantic, Inc. This project is independent and has not been authorized, sponsored, or approved by the trademark holders.

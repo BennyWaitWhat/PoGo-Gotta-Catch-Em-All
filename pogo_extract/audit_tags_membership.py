@@ -73,7 +73,7 @@ except OSError:
 print('\nTAGSET FILES PRESENT')
 EXPECTED = ('Hundo', 'Nundo', 'Traded_by_E+F', 'XXL',
             'Legacy_Moves', 'Transfer',   # Event retired 2026-09-09; the five evolve tags may be empty -- each is re-derived and set-compared below (2026-09-29)
-            'Best_GL', 'Best_UL', 'Best_ML')   # rule 15d (2026-09-23): every species has a ranked non-shadow copy -> never empty
+            'My_Best_GL', 'My_Best_UL', 'My_Best_ML')   # rule 15d (2026-09-23): every species has a ranked non-shadow copy -> never empty
 
 def _tag_legitimately_empty(tag):
     """A DEFINITIONAL tag the bag has nobody for is legitimately empty (2026-09-26, a second account with no E+F trades
@@ -229,7 +229,7 @@ try:
         # (2026-09-30, THE SECOND FOLD) a later-stage spread wears '<league> 1-5 No Evolve', or the evolve tags when it is
         # the copy to evolve (Evolve for <league> beside the count -- its Best chip comes off then)
         # (2026-11-16) No Evolve is an own-stage top 5 since today, so it is inside the Rank chip and adds nothing here
-        t = load('%s_Rank_1-5' % lg) | load('Best_%s' % lg) | _evolve_labelled()
+        t = load('%s_Rank_1-5' % lg) | load('My_Best_%s' % lg) | _evolve_labelled()
         # OVER-CAP SPREADS CARRY NO LEAGUE CHIP (user 2026-09-23, on over-cap spreads: "why are they even tagged"):
         # a keeper none of whose rank-<=ready_rank stages it can still ENTER (pvp_iv_rule.fits, true level) needs no
         # GL/UL tag -- the chip would claim it can play. It stays KEPT (rule 15b; the 8-layer and fixture audits prove
@@ -342,8 +342,8 @@ try:
         if _lg == 'ML':                     # the Best ML chip skips hundos (2026-09-23) and Variant #1 (2026-10-25); the keep does not
             q = {u for u in q if (rows[u].get('iv_total') or 0) != 45} - (set() if _THM2 else load('Variant_#1'))   # (2026-11-18) gated: Variant #1 wears it too
         q -= _evolve_labelled()             # (2026-11-15) no Best chip on a copy told to evolve: a Best is about the stage it is leaving
-        t = load('Best_%s' % _lg)
-        verdict('Best %s' % _lg, t - q, (q - t) - pile,
+        t = load('My_Best_%s' % _lg)
+        verdict('My Best %s' % _lg, t - q, (q - t) - pile,
                 '(best non-shadow copy per PvP identity -- species + battle form; winners=%d, winners in pile=%d)'
                 % (len(q), len(q & pile)))
         if q & pile:
@@ -609,7 +609,7 @@ try:
         verdict(_tn, t - _pu[lg], _pu[lg] - t, '(own-stage rank 1-%d, pvpoke top-%s, under the cap and below its best level; '
                 'one per stage)' % (_AR3, _PMN or 'all'))
     # LAW: the two instructions must not contradict on screen -- no 'Power Up to 2500' on a copy wearing a GL chip
-    _burn = load('Power_Up_to_2500') & (load('Best_GL') | load('GL_Rank_1-5'))
+    _burn = load('Power_Up_to_2500') & (load('My_Best_GL') | load('GL_Rank_1-5'))
     print('  %-16s on a Best GL / GL Rank 1-5 copy=%d %s' % ('  -> 2500 law', len(_burn), 'OK' if not _burn else '*** FAIL ***'))
     if _burn: FAILS.append('Power Up to 2500 on a GL keeper')
     # LAW (user 2026-09-29), read off the FILES: no Power Up outside own-stage rank 1-N or the league's pvpoke top-N, no 2nd

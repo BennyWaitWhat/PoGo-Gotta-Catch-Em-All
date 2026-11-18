@@ -52,8 +52,8 @@ LABEL = [('Legacy Moves', 'Legacy_Moves.txt', 'legacy'),      # 'Event' retired 
 _EVF = ['Evolve_to_Mid.txt', 'Evolve_to_Final.txt', 'Evolve_Needs_Item.txt', 'Evolve_Needs_Task.txt']   # ONE evolve tag per copy (2026-11-15)
 # (2026-11-16) PvP 1-5 No Evolve left the lists: it is an own-stage top 5 now, inside the Rank file, and it named the other
 # league's rank for a copy ranked in only one. A keeper that ranks 1-5 only as a later stage carries no chip: _later_only.
-RANKED = [('gl_iv', 'GL rank tags', ['GL_Rank_1-5.txt', 'Best_GL.txt'] + _EVF),   # 2026-09-30
-          ('ul_iv', 'UL rank tags', ['UL_Rank_1-5.txt', 'Best_UL.txt'] + _EVF)]
+RANKED = [('gl_iv', 'GL rank tags', ['GL_Rank_1-5.txt', 'My_Best_GL.txt'] + _EVF),   # 2026-09-30
+          ('ul_iv', 'UL rank tags', ['UL_Rank_1-5.txt', 'My_Best_UL.txt'] + _EVF)]
 
 print("=== TAG AUDIT (keep_policy reason <-> build_tagsets file) ===")
 # Best ML = the pvp_best_ml reason MINUS hundos (user 2026-09-23: the chip skips a hundo, the keep does not) and MINUS
@@ -64,17 +64,17 @@ if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 import keep_config as _kc_bm                          # (2026-11-18) gated to Master League species (rules.pvp_top_half_ml) the chip
 _bm_v1 = set() if _kc_bm.rule_enabled('pvp_top_half_ml') else fu('Variant_#1.txt')   # also sits on a Variant #1 copy
-_bm_r, _bm_f = ru('pvp_best_ml') - ru('hundo') - _bm_v1 - _evl, fu('Best_ML.txt')
+_bm_r, _bm_f = ru('pvp_best_ml') - ru('hundo') - _bm_v1 - _evl, fu('My_Best_ML.txt')
 if _bm_r != _bm_f:
     problems.append(f"Best ML: reason-minus-hundo-and-Variant-#1 != file (missing={len(_bm_r - _bm_f)}, extra={len(_bm_f - _bm_r)})")
-print(f"  {'Best ML':<15} reason-minus-hundo={len(_bm_r)} file={len(_bm_f)}  {'OK' if _bm_r == _bm_f else 'DRIFT'}")
+print(f"  {'My Best ML':<15} reason-minus-hundo={len(_bm_r)} file={len(_bm_f)}  {'OK' if _bm_r == _bm_f else 'DRIFT'}")
 # Best GL / Best UL = the pvp_best_gl / _ul reason MINUS the copy told to Evolve for that league (2026-09-30: the Evolve
 # tag says it); rule 15d, 2026-09-23
 for _lg in ('GL', 'UL'):
-    _br, _bf = ru('pvp_best_' + _lg.lower()) - _evl, fu('Best_%s.txt' % _lg)
+    _br, _bf = ru('pvp_best_' + _lg.lower()) - _evl, fu('My_Best_%s.txt' % _lg)
     if _br != _bf:
         problems.append(f"Best {_lg}: reason-minus-Evolve-for != file (missing={len(_br - _bf)}, extra={len(_bf - _br)})")
-    print(f"  {'Best ' + _lg:<15} reason-minus-evolve={len(_br)} file={len(_bf)}  {'OK' if _br == _bf else 'DRIFT'}")
+    print(f"  {'My Best ' + _lg:<15} reason-minus-evolve={len(_br)} file={len(_bf)}  {'OK' if _br == _bf else 'DRIFT'}")
 for tag, fn, reason in EXACT:
     R, F = ru(reason), fu(fn)
     if R != F:

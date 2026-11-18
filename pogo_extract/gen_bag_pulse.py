@@ -98,7 +98,7 @@ nonpvp = [r for r in kept if r['iv_total'] != 45 and not r['fresh_shiny'] and r[
           and 'variant_floor' in reasons.get(r['uid_hex'], set()) and not (reasons.get(r['uid_hex'], set()) & pvp_reasons)]
 reason_ct = collections.Counter(x for v in reasons.values() for x in v if x != 'dex_only_copy')
 sole = collections.Counter(next(iter(v - {'dex_only_copy'})) for v in reasons.values() if len(v - {'dex_only_copy'}) == 1)
-REASON_NAMES = {'variant_floor': 'Plain ladder slot', 'shiny': 'Shiny', 'pvp_best_ml': 'Best ML', 'pvp_best_ul': 'Best UL', 'pvp_best_gl': 'Best GL',
+REASON_NAMES = {'variant_floor': 'Plain ladder slot', 'shiny': 'Shiny', 'pvp_best_ml': 'My Best ML', 'pvp_best_ul': 'My Best UL', 'pvp_best_gl': 'My Best GL',
                 'hundo': 'Hundo', 'rarity': 'Legendary / rare', 'legacy': 'Legacy move', 'location_card': 'Location card', 'xxl': 'XXL showcase winner',
                 'shadow_best': 'Best shadow', 'pvp_rank': 'GL/UL rank 1-5', 'gl_iv': 'GL spread', 'ul_iv': 'UL spread', 'evolve_1': 'Evolve next',
                 'evolve_2': 'Evolve twice', 'nundo': 'Nundo', 'adventure_effect': 'Adventure Effect', 'origin': 'Traded by E+F', 'protected': 'Never cull (your list, or kept by hand)',
@@ -478,7 +478,7 @@ __ART_CSS__</style>
           <p class="note">Each line is a running total over these culls: a stage best is a new plain copy better than any you had at that stage; a pick is an Evolve label you followed. Flat stretches are culls that only released.</p></div>
         <div class="card wide" style="padding:10px 12px"><div class="eyebrow">Average CP, every pass</div>
           <div class="cpgrid" id="cp_grid"></div>
-          <p class="note">The mean CP of the copies in your Best GL, Best UL and Best ML tags, and of all your hundos. A line rises as you power them up; a newly tagged copy at low CP pulls it down.</p></div>
+          <p class="note">The mean CP of the copies in your My Best GL, My Best UL and My Best ML tags, and of all your hundos. A line rises as you power them up; a newly tagged copy at low CP pulls it down.</p></div>
       </div>
     </div>
     <div class="card wide">
@@ -611,7 +611,7 @@ new Chart(el('c_pp_cum'), {type: 'line', data: {labels: W.labels, datasets: [
   options: {responsive: true, maintainAspectRatio: false, interaction: {mode: 'index', intersect: false}, plugins: {legend: {display: false}},
     scales: {x: ppx, y: ax({beginAtZero: true, title: {display: true, text: 'running total'}})}}});
 { // AVERAGE CP, every pass (2026-11-12): one small chart per group, each on its own scale -- the four sit 1,000s of CP apart
-  const G = [['best_gl', 'Best GL', '--pvp'], ['best_ul', 'Best UL', '--warn'], ['best_ml', 'Best ML', '--shiny'], ['hundo', 'Hundos', '--hundo']];
+  const G = [['best_gl', 'My Best GL', '--pvp'], ['best_ul', 'My Best UL', '--warn'], ['best_ml', 'My Best ML', '--shiny'], ['hundo', 'Hundos', '--hundo']];
   const num = v => v == null ? '—' : v.toLocaleString('en-US');
   el('cp_grid').innerHTML = G.map(([k, name]) => { const o = (W.cp || {})[k] || {};
     return '<div><div class="eyebrow">' + name + (o.n != null ? ' · ' + o.n + ' copies' : '') + '</div><div class="v">' + num(o.to) + ' CP</div>' +
