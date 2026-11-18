@@ -4155,8 +4155,16 @@ def check_tag_vocabulary(con):
     else:
         ok('no orphan tagset file (every .txt is planned or exempt)')
     # Transfer counts as an action tag (user 2026-09-30: "put the transfers tag on top"): it heads ORDER, then the evolve
-    # and dust tags, then the reference tags.
-    order, act = _module_const('system/scripts/order_tags.py', 'ORDER'), ['Transfer'] + list(ev) + list(dust)
+    # and dust tags, then HIS four hundo power-up buckets (user 2026-11-18: "I also want the actionable tags at the top
+    # under transfer and favorite." -- unlisted until then, so they sat below every other tag), then the reference tags.
+    try:
+        import game_opportunities as _go_ord
+        _buckets = [n for n, _col in sorted(_go_ord.HUNDO_TAGS.values(), key=lambda v: v[1])]
+    except Exception as e:
+        _buckets = []
+        fail(WARN, 'game_opportunities.HUNDO_TAGS is not readable (%s: %s) -- cannot say his hundo buckets sit on top'
+             % (type(e).__name__, e), 'Fix the import; order_tags.ORDER lists the four bucket names after Unlock 2nd Move.')
+    order, act = _module_const('system/scripts/order_tags.py', 'ORDER'), ['Transfer'] + list(ev) + list(dust) + _buckets
     if not isinstance(order, (list, tuple)):
         fail(WARN, 'order_tags.ORDER is not readable as a literal list -- cannot say the action tags sit on top',
              'Keep ORDER a plain list literal in system/scripts/order_tags.py.')
@@ -4165,8 +4173,8 @@ def check_tag_vocabulary(con):
         low = [t for t in act if t not in order] + [t for t in act if t in order and order.index(t) > first]
         if low:
             fail(WARN, 'action tag(s) missing from order_tags.ORDER or listed below a reference tag: %s' % low,
-                 'User 2026-09-26: "always put them on top." Put every evolve tag and Power Up / Unlock 2nd Move at the '
-                 'head of ORDER; an unlisted tag sorts below every listed one on the phone.')
+                 'User 2026-09-26: "always put them on top." Put every evolve tag, Power Up / Unlock 2nd Move and his four '
+                 'hundo buckets at the head of ORDER; an unlisted tag sorts below every listed one on the phone.')
         else:
             ok('order_tags.ORDER lists the %d action tags first (%s)' % (len(act), ', '.join(act)))
     if not re.search(r'granular_tags\.registry\(\)', code_only('system/scripts/retire_tags.py')):

@@ -28,6 +28,10 @@ ORDER = [
     # dust advice. Names say the action (granular_tags POWER_UP_GL / SECOND_MOVE).
     'Evolve to Mid', 'Evolve to Final', 'Evolve Needs Item', 'Evolve Needs Task',   # ONE evolve tag per copy (2026-11-15)
     'Power Up to 1500', 'Power Up to 2500', 'Unlock 2nd Move',
+    # HIS four hundo power-up buckets are things to act on too (user 2026-11-18: "I also want the actionable tags at the
+    # top under transfer and favorite."). They were not listed, so the phone showed them below every other tag. Cheapest
+    # first, the order he fills them in (game_opportunities.HUNDO_TAGS). Still unmanaged: prune and retire never touch them
+    'Hundo Under 500', 'Hundo 501-1500', 'Hundo 1501-2500', 'Hundo Max Out',
     'GL Rank 1-5', 'UL Rank 1-5', 'PvP 1-5 No Evolve', 'Best GL', 'Best UL', 'Best ML', '0-15-15',
     'Hundo', 'Nundo', 'XXL', 'Shiny - Only One', 'Legacy Moves', 'Adventure Effect', 'Ultra Beast',
     'Never Cull', 'Traded by E+F', 'Variant #1', 'Variant #2', 'Variant #3', 'Variant #4+',
@@ -362,6 +366,10 @@ def _selfcheck():
     t = [{'name': 'Mine', 'sort': 0}, {'name': 'Hundo', 'sort': 1}, {'name': 'Transfer', 'sort': 2}, {'name': 'Zed', 'sort': 3}]
     p = plan(t)
     assert p == {'Transfer': 0, 'Hundo': 1, 'Mine': 2, 'Zed': 3}, p        # listed first, unlisted after in their order
+    a = ORDER.index('Unlock 2nd Move')                                     # his hundo buckets close the action block (2026-11-18)
+    assert ORDER[a + 1:a + 5] == ['Hundo Under 500', 'Hundo 501-1500', 'Hundo 1501-2500', 'Hundo Max Out'], ORDER[a + 1:a + 5]
+    t = [{'name': n, 'sort': i} for i, n in enumerate(['Best GL', 'Hundo Max Out', 'Transfer', 'Hundo Under 500', 'Evolve to Mid'])]
+    assert plan(t) == {'Transfer': 0, 'Evolve to Mid': 1, 'Hundo Under 500': 2, 'Hundo Max Out': 3, 'Best GL': 4}, plan(t)
     print('selfcheck ok')
 
 
