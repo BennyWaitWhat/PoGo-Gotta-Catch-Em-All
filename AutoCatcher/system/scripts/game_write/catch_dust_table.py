@@ -16,9 +16,14 @@ NOBODY REGENERATES IT BY HAND:
                  Without a network it falls back to the installed game master (pogo_extract/, read only) when that one
                  is newer. The cull HOLDS a batch for Benny's word; this table does not wait for that and never touches
                  the cull's file.
-  --for-deploy [files]   deploy.sh runs this before it pushes, with the phone's copy piped in: --update, then it prints
-                 the table's path when the phone's copy is missing, different, or older -- never an older batch over a
-                 newer one (the phone also updates itself).
+  --auto LOG     what the catcher starts as a CHILD PROCESS at an attach and every 6 hours (never in its own process: a
+                 slow network must not hold up a throw): --update, then the last day's catches in LOG held against the
+                 table. Prints one json line; the catcher logs from it. CATCH_DUST_NO_NET=1 asks no upstream (tests).
+  --for-deploy [files]   deploy.sh runs this before it pushes, with the phone's copies piped in: --update, then it prints
+                 what the phone needs -- the table when the phone's is missing, different, or older (never an older
+                 batch over a newer one: the phone also updates itself), and this file when the phone's differs (never
+                 over a newer REV).
+One update at a time: a lock file next to the table (a run that died leaves it; after 30 minutes it is taken over).
 The table's text is the same for the same batch (no time stamp inside), so md5-verified deploys and the seed in git stay
 stable. When the last check ran is in catch_dust.state.json next to it (state, not in git).
 
@@ -46,6 +51,8 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 TABLE = os.path.join(HERE, "catch_dust.json")
 STATE = os.path.join(HERE, "catch_dust.state.json")
 REL = "system/scripts/game_write/catch_dust.json"            # the table under AutoCatcher/ and under the phone's ~/pogo
+BREL = "system/scripts/game_write/catch_dust_table.py"       # this file, the same way (the phone runs it: --auto)
+REV = 2                      # this file's revision: deploy.sh never puts a lower one over the phone's. +1 with every change
 PHONE_HOME = "/data/data/com.termux/files/home/pogo"         # deploy.sh's H
 INSTALLED_GM = os.path.normpath(os.path.join(HERE, os.pardir, os.pardir, os.pardir, os.pardir, "pogo_extract",
                                              "gamemaster_pokeminers.json"))
@@ -321,9 +328,48 @@ def install(entries, batch, table, old, force=False):
     return "", parse_table(text)
 
 
+def _lock(path, stale=1800):
+    """One update at a time: two at once would download the same 20 MB into one temp file. An exclusive lock file; one
+    older than `stale` seconds belongs to a run that died and is taken over. -> True when this run holds it. A folder
+    that takes no lock file never blocks an update (replacing the table is atomic anyway)."""
+    for _try in (1, 2, 3):
+        try:
+            fd = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+        except FileExistsError:
+            try:
+                if time.time() - os.stat(path).st_mtime < stale:
+                    return False
+                os.remove(path)
+            except OSError:
+                pass   # it went away under us (that run just ended), or cannot be removed: try again, then give up
+            continue
+        except OSError:
+            return True
+        try:
+            os.write(fd, ("%d %d\n" % (os.getpid(), time.time())).encode("ascii"))
+        finally:
+            os.close(fd)
+        return True
+    return False
+
+
 def update(table=TABLE, state=STATE, fetch=http_get, now=None, installed=INSTALLED_GM, net=True, force=False, marker_s=10):
-    """Bring the table to upstream's newest batch. -> (ok, line). ok = an upstream answered and the table now holds a batch
-    at least as new as the newest one asked (already, or rebuilt here); anything else keeps the table and says why."""
+    """Bring the table to upstream's newest batch, one run at a time. -> (ok, line). ok = an upstream answered and the
+    table now holds a batch at least as new as the newest one asked (already, or rebuilt here); anything else keeps the
+    table and says why."""
+    lock = table + ".lock"
+    if not _lock(lock):
+        return False, "another update of this table is running -- left to it"
+    try:
+        return _update(table, state, fetch, now, installed, net, force, marker_s)
+    finally:
+        try:
+            os.remove(lock)
+        except OSError:
+            pass
+
+
+def _update(table, state, fetch, now, installed, net, force, marker_s):
     now = time.time() if now is None else now
     try:
         old = read_table(table)
@@ -427,12 +473,23 @@ def _bytes(path):
         return None
 
 
-def for_deploy(files, phone, say, table=None, state=None, installed=None):
-    """deploy.sh's hook. --update first (CATCH_DUST_NO_UPDATE=1 skips it, CATCH_DUST_NO_NET=1 asks no upstream), then the
-    table's path (REL) when the phone needs it: deploy.sh adds it to its push list. phone = what deploy.sh read off the
-    phone: the table's bytes, then the END marker. The marker proves adb and su answered, so nothing before it means "no
-    table there"; no marker means the phone did not answer, and nothing is added. A deploy never dies on the table."""
-    table, state = table or TABLE, state or STATE
+SEP = b"==DUST-TABLE-FOLLOWS=="   # deploy.sh echoes it between what it read of the phone's builder and the phone's table
+
+
+def _md5(data):
+    return hashlib.md5(data).hexdigest()
+
+
+def for_deploy(files, phone, say, table=None, state=None, installed=None, me=None):
+    """deploy.sh's hook. --update first (CATCH_DUST_NO_UPDATE=1 skips it, CATCH_DUST_NO_NET=1 asks no upstream), then what
+    the phone needs, one path per line (deploy.sh adds them to its push list):
+      this file (BREL)  when the phone's copy is missing or different -- the phone runs it (--auto) -- but never over a
+                        copy with a higher REV (a deploy from an old checkout must not take the phone back);
+      the table (REL)   when the phone's is missing, different or older -- never an older batch over a newer one.
+    phone = what deploy.sh read off the phone: the md5 of its builder and that file's REV line (nothing = no builder
+    there), the SEP line, the table's bytes, the END marker. The marker proves adb and su answered, so nothing before it
+    means "not there"; no marker means the phone did not answer, and nothing is added. A deploy never dies on this."""
+    table, state, me = table or TABLE, state or STATE, me or os.path.abspath(__file__)
     if os.environ.get("CATCH_DUST_NO_UPDATE") != "1":
         before = _bytes(table)
         try:
@@ -442,21 +499,42 @@ def for_deploy(files, phone, say, table=None, state=None, installed=None):
             say("DUST TABLE: update failed (%s) -- the table is kept" % (str(e)[:80] or type(e).__name__))
         if _bytes(table) != before:
             say("DUST TABLE: %s changed on this PC (a newer game master batch) -- commit it with your change" % REL)
-    if any(os.path.normpath(f).replace(os.sep, "/") == REL for f in files):
-        return ""   # already in the push list
-    local = _bytes(table)
-    try:
-        parse_table((local or b"").decode("utf-8"))
-    except (ValueError, UnicodeDecodeError) as e:
-        say("DUST TABLE: this PC's table does not read (%s) -- not pushed" % (str(e)[:80] or type(e).__name__))
-        return ""
+    named = {os.path.normpath(f).replace(os.sep, "/") for f in files}
     out = (phone or b"").replace(b"\r\n", b"\n")
-    if out.endswith(END + b"\n"):
-        yes, why = ship(local, out[:-len(END) - 1])
-    else:
-        yes, why = False, "the phone did not answer"
-    say("DUST TABLE: %s -- %s" % (why, "pushing it" if yes else "not pushed"))
-    return REL if yes else ""
+    if not out.endswith(END + b"\n"):
+        if not {REL, BREL} <= named:
+            say("DUST TABLE: the phone did not answer -- not pushed")
+        return ""
+    out, want = out[:-len(END) - 1], []
+    head, sep, body = out.partition(SEP + b"\n")
+    if not sep:        # an older deploy.sh piped the table alone: nothing is known about the phone's builder
+        head, body = None, out
+    if head is not None and BREL not in named:
+        hl = head.decode("ascii", "replace").split("\n")
+        pmd5 = next((x.strip() for x in hl if re.fullmatch(r"[0-9a-f]{32}", x.strip())), "")
+        prev = next((int(m.group(1)) for m in (re.match(r"REV = (\d+)", x) for x in hl) if m), 0)
+        mine = _bytes(me)
+        if mine is None:
+            say("DUST TABLE: %s is not on this PC -- not pushed" % BREL)
+        elif pmd5 == _md5(mine):
+            pass
+        elif prev > REV:
+            say("DUST TABLE: the phone's catch_dust_table.py is NEWER (rev %d > %d): not replaced" % (prev, REV))
+        else:
+            want.append(BREL)
+            say("DUST TABLE: the phone's catch_dust_table.py is %s -- pushing it" % ("different (its rev %d, this one %d)" % (prev, REV) if pmd5 else "missing"))
+    if REL not in named:
+        local = _bytes(table)
+        try:
+            parse_table((local or b"").decode("utf-8"))
+        except (ValueError, UnicodeDecodeError) as e:
+            say("DUST TABLE: this PC's table does not read (%s) -- not pushed" % (str(e)[:80] or type(e).__name__))
+        else:
+            yes, why = ship(local, body)
+            say("DUST TABLE: %s -- %s" % (why, "pushing it" if yes else "not pushed"))
+            if yes:
+                want.append(REL)
+    return "\n".join(want)
 
 
 # ---- real catches against the table (Benny's rule: read the game's own records, never an estimate)
@@ -571,6 +649,73 @@ def verify_catches(records, table):
             res["few"][dex] = rs
         else:
             res["other"] += rs
+    return res
+
+
+def catch_lines(paths, max_bytes=12 * 1024 * 1024):
+    """The timed CATCH lines of catcher logs, oldest file first; of each file at most its last max_bytes (a day of the
+    catcher's log is 3 to 6 MB). Read line by line: a 20 MB log never sits in memory."""
+    out = []
+    for path in paths:
+        try:
+            with open(path, "rb") as fh:
+                fh.seek(0, 2)
+                size = fh.tell()
+                fh.seek(max(0, size - max_bytes))
+                if size > max_bytes:
+                    fh.readline()   # the cut lands inside a line
+                for raw in fh:
+                    if b" CATCH " in raw:
+                        ln = raw.decode("utf-8", "replace").rstrip("\r\n")
+                        if LOG_CATCH.match(ln):
+                            out.append(ln)
+        except OSError:
+            continue
+    return out
+
+
+def last_day(lines):
+    """The lines of the 24 hours before the last one. A catcher log carries clock times only (HH:MM:SS): going back from
+    the end, a clock that jumps UP by more than an hour is midnight; past it, the day ends at the last line's own time."""
+    end = prev = None
+    past = False
+    for i in range(len(lines) - 1, -1, -1):
+        ln = lines[i]
+        if not re.match(r"^\d\d:\d\d:\d\d ", ln):
+            continue
+        t = int(ln[0:2]) * 3600 + int(ln[3:5]) * 60 + int(ln[6:8])
+        if end is None:
+            end = prev = t
+            continue
+        if t > prev + 3600:
+            if past:               # a second midnight: more than a day back
+                return lines[i + 1:]
+            past = True
+        if past and t <= end:
+            return lines[i + 1:]
+        prev = t
+    return lines
+
+
+def auto(log, table=TABLE, state=STATE, **kw):
+    """The catcher's child process: --update, then the last day's catches in the catcher's log (LOG.1, then LOG) held
+    against the table as it is now. -> what the catcher logs from: {"ok", "line", "batch", and when the catches could be
+    read: "catches", "checked", "species", "above": [{dex, name, table, over, n, a, ref}]}; else "verify_error". Whatever
+    either step runs into is said in that answer, never raised: the catcher logs one line from it."""
+    try:
+        ok, line = update(table=table, state=state, **kw)
+    except Exception as e:   # noqa: BLE001
+        ok, line = False, "update failed (%s) -- the table is kept" % (str(e)[:80] or type(e).__name__)
+    res = {"ok": bool(ok), "line": line, "batch": 0}
+    try:
+        tab = read_table(table)
+        res["batch"] = tab["batch"]
+        v = verify_catches(catch_records(last_day(catch_lines([log + ".1", log]))), tab)
+        res.update(catches=v["catches"], checked=v["checked"], species=v["species"],
+                   above=[{"dex": d, "name": tab["names"].get(d, "?"), "table": tab["dust"].get(d), "over": over, "n": n, "a": mid["a"], "ref": mid["ref"]}
+                          for d, (over, n, mid) in sorted(v["above"].items(), key=lambda kv: -kv[1][1])])
+    except Exception as e:   # noqa: BLE001  (no table, a log that cannot be opened, a record of an unexpected shape)
+        res["verify_error"] = str(e)[:120] or type(e).__name__
     return res
 
 
@@ -754,6 +899,62 @@ def _selftest():
         check_("ship: same bytes -> no; none / unreadable / older / differs -> yes; a NEWER one on the phone -> no",
                [ship(loc, loc)[0], ship(loc, b"")[0], ship(loc, None)[0], ship(loc, b"{nope")[0], ship(loc, older)[0], ship(loc, newer)[0]],
                [False, True, True, True, True, False])
+        # one update at a time
+        lockf, st0, tb0 = tb + ".lock", _bytes(stt), _bytes(tb)
+        open(lockf, "w").close()
+        got = update(tb, stt, fetch, now=1795001700, installed="", net=False)
+        check_("lock: an update is running -> this one leaves it alone (table and state untouched, the lock stays the other's)",
+               (got, _bytes(stt) == st0, _bytes(tb) == tb0, os.path.exists(lockf)), ((False, "another update of this table is running -- left to it"), True, True, True))
+        os.utime(lockf, (time.time() - 7200, time.time() - 7200))
+        ok, line = update(tb, stt, fetch, now=1795001800, installed="", net=False)
+        check_("lock: one left by a run that died (2 h old) is taken over; every run removes its own",
+               (ok, line[:18], os.path.exists(lockf), _bytes(stt) != st0), (False, "upstream not asked", False, True))
+        # the last day of a catcher log
+        day = ["09:00:00 CATCH Wild #1 x dust=125", "11:00:00 CATCH Wild #2 x dust=125", "Traceback (most recent call last):", "23:00:00 CATCH Wild #3 x dust=125",
+               "01:00:00 CATCH Wild #4 x dust=125", "10:00:00 CATCH Wild #5 x dust=125"]
+        check_("last day: 25 h before the last line is out, 23 h before is in (the clock jumps back at midnight)", last_day(day), day[1:])
+        two = ["12:00:00 a", "23:30:00 b", "00:30:00 c", "23:45:00 d", "00:10:00 e"]
+        check_("last day: a second midnight ends it; one day's lines, no lines and untimed lines are kept as they are",
+               (last_day(two), last_day(day[:2]), last_day([]), last_day(["x", "y"])), (two[2:], day[:2], [], ["x", "y"]))
+        lg = os.path.join(tmp, "catch_loop.log")
+        with open(lg, "wb") as fh:
+            fh.write(b"08:00:00 run 10s | caught=1\n08:00:01 CATCH Wild #16 x dust=125 candy=3 wx=0\nCATCH Wild #16 untimed dust=125\n\xff\xfe junk\n08:00:02 FLED Wild #16 x\n"
+                     b"08:00:03 CATCH Incense #21 ball=1 dust=525 candy=3\n")
+        check_("catch lines: the timed CATCH lines of the logs that exist, oldest file first; a cut first line is dropped",
+               (catch_lines([lg + ".1", lg]), catch_lines([lg], max_bytes=60), catch_lines([lg + ".none"])),
+               (["08:00:01 CATCH Wild #16 x dust=125 candy=3 wx=0", "08:00:03 CATCH Incense #21 ball=1 dust=525 candy=3"],
+                ["08:00:03 CATCH Incense #21 ball=1 dust=525 candy=3"], []))
+        # the catcher's child process: the update, then the last day's catches against the table
+        tb2, st2 = os.path.join(tmp, "auto.json"), os.path.join(tmp, "auto.state.json")
+        open(tb2, "w", encoding="ascii", newline="\n").write(table_text({**dust, 16: 100, 21: 100, 774: 1000}, names, T0 + 5))
+        with open(lg + ".1", "w", encoding="utf-8", newline="\n") as fh:   # two days ago: must not count
+            fh.write("".join("07:%02d:01 CATCH Wild #16 x dust=125\n07:%02d:02 CATCH Wild #774 x dust=4025\n" % (i, i) for i in range(5)))
+            fh.write("".join("21:%02d:01 CATCH Wild #16 x dust=125\n" % i for i in range(3)))
+        with open(lg, "w", encoding="utf-8", newline="\n") as fh:
+            fh.write("".join("06:%02d:01 CATCH Wild #16 x dust=125\n" % i for i in range(3)))   # yesterday 06:00: more than a day before the end
+            fh.write("".join("20:%02d:01 CATCH Wild #16 x dust=125\n20:%02d:02 CATCH Wild #21 x dust=525\n20:%02d:03 CATCH Wild #774 x dust=1025\n" % (i, i, i) for i in range(4)))
+            fh.write("00:10:00 run 5s\n" + "".join("07:%02d:01 CATCH Wild #16 x dust=125\n" % i for i in range(2)))
+        res = auto(lg, table=tb2, state=st2, fetch=fetch, now=1795001900, installed="", net=False)
+        check_("auto: the update's own line, the table's batch, and yesterday evening's + this morning's catches (not the older ones)",
+               (res["ok"], res["line"][:18], res["batch"], res["catches"], res["checked"], res["species"]), (False, "upstream not asked", T0 + 5, 14, 14, 3))
+        check_("auto: a species whose catches paid more than the table says is named with its numbers",
+               res["above"], [{"dex": 21, "name": names.get(21, "?"), "table": 100, "over": 4, "n": 4, "a": 525, "ref": 125}])
+        def boom(*_a, **_k):
+            raise RuntimeError("boom")
+        keep = (globals()["update"], globals()["verify_catches"])
+        try:
+            globals()["update"] = boom
+            r1 = auto(lg, table=tb2, state=st2)
+            globals().update(update=keep[0], verify_catches=boom)
+            r2 = auto(lg, table=tb2, state=st2, fetch=fetch, now=1795001950, installed="", net=False)
+        finally:
+            globals().update(update=keep[0], verify_catches=keep[1])
+        check_("auto: an update that raises, or a check of the catches that raises, is said in the answer -- the other part still runs",
+               ((r1["ok"], r1["line"], r1["catches"]), (r2["line"][:18], r2["batch"], r2.get("verify_error"), "catches" in r2)),
+               ((False, "update failed (boom) -- the table is kept", 14), ("upstream not asked", T0 + 5, "boom", False)))
+        check_("auto: its answer is one json line; a table that is not there is said, not raised",
+               (json.loads(json.dumps(res)) == res, sorted(auto(lg, table=tb2 + ".none", state=st2, fetch=fetch, now=1795002000, installed="", net=False))),
+               (True, ["batch", "line", "ok", "verify_error"]))
         said = []
         env0 = {k: os.environ.get(k) for k in ("CATCH_DUST_NO_UPDATE", "CATCH_DUST_NO_NET")}
         os.environ.update(CATCH_DUST_NO_UPDATE="1")
@@ -775,6 +976,18 @@ def _selftest():
         check_("for-deploy: the update runs first (no network here: the table is kept), then the question",
                (got, [x.rsplit(" -- ", 1)[0] for x in said[n_said:]], _bytes(tb) == loc), (REL, ["DUST TABLE: upstream not asked", "DUST TABLE: the phone has no table"], True))
         os.environ.update(CATCH_DUST_NO_UPDATE="1")
+        # this file rides along too: the phone runs it (--auto)
+        mef = os.path.join(tmp, "builder.py")
+        open(mef, "wb").write(b"REV = 2\nprint(1)\n")
+        mm = _md5(b"REV = 2\nprint(1)\n").encode("ascii")
+        fb = lambda files, head, body=loc: for_deploy(files, head + SEP + b"\n" + body + mark, said.append, table=tb, state=stt, me=mef)
+        check_("for-deploy: the phone's builder is the same -> not added; missing or different -> added; a higher REV there -> never replaced",
+               [fb([], mm + b"\nREV = 2\n"), fb([], b""), fb([], b"0" * 32 + b"\nREV = 1\n"), fb([], b"0" * 32 + b"\n"),
+                fb([], b"0" * 32 + ("\nREV = %d\n" % (REV + 1)).encode("ascii")), said[-2]],
+               ["", BREL, BREL, BREL, "", "DUST TABLE: the phone's catch_dust_table.py is NEWER (rev %d > %d): not replaced" % (REV + 1, REV)])
+        check_("for-deploy: builder and table both missing -> both, the builder first; one named by hand -> only the other",
+               [fb([], b"", b""), fb([BREL], b"", b""), fb([REL], b"", b""), fb([REL, "./" + BREL], b"", b"")], [BREL + "\n" + REL, REL, BREL, ""])
+        check_("for-deploy: adb's CR LF line ends in the builder's part are read as LF", fb([], mm + b"\r\nREV = 2\r\n"), "")
         os.remove(tb)
         check_("for-deploy: no table on this PC -> nothing added, said", (fd([], mark), said[-1].split(" (")[0]), ("", "DUST TABLE: this PC's table does not read"))
         for k, v in env0.items():
@@ -840,6 +1053,13 @@ def main(argv):
         rel = for_deploy(argv[argv.index("--for-deploy") + 1:], sys.stdin.buffer.read(), err)
         if rel:
             sys.stdout.buffer.write((rel + "\n").encode("ascii"))   # bytes: a Windows "\r\n" would end up in bash's file name
+        return 0
+    if "--auto" in argv:
+        i = argv.index("--auto")
+        if i + 1 >= len(argv):
+            return 2
+        print(json.dumps(auto(argv[i + 1], table=table, state=os.path.splitext(table)[0] + ".state.json",
+                              net=os.environ.get("CATCH_DUST_NO_NET") != "1")), flush=True)
         return 0
     if "--update" in argv:
         ok, line = update(table=table, state=os.path.splitext(table)[0] + ".state.json", force="--force" in argv)

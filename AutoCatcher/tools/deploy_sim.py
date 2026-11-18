@@ -3,9 +3,12 @@ The fake adb logs every call and answers the phone's md5 step with "ok <dst>" or
 line endings a real `adb shell` can add. Checks: a good copy restarts with --restart; a bad copy stops at once with
 exit 1, never restarts and never pushes the next file; the desktop pogo_il2cpp.py is still refused; a .sh file is made
 runnable (chmod 744) before it takes its place, and no other file is touched that way; the STARDUST ONLY
-table rides along exactly when the phone's copy is missing, different or older (STUB_DUST = what the phone holds).
+table rides along exactly when the phone's copy is missing, different or older (STUB_DUST = what the phone holds), and so
+does the table's builder when the phone's copy differs and is not newer (STUB_BMD5 / STUB_BREV = what the phone holds).
 Exit code 1 when any check fails."""
+import hashlib
 import os
+import re
 import shutil
 import stat
 import subprocess
@@ -21,8 +24,12 @@ case "$*" in
   *"md5sum /data/local/tmp/"*)
     dst=$(printf '%s' "$*" | grep -o 'ok   [^"\\]*' | head -n 1 | cut -c6-)
     if [ "$STUB_MODE" = ok ]; then printf 'ok   %s\r\n' "$dst"; else printf 'FAIL %s\r\n' "$dst"; fi ;;
-  *"exec-out"*"catch_dust.json"*)   # deploy.sh reads the phone's stardust table: STUB_DUST = a file to answer with
-    case "${STUB_DUST:-}" in silent) exit 1 ;; none|"") ;; *) cat "$STUB_DUST" ;; esac
+  *"exec-out"*"catch_dust.json"*)   # deploy.sh reads the phone's builder (its md5, its REV line), then its stardust table
+    case "${STUB_DUST:-}" in silent) exit 1 ;; esac
+    if [ -n "${STUB_BMD5:-}" ]; then echo "$STUB_BMD5"; fi
+    if [ -n "${STUB_BREV:-}" ]; then echo "REV = $STUB_BREV   # this file's revision"; fi
+    echo "==DUST-TABLE-FOLLOWS=="
+    case "${STUB_DUST:-}" in none|"") ;; *) cat "$STUB_DUST" ;; esac   # STUB_DUST = a file to answer with
     echo END-OF-DUST-TABLE ;;
 esac
 exit 0
@@ -39,10 +46,14 @@ def check(name, got, want):
 
 GW = os.path.join(HERE, os.pardir, "system", "scripts", "game_write")
 TABLE, TREL = os.path.join(GW, "catch_dust.json"), "system/scripts/game_write/catch_dust.json"
+with open(os.path.join(GW, "catch_dust_table.py"), "rb") as _fh:   # the table's builder as this checkout has it
+    _b = _fh.read()
+SAME = (hashlib.md5(_b).hexdigest(), re.search(rb"(?m)^REV = (\d+)", _b).group(1).decode())
 
 
-def run(mode, *files, dust=TABLE, deploy=DEPLOY, update="1"):
+def run(mode, *files, dust=TABLE, deploy=DEPLOY, update="1", builder=SAME):
     """dust = what the fake phone holds as its stardust table: a file, "none", or "silent" (adb gives no answer at all).
+    builder = what it holds as the table's builder: (md5, revision); "" = that line is not there (("", "") = no builder).
     update "1" = the table's own update step is skipped (CATCH_DUST_NO_UPDATE): a test never downloads or rewrites it."""
     d = tempfile.mkdtemp()
     stub = os.path.join(d, "adb")
@@ -52,7 +63,8 @@ def run(mode, *files, dust=TABLE, deploy=DEPLOY, update="1"):
     log = os.path.join(d, "calls.log")
     open(log, "w").close()
     env = dict(os.environ, STUB_MODE=mode, STUB_LOG=log, PATH=d + os.pathsep + os.environ.get("PATH", ""),
-               STUB_DUST=dust.replace("\\", "/"), CATCH_DUST_NO_UPDATE=update, CATCH_DUST_NO_NET="1")
+               STUB_DUST=dust.replace("\\", "/"), STUB_BMD5=builder[0], STUB_BREV=builder[1], CATCH_DUST_NO_UPDATE=update,
+               CATCH_DUST_NO_NET="1")
     # the full path: on Windows a bare "bash" is System32\bash.exe (WSL), not Git Bash
     r = subprocess.run([shutil.which("bash") or "bash", deploy, *files], capture_output=True, text=True, env=env, timeout=120)
     calls = open(log, encoding="utf-8").read().splitlines()
@@ -145,4 +157,40 @@ check("table: every deploy runs its update first (here: no network, so it is kep
       (r.returncode, said(r), open(tcopy, "rb").read() == before, os.path.exists(tcopy.replace(".json", ".state.json")), pushes(calls)),
       (0, ["DUST TABLE: upstream not asked", "DUST TABLE: the phone's table is the same"], True, True, ["/data/local/tmp/ac_catch_loop_fast.py"]))
 shutil.rmtree(dd, ignore_errors=True)
+
+# ---- ...and so does the table's builder: the phone's catcher runs it as a child process to keep the table current
+BREL, BTMP = dt.BREL, "/data/local/tmp/ac_catch_dust_table.py"
+blanded = lambda calls: sum(f"ok   {BREL}" in c for c in calls)
+r, calls = run("ok", "--restart", F1)
+ask = calls[asked(calls)[0]]
+check("builder: one call asks the phone for the builder's md5, its REV line, and the table",
+      (len(asked(calls)), all(x in ask for x in ("md5sum", "catch_dust_table.py", "REV = ", "==DUST-TABLE-FOLLOWS==", "catch_dust.json", "END-OF-DUST-TABLE"))),
+      (1, True))
+check("builder: the phone's is this very file -> not pushed, nothing said about it",
+      (pushes(calls), [x for x in said(r) if "catch_dust_table.py" in x]), (["/data/local/tmp/ac_catch_loop_fast.py"], []))
+r, calls = run("ok", "--restart", F1, builder=("", ""))
+check("builder: the phone has none -> pushed after the named files (its old .pyc removed too), then the restart",
+      (r.returncode, pushes(calls), blanded(calls), sum("__pycache__" in c for c in calls), sum("catcher_ctl.sh restart" in c for c in calls), said(r)),
+      (0, ["/data/local/tmp/ac_catch_loop_fast.py", BTMP], 1, 2, 1,
+       ["DUST TABLE: the phone's catch_dust_table.py is missing", "DUST TABLE: the phone's table is the same"]))
+r, calls = run("ok", F1, builder=("0" * 32, "1"))
+check("builder: the phone's is an older revision -> pushed", (r.returncode, blanded(calls), said(r)[:1]),
+      (0, 1, [f"DUST TABLE: the phone's catch_dust_table.py is different (its rev 1, this one {dt.REV})"]))
+r, calls = run("ok", F1, builder=("0" * 32, ""))
+check("builder: the phone's is the one from before it carried a revision -> pushed", (r.returncode, blanded(calls), said(r)[:1]),
+      (0, 1, [f"DUST TABLE: the phone's catch_dust_table.py is different (its rev 0, this one {dt.REV})"]))
+r, calls = run("ok", F1, builder=("0" * 32, SAME[1]))
+check("builder: same revision, other bytes (an edit that forgot to raise REV) -> still pushed: the md5 decides", (r.returncode, blanded(calls)), (0, 1))
+r, calls = run("ok", "--restart", F1, builder=("0" * 32, str(dt.REV + 1)))
+check("builder: the phone's is a NEWER revision (a deploy from an old checkout) -> never replaced; the deploy goes on",
+      (r.returncode, pushes(calls), sum("catcher_ctl.sh restart" in c for c in calls), said(r)[:1]),
+      (0, ["/data/local/tmp/ac_catch_loop_fast.py"], 1, [f"DUST TABLE: the phone's catch_dust_table.py is NEWER (rev {dt.REV + 1} > {dt.REV}): not replaced"]))
+r, calls = run("ok", "--restart", F1, dust="none", builder=("", ""))
+check("builder and table both missing -> both pushed after the named files, the builder first",
+      (r.returncode, pushes(calls), blanded(calls), landed(calls)), (0, ["/data/local/tmp/ac_catch_loop_fast.py", BTMP, "/data/local/tmp/ac_catch_dust.json"], 1, 1))
+r, calls = run("ok", BREL, F1, builder=("", ""))
+check("builder: named by hand -> pushed once, not twice", (r.returncode, blanded(calls), len(pushes(calls))), (0, 1, 2))
+r, calls = run("FAIL", "--restart", F1, builder=("", ""))
+check("builder: a bad copy of a named file still stops everything -- the builder is not pushed after it, nothing restarts",
+      (r.returncode, pushes(calls), sum("catcher_ctl.sh restart" in c for c in calls)), (1, ["/data/local/tmp/ac_catch_loop_fast.py"], 0))
 sys.exit(1 if failed else 0)

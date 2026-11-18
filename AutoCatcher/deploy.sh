@@ -22,10 +22,12 @@ adb connect "$D" >/dev/null 2>&1 || true
 # STARDUST ONLY's species table rides along with every deploy, so nobody has to remember it: catch_dust_table.py brings it up
 # to date first (from the game master's upstreams; no network: from the installed game master, else it is kept), reads the
 # phone's copy piped in here, and names the table when the phone's is missing, different or older -- then it is pushed
-# below like any file. Its lines start with "DUST TABLE:" (stderr). A deploy never fails on it.
-T=system/scripts/game_write/catch_dust.json; py=$(command -v python || command -v python3 || true)
-[ -n "$py" ] && set -- "$@" $(MSYS_NO_PATHCONV=1 adb -s "$D" exec-out "su -c 'cat $H/$T 2>/dev/null; echo END-OF-DUST-TABLE'" 2>/dev/null \
-  | "$py" system/scripts/game_write/catch_dust_table.py --for-deploy "$@" || true)
+# below like any file. catch_dust_table.py itself rides along the same way (the phone's catcher runs it as a child process
+# to keep the table current between deploys): named when the phone's copy differs (its md5), never over a newer one (its
+# REV line). Its lines start with "DUST TABLE:" (stderr). A deploy never fails on it.
+T=system/scripts/game_write/catch_dust.json; B=system/scripts/game_write/catch_dust_table.py; py=$(command -v python || command -v python3 || true)
+[ -n "$py" ] && set -- "$@" $(MSYS_NO_PATHCONV=1 adb -s "$D" exec-out "su -c 'md5sum $H/$B 2>/dev/null | cut -c1-32; grep -m1 \"^REV = \" $H/$B 2>/dev/null; echo ==DUST-TABLE-FOLLOWS==; cat $H/$T 2>/dev/null; echo END-OF-DUST-TABLE'" 2>/dev/null \
+  | "$py" "$B" --for-deploy "$@" || true)
 for f in "$@"; do
   case "${f#./}" in   # where it lands under ~/pogo
     ondevice_toggle/phone_pogo_il2cpp.py) dst=pogo_il2cpp.py ;;
