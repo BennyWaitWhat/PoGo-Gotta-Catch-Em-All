@@ -1244,8 +1244,65 @@ def supervisor_checks():
     print("ok: run_gym.sh, run against a fake runner (the switch's whole life)")
 
 
+def fail_cap_checks():
+    """--on-open: an error in the runner's own code, three sessions in a row, ends the runner with exit code 86 (it used to
+    come back as an attach every ~13 s for as long as --minutes lasted, with the app saying "lost the game connection");
+    run_gym.sh then says STOPPED at once. The same error on the PC keeps retrying, as before."""
+    import tempfile
+    names = ("run", "Game", "Mover", "dd_guard", "dd_said", "say")
+    keep = {k: getattr(gym_run, k) for k in names}
+    keep_sleep, keep_argv = gym_run.time.sleep, sys.argv
+    said, runs, slept = [], [], []
+
+    class G:
+        on_open = False
+
+    def boom(*_a, **_k):
+        runs.append(1)
+        if len(runs) >= 6:
+            raise KeyboardInterrupt                            # the PC case never stops by itself: end it here
+        raise KeyError("x")
+
+    made = [nm for nm in ("InvalidOperationError", "TransportError", "ServerNotRunningError") if not hasattr(gym_run.frida, nm)]
+    for nm in made:                                            # CI's stand-in frida has no error classes; main()'s except names them
+        setattr(gym_run.frida, nm, type(nm, (Exception,), {}))
+    try:
+        gym_run.run, gym_run.Game, gym_run.Mover = boom, G, (lambda *_a, **_k: None)
+        gym_run.dd_guard, gym_run.dd_said, gym_run.say = (lambda *_a, **_k: None), (lambda *_a, **_k: None), said.append
+        gym_run.time.sleep = slept.append
+        sys.argv = ["gym_run.py", "--on-open", "--switch", os.path.join(tempfile.gettempdir(), "no_such_gym_switch"), "--minutes", "5"]
+        code = None
+        try:
+            gym_run.main()
+        except SystemExit as e:
+            code = e.code
+        check(code == 86 and len(runs) == 3 and slept == [10, 10],
+              "--on-open: the third failed session in a row ends the runner with exit code 86 (two retries, no third): %r %r %r" % (code, len(runs), slept))
+        check(bool(said) and said[-1].startswith("STOP: the gym runner failed 3 times in a row (KeyError: 'x')")
+              and sum(s.startswith("session failed") for s in said) == 2, "...and its LAST line says STOP and why (gym_status.py reads the reason from it)")
+        del said[:], runs[:], slept[:]
+        sys.argv = ["gym_run.py", "--minutes", "5"]
+        try:
+            gym_run.main()
+        except KeyboardInterrupt:
+            pass
+        check(len(runs) == 6 and not any(s.startswith("STOP: the gym runner failed") for s in said),
+              "on the PC (no --on-open) a failing session keeps retrying, as before")
+    finally:
+        for k, v in keep.items():
+            setattr(gym_run, k, v)
+        gym_run.time.sleep, sys.argv = keep_sleep, keep_argv
+        for nm in made:
+            delattr(gym_run.frida, nm)
+    rs = read(os.path.join(os.path.dirname(HERE), "run_gym.sh"))
+    check('      if [ "$rc" = 86 ]; then quick=$QUICK_MAX; fi\n      if [ "$quick" -ge "$QUICK_MAX" ]; then' in rs.replace("\r\n", "\n"),
+          "run_gym.sh: exit code 86 is STOPPED at once (no second and third start of a runner that gave up)")
+    print("ok: a runner whose own code keeps failing stops itself")
+
+
 def main():
-    for part in (side_checks, shell_checks, device_checks, attach_checks, import_checks, stop_checks, preflight_checks, script_checks, supervisor_checks):
+    for part in (side_checks, shell_checks, device_checks, attach_checks, import_checks, stop_checks, preflight_checks, script_checks, fail_cap_checks,
+                 supervisor_checks):
         part()
     if FAILS:
         print("\n%d FAILED" % len(FAILS))

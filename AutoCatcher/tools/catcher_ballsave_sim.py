@@ -496,8 +496,19 @@ for wxs, text in (("nofield", "it cannot read the weather boost in this game ver
           (c["skipSp"], "skipWx" in c, same(), ns["dust_only"](), ns["_DUST"]["state"]), ([], False, True, 0, "nowx"))
     check(f"weather read {wxs}: the app is told why", ns["dust_why"]("out of balls: 5 Poke, 5 Great, 5 Ultra left", [], True),
           f"out of balls: 5 Poke, 5 Great, 5 Ultra left; stardust only is switched on but NOT applied yet: {text} -- until then it catches everything")
-c, skip, swx = on(1000, wx="proving")
-check("weather read unproven at 1000 (a boost would decide for the 800s): everything is caught", (c["skipSp"], ns["_DUST"]["state"]), ([], "nowx"))
+for wxs in ("proving", "nofield", "wrong"):
+    c, skip, swx = on(1000, wx=wxs)
+    check(f"weather read {wxs} at 1000: the level applies at once -- the two a boost could lift to 1,000 (800, 950) are caught whatever "
+          "the weather, the 1,000+ ones are caught, everything else is left (also when boosted)",
+          (ns["_DUST"]["state"], {887, 53} & skip, {90, 91, 531} & skip, {16, 2, 3, 52} <= skip, swx == skip, ns["dust_only"]()),
+          ("on", set(), set(), True, True, 1000))
+    check(f"weather read {wxs} at 1000: the log line and the app's line say what is caught meanwhile",
+          (ns["_DUST"]["note"], ns["dust_why"]("", [], True)),
+          (f"1000+ (3 of {len(TD)} species, 2 more caught whatever the weather until the weather read is proven): leaving {len(skip)} alone "
+           "(2 priority species stay caught); a shiny or a Mighty of any of them is still caught", ""))
+c, skip, swx = on(1000)
+check("weather read proven at 1000: the 800 and the 950 are left alone again unless boosted (their spawns are looked at)",
+      ({887, 53} <= skip, {887, 53} & swx, ns["_DUST"]["state"]), (True, set(), "on"))
 c, skip, swx = on(500, wx="nofield")
 check("weather read missing at 500, where no boost can decide anything: the mode runs", (ns["_DUST"]["state"], 2 in skip, swx == skip), ("on", True, True))
 # ---- no table / a broken table: the mode stays off and says so (never a blind skip)
