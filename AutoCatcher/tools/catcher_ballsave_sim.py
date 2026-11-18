@@ -13,7 +13,8 @@ import time
 ns = {"CFG": {"floors": {"1": 5, "2": 5, "3": 5}}, "_BS": {"mtime": None, "plan": None, "note": "off"}, "re": re, "time": time,
       "SP": {"on": False, "off": False, "since": None, "bare": 0}, "SHINYFIELD": {"ok": True}}
 for name in ("usable_balls", "ballsave_skip", "plan_reserve", "plan_live", "floor_short", "reserve_floors", "ballsave_reserve",
-             "ballsave_now", "ballsave_log", "cfg_now", "starpiece_seen", "balls_why", "starpiece_why", "berry_mode"):
+             "ballsave_now", "ballsave_log", "cfg_now", "starpiece_seen", "balls_why", "starpiece_why", "berry_mode",
+             "state_extra"):
     exec(re.search(rf"^def {name}\(.*?(?=^\n\ndef )", src, re.S | re.M).group(0), ns)
 exec(re.search(r"^SPIN_WHY = .*$", src, re.M).group(0), ns)
 skip_of, usable = ns["ballsave_skip"], ns["usable_balls"]
@@ -209,6 +210,29 @@ os.remove(ns["FLAGS"]["berries"])
 os.rmdir(bdir)
 ns.update(FLAGS={"berries": NOFILE}, flag=lambda k: False)
 check("the toggles line names the berry mode", "{k}={c[k] if isinstance(c[k], str) and c[k] else 'on' if c[k] else 'off'}" in src, True)
+# the app's status card (app 1.3): optional keys after the old counters -- a number not reported yet is left out
+sx = ns["state_extra"]
+check("status keys: all known", sx(109, {"dust": 74725}, {"1": 2280, "2": 6, "3": 6, "705": 202, "701": 10}, 474.2, True),
+      "rate=13.8 up=474 dust=74725 balls=2280/6/6 pinap=202 razz=10 sp=1")
+check("status keys: a ball count not read yet (-1) -> no balls key; no Star Piece catch yet -> no sp key",
+      sx(0, {"dust": 0}, {"1": -1, "2": 5, "3": 5, "705": 0}, 30, None), "rate=0.0 up=30 dust=0 pinap=0")
+check("status keys: the run's first second, an empty bag reading, the last catch bare",
+      sx(0, {}, {}, 0.4, False), "sp=0")
+check("status keys: no '=' with a space in it, no 'why=' (the app splits on spaces; why= must stay last)",
+      all("=" in t and not t.startswith("why=") for t in sx(5, {"dust": 9}, {"1": 1, "2": 2, "3": 3}, 61, False).split()), True)
+check("the status line carries them, before why=",
+      'cooling={sp[\'cooling\']} "\n                + state_extra(c, st, it, time.time() - t0, SP.get("last"))).rstrip())' in src, True)
+sp0 = dict(ns["SP"])
+ns["SP"].update(on=False, off=False, since=None, bare=0, last=None)
+ns["starpiece_seen"]("CATCH Wild #1 ball=1 p=0.5 att=1 berry=0 0.5s dust=50 candy=3", lambda s: None)
+check("Star Piece chip: an award under 100 says nothing", ns["SP"]["last"], None)
+ns["starpiece_seen"]("CATCH Wild #1 ball=1 p=0.5 att=1 berry=705 0.5s dust=337 candy=6", lambda s: None)
+check("Star Piece chip: 337 = with one", ns["SP"]["last"], True)
+ns["starpiece_seen"]("CATCH Wild #1 ball=1 p=0.5 att=1 berry=705 0.5s dust=225 candy=6", lambda s: None)
+check("Star Piece chip: 225 = without (at the first bare catch, before the 2-in-a-row STARPIECE line)",
+      (ns["SP"]["last"], ns["SP"]["off"]), (False, False))
+ns["SP"].clear()
+ns["SP"].update(sp0)
 # why no ball is thrown (the app shows it): the plan's balls IN ALL, and a shiny's promise only while it can keep it
 ns["CFG"].update(mightyKeep=30)
 ns["flag"] = lambda k: k == "catch"
