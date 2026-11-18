@@ -67,7 +67,7 @@ def pvp_metrics(rows, kept_uids):
     return out
 
 
-CP_TAGS = (('gl', 'Best GL'), ('ul', 'Best UL'), ('ml', 'Best ML'))
+CP_TAGS = (('gl', 'My Best GL'), ('ul', 'My Best UL'), ('ml', 'My Best ML'))   # 'Best ..' until 2026-11-18: a past walk's mirror says that
 
 
 def cp_metrics(rows, from_files=True):
@@ -82,10 +82,13 @@ def cp_metrics(rows, from_files=True):
             try:
                 us = set(open(os.path.join('system', 'analysis', 'tagsets', tag.replace(' ', '_') + '.txt')).read().split())
             except OSError:
-                us = set()
+                try:                                  # a tag folder built before the rename
+                    us = set(open(os.path.join('system', 'analysis', 'tagsets', tag[3:].replace(' ', '_') + '.txt')).read().split())
+                except OSError:
+                    us = set()
             grp = [rows[u] for u in us if u in rows]
         else:
-            grp = [r for r in rows.values() if tag in (r.get('auth_tag_names') or '').split(';')]
+            grp = [r for r in rows.values() if {tag, tag[3:]} & set((r.get('auth_tag_names') or '').split(';'))]
         out['cp_best_' + k], out['n_best_' + k] = mean(grp), len(grp)
     hun = [r for r in rows.values() if (r['iv_total'] or 0) == 45]
     out['cp_hundo'], out['n_hundo'] = mean(hun), len(hun)
@@ -187,7 +190,7 @@ def backfill_cp():
             shutil.copyfileobj(fh, g)
         e.update(cp_metrics(load_rows(tmp), from_files=False))
         n += 1
-        print('  %s  Best GL %s (%d) | Best UL %s (%d) | Best ML %s (%d) | hundos %s (%d)' % (
+        print('  %s  My Best GL %s (%d) | My Best UL %s (%d) | My Best ML %s (%d) | hundos %s (%d)' % (
             e['ts'], e['cp_best_gl'], e['n_best_gl'], e['cp_best_ul'], e['n_best_ul'], e['cp_best_ml'], e['n_best_ml'], e['cp_hundo'], e['n_hundo']))
     json.dump(hist, open(HIST, 'w'), indent=0)
     print('backfilled %d entr%s (%d without a snapshot)' % (n, 'y' if n == 1 else 'ies', sum(1 for e in hist if 'cp_hundo' not in e)))

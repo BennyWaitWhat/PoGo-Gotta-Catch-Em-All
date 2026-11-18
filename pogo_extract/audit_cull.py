@@ -794,7 +794,7 @@ print('\nLAYER 3  pile vs every KEEP tagset')
 # run's file, or none, on disk).
 EXPECTED = ('Hundo', 'Nundo', 'Traded_by_E+F', 'XXL',
             'Legacy_Moves', 'Evolve_to_Mid', 'Evolve_to_Final',   # GL_IV/UL_IV/Evolve_1/2/Event retired 2026-09-09; Evolve_Once / _Twice -> to_Mid / to_Final (2026-10-25)
-            'Best_GL', 'Best_UL', 'Best_ML')                 # rule 15d (2026-09-23)
+            'My_Best_GL', 'My_Best_UL', 'My_Best_ML')                 # rule 15d (2026-09-23)
 
 def _evolve_tag_legitimately_empty(tag):
     """An evolve tag may be EMPTY (the worth-it and candy rules, 2026-09-17): the file must still exist, and since the fold

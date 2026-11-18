@@ -124,7 +124,8 @@ def _open_snapshot(path):
 
 
 # last pass's keep reasons, read back from the TAGS the walk saw, for when last_report.json has none (first run)
-TAG_REASON = {'Best GL': 'pvp_best_gl', 'Best UL': 'pvp_best_ul', 'Best ML': 'pvp_best_ml', 'XXL': 'xxl',
+TAG_REASON = {'My Best GL': 'pvp_best_gl', 'My Best UL': 'pvp_best_ul', 'My Best ML': 'pvp_best_ml',   # the names since 2026-11-18
+              'Best GL': 'pvp_best_gl', 'Best UL': 'pvp_best_ul', 'Best ML': 'pvp_best_ml', 'XXL': 'xxl',
               'Legacy Moves': 'legacy', 'Shiny - Only One': 'shiny', 'Nundo': 'nundo',
               'GL Rank 1-5': 'pvp_rank', 'UL Rank 1-5': 'pvp_rank', 'GL 1-5 No Evolve': 'pvp_rank', 'UL 1-5 No Evolve': 'pvp_rank',
               'PvP 1-5 No Evolve': 'pvp_rank'}   # one tag for both leagues since 2026-11-15; the old names read older walks
@@ -2321,6 +2322,8 @@ def _job_selftest():
     # 1. an equal swap (a2 released, a4 caught with the same IVs) and a label move (a1's tags) change nothing
     a4 = mk('a4', 'Pikachu', 25, (10, 10, 10), creation_date='2026-11-16T11:00:00Z')
     r1 = run(bag(a1, a2, a3, c1), bag(dict(a1, auth_tag_names='Best GL'), a3, c1, a4))
+    assert _from_tags({'auth_tag_names': 'My Best GL'}) == _from_tags({'auth_tag_names': 'Best GL'}) == ['pvp_best_gl'], \
+        'a walk from before the 2026-11-18 rename reads as the same reason'
     assert all(v['net'] == 0 and not any(v['parts'].values()) for v in r1['jobs'].values()), r1['jobs']
     assert ('#1', 'gl', 'raichu') in r1['its'][-1][1]['trophies'], 'the #1 Raichu spread stays held'
     # 2. each cause on its own step: you evolved a3 (a Raichu now: built), powered up b2, and the cull piled b1 (built) -- a copy

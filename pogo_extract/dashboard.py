@@ -71,7 +71,7 @@ TAG_FILES = {   # GL IV / UL IV / Evolve 1 / Evolve 2 retired 2026-09-09 (granul
     'Nundo': 'Nundo.txt', 'Traded by E+F': 'Traded_by_E+F.txt',   # Event retired 2026-09-09
     'Legacy Moves': 'Legacy_Moves.txt', 'Evolve to Mid': 'Evolve_to_Mid.txt', 'Evolve to Final': 'Evolve_to_Final.txt',
     'Evolve Needs Item': 'Evolve_Needs_Item.txt', 'Evolve Needs Task': 'Evolve_Needs_Task.txt', 'Transfer': 'Transfer.txt',   # the fold (2026-09-29): Next/Shiny/Size/Stop retired
-    'Best GL': 'Best_GL.txt', 'Best UL': 'Best_UL.txt', 'Best ML': 'Best_ML.txt',   # keep rule 15d (2026-09-23)
+    'My Best GL': 'My_Best_GL.txt', 'My Best UL': 'My_Best_UL.txt', 'My Best ML': 'My_Best_ML.txt',   # keep rule 15d (2026-09-23)
     'Power Up to 1500': 'Power_Up_to_1500.txt', 'Power Up to 2500': 'Power_Up_to_2500.txt',   # 2026-09-26
     'Unlock 2nd Move': 'Unlock_2nd_Move.txt',
 }
