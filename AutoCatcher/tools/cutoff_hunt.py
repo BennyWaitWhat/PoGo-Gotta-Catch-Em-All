@@ -25,6 +25,7 @@ sys.path.insert(0, os.path.dirname(HERE))
 sys.path.insert(0, HERE)
 import pogo_il2cpp as pg  # noqa: E402
 import dump_game_limits as dl  # noqa: E402
+import on_phone as op  # noqa: E402  (the same helpers ON the phone: a root shell instead of adb -- GYM.md)
 
 DEV = os.environ.get("ADB_TARGET", "100.98.158.56:5555")   # cloud: the Tailscale bridge exports ADB_TARGET
 JS = dl.JS.split("rpc.exports = {")[0] + r"""
@@ -53,6 +54,8 @@ rpc.exports = {
 
 
 def adb(cmd):
+    if op.ON_PHONE:                                          # on the phone itself (run_gym.sh): the same command text,
+        return op.sh(cmd)                                    # in the runner's own root shell -- there is no adb in Termux
     return subprocess.run(["adb", "-s", DEV, "shell", cmd], capture_output=True, text=True, encoding="utf-8",
                           errors="replace", env=dict(os.environ, MSYS_NO_PATHCONV="1")).stdout or ""
 

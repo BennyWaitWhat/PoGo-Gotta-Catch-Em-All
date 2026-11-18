@@ -5,7 +5,12 @@
 ## Files
 | File | What it is |
 |---|---|
-| `gym_run.py` | The runner, on the PC. Attaches Frida to PoGo, injects `gym_tapper.JS`, and moves the avatar through the GPS Joystick intents (`cutoff_hunt.py`). Battles, places, feeds; logs everything. |
+| `gym_run.py` | The runner: on the PC (adb), or on the phone itself (Termux, `on_phone.py`). Attaches Frida to PoGo, injects `gym_tapper.JS`, and moves the avatar through the GPS Joystick intents (`cutoff_hunt.py`). Battles, places, feeds; logs everything. `--on-open` = the app's Gym Battle switch (below). |
+| `on_phone.py` | The runner ON the phone (2026-11-18). Which side this is: the Termux folder is there, or `POGO_ON_PHONE=1` / `0` says so. There: ONE root shell in place of `adb shell` (`su`, commands on its input), the attach gate read from `/proc`, the session through the game's own gadget (127.0.0.1:27047) by pid. On the PC nothing of it runs. |
+| `gym_status.py` | The app's status line from the runner's own log: `python gym_status.py LOG`, `--why LOG` (why an ended runner ended), `--selftest`. |
+| `../run_gym.sh` | The Gym Battle switch's supervisor on the phone (below). `run_gym.sh --preflight` = the read-only check after a deploy. |
+| `test_gym_awareness.py` | Offline check of the runner's pure decisions (the picker, joins and retakes, cooldowns, `open_plan` for `--on-open`). CI runs it. |
+| `test_gym_phone.py` | Offline check of the phone path: `on_phone.py`, the unchanged PC path, the attach gate, `--on-open` stops, `--switch`, `--preflight`, and `run_gym.sh` run under bash against a fake runner. No phone, no game, no Frida. CI runs it. |
 | `gym_tapper.py` | The in-game JS. A LateUpdate tick makes every game call through `il2cpp_runtime_invoke`. Exact-name class lookups only. `quiesce()` runs before unload. |
 | `buddy_tapper.py` | Buddy calls (stats / feed / pet / history / set), used by `buddy_run.py`. |
 | `live_graph_js.py` | The live-service-graph pick shared by both tappers (H01, 2026-09-29): the newest `InventoryCache.latestTimestamp` wins. A service must link to that graph and contradict it nowhere. A tie or an unprovable pick is refused, never guessed. |
@@ -31,6 +36,51 @@
 - Golden Razz only for his own defenders plus one teammate per gym. Never for buddies.
 - Read and log the TEXT of every warning / lockout / error screen, not just its name.
 - **Phone marker `/data/local/tmp/pogo_desktop_busy` is ADVISORY** (Benny, 2026-09-29: nobody pauses for anybody). The runner writes `GymBattle/<pid> <deadline>` only around its world-stopping phases (the install scans; quiesce + unload) and clears it after them. It logs anyone else's marker and never waits or refuses. It also stops `pogo_il2cpp.get_session()` from waiting on its behalf.
+
+## The app's Gym Battle switch: `--on-open`, on the phone (2026-11-18, CODE ONLY)
+Benny: "any gym i visit and enter it will automatically go drill and finish and place shiny gyrados", then "why cant gym mode work without the PC? i want it working on my phone." Built offline. Nothing of it has run on the phone or against the game: the first run is `run_gym.sh --preflight`, then his first flip.
+
+**What the mode does (`gym_run.py --on-open`).** The runner picks no gym, scans none, walks nowhere and sends the joystick nothing while it waits. A gym HE opens is read (`open_plan`, a pure function):
+- an enemy gym: counters, drill until it is empty, a shiny Gyarados in (his highest-CP shinies when no Gyarados is at full HP; at the 20-gym cap it is emptied only);
+- an EMPTY gym: the Gyarados goes in at once;
+- his team's gym with a free slot and none of his in it: joined, no battle;
+- hands off, with one log line that says why: a raid, full, his already in, out of reach, a gym on `--skip`, a deploy lockout, a battle he started himself.
+
+While it works on a gym it holds him there: the 25 m circle, the same joystick WALK as every run. **A route he had running in the GPS Joystick is replaced by that WALK and is not started again**; after the gym the joystick gets nothing more. Berries are off (`--no-feed --no-feed-mate --no-topup`), direct deploy is off, and no revive batch is used while it only waits (the batch at 30 fainted comes with a gym he opens).
+
+**The chain.** App tile -> `catcher_ctl.sh gym-on` / `gym-off` (AutoCatcher's file) -> `/data/local/tmp/pogo_gym.on` (`1` = on) -> `~/pogo/run_gym.sh` -> the runner -> `/data/local/tmp/pogo_gym_status.txt`.
+- `gym-on` writes `1` and starts `run_gym.sh` (Termux RunCommandService) when none is alive. `gym-off` writes `0` and nothing else. The boot hook (`reconcile`) starts it when the switch was left on.
+- `run_gym.sh` lives only while the switch holds 1. The game is up and no gym runner is alive: it starts ONE, from `~/pogo`:
+  `python -u tools/gym_run.py --on-open --no-feed --no-feed-mate --no-topup --switch /data/local/tmp/pogo_gym.on --cmd tools/gym_state/runner_cmd.json --minutes 100000`
+  plus one line of options from `gym_state/switch_args.txt`, if that file is there (for example `--one-by-one`).
+- A runner that ends is started again. Three runs in a row that each end inside 60 s = `STOPPED: ...` until the switch is set again.
+- It starts nothing while the game is closed, while another gym runner is alive on the phone, or while Catch Rewards (`reward_phone.py`) is running (`waiting: Catch Rewards is running`).
+- **Off means off, three ways.** The supervisor writes `{"stop": true}` into the runner's inbox (the file `gym_send.sh` writes) and waits for the runner's own exit. The runner reads the switch file itself (`--switch`, once a second), so OFF stops it even when no supervisor is left. `--on-open` waits for a closed game in 10 s slices, so a stop never waits five minutes. Nothing is ever killed, the game is never started or restarted, and none of it writes the switch file.
+- **The status line** is `HH:MM:SS text`, at most 90 characters, rewritten at least every 15 s (the app calls it dead after 60 s). The supervisor writes it. While a runner is alive the text is built from the runner's log by `gym_status.py`: `watching for a gym you open | 14/20 in gyms`, `battling NAME: 2 of 4 left`, `Gyarados 3643 placed at NAME (15/20 in gyms)`, `hands off NAME: a raid is on it`, `stopping: ...`. Its last line is `off`.
+
+**On the phone the same `gym_run.py` runs** (`on_phone.py`). Every device command the PC sends through `adb shell` (the joystick's fix and WALK, the Back key, the advisory marker) goes, same text, into ONE root shell. The attach goes through the game's own gadget by pid, behind the same `/proc` gate as on the PC plus "the gadget listens". The PC path is unchanged. The catcher keeps running next to it; nobody pauses for anybody.
+
+**Files on the phone** (all under `~/pogo` = `/data/data/com.termux/files/home/pogo`, owner 10762):
+| What | Where | Without it |
+|---|---|---|
+| code | `run_gym.sh`, `pogo_il2cpp.py` (there already), `tools/gym_run.py`, `tools/gym_tapper.py`, `tools/live_graph_js.py`, `tools/dump_game_limits.py`, `tools/cutoff_hunt.py`, `tools/on_phone.py`, `tools/gym_status.py` | `STOPPED: tools/gym_run.py is not on the phone -- ask Claude` |
+| game master | `pogo_extract/gamemaster_pokeminers.json` (20 MB, not in git), `pogo_extract/form_enum.json` | no counter team (the attack rank order fights), no legendary list for the placement fallback, no same-type table |
+| attack rank | `tools/gym_state/attack_rank.json` (2.2 MB) | the attack team is the highest CP |
+| place handler | `tools/gym_state/pick_handler.json` (45 bytes) | auto-place only if the tapper finds the handler by its shape; else an emptied gym waits for his hand |
+| written there | `tools/gym_state/logs/onopen_MMDD_HHMMSS.log` (the 20 newest are kept), `run_gym.log`, `preflight.log`, `runner_inbox/`, `run_gym.lock/`, `cooldown_obs.jsonl`, `gym_reports.jsonl` | |
+
+**Deploy** (from `AutoCatcher/`, with Benny's go; `deploy.sh` copies only into folders that exist):
+1. The folders, as root, owned by Termux: `adb -s <phone> shell "su -c 'cd /data/data/com.termux/files/home/pogo && mkdir -p tools/gym_state/logs tools/gym_state/runner_inbox pogo_extract && chown -R 10762:10762 tools pogo_extract'"`
+2. `./deploy.sh run_gym.sh tools/gym_run.py tools/gym_tapper.py tools/live_graph_js.py tools/dump_game_limits.py tools/cutoff_hunt.py tools/on_phone.py tools/gym_status.py` (md5-checked, owner 10762).
+3. The data files the same way (push, `chown 10762:10762`, compare md5): the two game master files into `~/pogo/pogo_extract/`, `attack_rank.json` and `pick_handler.json` into `~/pogo/tools/gym_state/`. The game master on the phone goes stale after the monthly refresh on the PC: push it again then.
+4. `run_gym.sh --preflight` (next paragraph).
+
+**Preflight** (`run_gym.sh --preflight`; read-only, the switch stays as it is). One `PASS` / `FAIL` line per check: python, the nine files, the state folder, the switch file, the status file, root, the game, and that no gym runner, supervisor or reward run is alive. Then `gym_run.py --on-open --preflight`: the attach, the tapper's live reads, auto-place, his Pokemon in gyms, his shiny Gyarados, his six, the gyms on the map, a clean unload (`WARN` = it runs, with less; `SKIP` = not looked at). It presses nothing, places nothing, feeds nothing and sends the joystick nothing. The same lines are kept in `gym_state/preflight.log`; the last line is `PREFLIGHT PASS` or `PREFLIGHT FAIL (n)`. While it runs, a flip of the switch starts no supervisor (`catcher_ctl.sh` takes the check for one): its `NOTE` line says so.
+
+**Rules of the switch.**
+- The switch is Benny's: only the app writes `pogo_gym.on`. No session flips it for him.
+- One gym runner at a time. A runner on the PC is invisible from the phone: **flip the switch off and wait for `off` before a PC run.**
+- To stop it: the switch. `gym_send.sh '{"stop": true}'` stops the runner too, and the supervisor then starts a fresh one while the switch is on. Never a kill.
 
 ## Same-type bonus (STAB): changed 2026-09-30, CODE ONLY
 Benny: "fix it". It ships at the next supervised run; every run or deploy still needs his explicit go. Nothing was run, attached or deployed.
@@ -81,6 +131,9 @@ Owner: since 2026-09-30 the cloud session carries the Gym Battle duties (the PC 
 ```
 python test_graph_pick.py
 python test_gym_stab.py
-python -m py_compile gym_run.py gym_tapper.py buddy_tapper.py live_graph_js.py
-bash -n gym_restart.sh && bash -n gym_send.sh
+python test_gym_awareness.py
+python gym_status.py --selftest
+python test_gym_phone.py
+python -m py_compile gym_run.py gym_tapper.py buddy_tapper.py live_graph_js.py on_phone.py gym_status.py
+bash -n gym_restart.sh && bash -n gym_send.sh && bash -n ../run_gym.sh
 ```
