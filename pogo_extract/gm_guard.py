@@ -21,6 +21,8 @@ orchestrator (network, install, review record).
                                                   it is installed. Axes: moves, evolve, size (numbers + types), costume,
                                                   tradable, transferable, rarity
     warn      freshness_findings                  the offline audit WARN (audit_invariants I2.7)
+              game_version_record                 what full_audit writes to game_version.json: since WHEN the phone has its
+                                                  game version (a re-install of the same version is no game update)
 
 FAIL CLOSED: a candidate the engine's own loaders cannot read is never installed; a baseline / bag / verdict that cannot
 be read is a STOP (exit 2 + the review record), never a pass. Read-only: this module writes nothing but what the caller
@@ -901,12 +903,29 @@ def review_lines(res, old_meta, new_meta_, bak, with_digest=True, max_lines=200)
 
 
 # --------------------------------------------------------------------------------------------------- the audit WARN
+def game_version_record(prev, version, code, updated, pokemod, seen):
+    """What full_audit writes to system/analysis/game_version.json after every walk. `updated` is the phone's
+    lastUpdateTime, and that moves on every RE-INSTALL of the same version (2026-11-18: 0.435.2 was installed again at 02:22
+    and at 13:22, and I2.7 warned on every cull about a game update that never happened). So the record also keeps
+    `since` = the install time the FIRST pass saw for this version (name + versionCode) and `since_seen` = that pass.
+    An earlier record without them (same version) hands over its `updated` and `seen`."""
+    prev = prev if isinstance(prev, dict) else {}
+    same = prev.get('version') == version and (not prev.get('code') or not code or prev['code'] == code)
+    return {'version': version, 'code': code or (prev.get('code') if same else None), 'updated': updated,
+            'since': (prev.get('since') or prev.get('updated') or updated) if same else updated,
+            'since_seen': (prev.get('since_seen') or prev.get('seen') or seen) if same else seen,
+            'pokemod': pokemod or prev.get('pokemod'), 'seen': seen}
+
+
 def freshness_findings(meta, game_version, now=None):
-    """[(WARN, message, do)] for audit_invariants I2.7. [] = nothing to say. NEVER raises: a missing or broken meta is a
-    finding, not a crash. Four independent causes, each with its own remedy:
+    """[(WARN or NOTE, message, do)] for audit_invariants I2.7. [] = nothing to say. NEVER raises: a missing or broken meta
+    is a finding, not a crash. Four independent causes, each with its own remedy:
       no stamp     the client GM was installed before gm_guard (or its .meta was lost): batch and APK unknown
       APK skew     the GM is for an older game than the phone runs (game_version.json is written by full_audit each cull);
-                   an alexelgt batch names no APK, so its batch time is held against the game's install time instead
+                   an alexelgt batch names no APK, so its batch time is held against the time the phone got its game
+                   VERSION (`since`, game_version_record), never a re-install of the same one. A WARN on the first cull
+                   after that update, a NOTE on the ones after it (the audit prints a NOTE as a passing line): nothing is
+                   owed until upstream publishes, and every cull asks
       not checked  the GM has not been compared with upstream's latest for MAX_VERIFY_AGE_DAYS: refresh is not running
       batch age    older than MAX_BATCH_AGE_DAYS (the longest quiet gap seen in 2026 was 133 days): upstream may be dead
       rejected     the newest upstream batch could not be loaded by the engine and was NOT installed (meta['rejected'])
@@ -925,24 +944,37 @@ def freshness_findings(meta, game_version, now=None):
         batch_age = (now - meta['batch_ts'] / 1000.0) / 86400.0
         ver_ts = max(meta.get('checked_ts') or 0, meta.get('downloaded_ts') or 0)
         ver_age = (now - ver_ts) / 86400.0 if ver_ts else None
-        gv = (game_version or {}).get('version') if isinstance(game_version, dict) else None
+        gvd = game_version if isinstance(game_version, dict) else {}
+        gv = gvd.get('version')
         apk, gvt = apk_tuple(meta.get('apk')), apk_tuple(gv)
-        newer = ''
+        newer, none_newer = '', False
         if ver_age is not None and ver_age <= MAX_VERIFY_AGE_DAYS:
-            newer = (' Upstream (PokeMiners, alexelgt) had published nothing newer when last checked (%s UTC): a refresh would '
-                     'change nothing yet.' % meta.get('checked_at', '?')) if meta.get('upstream_ts') == meta['batch_ts'] else \
-                    ' Upstream has a NEWER batch (seen %s UTC).' % meta.get('checked_at', '?')
+            none_newer = meta.get('upstream_ts') == meta['batch_ts']
+            newer = (' Nobody had published newer data when last asked (%s UTC).' if none_newer else
+                     ' Newer data exists upstream (seen %s UTC) and is not installed here yet.') % meta.get('checked_at', '?')
+        # ONCE (user 2026-11-18, "dude fix this issue, i dont understand"): the game being newer than the newest PUBLISHED
+        # game data is news on the first cull after the update, and the same line with nothing to do on every cull after
+        # it. full_audit records the pass that first saw this game version (since_seen): that pass gets the WARN, later
+        # ones a NOTE. Not known (an older game_version.json), or newer data upstream that is not installed: WARN every time.
+        quiet = bool(none_newer and gvd.get('since_seen') and gvd.get('seen') and gvd['since_seen'] != gvd['seen'])
+
+        def behind(what):
+            if quiet:
+                return ('NOTE', '%s -- said as a warning once, on the first cull after the game updated.%s' % (what, newer), do)
+            return ('WARN', '%s: a form, move or evolution the newer game added is not known here yet. Nothing to do: an '
+                            'unknown move is treated as a legacy move and an unknown form as a costume (the careful side), '
+                            'and every cull asks for newer data.%s' % (what, newer), do)
+
         if apk and gvt and apk < gvt:
-            out.append(('WARN', 'the client game master is APK %s (batch %s UTC) but the phone runs %s: forms, moves and '
-                                'evolutions added since are unknown to it (an unnamed move stays legacy, an unknown form stays a costume; '
-                                'nothing new is judged).%s' % (meta['apk'], meta['batch_utc'][:10], gv, newer), do))
-        upd = (game_version or {}).get('updated') if isinstance(game_version, dict) else None
-        # the phone prints its local time; this PC shares that clock (same place)
-        if not apk and upd and meta['batch_ts'] / 1000.0 < time.mktime(time.strptime(upd[:19], '%Y-%m-%d %H:%M:%S')):
-            out.append(('WARN', 'the client game master (batch %s UTC, from %s, which names no APK) is older than the game '
-                                'update the phone installed (%s at %s): forms, moves and evolutions that update added may be '
-                                'unknown to it (an unnamed move stays legacy, an unknown form stays a costume).%s'
-                        % (meta['batch_utc'][:16], meta.get('source', '?'), gv or '?', upd[:16], newer), do))
+            out.append(behind('the game on the phone is %s and the newest game data installed here was made for %s '
+                              '(published %s UTC)' % (gv, meta['apk'], meta['batch_utc'][:10])))
+        # WHEN THE PHONE GOT THIS VERSION, not its last install (game_version_record). A record from before 2026-11-18 has
+        # no `since`: its `updated` stands in. The phone prints its local time; this PC shares that clock (same place)
+        since = gvd.get('since') or gvd.get('updated')
+        if not apk and since and meta['batch_ts'] / 1000.0 < time.mktime(time.strptime(since[:19], '%Y-%m-%d %H:%M:%S')):
+            out.append(behind('the game on the phone updated to %s on %s, after the newest game data installed here was '
+                              'published (%s UTC, from %s)' % (gv or '?', since[:16], meta['batch_utc'][:16],
+                                                               meta.get('source', '?'))))
         if ver_age is None or ver_age > MAX_VERIFY_AGE_DAYS:
             out.append(('WARN', 'the client game master has not been compared with upstream\'s latest for %s (limit %d '
                                 'days): a cull does this on every run, so no cull has finished a refresh since'
@@ -1453,15 +1485,40 @@ def selftest(rgm=None):
             ok(len(freshness_findings(None, gv, now)) == 1 and 'no readable stamp' in freshness_findings(None, gv, now)[0][1], 'no stamp')
             ok(len(freshness_findings({'batch_ts': 'x'}, gv, now)) == 1, 'garbage stamp')
             f = freshness_findings(m, gv, now)
-            ok(len(f) == 1 and 'phone runs 0.429.1' in f[0][1] and 'nothing newer' in f[0][1] and 'refresh_gamemaster.py' in f[0][2], 'APK skew: %s' % f)
+            ok(len(f) == 1 and f[0][0] == 'WARN' and 'phone is 0.429.1' in f[0][1] and 'Nobody had published newer' in f[0][1]
+               and 'refresh_gamemaster.py' in f[0][2], 'APK skew: %s' % f)
             ok(freshness_findings(m, {'version': '0.427.0'}, now) == [] and freshness_findings(m, None, now) == [], 'no skew, or no game version')
             ok(freshness_findings(dict(m, apk=None), gv, now) == [], 'apk unknown (lookup blocked) and freshly checked: no noise')
             _lt = lambda s: time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(s))    # how dumpsys prints lastUpdateTime
             f = freshness_findings(dict(m, apk=None, source='alexelgt'), dict(gv, updated=_lt(ts / 1000.0 + 86400)), now)
-            ok(len(f) == 1 and 'older than the game update' in f[0][1] and 'alexelgt' in f[0][1], 'no APK, batch before the game update: %s' % f)
+            ok(len(f) == 1 and f[0][0] == 'WARN' and 'updated to 0.429.1' in f[0][1] and 'alexelgt' in f[0][1],
+               'no APK, batch before the game update (a record with no `since`: its `updated` stands in): %s' % f)
             ok(freshness_findings(dict(m, apk=None), dict(gv, updated=_lt(ts / 1000.0 - 86400)), now) == [], 'no APK, batch after the update: no noise')
             f = freshness_findings(m, dict(gv, updated=_lt(ts / 1000.0 + 86400)), now)
-            ok(len(f) == 1 and 'phone runs 0.429.1' in f[0][1], 'a known APK is judged by the APK alone (one WARN, not two): %s' % f)
+            ok(len(f) == 1 and 'phone is 0.429.1' in f[0][1], 'a known APK is judged by the APK alone (one WARN, not two): %s' % f)
+            # a RE-INSTALL of the same version is no game update (2026-11-18): `since` is when the phone got the version
+            _na = dict(m, apk=None, source='alexelgt')
+            _re = game_version_record({'version': '0.429.1', 'updated': _lt(ts / 1000.0 - 86400), 'seen': '2026-08-27 08:00'},
+                                      '0.429.1', '2026082702', _lt(ts / 1000.0 + 86400), '13.3.3', '2026-08-29 08:00')
+            ok(_re['since'] == _lt(ts / 1000.0 - 86400) and _re['updated'] == _lt(ts / 1000.0 + 86400) and _re['code'] == '2026082702'
+               and freshness_findings(_na, _re, now) == [], 'the same version installed again after the batch: no finding: %s' % _re)
+            _up = game_version_record(_re, '0.431.0', '2026092502', _lt(ts / 1000.0 + 2 * 86400), None, '2026-08-30 08:00')
+            f = freshness_findings(_na, _up, now)
+            ok(_up['since'] == _up['updated'] and _up['since_seen'] == _up['seen'] and _up['pokemod'] == '13.3.3' and len(f) == 1
+               and f[0][0] == 'WARN' and 'updated to 0.431.0' in f[0][1], 'a real update: a WARN on the first cull that sees it: %s' % f)
+            _nx = game_version_record(_up, '0.431.0', '2026092502', _lt(ts / 1000.0 + 3 * 86400), '13.6.0', '2026-08-31 08:00')
+            f = freshness_findings(_na, _nx, now)
+            ok(_nx['since'] == _up['since'] and _nx['since_seen'] == '2026-08-30 08:00' and len(f) == 1 and f[0][0] == 'NOTE'
+               and 'said as a warning once' in f[0][1], 'the culls after it: a NOTE, not a WARN: %s' % f)
+            f = freshness_findings(dict(_na, upstream_ts=ts + 1), _nx, now)
+            ok(len(f) == 1 and f[0][0] == 'WARN' and 'not installed here yet' in f[0][1], 'newer data upstream stays a WARN: %s' % f)
+            f = freshness_findings(m, dict(_nx, version='0.429.1'), now)
+            ok(len(f) == 1 and f[0][0] == 'NOTE' and 'phone is 0.429.1' in f[0][1], 'the APK skew is said once too: %s' % f)
+            ok(game_version_record({'version': '0.431.0', 'code': '2026092502', 'since': 'S', 'since_seen': 'P', 'seen': 'Q'},
+                                   '0.431.0', '2026092503', 'U', None, 'N')['since'] == 'U', 'the same name with a new build is a new version')
+            ok(game_version_record(None, '0.431.0', None, 'U', 'pm', 'N') == {
+                'version': '0.431.0', 'code': None, 'updated': 'U', 'since': 'U', 'since_seen': 'N', 'pokemod': 'pm', 'seen': 'N'},
+               'no earlier record: the version starts now')
             f = freshness_findings(dict(m, checked_ts=int(now - 20 * 86400), downloaded_ts=int(now - 20 * 86400)), {'version': '0.427.0'}, now)
             ok(len(f) == 1 and 'not been compared' in f[0][1], 'not checked for 20 days: %s' % f)
             f = freshness_findings(dict(m, batch_ts=int((now - 200 * 86400) * 1000), batch_utc='2026-03-13 00:00:00'), {'version': '0.427.0'}, now)
