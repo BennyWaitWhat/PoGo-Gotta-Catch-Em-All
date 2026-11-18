@@ -478,7 +478,8 @@ def hundo_advice(kept_by, reasons, taken=(), why_not=None):
     """{uid: (target stage, why it stops there or None)}: game_opportunities.hundo_combup over the kept 15/15/15s, each judged by
     the label law first. taken: copies another producer already advises. why_not: a dict to fill with {uid: why it stays}.
     A hundo already BUILT as the stage it is -- its CP within one power-up of 500 / 1500 / 2500, or level 50 -- stays too:
-    evolving it would undo the build. So does a collectible look (hundo_collectible)."""
+    evolving it would undo the build. So does a collectible look (hundo_collectible). A stage is the SPECIES
+    (game_opportunities.hundo_stages, 2026-11-18): a hundo of any form, size or gender there already holds it."""
     import contextlib, io
     for _p in (HERE, os.path.join(HERE, 'system', 'scripts')):
         if _p not in sys.path:
@@ -490,6 +491,9 @@ def hundo_advice(kept_by, reasons, taken=(), why_not=None):
     if not _HUNDO_GRAPH:
         gm = json.load(open(os.path.join(HERE, 'pvpoke_gamemaster.json'), encoding='utf-8'))
         _HUNDO_GRAPH['bs'] = {p['speciesId']: p.get('baseStats') or {} for p in gm['pokemon']}
+        _HUNDO_GRAPH['nm'] = {}                           # dex number -> the species' name without its form ("Gourgeist")
+        for p in sorted(gm['pokemon'], key=lambda p: (len(p['speciesId']), p['speciesId'])):
+            _HUNDO_GRAPH['nm'].setdefault(p.get('dex'), (p.get('speciesName') or p['speciesId']).split(' (')[0])
         _HUNDO_GRAPH['g'] = kp.build_evo_graph(gm, {e['pid'] for e in json.load(
             open(os.path.join(HERE, 'pokedex_hundos_live.json'), encoding='utf-8'))['entries']}, with_all=True)
     BS, graph = _HUNDO_GRAPH['bs'], _HUNDO_GRAPH['g']
@@ -500,11 +504,22 @@ def hundo_advice(kept_by, reasons, taken=(), why_not=None):
     hund = [r for r in kept_by.values() if r.get('iv_atk') == 15 and r.get('iv_def') == 15 and r.get('iv_sta') == 15]
     if not hund:
         return {}
-    key = lambda s: kp.align_key(s, graph[3])
-    own = lambda r: key(pvid(r['species_name'], r.get('form') or 0))
+    # A HUNDO'S STAGE IS ITS SPECIES (go.hundo_stages; user 2026-11-18 17:20, after his hundo Pumpkaboo (Average) wore Evolve to
+    # Final while he held a hundo Gourgeist (Small) and he evolved it: "i dont really give a shit if the hundos are gender
+    # different......only the ones with noticable differences (like light and dark hippo). the pumpkin one was BS"). The ids
+    # the graph names are FORM-locked, so a size or a regional form read as an empty stage; the stage is the dex species now.
+    fold = lambda s: kp.align_key(s, graph[3])
     raw = {r['uid_hex']: set(kp.pvp_later_stages(r, graph)) for r in hund}
-    later = lambda r: {key(t) for t in raw[r['uid_hex']]} - {own(r)}
-    depth = lambda s: graph[2].get(s, 0)
+    st = {r['uid_hex']: go.hundo_stages(r['pokemon_id'], {fold(t) for t in raw[r['uid_hex']]}, graph[3].get) for r in hund}
+    own = lambda r: st[r['uid_hex']][0]
+    later = lambda r: set(st[r['uid_hex']][1])
+    dep = {}                                               # evolutions left after a stage: the most any of its forms has
+    for r in hund:
+        k0, lat = st[r['uid_hex']]
+        dep[k0] = max(dep.get(k0, 0), graph[2].get(fold(pvid(r['species_name'], r.get('form') or 0)), 0))
+        for k, t in lat.items():
+            dep[k] = max(dep.get(k, 0), graph[2].get(t, 0))
+    depth = lambda k: dep.get(k, 0)
     prot, hk, ae = keep_config.protected_pids(), keep_config.hand_kept(), ae_moves.move_ids()
     rows = list(kept_by.values())
     base0 = _base_form_map(rows)
@@ -566,10 +581,10 @@ def hundo_advice(kept_by, reasons, taken=(), why_not=None):
         if w and why_not is not None:
             why_not[u] = w
         return w
-    got = go.hundo_combup(hund, own, later, depth, blocked, lambda s: s.replace('_', ' ').title())
+    got = go.hundo_combup(hund, own, later, depth, blocked, lambda k: _HUNDO_GRAPH['nm'].get(int(k)) or k)
     out = {}
     for u, (t, why) in got.items():                       # the stage id the graph names (a gendered branch: its own id)
-        real = sorted((x for x in raw[u] if key(x) == t), key=lambda x: (x not in graph[2], x))
+        real = sorted((x for x in raw[u] if fold(x) == st[u][1].get(t)), key=lambda x: (x not in graph[2], x))
         if real:
             out[u] = (real[0], why)
     return out

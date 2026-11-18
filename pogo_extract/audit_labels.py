@@ -244,39 +244,58 @@ def main():
                           r['fresh_costume'] or 0, r['gender']))
     # THE HUNDO COMB-UP (LAW 2026-11-18: "one for each stage filling in the final evo first"), re-derived from the bag: the stage
     # a hundo is sent to holds no hundo that stays, ONE hundo per stage, and never a stage while a later one this copy can
-    # become is left without. Shadow hundos are a line of their own. Stages as the engine's graph names them (a gender suffix
-    # folded like the shadow / purified lines).
+    # become is left without. Shadow hundos are a line of their own. A STAGE IS THE SPECIES (2026-11-18, after his hundo
+    # Pumpkaboo (Average) was sent to Gourgeist while he held a hundo Gourgeist (Small): "the pumpkin one was BS"): a size, a
+    # form or a gender is not a second stage (game_opportunities.hundo_stages), and the same fact is checked once more
+    # straight from the bag's dex numbers, without that helper.
     _hc = {u: e for u, e in (adv or {}).items() if e.get('source') == 'hundo' and u in rows}
     if _hc and _graph is None:
         bad.append('hundo comb-up: %d advised and the evolution graph is unavailable -- cannot be judged' % len(_hc))
     elif _hc:
+        import game_opportunities as _go
         _hk = lambda s: _kp.align_key(s, _graph[3])
         _hsh = lambda r: r['fresh_alignment'] == 1
         _hnm = lambda u: '%s %d%% cp%s' % (rows[u]['species_name'], (rows[u]['iv_total'] or 0) * 100 // 45, rows[u]['cp'])
-        _hat, _hgo = collections.defaultdict(set), collections.defaultdict(list)
-        for _u, _r in rows.items():
-            if (_r['iv_total'] or 0) == 45 and _u not in _hc and not keep_config.is_fused_component(_r):
-                _hat[(_hsh(_r), _hk(pvid(_r['species_name'], _r['form'] or 0)))].add(_u)
+        _hst = {_u: _go.hundo_stages(_r['pokemon_id'], {_hk(x) for x in (_later(_r) or ())}, _graph[3].get)
+                for _u, _r in rows.items() if (_r['iv_total'] or 0) == 45 and not keep_config.is_fused_component(_r)}
+        _hat, _hgo, _hdex = collections.defaultdict(set), collections.defaultdict(list), collections.defaultdict(list)
+        for _u, (_k, _l) in _hst.items():
+            if _u not in _hc:
+                _hat[(_hsh(rows[_u]), _k)].add(_u)
+                _hdex[(_hsh(rows[_u]), rows[_u]['pokemon_id'])].append(_u)
+        _htk = {}                                          # an advised hundo -> the stage it is sent to
         for _u, _e in _hc.items():
-            if granular_tags.hundo_collectible(rows[_u]):
+            _r = rows[_u]
+            if granular_tags.hundo_collectible(_r):
                 bad.append('hundo comb-up: %s is a collectible look (costume, background, card or Max) advised to evolve' % _hnm(_u))
             if len(_e.get('targets') or []) != 1:
                 bad.append('hundo comb-up: %s names %d targets (one stage per hundo)' % (_hnm(_u), len(_e.get('targets') or [])))
+            _inv = {t: k for k, t in _hst.get(_u, ('', {}))[1].items()}
             for _t in _e.get('targets') or []:
-                _hgo[(_hsh(rows[_u]), _hk(_t))].append(_u)
-        for (_s, _t), _us in sorted(_hgo.items()):
+                _k = _inv.get(_hk(_t))
+                if _k is None:
+                    bad.append('hundo comb-up: %s is sent to %s, which is not ONE later stage of this copy (it cannot become it, '
+                               'or two of its evolutions are one species: a pick, not a rule)' % (_hnm(_u), _t))
+                    continue
+                _htk[_u] = _k
+                _hgo[(_hsh(_r), _k)].append(_u)
+                # the same fact straight from the bag, without the stage helper: the target SPECIES holds no hundo that stays
+                _there = _hdex.get((_hsh(_r), _graph[3].get(_hk(_t))), ())
+                if _there:
+                    bad.append('hundo comb-up: %s is sent to %s, a species you already hold a hundo of (%s) -- a size, a form or a '
+                               'gender is not a second stage' % (_hnm(_u), _t, ', '.join(map(_hnm, sorted(_there)[:3]))))
+        for (_s, _k), _us in sorted(_hgo.items()):
             if len(_us) > 1:
-                bad.append('hundo comb-up: %d hundos are sent to %s (one per stage): %s' % (len(_us), _t, ', '.join(map(_hnm, sorted(_us)))))
-            if _hat.get((_s, _t)):
-                bad.append('hundo comb-up: %s is sent to %s, which already holds a hundo that stays' % (_hnm(_us[0]), _t))
-        for _u, _e in sorted(_hc.items()):
-            _r = rows[_u]
-            _own, _ts = _hk(pvid(_r['species_name'], _r['form'] or 0)), [_hk(t) for t in _e.get('targets') or []]
-            for _x in sorted({_hk(x) for x in (_later(_r) or ())} - {_own}):
-                if _ts and _graph[2].get(_x, 0) < _graph[2].get(_ts[0], 0) and not _hat.get((_hsh(_r), _x)) \
+                bad.append('hundo comb-up: %d hundos are sent to stage %s (one per stage): %s' % (len(_us), _k, ', '.join(map(_hnm, sorted(_us)))))
+            if _hat.get((_s, _k)):
+                bad.append('hundo comb-up: %s is sent to stage %s, which already holds a hundo that stays' % (_hnm(_us[0]), _k))
+        for _u, _k in sorted(_htk.items()):
+            _r, _lat = rows[_u], _hst[_u][1]
+            for _x, _xt in sorted(_lat.items()):
+                if _graph[2].get(_xt, 0) < _graph[2].get(_lat[_k], 0) and not _hat.get((_hsh(_r), _x)) \
                         and (_hsh(_r), _x) not in _hgo:
                     bad.append('hundo comb-up: %s is sent to %s while the later stage %s has no hundo (the final stage first)'
-                               % (_hnm(_u), _ts[0], _x))
+                               % (_hnm(_u), _lat[_k], _xt))
     # NEVER "evolve" AND "No Evolve" ON ONE COPY (2026-09-30, user: "The tag is the bug")
     _noev = set(_members(granular_tags.NO_EVOLVE))
     for u in sorted(_noev & set(worn)):

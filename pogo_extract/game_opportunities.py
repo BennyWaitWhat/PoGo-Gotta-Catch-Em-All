@@ -607,6 +607,29 @@ def hundo_combup(hundos, own, later, depth, blocked=None, nice=None):
     return out
 
 
+def hundo_stages(own_dex, later_ids, dex_of):
+    """A HUNDO'S STAGE IS ITS SPECIES (Benny 2026-11-18, three minutes after the first comb-up tags: his hundo Pumpkaboo
+    (Average) wore Evolve to Final while he held a hundo Gourgeist (Small), and he evolved it: "umm i dont really give a shit
+    if the hundos are gender different......only the ones with noticable differences (like light and dark hippo). the pumpkin
+    one was BS and i evolved them by accidnent."). -> (the stage this copy is, {later stage: the id it becomes there}).
+    A stage is the dex number: every form of the species (a Pumpkaboo size, a regional form) and both genders are ONE stage,
+    so a hundo of any look there holds it. That can only take advice away. A look he CAN see (a regional form, a species
+    whose males and females look different) becomes a line of its own only on his word: on 2026-11-18 that would have
+    told four more hundos to evolve (Alolan Diglett, Ivysaur, Bulbasaur, a Pidove all the way to Unfezant).
+    later_ids: the ids this copy can become (keep_policy.pvp_later_stages, gender aliases folded); dex_of(id) -> its dex
+    number. Two of the copy's own evolutions that are one species (Rockruff -> Lycanroc Midday / Midnight) are a pick, not
+    a rule, and an id nobody can place is no ground for an irreversible tag: either way the copy has no later stage here."""
+    key = lambda n: '%04d' % n
+    later = {}
+    for t in sorted(later_ids):
+        n = dex_of(t)
+        if not n or key(n) in later:
+            return key(own_dex), {}
+        later[key(n)] = t
+    later.pop(key(own_dex), None)
+    return key(own_dex), later
+
+
 # ----------------------------------------------------------------------------------------------------------------- self-test
 def _selftest():
     """Offline -- CI has no game master, no bag DB and no data store: the parser on a miniature game master shaped like the real
@@ -874,6 +897,26 @@ def _selftest():
     ck(_w == {'s1': ('quilava', 'you have a hundo Typhlosion')}, 'hundo comb-up: the lone Cyndaquil case, with its reason')
     _w = hundo_combup([H('c1', 300), H('c2', 500)], own_, lambda r: LATER.get(own_(r), ()), lambda s: DEPTH.get(s, 0))
     ck(_w == {'c2': ('charizard', None), 'c1': ('charmeleon', 'another hundo is evolving into Charizard')}, 'hundo comb-up: words')
+    # a hundo's stage is its SPECIES (2026-11-18: the Pumpkaboo that was sent to a Gourgeist stage he already held)
+    DEX = {'gourgeist_average': 711, 'gourgeist_small': 711, 'dugtrio': 51, 'dugtrio_alolan': 51, 'lycanroc_midday': 745,
+           'lycanroc_midnight': 745, 'hippowdon': 450, 'quilava': 156, 'typhlosion': 157}
+    hs = lambda dex, ids: hundo_stages(dex, ids, DEX.get)
+    ck(hs(710, ['gourgeist_average']) == ('0710', {'0711': 'gourgeist_average'}) and hs(711, [])[0] == '0711',
+       'hundo stage: a Pumpkaboo of any size becomes THE Gourgeist stage, and a Gourgeist of any size holds it')
+    ck(hs(50, ['dugtrio_alolan'])[1] == {'0051': 'dugtrio_alolan'} and hs(51, [])[0] == '0051',
+       'hundo stage: a regional form is the species stage (a line of its own only on his word)')
+    ck(hs(744, ['lycanroc_midday', 'lycanroc_midnight']) == ('0744', {}) and hs(155, ['quilava', 'nope']) == ('0155', {}),
+       'hundo stage: two evolutions of one species are a pick, and an id nobody can place moves nothing')
+    ck(hs(155, ['quilava', 'typhlosion']) == ('0155', {'0156': 'quilava', '0157': 'typhlosion'}), 'hundo stage: a plain line')
+    _S = lambda u, st: dict(H(u), st=st)
+    _hc2 = lambda hs_: {u: v[0] for u, v in hundo_combup(hs_, lambda r: r['st'][0], lambda r: set(r['st'][1]),
+                                                         lambda s: {'0710': 1, '0050': 1, '0449': 1}.get(s, 0)).items()}
+    ck(_hc2([_S('p1', hs(710, ['gourgeist_average'])), _S('g1', hs(711, []))]) == {}
+       and _hc2([_S('p1', hs(710, ['gourgeist_average']))]) == {'p1': '0711'},
+       'hundo comb-up: the 2026-11-18 Pumpkaboo stays while a hundo Gourgeist of another size holds the stage')
+    ck(_hc2([_S('d1', hs(50, ['dugtrio_alolan'])), _S('k1', hs(51, []))]) == {}
+       and _hc2([_S('h1', hs(449, ['hippowdon'])), _S('w1', hs(450, []))]) == {},
+       'hundo comb-up: a Kanto Dugtrio holds the Dugtrio stage, a Hippowdon of either gender the Hippowdon stage')
 
     # ---- wiring: the 2nd-move price is chosen by alignment, and the CLI runs nothing on a guessed flag
     src = inspect.getsource(second_moves)
