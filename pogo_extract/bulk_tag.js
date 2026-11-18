@@ -1136,8 +1136,13 @@ rpc.exports = {
        populated TagsToAdd + null TagsToRemove = bulkTagMany; empty(capacity-ctor)
        TagsToAdd + populated TagsToRemove = bulkUntagOne; the both-populated case
        just combines the two independently-proven fields. */
-    bulkApplyChanges: function(serviceInstanceStr, changesArray) {
+    bulkApplyChanges: function(serviceInstanceStr, changesArray, direct) {
+        // ON THE GAME'S MAIN THREAD since 2026-11-18 (_onMain, near the end of this file): the frame's tick calls this
+        // again with direct = true, so the whole body below -- the lists, the call, the exception read -- runs there.
+        // init() stays FIRST, on Frida's thread: it attaches the thread it first runs on to the game's runtime, and the
+        // exports that are not moved (the promise reads, the tag lookups) still make their game calls from that thread.
         if (!init()) return {ok:false, err:state.err};
+        if (!direct) return _onMain(function () { return rpc.exports.bulkApplyChanges(serviceInstanceStr, changesArray, true); });
         var bind = (function() {
             var exp = {};
             Process.findModuleByName("libil2cpp.so").enumerateExports().forEach(function(e){
@@ -2370,6 +2375,81 @@ function _excText(exc) {
         }
     } catch (err) { out.push('(the exception could not be read: ' + err + ')'); }
     return out.join(' | ');
+}
+// THE GAME'S MAIN THREAD (2026-11-18; Benny, told that the writes run on the wrong thread and that the fix changes how
+// the Transfer tag is written: "go."). Every tag write used to run on Frida's own thread, beside the game's main thread.
+// About one pass in four the call threw System.Exception "Field currentActivity or type signature  not found" -- by its
+// text a Unity JNI lookup that does not survive a second thread -- and the retry took it. A write now runs where the game
+// makes its own: at the ENTRY of Niantic.Zeppelin.Scheduler.Scheduler.LateUpdate, once per frame on UnityMain, through a
+// Frida PROBE hook (no return trap on the game's unwind path). That method and that hook form are the ones the gym runner
+// has driven every one of its game calls from since 2026-09-25. One job per frame, never nested; every game call inside a
+// job still goes through il2cpp_runtime_invoke with an exception slot. The hook goes in on the first write and leaves
+// with the script; a frame with no job waiting does nothing but count itself.
+// NOTHING HERE MAY FAIL A WRITE THAT WENT THROUGH BEFORE: no hook (the class or the method is not there), or no frame
+// inside _MT_WAIT_MS (the game is paused, loading or behind another app), and the job runs on Frida's thread as it always
+// did -- its result then says why in `mainMiss`. After such a wait the next writes do not wait again until a frame has
+// been seen. Every result says where it ran in `thread` ('main' / 'frida').
+// A script that must not hook at all is loaded with `var _MT_OFF = true;` in front (tag_ops.main_thread_writes).
+var _MT = {state: 0, why: null, q: [], busy: false, frames: 0, stalled: -1};   // state: 0 = not tried, 1 = hooked, -1 = no hook
+var _MT_WAIT_MS = 3000;
+function _mtHook() {
+    if (_MT.state) return _MT.state > 0;
+    _MT.state = -1;
+    try {
+        var ex = {};
+        Process.findModuleByName('libil2cpp.so').enumerateExports().forEach(function (x) { if (x.name.indexOf('il2cpp_') === 0) ex[x.name] = x.address; });
+        var b = function (n, r, a) { return new NativeFunction(ex[n], r, a); };
+        var sp = Memory.alloc(Process.pointerSize);
+        var asms = b('il2cpp_domain_get_assemblies', 'pointer', ['pointer', 'pointer'])(b('il2cpp_domain_get', 'pointer', [])(), sp);
+        var n = sp.readU32(), img = b('il2cpp_assembly_get_image', 'pointer', ['pointer']);
+        var cfn = b('il2cpp_class_from_name', 'pointer', ['pointer', 'pointer', 'pointer']);
+        var ns = Memory.allocUtf8String('Niantic.Zeppelin.Scheduler'), nm = Memory.allocUtf8String('Scheduler'), k = ptr(0);
+        for (var i = 0; i < n && k.isNull(); i++) k = cfn(img(asms.add(i * Process.pointerSize).readPointer()), ns, nm);   // by exact name, per image: never a walk over every class
+        if (k.isNull()) { _MT.why = 'no Niantic.Zeppelin.Scheduler.Scheduler class in this game version'; return false; }
+        var m = b('il2cpp_class_get_method_from_name', 'pointer', ['pointer', 'pointer', 'int'])(k, Memory.allocUtf8String('LateUpdate'), 0);
+        if (m.isNull() || m.readPointer().isNull()) { _MT.why = 'no Scheduler.LateUpdate in this game version'; return false; }
+        Interceptor.attach(m.readPointer(), function () { _mtFrame(); });
+        _MT.state = 1;
+    } catch (e) { _MT.why = 'the frame hook could not be put in: ' + e; }
+    return _MT.state > 0;
+}
+function _mtFrame() {                              // UnityMain, at the entry of Scheduler.LateUpdate
+    _MT.frames++;
+    if (_MT.busy) return;
+    var job = null;
+    while (!job && _MT.q.length) { job = _MT.q.shift(); if (job.state) job = null; }   // given up on before a frame came: it already ran on Frida's thread
+    if (!job) return;
+    job.state = 1; _MT.busy = true;
+    var out;
+    try { out = job.run(); } catch (e) { out = {ok: false, err: 'the write threw on the main thread: ' + e}; }
+    _MT.busy = false;
+    if (out && typeof out === 'object') { out.thread = 'main'; out.frameWaitMs = Date.now() - job.at; }
+    // the answer leaves from Frida's own thread, not from inside the game's frame
+    (typeof setImmediate === 'function' ? setImmediate : function (f) { setTimeout(f, 0); })(function () { job.done(out); });
+}
+function _onMain(run) {
+    var direct = function (why) {
+        var out = run();
+        if (out && typeof out === 'object') { out.thread = 'frida'; if (why) out.mainMiss = why; }
+        return out;
+    };
+    if (typeof _MT_OFF !== 'undefined' && _MT_OFF) return direct(null);
+    if (!_mtHook()) return direct(_MT.why || 'no frame hook');
+    if (_MT.stalled === _MT.frames) return direct('still no frame since a write waited ' + _MT_WAIT_MS + ' ms for one');
+    _MT.stalled = -1;
+    return new Promise(function (resolve) {
+        var job = {run: run, state: 0, at: Date.now(), done: resolve};
+        _MT.q.push(job);
+        setTimeout(function () {
+            if (job.state) return;                 // a frame took it: it runs, or ran, on the main thread
+            job.state = 3;                         // given up on: the frame hook must never run it now
+            _MT.stalled = _MT.frames;
+            var out;
+            try { out = direct('no frame in ' + _MT_WAIT_MS + ' ms -- is the game paused, loading or behind another app?'); }
+            catch (e) { out = {ok: false, err: 'the write threw: ' + e, thread: 'frida'}; }
+            resolve(out);
+        }, _MT_WAIT_MS);
+    });
 }
 // Niantic's Promise<T> (Gym Battle, proven on GymFeedPokemonOutProto / MapPlaceDetails / Buddy* replies): completeCalled /
 // errorCalled are the settle flags, completedValue holds the reply (*OutProto), errorValue an Exception (_message).

@@ -434,7 +434,48 @@ def create_tag(bt, svc, name, color, attempts=5, index=None):
 # the cull's warning scan does not flag. Its line must NOT hold the text 'apply_changes': full_audit echoes every sync
 # line that does, and reads 'INFO apply_changes:' as "the write was answered" (the post-push session attaches on it).
 # Every OTHER refusal keeps its WARNING, and a batch that fails all three tries keeps its ERROR whatever it threw.
+# SINCE THE WRITES RUN ON THE GAME'S MAIN THREAD (same day, below) the hiccup is routine only for a write that did NOT run
+# there: on the main thread it would mean the thread never was the cause, and that is a WARNING.
 _FIRST_CALL_HICCUP = re.compile(r'Field currentActivity or type signature\s+not found')
+
+# TAG WRITES RUN ON THE GAME'S MAIN THREAD (Benny 2026-11-18 18:06, told that this changes how the Transfer tag is
+# written: "go."). bulk_tag.js runs each bulk_apply_changes inside the game's own per-frame tick (_onMain; the story is
+# there) and says where it ran in the result's `thread`; no frame hook or no frame in time, and the write goes from
+# Frida's thread as before, with the reason in `mainMiss`. THE SWITCH: the file below existing turns the frame hook OFF
+# for every script loaded through _load_bulk_tag_script and for retire's delete (no code change, no restart).
+MAIN_THREAD_OFF = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'analysis',
+                               'main_thread_writes.off')
+LAST_THREAD = {'main': 0, 'frida': 0, 'wait_ms': [], 'miss': []}      # where the last apply_changes' calls ran
+
+
+def main_thread_writes():
+    """False when the kill switch file exists (see above)."""
+    return not os.path.exists(MAIN_THREAD_OFF)
+
+
+def _thread_note(r):
+    """Count where one write call ran, and why it missed the main thread when it did."""
+    if not isinstance(r, dict) or not r.get('thread'):
+        return
+    LAST_THREAD['main' if r['thread'] == 'main' else 'frida'] += 1
+    if r['thread'] == 'main' and r.get('frameWaitMs') is not None:
+        LAST_THREAD['wait_ms'].append(r['frameWaitMs'])
+    if r.get('mainMiss') and r['mainMiss'] not in LAST_THREAD['miss']:
+        LAST_THREAD['miss'].append(r['mainMiss'])
+
+
+def _thread_lines():
+    """[(level, line)] for the last apply_changes: where its calls ran. Neither line may hold the writer's name
+    (full_audit reads 'INFO apply_changes:' as "the write was answered"). A miss is a WARNING: the write went
+    through, but not where it was meant to run."""
+    t, out = LAST_THREAD, []
+    if t['main']:
+        out.append(('info', "tag write: %d call(s) ran on the game's main thread (a frame came after %s ms)"
+                    % (t['main'], ' / '.join(str(w) for w in t['wait_ms'][:8]) or '?')))
+    if t['miss']:
+        out.append(('warning', "tag write: %d call(s) did NOT get the game's main thread (%s) -- sent from Frida's "
+                    "thread, the way every write went before 2026-11-18" % (t['frida'], '; '.join(t['miss']))))
+    return out
 
 
 def first_call_hiccup(text):
@@ -446,7 +487,9 @@ def _try_line(fn, bn, nb, retry, r, n):
     """(routine, line) for one try of a batch the game did not take. routine = the known first-call hiccup."""
     exc = '%s%s' % (r.get("excClass") or '', (' -- ' + r["excText"]) if r.get("excText") else '')
     if first_call_hiccup(r.get("excText")):
-        return True, "first-call hiccup: tag write batch %d/%d, try %d of 3 (%s)" % (bn, nb, retry + 1, exc)
+        if r.get('thread') != 'main':
+            return True, "first-call hiccup: tag write batch %d/%d, try %d of 3 (%s)" % (bn, nb, retry + 1, exc)
+        exc += ' [ON THE MAIN THREAD: the thread is not what causes this]'
     return False, "%s: batch %d/%d retry %d: built=%s requested=%d err=%s %s" % (
         fn, bn, nb, retry, r.get("built"), n, r.get("err"), exc)
 
@@ -649,6 +692,7 @@ def apply_changes(bt, svc, changes, batch=150):
     THIS Frida session (a stale proto throws NullReferenceException).
     """
     changes = [c for c in changes if c.get('add') or c.get('remove')]
+    LAST_THREAD.update(main=0, frida=0, wait_ms=[], miss=[])
     LAST_SERVER.clear()
     LAST_SERVER.update(batches=0, confirmed=0, refused=0, no_answer=0, details=[])
     if not changes:
@@ -666,6 +710,7 @@ def apply_changes(bt, svc, changes, batch=150):
             try:
                 r = bt.exports_sync.bulk_apply_changes(svc, chunk)
                 last = r
+                _thread_note(r)
                 _mm = r.get("mismatched") or []
                 if _mm:
                     # H01: these pointers are no longer those mons -- NOT written, and NOT retried with the same
@@ -719,6 +764,8 @@ def apply_changes(bt, svc, changes, batch=150):
     else:
         log.info("apply_changes: all %d batch(es) ACCEPTED (%d mons) -- acceptance is not "
                  "persistence; confirm with reconcile_tags.py --report", nb, total)
+    for _lv, _ln in _thread_lines():
+        getattr(log, _lv)(_ln)
     if LAST_SERVER['batches']:
         _lvl = log.error if LAST_SERVER['refused'] else (log.warning if LAST_SERVER['no_answer'] else log.info)
         _lvl("apply_changes: SERVER answered %d/%d batch(es): %d Success, %d refused, %d no answer",
@@ -787,6 +834,9 @@ def _load_bulk_tag_script(sess):
     """Load bulk_tag.js into the given Frida session and return the script."""
     with open(BULK_TAG_JS, encoding="utf-8") as f:
         js = f.read()
+    if not main_thread_writes():                 # the kill switch: no frame hook, every write from Frida's thread
+        js = 'var _MT_OFF = true;\n' + js
+        log.info("tag write: the main-thread frame hook is switched OFF (%s exists)", MAIN_THREAD_OFF)
     bt = sess.create_script(js)
     bt.on("message", lambda m, d: None)
     bt.load()
