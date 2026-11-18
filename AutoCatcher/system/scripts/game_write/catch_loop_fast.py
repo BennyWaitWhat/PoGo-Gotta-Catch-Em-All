@@ -602,6 +602,21 @@ function despawnFirst(now) {
   var key = function (k) { var x = E[k]; if (!x) return 9e15; if (x.prio) return 0; return (x.exp && x.exp > now + 1500) ? x.exp : 8e15 + (x.t0 || 0); };
   PEND.sort(function (a, b) { return key(a) - key(b); });
 }
+/* PAYERS FIRST (Benny 2026-11-18: "make further improvements and enhancements"): while spawns of left-alone species are
+   opened only for a SHINY LOOK (STARDUST ONLY, a ball-saver plan), a spawn that gets a ball goes in front of them, so a
+   burst of thirty commons does not stand between the catcher and a Minior. Inside each group the order stays as it was
+   (arrival, or despawn-first). The same array is rewritten in place; with nothing to move it is not touched. */
+function payersFirst() {
+  var pay = [], look = [], i, k, x, behind = false, move = false;
+  for (i = 0; i < PEND.length; i++) {
+    k = PEND[i]; x = E[k];
+    if (x && x.st === 'new' && !x.apple && !x.prio && CFG.skipSp[x.pid]) { look.push(k); behind = true; }
+    else { pay.push(k); if (behind) move = true; }
+  }
+  if (!move) return;
+  for (i = 0; i < pay.length; i++) PEND[i] = pay[i];
+  for (i = 0; i < look.length; i++) PEND[pay.length + i] = look[i];
+}
 function onPlayerStats(s) {   /* any thread: memory reads only. The server's total, from every inventory update */
   var c = s.add(OFF.nCap).readS32(), n = OFF.nEnc >= 0 ? s.add(OFF.nEnc).readS32() : -1;
   /* the running maximum: the lifetime total only grows. (A "within 5000 of the last value" guard latched onto a wrong
@@ -755,6 +770,7 @@ function catchTick(now) {
   PEEKONLY = !anyBall && peekOn() && (ITEMC[1] > 0 || ITEMC[2] > 0 || ITEMC[3] > 0);   /* SHINY LOOK with no ball to spend */
   if (!anyBall && !PEEKONLY && fresh && now >= HOLD && PEND.length) { HOLD = now + 30000; HOLDWHY = 'out of balls (at the floors)'; ST.holds++; log('HOLD 30s: ' + HOLDWHY); holding = true; }
   if (CFG.order === 'despawn' && PEND.length > 1 && !holding) despawnFirst(now);
+  if (peekOn() && !PEEKONLY && PEND.length > 1 && !holding) payersFirst();   /* with no ball to spend every open is a look */
   for (var tries = PEND.length; tries > 0 && !holding && now - LASTOPEN >= CFG.openMs && n < CFG.maxOpen; tries--) {
     enc = PEND.shift(); e = E[enc]; if (!e || e.st !== 'new') continue;
     var drop = CFG.skipSp[e.pid] && !e.apple;   /* queued before the plan dropped its species */
