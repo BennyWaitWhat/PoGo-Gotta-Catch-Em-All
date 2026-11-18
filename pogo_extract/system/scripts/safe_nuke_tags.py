@@ -143,8 +143,13 @@ function enumTagsFull(s, withUids) {
     return out;
 }
 
-function delTag(s, tidStr) {
+function delTag(s, tidStr, direct) {
+    // ON THE GAME'S MAIN THREAD (2026-11-18) when the caller put bulk_tag.js's frame runner in front of this script
+    // (retire_tags.exc_text_js carries _onMain; the story is in bulk_tag.js): the frame's tick calls this again with
+    // direct = true. Without the runner, or with it switched off, the call is made here, as before.
+    // _ensureInit() stays FIRST, on Frida's thread: it attaches the thread it first runs on to the game's runtime.
     _ensureInit();
+    if (!direct && typeof _onMain === 'function') return _onMain(function () { return delTag(s, tidStr, true); });
     var cl = cFN('Niantic.Holoholo.Tagging', 'TaggingRpcService');
     var it = Memory.alloc(Process.pointerSize);
     it.writePointer(ptr(0));

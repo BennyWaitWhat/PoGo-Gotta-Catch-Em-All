@@ -24,6 +24,11 @@ warnings?!?!?! fix them"):
     game said (the 1-3-per-session limit above was inferred from such lines). The line now carries the exception's own
     class and message (exc_text_js). The one text known to be the game's first-call hiccup (tag_ops.first_call_hiccup)
     gets ONE more try after the settle wait; anything else still ends the run and still reads as a warning.
+
+THE DELETE RUNS ON THE GAME'S MAIN THREAD since the same evening (Benny 18:06: "go."): exc_text_js also carries
+bulk_tag.js's frame runner (_onMain; the story is there), and safe_nuke_tags' delTag hands itself to it. The result says
+where it ran (`thread`); a delete that did not get the main thread is said in a '!' line and went from Frida's thread as
+before. The first-call hiccup is routine only OFF the main thread: on it, the thread never was the cause.
 """
 import sys, os, time, argparse, json
 sys.stdout.reconfigure(encoding='utf-8', errors='replace')
@@ -91,11 +96,12 @@ _EXC_JS_FROM, _EXC_JS_TO = 'var _GHAPI = null;', "// Niantic's Promise<T>"
 
 
 def exc_text_js(path=None):
-    """bulk_tag.js's own exception reader (_excText and the helpers it calls), cut out between its first line and the
-    comment after it, to put in front of the delete script: the SAME code that has read SetPokemonTags' exceptions on
-    the phone since 2026-11-17, not a second copy of it. '' when the file or a mark is missing -- the delete then names
-    the exception's class only. The file is tag_ops.BULK_TAG_JS, the one the writers load: its name is not spelled here,
-    because audit_invariants counts every script that names it as one that can ADD tag members."""
+    """bulk_tag.js's own exception reader (_excText and the helpers it calls) and its main-thread frame runner (_onMain),
+    cut out between the block's first line and the comment after it, to put in front of the delete script: the SAME
+    code the writers run on the phone, not a second copy of it. '' when the file or a mark is missing -- the delete
+    then names the exception's class only and runs on Frida's thread. The file is tag_ops.BULK_TAG_JS, the one the
+    writers load: its name is not spelled here, because audit_invariants counts every script that names it as one that
+    can ADD tag members."""
     import tag_ops
     try:
         with open(path or tag_ops.BULK_TAG_JS, encoding='utf-8') as f:
@@ -113,7 +119,9 @@ def refusal_line(t, res, sent):
     its line keeps the words the cull's scan ('threw') and its retire relay ('refused') look for."""
     import tag_ops
     what = ' -- '.join(x for x in (res.get('excClass'), res.get('excText')) if x) or 'an exception nothing could be read from'
-    if tag_ops.first_call_hiccup(res.get('excText')):
+    if res.get('thread') == 'main':
+        what += ' [on the main thread]'
+    elif tag_ops.first_call_hiccup(res.get('excText')):
         return True, ("  %-20s still there: the game's known first-call hiccup on %s (%s) -- the next cull tries again"
                       % (t, 'both tries' if sent > 1 else 'the first try', what))
     return False, '  %-20s DeleteTag refused: the game threw %s -- stopping this run' % (t, what)
@@ -182,7 +190,10 @@ def run_on_session(sess, pid, a, retired, empty_files, own=False):
     deleted, left = [], []
     try:
         svc = pg.pick_singleton(sess, 'Niantic.Holoholo.Tagging', 'TaggingRpcService')
-        script = pg.get_script_with_helpers(sess, exc_text_js() + '\n' + snt.JS)
+        # the frame runner in exc_text_js puts the delete on the game's main thread; the kill switch file turns it off
+        script = pg.get_script_with_helpers(sess, ('' if tag_ops.main_thread_writes() else 'var _MT_OFF = true;\n')
+                                            + exc_text_js() + '\n' + snt.JS)
+        missed = []                           # why a delete did not get the main thread (said once)
         tags = snt.enumerate_tags(script, svc)
         census = snt.tag_census(tags)
         _dups = snt.duplicate_names(tags)     # (2026-09-30) a by-name census hides one copy of a duplicated name
@@ -242,6 +253,10 @@ def run_on_session(sess, pid, a, retired, empty_files, own=False):
                             before[name] = info
                 res = script.exports_sync.del_tag(svc, fresh[t]['tagId'])
                 sent += 1
+                if res.get('mainMiss') and res['mainMiss'] not in missed:
+                    missed.append(res['mainMiss'])
+                    print("! the delete of %s did NOT get the game's main thread (%s) -- it went from Frida's thread, the "
+                          "way every delete went before 2026-11-18" % (t, res['mainMiss']))
                 time.sleep(snt.SETTLE_DELAY)
             if not sent:
                 if t not in fresh:
@@ -277,7 +292,7 @@ def run_on_session(sess, pid, a, retired, empty_files, own=False):
                 how = ' (the game answered the call with %s; the tag is gone all the same)' % (res.get('excClass') or 'an exception')
             elif sent > 1:
                 how = " on the second try (the first hit the game's known first-call hiccup)"
-            print('  %-20s deleted%s, every other tag intact' % (t, how))
+            print('  %-20s deleted%s, every other tag intact%s' % (t, how, ' [main thread]' if res.get('thread') == 'main' else ''))
             deleted.append(t); left.remove(t); before.pop(t, None)
     finally:
         if own:

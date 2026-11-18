@@ -4,6 +4,8 @@ phone, no data and no frida (CI runs this):
 2. a DeleteTag that threw says what it threw, and the game's known first-call hiccup gets one more try (the delete loop);
 3. that hiccup on a tag write is said at INFO, in words neither of the cull's scans picks up (tag_ops._try_line);
 4. one empty adb read is asked again before the freeze probe calls the game unreadable (pogo_il2cpp.game_world_frozen).
+5. (the same evening, his "go.") a tag write and a tag delete run on the game's main thread: inside a frame of the
+   game, one job per frame; with no frame hook or no frame in time they run on Frida's thread as before, and say so.
 And the other side of each: what is NOT routine still comes out as a warning line."""
 import contextlib, io, logging, os, shutil, subprocess, sys, tempfile, time, types
 sys.modules.setdefault('frida', types.ModuleType('frida'))
@@ -71,11 +73,17 @@ class Game:
         name = [n for n, i in self.ids.items() if i == tid][0]
         step = self.plan.pop(0)
         self.calls.append((name, step))
+        step, _, where = step.partition('@')        # '@main' / '@miss': where the call ran (section 5)
         if step == 'ok' or step.endswith('+gone'):
             del self.tags[name]
         if self.after:
             self.after(self, len(self.calls))
-        return {'ok': True} if step == 'ok' else dict(THREW[step.split('+')[0]])
+        r = {'ok': True} if step == 'ok' else dict(THREW[step.split('+')[0]])
+        if where == 'main':
+            r.update(thread='main', frameWaitMs=12)
+        elif where == 'miss':
+            r.update(thread='frida', mainMiss=NO_FRAME)
+        return r
 
 
 def retire(game, retired=('Best GL', 'Best UL'), bag_read=None):
@@ -99,6 +107,7 @@ def retire(game, retired=('Best GL', 'Best UL'), bag_read=None):
     return out.getvalue(), seen.get('js', '')
 
 
+NO_FRAME = 'no frame in 3000 ms -- is the game paused, loading or behind another app?'
 TAGS = {'Transfer': list('abcdefg'), 'Favorite': ['x', 'y'], 'Best GL': [], 'Best UL': []}
 BAG = set('abcdefgxyz')
 
@@ -193,6 +202,44 @@ assert 'Best GL              still holds 1 member(s)' in out and g.calls == [('B
 out, _ = retire(Game({'Transfer': ['a']}, {'a'}, []))
 assert 'retired shells on the device: 0 -- all clear' in out, out
 
+# K. (section 5) the delete on the game's main thread: said per tag; a miss is a '!' line; the hiccup ON it is news
+g = Game(TAGS, BAG, ['ok@main', 'ok@main'])
+out, js = retire(g)
+assert out.count('deleted, every other tag intact [main thread]') == 2 and warned(out) == [] and relayed(out) == [], out
+assert 'function _onMain(run)' in js and not js.startswith('var _MT_OFF'), 'the delete script carries the frame runner'
+g = Game(TAGS, BAG, ['ok@miss', 'ok@miss'])
+out, _ = retire(g)
+miss = "! the delete of Best GL did NOT get the game's main thread (%s) -- it went from Frida's thread, the way every delete went before 2026-11-18" % NO_FRAME
+assert out.count('did NOT get') == 1 and miss in out and warned(out) == [miss] and 'retired shells: deleted 2' in out, out
+g = Game(TAGS, BAG, ['hiccup@main', 'hiccup@main', 'ok'])
+out, _ = retire(g)
+line = 'Best GL              DeleteTag refused: the game threw Exception -- %s [on the main thread] -- stopping this run' % HICCUP
+assert len(g.calls) == 2 and line in out and warned(out) == [line] and relayed(out), out
+off = tempfile.NamedTemporaryFile(delete=False)
+off.close()
+keep_off, tag_ops.MAIN_THREAD_OFF = tag_ops.MAIN_THREAD_OFF, off.name
+try:                                                 # the kill switch file: no frame hook in the delete script ...
+    assert tag_ops.main_thread_writes() is False
+    out, js = retire(Game(TAGS, BAG, ['ok', 'ok']))
+    assert js.startswith('var _MT_OFF = true;\n') and 'retired shells: deleted 2' in out, js[:60]
+
+    class Sess:                                      # ... and none in the writers' script
+        def create_script(self, src):
+            self.src, self.exports_sync = src, self
+            return self
+        on = load = init_status = lambda self, *a: None
+    keep_info, tag_ops.log.info = tag_ops.log.info, lambda *a: None
+    try:
+        assert tag_ops._load_bulk_tag_script(Sess()).src.startswith('var _MT_OFF = true;\n/*')
+        os.remove(off.name)
+        assert tag_ops.main_thread_writes() is True and tag_ops._load_bulk_tag_script(Sess()).src.startswith('/*')
+    finally:
+        tag_ops.log.info = keep_info
+finally:
+    tag_ops.MAIN_THREAD_OFF = keep_off
+    if os.path.exists(off.name):
+        os.remove(off.name)
+
 # ------------------------------------------------------------------------------------ 3. the hiccup on a tag write
 # (the batch writer itself is not driven here: audit_invariants counts every file that calls it as one that can add tags)
 R = {'ok': False, 'built': 23, 'err': 'the write exc', 'excClass': 'System.Exception', 'excText': HICCUP}
@@ -209,6 +256,25 @@ assert warned('17:16:58 WARNING ' + line), 'any other exception is still a warni
 assert tag_ops._try_line('apply_members', 1, 1, 0, {'ok': True, 'built': 2}, 3) == (
     False, 'apply_members: batch 1/1 retry 0: built=2 requested=3 err=None '), 'a short batch keeps the old line'
 assert not tag_ops.first_call_hiccup(None) and not tag_ops.first_call_hiccup('Field currentActivity')
+# (section 5) the hiccup is routine only OFF the main thread: on it, the thread never was the cause, and that is news
+assert tag_ops._try_line(WRITER, 1, 1, 0, dict(R, thread='frida'), 23)[0] is True
+routine, line = tag_ops._try_line(WRITER, 1, 1, 0, dict(R, thread='main'), 23)
+assert not routine and line.endswith(HICCUP + ' [ON THE MAIN THREAD: the thread is not what causes this]') and warned('17:16:58 WARNING ' + line), line
+# where the calls of one write ran: an INFO line the scans pass, and a WARNING for a write that missed the main thread
+tag_ops.LAST_THREAD.update(main=0, frida=0, wait_ms=[], miss=[])
+for r in ({'ok': True, 'thread': 'main', 'frameWaitMs': 9}, {'ok': True, 'thread': 'main', 'frameWaitMs': 14}, {'ok': True}, 'boom'):
+    tag_ops._thread_note(r)
+assert tag_ops._thread_lines() == [('info', "tag write: 2 call(s) ran on the game's main thread (a frame came after 9 / 14 ms)")]
+assert WRITER not in tag_ops._thread_lines()[0][1] and warned('18:40:01 INFO ' + tag_ops._thread_lines()[0][1]) == []
+tag_ops._thread_note({'ok': True, 'thread': 'frida', 'mainMiss': NO_FRAME})
+tag_ops._thread_note({'ok': True, 'thread': 'frida', 'mainMiss': NO_FRAME})
+lv, line = tag_ops._thread_lines()[1]
+assert lv == 'warning' and line == ("tag write: 2 call(s) did NOT get the game's main thread (%s) -- sent from Frida's thread, "
+                                    "the way every write went before 2026-11-18" % NO_FRAME), line
+assert WRITER not in line and warned('18:40:01 WARNING ' + line), line
+tag_ops.LAST_THREAD.update(main=0, frida=0, wait_ms=[], miss=[])
+tag_ops._thread_note({'ok': True, 'thread': 'frida'})          # the kill switch: Frida's thread, nothing to say
+assert tag_ops._thread_lines() == []
 
 
 class Levels(logging.Handler):
@@ -268,7 +334,8 @@ finally:
 # ---------------------------------------------------------------- the script the phone runs: its syntax, and the new reads
 block = rt.exc_text_js()
 assert block.startswith('var _GHAPI = null;') and block.rstrip().endswith('}'), 'the cut of the writer script moved'
-assert all(('function %s(' % f) in block for f in ('_GH', '_ghFields', '_ghStr', '_excText')) and 'rpc.exports' not in block
+assert all(('function %s(' % f) in block for f in ('_GH', '_ghFields', '_ghStr', '_excText', '_onMain', '_mtFrame', '_mtHook')) \
+    and 'rpc.exports' not in block
 assert rt.exc_text_js(os.path.join(HERE, 'no_such_file.js')) == '' and rt.exc_text_js(__file__) == ''
 node = shutil.which('node')
 if not node:
@@ -287,6 +354,7 @@ class P {
   _g(k) { const v = mem.get(this.a); if (!v || v.k !== k) throw new Error('access violation accessing ' + this); return v.v; }
   readPointer() { return new P(this._g('p')); }
   readS32() { return this._g('i'); }
+  readU32() { return this._g('i'); }
   readU16() { return this._g('h'); }
   readU64() { const v = this._g('q'); return {toString: () => String(v)}; }
   readCString() { return this._g('s'); }
@@ -360,17 +428,150 @@ eq(run(false).delTag('0x1', '12'), {ok: false, err: 'DeleteTag threw an exceptio
 // the cut of the writer script stands on its own: it loads, and a null exception reads as nothing
 const t = new Function('Process', 'NativeFunction', 'Memory', 'ptr', BLOCK + '\nreturn _excText;')(Process, function () {}, Memory, ptr);
 eq(t(new P(0)), '', 'the reader on a null exception');
-console.log('delete script OK');
+// ---- 5. THE GAME'S MAIN THREAD: the frame runner on a fake game ------------------------------------------------------
+const FULL = fs.readFileSync(process.argv[4], 'utf8');
+const ok = (c, what) => { if (!c) { console.error('FAIL: ' + what); process.exit(1); } };
+function world(opt) {                             // a fake game: the il2cpp lookups the runner makes (plus the two the writer's init() gets to), and its frames
+  opt = opt || {};
+  const strs = new Map(), hooks = [];
+  let at = 0x40000000n;
+  const impl = {
+    il2cpp_domain_get: () => new P(0x10),
+    il2cpp_domain_get_assemblies: (dom, sp) => { put(sp.a, 'i', 3); for (let i = 0; i < 3; i++) put(0x5000 + i * 8, 'p', BigInt(0x6000 + i)); return new P(0x5000); },
+    il2cpp_assembly_get_image: (asm) => new P(asm.a + 0x1000n),
+    il2cpp_thread_attach: () => { w.attached.push(!!w.inFrame); return new P(0x11); },   // the writer's init(): on which thread?
+    il2cpp_image_get_name: () => ({readCString: () => 'not-the-game.dll'}),
+    il2cpp_class_from_name: (img, ns, nm) => (!opt.noClass && img.a === 0x7001n && strs.get(ns.a) === 'Niantic.Zeppelin.Scheduler' && strs.get(nm.a) === 'Scheduler') ? new P(0x8000) : new P(0),
+    il2cpp_class_get_method_from_name: (k, name, argc) => { if (opt.noMethod || k.a !== 0x8000n || strs.get(name.a) !== 'LateUpdate' || argc !== 0) return new P(0); put(0x9000, 'p', 0xC0DEn); return new P(0x9000); },
+  };
+  const w = {
+    hooks, lib: true, attached: [],
+    Process: {pointerSize: 8, findModuleByName: () => (w.lib ? {base: new P(0x7000000000n), size: 0x1000, enumerateExports: () => Object.keys(impl).map((n) => ({name: n, address: n}))} : null)},
+    Memory: {alloc: () => { at += 0x100n; return new P(at); }, allocUtf8String: (t) => { at += 0x100n; strs.set(at, t); return new P(at); }},
+    NativeFunction: function (addr) { return impl[addr]; },
+    Interceptor: {attach: (code, fn) => { if (opt.noAttach) throw new Error('unable to intercept function'); hooks.push({code: code.toString(), fn}); }},
+    frame: () => { w.inFrame = true; try { hooks.forEach((h) => h.fn()); } finally { w.inFrame = false; } },
+  };
+  return w;
+}
+const loadBlock = (w, pre) => new Function('Process', 'Memory', 'ptr', 'NativeFunction', 'Interceptor', 'setTimeout',
+  (pre || '') + BLOCK + '\nreturn {_onMain: _onMain, _MT: _MT, wait: function (n) { _MT_WAIT_MS = n; }};')(w.Process, w.Memory, ptr, w.NativeFunction, w.Interceptor, setTimeout);
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+(async () => {
+  // a frame comes: the job runs INSIDE the frame, once, and the result says so
+  let w = world(), a = loadBlock(w), runs = 0;
+  const job = () => { runs++; return {ok: true, inFrame: !!w.inFrame}; };
+  let p = a._onMain(job);
+  ok(p instanceof Promise && w.hooks.length === 1 && w.hooks[0].code === '0xc0de', 'the hook goes on Scheduler.LateUpdate: ' + a._MT.why);
+  await sleep(5);
+  ok(runs === 0, 'nothing runs before a frame');
+  w.frame();
+  let r = await p;
+  ok(runs === 1 && r.ok && r.inFrame === true && r.thread === 'main' && typeof r.frameWaitMs === 'number' && r.mainMiss === undefined, 'ran in the frame: ' + JSON.stringify(r));
+  w.frame(); w.frame();
+  ok(runs === 1, 'a later frame runs nothing');
+  // two jobs: one per frame, in order, and the hook went in once
+  const order = [];
+  const p1 = a._onMain(() => { order.push(1); return {ok: true}; }), p2 = a._onMain(() => { order.push(2); return {ok: true}; });
+  w.frame();
+  ok(order.join() === '1', 'one job per frame');
+  w.frame();
+  await p1; await p2;
+  ok(order.join() === '1,2' && w.hooks.length === 1, 'in order, one hook');
+  // a frame inside a running job (never nested)
+  let nested = 0;
+  p = a._onMain(() => { nested++; w.hooks[0].fn(); return {ok: true}; });
+  const q = a._onMain(() => { nested += 10; return {ok: true}; });
+  w.frame();
+  ok(nested === 1, 'a job never starts inside another');
+  w.frame(); await p; await q;
+  ok(nested === 11, 'the second job ran on the next frame');
+  // a job that throws on the main thread comes back as a value
+  p = a._onMain(() => { throw new Error('boom'); });
+  w.frame();
+  r = await p;
+  ok(r.ok === false && /threw on the main thread: Error: boom/.test(r.err) && r.thread === 'main', 'a throw is a value: ' + JSON.stringify(r));
+  // NO frame in time: the job runs on Frida's thread, says why, and a late frame never runs it again
+  a.wait(25); runs = 0;
+  p = a._onMain(job);
+  r = await p;
+  ok(runs === 1 && r.ok && r.inFrame === false && r.thread === 'frida' && /^no frame in 25 ms/.test(r.mainMiss), 'the old way, with the reason: ' + JSON.stringify(r));
+  w.frame(); w.frame();
+  ok(runs === 1, 'a late frame does not run it a second time');
+  p = a._onMain(() => { throw new Error('late boom'); });
+  r = await p;
+  ok(r.ok === false && /the write threw: Error: late boom/.test(r.err) && r.thread === 'frida', 'a throw on the old way still answers: ' + JSON.stringify(r));
+  // the game is still not drawing: the next write does not wait a second time ...
+  r = a._onMain(job);
+  ok(!(r instanceof Promise) && runs === 2 && r.thread === 'frida' && /^still no frame since a write waited 25 ms/.test(r.mainMiss), 'one wait per stall: ' + JSON.stringify(r));
+  w.frame();                                      // ... and once a frame has been seen, writes go to the main thread again
+  p = a._onMain(job);
+  ok(p instanceof Promise, 'frames are back: the write waits for one');
+  w.frame();
+  r = await p;
+  ok(r.thread === 'main' && r.inFrame === true && runs === 3, 'frames are used again when they come back');
+  // no class, no method, a hook that cannot be put in: the old way at once (no Promise), with the reason, and no retry
+  for (const [opt, why] of [[{noClass: true}, /^no Niantic\.Zeppelin\.Scheduler\.Scheduler class/], [{noMethod: true}, /^no Scheduler\.LateUpdate/], [{noAttach: true}, /^the frame hook could not be put in: Error: unable to intercept/]]) {
+    w = world(opt); a = loadBlock(w); runs = 0;
+    r = a._onMain(job);
+    ok(!(r instanceof Promise) && runs === 1 && r.thread === 'frida' && why.test(r.mainMiss) && w.hooks.length === 0, 'no hook: ' + JSON.stringify(r));
+    r = a._onMain(job);
+    ok(runs === 2 && why.test(r.mainMiss) && a._MT.state === -1, 'the lookup is not made twice');
+  }
+  // the kill switch: no hook is even tried, and there is nothing to explain
+  w = world(); a = loadBlock(w, 'var _MT_OFF = true;\n'); runs = 0;
+  r = a._onMain(job);
+  ok(runs === 1 && r.thread === 'frida' && r.mainMiss === undefined && w.hooks.length === 0 && a._MT.state === 0, 'switched off: ' + JSON.stringify(r));
+  // THE WRITER'S OWN EXPORT goes through the runner. Its init() runs FIRST, on the thread that called (init attaches
+  // that thread to the game's runtime): this fake game has no game image, so nothing is queued and no hook goes in.
+  const writer = (w, post) => {
+    const rpc = {exports: {}};
+    new Function('rpc', 'Process', 'Memory', 'ptr', 'NativeFunction', 'Interceptor', 'setTimeout', 'send', 'recv', FULL + (post || ''))(rpc, w.Process, w.Memory, ptr, w.NativeFunction, w.Interceptor, setTimeout, () => {}, () => {});
+    return rpc.exports;
+  };
+  w = world();
+  r = writer(w).bulkApplyChanges('0x1', [{proto: '0x2', add: ['0x3']}]);
+  ok(!(r instanceof Promise) && /^missing image/.test(r.err) && r.thread === undefined && w.hooks.length === 0 && w.attached.join() === 'false',
+     'init first, on the thread that called: ' + JSON.stringify(r) + ', attached inside a frame: ' + w.attached);
+  // ... and with init() done, the body runs in the frame (no tag classes in this fake game: the body throws there)
+  w = world();
+  const xw = writer(w, '\nstate.ready = true;');
+  p = xw.bulkApplyChanges('0x1', [{proto: '0x2', add: ['0x3']}]);
+  ok(p instanceof Promise && w.hooks.length === 1, 'the write waits for a frame');
+  w.frame();
+  r = await p;
+  ok(r.ok === false && /^the write threw on the main thread: TypeError/.test(r.err) && r.thread === 'main', 'the body ran in the frame: ' + JSON.stringify(r));
+  try { r = xw.bulkApplyChanges('0x1', [], true); } catch (e) { r = {threw: String(e)}; }
+  ok(!(r instanceof Promise) && /^TypeError/.test(r.threw || '') && r.thread === undefined, 'direct = the body itself, on the thread that called: ' + JSON.stringify(r));
+  // THE DELETE goes through the same runner when it is in front of the script, and stays as it was without it
+  w = world(); deleted = []; throwNext = false;
+  const rpcD = {exports: {}};
+  new Function('rpc', 'Memory', 'Process', 'ptr', 'uint64', '_ensureInit', 'cFN', 'IL2', 'rI', '_excName', 'NativeFunction', 'Interceptor', 'setTimeout', BLOCK + '\n' + JS)(
+    rpcD, {alloc: Memory.alloc, allocUtf8String: w.Memory.allocUtf8String}, w.Process, ptr, uint64, () => { w.attached.push(!!w.inFrame); }, () => new P(0x500), IL2, rI, () => ' (X)', w.NativeFunction, w.Interceptor, setTimeout);
+  p = rpcD.exports.delTag('0x1', '12');
+  ok(p instanceof Promise && deleted.length === 0 && w.attached.join() === 'false', 'the delete waits for a frame; its init ran first, on the thread that called: ' + w.attached);
+  w.frame();
+  r = await p;
+  ok(r.ok === true && r.thread === 'main' && deleted.join() === '12', 'the delete ran in the frame: ' + JSON.stringify(r));
+  eq(run(false).delTag('0x1', '12'), {ok: true}, 'without the runner the delete is the old call');
+  console.log('delete script OK');
+})().catch((e) => { console.error('FAIL: ' + (e && e.stack || e)); process.exit(1); });
 """
 tmp = tempfile.mkdtemp(prefix='quiet_warnings_')
 try:
-    files = {'all.js': pg.JS_PREAMBLE + '\n' + block + '\n' + snt.JS, 'snt.js': snt.JS, 'block.js': block, 'harness.js': HARNESS}
+    with open(tag_ops.BULK_TAG_JS, encoding='utf-8') as f:
+        full = f.read()
+    files = {'all.js': pg.JS_PREAMBLE + '\n' + block + '\n' + snt.JS, 'snt.js': snt.JS, 'block.js': block, 'harness.js': HARNESS,
+             'full.js': full}
     for name, text in files.items():
         with open(os.path.join(tmp, name), 'w', encoding='utf-8', newline='\n') as f:
             f.write(text)
     p = subprocess.run([node, '--check', os.path.join(tmp, 'all.js')], capture_output=True, text=True)
     assert p.returncode == 0, 'the delete script does not parse:\n' + p.stderr
-    p = subprocess.run([node, os.path.join(tmp, 'harness.js'), os.path.join(tmp, 'snt.js'), os.path.join(tmp, 'block.js')],
+    p = subprocess.run([node, '--check', os.path.join(tmp, 'full.js')], capture_output=True, text=True)
+    assert p.returncode == 0, 'the writer script does not parse:\n' + p.stderr
+    p = subprocess.run([node, os.path.join(tmp, 'harness.js'), os.path.join(tmp, 'snt.js'), os.path.join(tmp, 'block.js'),
+                        os.path.join(tmp, 'full.js')],
                        capture_output=True, text=True)
     assert p.returncode == 0 and 'delete script OK' in p.stdout, p.stdout + p.stderr
 finally:
