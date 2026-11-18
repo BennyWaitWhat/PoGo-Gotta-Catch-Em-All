@@ -13,9 +13,10 @@ and be comprehensive. There's way to improve."). Advice only -- nothing here kee
   power_up_plan()     the same prices for the mons the Power Up tags hold, against this walk's stardust / candy / XL candy: 'doable now',
                       'doable after exchanging N candy into XL' or 'short X' (Benny 2026-09-30: "yes" to exact Power Up costs).
                       REPORT ONLY: no keep reason, no tag and no pile decision reads it.
-  hundo_buckets()     the four hundo power-up buckets (Benny 2026-11-08: "these tag groups are ongoing task buckets"): every final-stage
-                      15/15/15 that can still power up toward its cap, by role (hundo_roles). sync_post_tags.py keeps the four tags
-                      equal to it every cull. A LABEL: no keep reason and no pile decision reads it.
+  hundo_buckets()     the four hundo power-up buckets (Benny 2026-11-08: "these tag groups are ongoing task buckets"): every
+                      15/15/15 that can still power up toward its cap, by role (hundo_roles); one that can still evolve takes the
+                      capped buckets only, never Max Out (2026-11-18). sync_post_tags.py keeps the four tags equal to it every cull.
+                      A LABEL: no keep reason and no pile decision reads it.
 
 All read the bag DB read-only, the client game master, and the walk's candy/stardust (candy.json / inventory.json).
   python game_opportunities.py             print what is on offer today
@@ -455,10 +456,15 @@ def power_up_plan(items, rows, dust=_READ, candy=_READ, xl=_READ, player_level=_
 HUNDO_TAGS = {'LC': ('Hundo Under 500', 2), 'GL': ('Hundo 501-1500', 3), 'UL': ('Hundo 1501-2500', 4), 'ML': ('Hundo Max Out', 5)}
 
 
-def hundo_roles(copies, cp_at, top, price=None, held=None):
-    """One final-stage species' 15/15/15s -> {uid: role} for the copies to power up next. copies: [(uid, cp, level index, ...)] (the
+def hundo_roles(copies, cp_at, top, price=None, held=None, final=True):
+    """One species' 15/15/15s -> {uid: role} for the copies to power up next. copies: [(uid, cp, level index, ...)] (the
     rest of a copy goes to price); cp_at(i): a hundo's CP at level index i; top: the last index (L50); price(copy, i, j): what powering
-    it from index i to j costs, a tuple compared in order (default: the number of steps); held: {uid: role} the phone's tags now.
+    it from index i to j costs, a tuple compared in order (default: the number of steps); held: {uid: role} the phone's tags now;
+    final: False for a stage that can still evolve.
+      * A STAGE THAT CAN STILL EVOLVE TAKES THE CAPPED LEAGUES ONLY, never ML (Benny 2026-11-18, on a hundo Cyndaquil at CP 392 that
+        no bucket held: "how come it wasnt tagged to be powered up to sub 500 cP, for example? lots of holes here man." -- until
+        then only final stages were looked at, 526 of his 729 hundos, and Under 500 stood empty). Maxing a stage he can still
+        evolve is no task: a copy past its last capped league, and every copy of a species that tops out under 500, gets no tag.
       * The leagues FILL FROM THE BOTTOM (Benny 2026-11-09: "fill from the bottom lower cp leagues first"): as many of LC (500), GL
         (1500), UL (2500) and ML as the copies can fill, the lowest league first. ML takes only a copy already past 2500 when the
         species gets there (2026-11-08: "if its over, for ML/max out"); a cap the species never reaches is its max, so that league is ML.
@@ -471,7 +477,7 @@ def hundo_roles(copies, cp_at, top, price=None, held=None):
     import itertools
     mx = cp_at(top)
     cap = {'LC': min(500, mx), 'GL': min(GL_CAP, mx), 'UL': min(UL_CAP, mx), 'ML': mx}
-    roles = [r for r in ('LC', 'GL', 'UL') if cap[r] < mx] + ['ML']
+    roles = [r for r in ('LC', 'GL', 'UL') if cap[r] < mx] + (['ML'] if final else [])
     price, held = price or (lambda c, i, j: (j - i,)), held or {}
 
     def goal(c, r):                                     # the level index this copy climbs to for league r; None = it cannot enter r
@@ -502,9 +508,9 @@ def hundo_roles(copies, cp_at, top, price=None, held=None):
 
 def hundo_buckets(held=None):
     """-> ({tag name: {uid_hex}}, n_unread) for the four buckets, from this walk's bag (pokemon.db) and the pvpoke game master's base
-    stats and evolution graph (keep_policy's: a stage that can still evolve is not final). A copy whose computed CP is not the walk's
-    CP (level not read) is left out and counted. held: {uid (hex, any spelling): tag name} -- the buckets on the phone now (the
-    twins' tie-break in hundo_roles)."""
+    stats and evolution graph (keep_policy's: a stage that can still evolve is not final, and takes the capped buckets only --
+    hundo_roles). A copy whose computed CP is not the walk's CP (level not read) is left out and counted. held: {uid (hex, any
+    spelling): tag name} -- the buckets on the phone now (the twins' tie-break in hundo_roles)."""
     role_of = {n: r for r, (n, _) in HUNDO_TAGS.items()}
     held = {format(int(u, 16), 'x'): role_of[n] for u, n in (held or {}).items() if n in role_of}
     import contextlib, io
@@ -526,7 +532,7 @@ def hundo_buckets(held=None):
     by, unread = {}, 0
     for uid, name, form, cp, level, al, lucky, dex in rows:
         s = pvid(name, form or 0)
-        if is_pre.get(s) or s not in bs:
+        if s not in bs:
             continue
         i = int(round((level - 1) * 2)) if level else -1
         if not 0 <= i <= rc.MAX_LEVEL_IDX or cp_at(s, i) != cp:
@@ -540,7 +546,7 @@ def hundo_buckets(held=None):
     out = {name: set() for name, _ in HUNDO_TAGS.values()}
     for s, copies in by.items():
         now = {c[0]: held[k] for c in copies for k in [format(int(c[0], 16), 'x')] if k in held}
-        for uid, role in hundo_roles(copies, lambda i, s=s: cp_at(s, i), rc.MAX_LEVEL_IDX, price, now).items():
+        for uid, role in hundo_roles(copies, lambda i, s=s: cp_at(s, i), rc.MAX_LEVEL_IDX, price, now, final=not is_pre.get(s)).items():
             out[HUNDO_TAGS[role][0]].add(uid)
     return out, unread
 
@@ -773,6 +779,15 @@ def _selftest():
     ck(hundo_roles([('a', 300, 13), ('b', 460, 21)], mid, 98, held={'b': 'LC', 'a': 'GL'}) == {'a': 'LC', 'b': 'GL'},
        'hundo: what the phone holds never beats lower copy -> lower league (it only breaks a twins tie)')
     ck(hr([('top', 5980, 98), ('lo', 400, 5)]) == {'lo': 'LC'}, 'hundo: a low copy beside a maxed one fills Under 500')
+    nf = lambda copies, f=cur: hundo_roles(copies, f, 98, final=False)      # a stage that can still evolve (2026-11-18)
+    ck(nf([('e', 400, 5)]) == {'e': 'LC'} and nf([('c', 1420, 22)]) == {'c': 'GL'} and nf([('a', 3700, 60), ('b', 2440, 39)]) == {'b': 'UL'},
+       'hundo that can still evolve: it joins the capped buckets like any other (the Cyndaquil 392 case)')
+    ck(nf([('m', 2560, 41)]) == {} and hr([('m', 2560, 41)]) == {'m': 'ML'} and nf([('g', 600, 50)], low) == {}
+       and nf([('h', 300, 20)], low) == {'h': 'LC'} and nf([('h1', 300, 20), ('h2', 300, 20)], low) == {'h2': 'LC'},
+       'hundo that can still evolve: never Max Out -- past its last capped league it gets no tag, and a twin is spare')
+    tiny = lambda i: 100 + 2 * i                    # tops out at 296: no capped league at all
+    ck(nf([('t', 150, 25)], tiny) == {} and hr([('t', 150, 25)], tiny) == {'t': 'ML'},
+       'hundo that can still evolve, a species under 500 at L50: no tag (the final stage of such a species still maxes out)')
     ck(sorted(n for n, _ in HUNDO_TAGS.values()) == ['Hundo 1501-2500', 'Hundo 501-1500', 'Hundo Max Out', 'Hundo Under 500']
        and all(0 <= col <= 8 for _, col in HUNDO_TAGS.values()), 'hundo: the four tag names and colours on the phone')
 
