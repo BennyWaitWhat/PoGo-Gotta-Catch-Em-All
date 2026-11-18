@@ -19,8 +19,12 @@ $srcs = @(Get-ChildItem "$here\src" -Recurse -Filter *.java | ForEach-Object { $
 & javac -encoding UTF-8 -source 8 -target 8 -classpath $androidJar -d "$build\classes" $srcs 2>&1 | Where-Object { $_ -notmatch 'bootstrap class path|warning: \[options\]|1 warning' }
 if($LASTEXITCODE){throw "javac failed"}
 Write-Output "[4/8] d8"
-$classFiles = (Get-ChildItem "$build\classes" -Recurse -Filter *.class | ForEach-Object { $_.FullName })
-& $d8 --release --lib $androidJar --output "$build\dex" @classFiles; if($LASTEXITCODE){throw "d8 failed"}
+# ONE archive of the classes, not a list of files: d8.bat runs through cmd.exe, whose command line ends at 8,191
+# characters. 42 class files under a long folder (a git worktree) were 8,481 ("The command line is too long", app 1.6).
+Add-Type -AssemblyName System.IO.Compression.FileSystem
+$classZip = "$build\classes.zip"
+[System.IO.Compression.ZipFile]::CreateFromDirectory("$build\classes", $classZip)
+& $d8 --release --lib $androidJar --output "$build\dex" $classZip; if($LASTEXITCODE){throw "d8 failed"}
 Write-Output "[5/8] add classes.dex"
 Copy-Item "$build\base.apk" "$build\unsigned.apk" -Force
 Add-Type -AssemblyName System.IO.Compression.FileSystem
@@ -29,7 +33,10 @@ try { [System.IO.Compression.ZipFileExtensions]::CreateEntryFromFile($zip,"$buil
 Write-Output "[6/8] zipalign"
 & $zipalign -f 4 "$build\unsigned.apk" "$build\aligned.apk"; if($LASTEXITCODE){throw "zipalign failed"}
 Write-Output "[7/8] keystore"
-$ks = "$here\debug.keystore"
+# AUTOCATCHER_KEYSTORE = sign with that keystore (a build in a git worktree: the checkout's own debug.keystore is local
+# only, and a key made fresh here could not update the installed app). It must exist: nothing is generated at that path.
+$ks = if ($env:AUTOCATCHER_KEYSTORE) { $env:AUTOCATCHER_KEYSTORE } else { "$here\debug.keystore" }
+if($env:AUTOCATCHER_KEYSTORE -and -not (Test-Path $ks)){ throw "AUTOCATCHER_KEYSTORE does not exist: $ks" }
 if(-not (Test-Path $ks)){ & keytool -genkeypair -keystore $ks -storepass android -keypass android -alias ak -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=AutoCatcher" 2>&1 | Out-Null }
 Write-Output "[8/8] apksigner"
 & $apksigner sign --ks $ks --ks-pass pass:android --key-pass pass:android --min-sdk-version 24 --out "$here\AutoCatcher.apk" "$build\aligned.apk"; if($LASTEXITCODE){throw "apksigner failed"}
