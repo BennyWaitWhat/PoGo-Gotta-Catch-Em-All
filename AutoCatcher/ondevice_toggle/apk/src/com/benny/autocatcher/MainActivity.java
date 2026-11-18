@@ -49,12 +49,14 @@ import java.util.ArrayList;
 import java.util.Locale;
 
 /**
- * PoGo Auto 1.5 -- the on-phone control page (Benny 2026-11-18: "fix the autocatcher app while youre at it the ui
+ * PoGo Auto 1.6 -- the on-phone control page (Benny 2026-11-18: "fix the autocatcher app while youre at it the ui
  * sucks ass" + "a gym battle toggle ... on my autoctcher app").
  * Since 1.4 the same state is also in the notification shade, with Catch / Spin / Gym buttons and alerts, so it can be
  * used without leaving the game: StatusService.java (the notification) and Alerts.java (when an alert is due).
  * 1.5: one tap of Catch Rewards is one reward run. The button stays off while a run is in flight and shows the run's
  * own line (Logic.reward); two runs at once crashed the game on 2026-11-18.
+ * 1.6: one control for Auto-Catch and Auto-Spin together, right under the status card (he flips the two together:
+ * "I'll restart them", 2026-11-18) -- Logic.both; and the Transfer on Catch card is hidden until it is set up.
  *
  * The page answers "is it working?" first (the header and one status card), then shows every switch as a big tile you
  * tap anywhere, a Berries picker, Transfer on Catch, and the two one-off actions. Three classes live in this file:
@@ -781,6 +783,21 @@ final class Logic {
     }
 
     /** Minimal int scrape of the Transfer-on-Catch JSON -- avoids pulling in a JSON parser for three fields. */
+    /** The one control for Auto-Catch and Auto-Spin together (app 1.6; Benny flips the two together: off at 16:05:09
+     *  and 16:05:10 on 2026-11-18, "I'll restart them"): {label, tone, "1" when it may be tapped, "1" when a tap
+     *  switches them ON}. Both off -> "Start Catch + Spin"; either on -> "Stop Catch + Spin" (it switches both off).
+     *  catchOn / spinOn = what the screen shows for the two flags (a tap in flight outranks the file); applying = one
+     *  of the two flags has a tap that its file has not confirmed yet (a tile's, or this control's); mine = this
+     *  control's own tap is still at work: 1 = starting, -1 = stopping, 0 = none. One tap is one pair of verbs: it
+     *  cannot be tapped again before both flags have answered. */
+    static String[] both(boolean catchOn, boolean spinOn, boolean applying, int mine) {
+        if (mine > 0) return new String[]{"Starting Catch + Spin...", "" + WAIT, "0", "1"};
+        if (mine < 0) return new String[]{"Stopping Catch + Spin...", "" + WAIT, "0", "0"};
+        boolean anyOn = catchOn || spinOn;
+        return new String[]{anyOn ? "Stop Catch + Spin" : "Start Catch + Spin", "" + (anyOn ? DIM : GOOD),
+                            applying ? "0" : "1", anyOn ? "0" : "1"};
+    }
+
     static int tocInt(String json, String key, int dflt) {
         try {
             int i = json.indexOf("\"" + key + "\"");
@@ -805,7 +822,7 @@ final class Logic {
 /** The whole screen. Builds the views, reads the phone's files every 4 s, sends the taps. */
 final class Screen {
     static final String TAG = "AutoCatcher";
-    static final String VERSION = "1.5";
+    static final String VERSION = "1.6";
 
     /** What the screen needs from the window it lives in (RenderProbe, which draws it off screen, passes a stand-in
      *  that only answers the question). */
@@ -845,7 +862,8 @@ final class Screen {
     static final String STATUS_REWARD = T + "pogo_rewards.txt";
     // Transfer-on-Catch config. A JSON file rather than a flag because it holds several values. This app can WRITE an
     // existing world-writable file but cannot CREATE one in /data/local/tmp, so the card is live only when root has
-    // made the file; without it the card is greyed out and says so, instead of showing a switch that does nothing.
+    // made the file; without it the whole card is hidden (app 1.6; until 1.5 it sat there greyed out, saying "Not set
+    // up on this phone") and comes back by itself when the file exists.
     static final String TOCFILE = T + "pogo_toc.json";
     // CULL NOW (Benny 2026-11-05): the cull runs on the PC (pogo_extract/cull_button.py). A tap writes one request line
     // as root; the PC picks it up within ~15 s and writes its progress to CULL_STATUS (queued / running / done / STOPPED).
@@ -960,6 +978,9 @@ final class Screen {
     private Bar berryBar, dustBar;
     private TextView berryStock, dustHint, dustWarn;
     private LinearLayout tocRow1, tocRow2;
+    private View tocSection, tocCardView;   // the section label and the card: hidden until the file exists
+    private TextView bothBtn;               // Start / Stop Catch + Spin (Logic.both)
+    private int bothMine = 0, bothPainted = -1;   // its own tap at work: 1 starting, -1 stopping; what it looks like now
     private Toggle tocToggle;
     private TextView tocIv, tocDry, tocNote;
     private int tocDryPainted = -1;
@@ -992,11 +1013,22 @@ final class Screen {
         wl.setMargins(dp(4), dp(10), dp(4), 0);
         content.addView(whyLine, wl);
 
+        // App 1.6: both switches in one tap. A full-width button, so it is the first thing under the status card.
+        bothBtn = centred(text("Start Catch + Spin", 15, INK, true));
+        bothBtn.setClickable(true);
+        bothBtn.setOnClickListener(new View.OnClickListener() {
+            public void onClick(View v) {
+                tick(v);
+                onBoth();
+            }
+        });
+        content.addView(bothBtn, lp(MATCH, dp(46), 12, 0));
+
         catchTile = tile("Auto-Catch", catchF, "catch-on", "catch-off", "catching nearby", "", 2);
         Tile tSpin = tile("Auto-Spin", spinF, "spin-on", "spin-off", "spinning stops", "", 2);
         Tile tPerfect = tile("Perfect Throw", perfectF, "perfect-on", "perfect-off", "Excellent + curve", "", 2);
         Tile tTap = tile("Tap to Move", tapF, "tap-on", "tap-off", "tap the map to move", "", 2);
-        content.addView(tileRow(catchTile, tSpin), lp(MATCH, WRAP, 14, 0));
+        content.addView(tileRow(catchTile, tSpin), lp(MATCH, WRAP, 10, 0));
         content.addView(tileRow(tPerfect, tTap), lp(MATCH, WRAP, 10, 0));
         gymTile = tile("Gym Battle", gymF, "gym-on", "gym-off", "", "", 3);
         content.addView(gymTile.box, lp(MATCH, WRAP, 10, 0));
@@ -1023,8 +1055,10 @@ final class Screen {
         content.addView(berryBar.view, lp(MATCH, WRAP, 0, 0));
         content.addView(berryBar.note, noteLp());
 
-        content.addView(section("TRANSFER ON CATCH", null), sectionLp());
-        content.addView(tocCard(), lp(MATCH, WRAP, 0, 0));
+        tocSection = section("TRANSFER ON CATCH", null);
+        content.addView(tocSection, sectionLp());
+        tocCardView = tocCard();
+        content.addView(tocCardView, lp(MATCH, WRAP, 0, 0));
 
         content.addView(section("ACTIONS", null), sectionLp());
         content.addView(actions(), lp(MATCH, WRAP, 0, 0));
@@ -1132,6 +1166,7 @@ final class Screen {
             }
             paintStatus(s);
             for (int i = 0; i < tiles.size(); i++) paintTile(tiles.get(i), s);
+            paintBoth();
             paintDust(s);
             paintBerries(s);
             paintToc(s);
@@ -1242,6 +1277,21 @@ final class Screen {
         t.status.setText(two(on ? "ON" : "off", on ? GREEN : DIMC, rest, restColor));
     }
 
+    /** Start / Stop Catch + Spin: its words and whether it may be tapped come from Logic.both. Green and filled while
+     *  a tap would switch both on, a quiet outline while it would switch them off. */
+    private void paintBoth() {
+        String[] b = Logic.both(catchF.shown.equals("1"), spinF.shown.equals("1"),
+                                catchF.applying() || spinF.applying(), bothMine);
+        boolean start = b[3].equals("1");
+        if (bothPainted != (start ? 1 : 0)) {
+            bothPainted = start ? 1 : 0;
+            bothBtn.setBackground(start ? tappable(GREEN, 0, 14, 0f) : tappable(CARD, LINE, 14, 1f));
+            bothBtn.setTextColor(start ? INK : TEXT);
+        }
+        if (!b[0].contentEquals(bothBtn.getText())) bothBtn.setText(b[0]);
+        enable(bothBtn, b[2].equals("1"));
+    }
+
     private void paintBerries(Snap s) {
         berryBar.paint();
         line(berryStock, Logic.berryStock(s.state), color(Logic.berryStockTone(berryF.shown, s.state)));
@@ -1276,6 +1326,10 @@ final class Screen {
         }
         // Not set up = no settings file on the phone: nothing reads the card, so it must not look like it works. It
         // folds down to the one line that says so.
+        // App 1.6: not set up = no card at all (it only said "Not set up on this phone"); it is back by itself once
+        // /data/local/tmp/pogo_toc.json exists.
+        tocSection.setVisibility(setUp ? View.VISIBLE : View.GONE);
+        tocCardView.setVisibility(setUp ? View.VISIBLE : View.GONE);
         tocRow1.setVisibility(setUp ? View.VISIBLE : View.GONE);
         tocRow2.setVisibility(setUp ? View.VISIBLE : View.GONE);
         tocNote.setVisibility(setUp ? View.GONE : View.VISIBLE);
@@ -1381,6 +1435,68 @@ final class Screen {
             catcherOnTapMs = now;
         }
         send(t.flag, turnOn ? t.onVerb : t.offVerb, turnOn ? "1" : "0");
+    }
+
+    /** One tap for both switches (Logic.both): the verbs the two tiles send, one after the other -- Spin's verb goes
+     *  out only when Catch's flag has answered (or its three tries are used up), never the two at once. Each flag is
+     *  verified and retried exactly like a tile's tap (send), so the tiles show "applying..." and, if it never takes,
+     *  "did not take". The control stays off until both are through: one tap is one pair of verbs. */
+    private void onBoth() {
+        if (bothMine != 0) return;
+        String[] b = Logic.both(catchF.shown.equals("1"), spinF.shown.equals("1"),
+                                catchF.applying() || spinF.applying(), 0);
+        if (!b[2].equals("1")) return;
+        final boolean turnOn = b[3].equals("1");
+        final String want = turnOn ? "1" : "0";
+        final Flag[] fs = {catchF, spinF};
+        final String[] verbs = turnOn ? new String[]{"catch-on", "spin-on"} : new String[]{"catch-off", "spin-off"};
+        final int[] gens = new int[2];
+        long now = System.currentTimeMillis();
+        for (int i = 0; i < 2; i++) {
+            Flag f = fs[i];
+            gens[i] = ++f.gen;
+            f.want = want;
+            f.lastWant = want;
+            f.wantUntil = now + 30000L * (i + 1);   // the second one first waits for the first
+            f.failed = false;
+        }
+        if (turnOn) catcherOnTapMs = now;
+        bothMine = turnOn ? 1 : -1;
+        repaint();
+        new Thread(new Runnable() {
+            public void run() {
+                for (int k = 0; k < 2; k++) {
+                    final Flag f = fs[k];
+                    final int gen = gens[k];
+                    boolean ok = false;
+                    for (int attempt = 0; attempt < 3 && !ok && f.gen == gen; attempt++) {
+                        shell(intent(verbs[k]));
+                        for (int i = 0; i < 12 && !ok && f.gen == gen; i++) {   // up to ~6 s for the flag to settle
+                            sleep(500);
+                            ok = f.norm(readFile(f.path)).equals(want);
+                        }
+                        if (ok) Log.i(TAG, "both: " + verbs[k] + " confirmed");
+                        else if (f.gen == gen) Log.w(TAG, "both: " + verbs[k] + " did not take, retrying");
+                    }
+                    final boolean took = ok;
+                    main.post(new Runnable() {
+                        public void run() {
+                            if (f.gen == gen) {
+                                f.want = null;
+                                f.failed = !took;
+                            }
+                            refresh();   // show truth
+                        }
+                    });
+                }
+                main.post(new Runnable() {
+                    public void run() {
+                        bothMine = 0;
+                        refresh();
+                    }
+                });
+            }
+        }, "ac-both").start();
     }
 
     private void onAlerts() {
@@ -1835,6 +1951,7 @@ final class Screen {
         col.addView(bar);
 
         final String[][] items = {
+            {"Start / Stop Catch + Spin", "One tap for both: switches Auto-Catch and Auto-Spin on, or both off. The two tiles below still work one by one."},
             {"Auto-Catch", "Throws at Pokemon in range on its own."},
             {"Auto-Spin", "Spins stops as you pass them. Skips ones already spun or cooling down."},
             {"Perfect Throw", "Every throw scores Excellent + curveball, including the ones you throw by hand."},
@@ -1842,7 +1959,7 @@ final class Screen {
             {"Gym Battle", "A gym you open is battled until it is empty, then a shiny Gyarados goes in. An empty gym or a red gym with room gets one straight away. It never moves you to a gym. Runs on the phone."},
             {"High stardust only", "Catches only what pays more than a normal catch - evolved forms, bonus species and anything weather-boosted - plus every shiny. The list updates itself."},
             {"Berries", "What is fed before the throw. Pinap: a Pinap on every Pokemon. Razz: a Razz on the hard ones only. Both: Razz on the hard ones, Pinap on the rest. Never a Golden Razz or a Silver Pinap."},
-            {"Transfer on Catch", "Tags junk the moment you catch it, so less piles up for the cull. It only tags; it never releases anything."},
+            {"Transfer on Catch", "Tags junk the moment you catch it, so less piles up for the cull. It only tags; it never releases anything. Its card shows on this screen once it is set up on the phone."},
             {"Catch Rewards", "Clears stacked Field Research reward encounters that piled up while your box was full. One run at a time: the button stays off until the run is done, and the catcher pauses for it. Switch Gym Battle off first."},
             {"Cull Now", "Asks the PC to run one cull. It only tags the Transfer pile; you release by hand. The PC must be on."},
             {"In the notification shade", "While a switch is on, a notification shows the catch count and has Catch, Spin and Gym buttons, so you can flip them without leaving the game. It stays for 30 minutes after the last switch went off, so Catch on is still one pull-down away."},
