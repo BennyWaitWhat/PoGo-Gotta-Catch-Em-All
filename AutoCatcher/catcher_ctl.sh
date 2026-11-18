@@ -151,6 +151,19 @@ reconcile() {
   if flag_on "$CATCHFLAG" || flag_on "$SPINFLAG" || flag_on "$TAPFLAG" || flag_on "$PERFFLAG" || flag_on "$APPLEFLAG"; then start_proc; else stop_proc; fi
 }
 
+# ONE reward run at a time. A reward run holds the lock below for minutes, and that lock lets a waiting verb through
+# after ~20 s "rather than lose the command": on 2026-11-18 16:06 a second Catch Rewards tap, 18 s after the first,
+# started a second reward catcher on the same game (reward_stdout.log: both attached to one pid and worked the same
+# encounters) and PoGo died three times in 100 s. So a rewards verb that finds a reward run alive does nothing; the
+# run that is alive keeps writing its own status line. Checked here, before the lock, so that tap neither waits nor
+# touches the lock, and once more inside the verb for a tap that sat out the lock while the other run was starting.
+reward_running() { ps -ef 2>/dev/null | grep -qE "[r]eward_phone\.py"; }
+reward_refuse() {
+  echo "$(date '+%H:%M:%S') rewards: a reward run is already alive, this tap does nothing (pid=$$)" >> "$FLAGLOG"
+  exit 0
+}
+if [ "$1" = rewards ] && reward_running; then reward_refuse; fi
+
 # Serialize control ops (mkdir is atomic) so concurrent taps can't spawn two processes.
 # MUST WAIT, NEVER DROP: an earlier version exited 0 when the lock was held, so a toggle tapped
 # while start_proc was mid-dedupe was silently swallowed — the switch looked ON but the flag stayed OFF.
@@ -198,6 +211,7 @@ case "$1" in
     # One-shot: clear stacked Field-Research ("Today") reward encounters. The reward catcher needs the
     # gadget to ITSELF (single client), so park the auto-catcher, run it, then restore both toggles.
     # The app shows this status file. A cleanup can delete it and Termux can't create it, so root remakes it.
+    reward_running && reward_refuse           # one run at a time (see reward_running above)
     RWSTAT=/data/local/tmp/pogo_rewards.txt
     { echo "queued $(date +%H:%M:%S)" > "$RWSTAT"; } 2>/dev/null || mkflag "$RWSTAT" queued
     was_c=$(cat "$CATCHFLAG" 2>/dev/null | tr -d '[:space:]')
