@@ -1592,7 +1592,7 @@ BALLS = {"usable": None, "items": {}}  # Poke + Great + Ultra above their floors
 SHINYFIELD = {"ok": True, "suspended": False}   # the shiny read resolved at attach and not distrusted (else SHINY LOOK opens for nothing)
 _BS = {"mtime": None, "plan": None, "note": "off"}
 SPIN_WHY = ("spins are being refused", "the daily spin limit")   # why_idle()'s spin parts: logged as NOT SPINNING
-SP = {"on": False, "off": False, "since": None, "bare": 0}
+SP = {"on": False, "off": False, "since": None, "bare": 0, "last": None}   # last: did the newest catch pay with one
 
 
 def starpiece_seen(line, w):
@@ -1603,6 +1603,7 @@ def starpiece_seen(line, w):
     m = re.search(r"(?:^|\s)CATCH \S+ #\d+ .*?dust=(\d+)", line)   # drain() hands the JS lines over without a time
     if not m or int(m.group(1)) < 100:
         return
+    SP["last"] = bool(int(m.group(1)) % 25)   # the app's "Star Piece ON / OFF" chip (state_extra)
     if int(m.group(1)) % 25:
         SP["bare"] = 0
         if SP["off"]:
@@ -1942,6 +1943,27 @@ def starpiece_why(why, now):
     return why
 
 
+def state_extra(c, st, it, up, sp_last):
+    """The optional keys of the app's status card (app 1.3; Benny 11-18 asked "status?" and "how long til 1mil" by hand
+    all day): catches per minute and the seconds of this run, the stardust it gained, the three ball counts, the berries
+    left, and whether the newest catch paid with a Star Piece. A number the game has not reported yet is left out,
+    never guessed -- the app shows a part only when its key is there. They sit after the old counters and before why=."""
+    out = []
+    if up >= 1:
+        out.append(f"rate={c / (up / 60.0):.1f} up={int(up)}")
+    if isinstance(st.get("dust"), int) and st["dust"] >= 0:
+        out.append(f"dust={st['dust']}")
+    balls = [it.get(k) for k in ("1", "2", "3")]
+    if all(isinstance(n, int) and n >= 0 for n in balls):
+        out.append("balls=%d/%d/%d" % tuple(balls))
+    for key, name in (("705", "pinap"), ("701", "razz")):
+        if isinstance(it.get(key), int) and it[key] >= 0:
+            out.append(f"{name}={it[key]}")
+    if sp_last is not None:
+        out.append(f"sp={1 if sp_last else 0}")
+    return " ".join(out)
+
+
 def report(w, stt, t0, base):
     st, it, sp = stt["st"], stt["items"], stt["spin"]
     mins = max((time.time() - t0) / 60.0, 1e-6)
@@ -2011,8 +2033,9 @@ def report(w, stt, t0, base):
     else:
         base["whykind"] = ""
     why = starpiece_why(why, time.time())
-    state(why,f"caught={c} fled={st['fled']} spins={sp['ok']} xp={sp['xp']} items={sp['items']} "
-               f"ready={max(0, sp['inRange'] - sp['cooling'])} cooling={sp['cooling']}")
+    state(why, (f"caught={c} fled={st['fled']} spins={sp['ok']} xp={sp['xp']} items={sp['items']} "
+                f"ready={max(0, sp['inRange'] - sp['cooling'])} cooling={sp['cooling']} "
+                + state_extra(c, st, it, time.time() - t0, SP.get("last"))).rstrip())
 
 
 def session_loop(w, done_ids, base):
