@@ -15,7 +15,7 @@ Write-Output "[1/8] aapt2 compile"
 Write-Output "[2/8] aapt2 link"
 & $aapt2 link -o "$build\base.apk" -I $androidJar --manifest "$here\AndroidManifest.xml" --java "$build\gen" --min-sdk-version 24 --target-sdk-version 34 "$build\res.zip"; if($LASTEXITCODE){throw "aapt2 link failed"}
 Write-Output "[3/8] javac"
-$srcs = @("$here\src\com\benny\autocatcher\MainActivity.java","$build\gen\com\benny\autocatcher\R.java")
+$srcs = @(Get-ChildItem "$here\src" -Recurse -Filter *.java | ForEach-Object { $_.FullName }) + "$build\gen\com\benny\autocatcher\R.java"   # every source file (1.4 added StatusService.java and Alerts.java)
 & javac -encoding UTF-8 -source 8 -target 8 -classpath $androidJar -d "$build\classes" $srcs 2>&1 | Where-Object { $_ -notmatch 'bootstrap class path|warning: \[options\]|1 warning' }
 if($LASTEXITCODE){throw "javac failed"}
 Write-Output "[4/8] d8"

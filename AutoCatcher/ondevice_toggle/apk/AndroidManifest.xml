@@ -1,9 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.benny.autocatcher"
-    android:versionCode="4"
-    android:versionName="1.3">
+    android:versionCode="5"
+    android:versionName="1.4">
   <uses-sdk android:minSdkVersion="24" android:targetSdkVersion="34"/>
+  <!-- App 1.4: the status notification is a foreground service (see StatusService). POST_NOTIFICATIONS is asked for
+       once, on the screen, on Android 13+. -->
+  <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
+  <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE"/>
+  <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
   <application
       android:label="Auto-Catcher"
       android:icon="@drawable/ic_launcher"
@@ -15,6 +20,16 @@
         <category android:name="android.intent.category.LAUNCHER"/>
       </intent-filter>
     </activity>
+    <!-- Not exported: only this app (its screen, its own notification buttons) and root can start it, e.g.
+         su -c 'am start-foreground-service -n com.benny.autocatcher/.StatusService' -->
+    <service
+        android:name=".StatusService"
+        android:exported="false"
+        android:foregroundServiceType="specialUse">
+      <property
+          android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+          android:value="Shows the state of the owner's own on-phone game helper in the notification shade and offers its switches there"/>
+    </service>
   </application>
   <!-- Draws the screen off screen into PNG files, without opening the app (see MainActivity.RenderProbe):
        adb shell am instrument -w 'com.benny.autocatcher/.MainActivity$RenderProbe' -->
