@@ -19,13 +19,13 @@ NODUST = os.path.join(tempfile.gettempdir(), "pogo_dust_sim_no_such_file")
 ns.update(DUST_FILE=NODUST + ".on", DUST_TABLE=NODUST + ".json", DUST_LEVELS=NODUST + ".txt", WX_PROOF=NODUST + ".proof",
           AN=tempfile.gettempdir(), su=lambda cmd, timeout=10: "")
 for name in ("usable_balls", "ballsave_skip", "plan_reserve", "plan_live", "floor_short", "reserve_floors", "ballsave_reserve",
-             "ballsave_now", "ballsave_log", "cfg_now", "starpiece_seen", "balls_why", "starpiece_why", "berry_mode",
+             "ballsave_now", "ballsave_log", "cfg_now", "sp_bare_odd", "sp_paid", "starpiece_seen", "balls_why", "starpiece_why", "berry_mode",
              "state_extra", "dust_min", "dust_levels_text", "dust_levels_write", "dust_table", "wx_judge", "wx_verdict", "wx_load",
              "wx_seen", "wx_close", "wx_tick", "game_version", "dust_boost_note", "dust_skip", "dust_news", "dust_log", "dust_only",
              "dust_why", "shiny_look", "dust_state", "dust_checked", "dust_update_said", "dust_update_step",
              "dust_update"):   # (wx_load's text ends with the WX_CATCH pattern that follows it)
     exec(re.search(rf"^def {name}\(.*?(?=^\n\ndef )", src, re.S | re.M).group(0), ns)
-for pat in (r"^SPIN_WHY = .*$", r"^WX = .*$", r"^WX_NEED = \d+"):
+for pat in (r"^SPIN_WHY = .*$", r"^WX = .*$", r"^WX_NEED = \d+", r"^SP_MULTS = .*$"):
     exec(re.search(pat, src, re.M).group(0), ns)
 exec(re.search(r"^_DUST = \{.*?\}\n", src, re.S | re.M).group(0), ns)
 skip_of, usable = ns["ballsave_skip"], ns["usable_balls"]
@@ -717,6 +717,67 @@ check("weather: the game's version name is asked once per game process; a proces
 ns["su"] = lambda cmd, timeout=10: ""
 check("weather: no answer from the package manager -> '?' (a key of its own, never another version's proof)", gv(4713), "?")
 ns["su"] = fake_su
+
+# ---- STAR PIECE read off the award, with the species table loaded (2026-11-18). The pay the 29,636 catches in the
+#      phone's logs follow, n = species stardust x event multiplier: without a Star Piece n + 25, + n // 4 when
+#      weather-boosted; with one each of the three parts x 1.5 and EACH cut to a whole number (25 -> 37). "Not a multiple
+#      of 25 = with one" is right but for ONE kind of catch: boosted, WITHOUT a Star Piece, a species at 750 / 950, an odd
+#      multiplier (962, 1212 ...). 44 logged catches paid 962; each was followed by an ordinary catch, so each would have
+#      rung the app's "The Star Piece ran out" alert (sp= going 1 -> 0).
+import math
+shipped = open(os.path.join(HERE, os.pardir, "system", "scripts", "game_write", "catch_dust.json"), encoding="utf-8").read()
+fresh(table=shipped, switch="0")
+ns["dust_table"](2000.0)
+vals = sorted(set(ns["_DUST"]["table"]["dust"].values()))
+paid, odd = ns["sp_paid"], ns["sp_bare_odd"](vals)
+check("star piece: the shipped table's values whose weather quarter is not always whole", [t for t in vals if t % 4], [750, 950])
+check("star piece: ...and the awards WITHOUT one that are not a multiple of 25 (multipliers 1-8)", sorted(odd), [962, 1212, 2837, 3587, 4712, 5962, 6587, 8337])
+# the same pay worked out a second way (decimal fractions, cut by math.floor), for every table value x multiplier x weather
+bare_all = {m * t + 25 + (math.floor(0.25 * m * t) if b else 0) for t in vals for m in range(1, 9) for b in (False, True)}
+star_all = {math.floor(1.5 * m * t) + math.floor(1.5 * 25) + (math.floor(1.5 * 0.25 * m * t) if b else 0) for t in vals for m in range(1, 9) for b in (False, True)}
+check("star piece: no award is paid both with one and without one (any two species, any two multipliers)", sorted(bare_all & star_all), [])
+check("star piece: with one, no species pays a multiple of 25", [a for a in sorted(star_all) if a % 25 == 0], [])
+check("star piece: every award without one reads 'without', every award with one reads 'with' (over 150 different awards)",
+      ([a for a in sorted(bare_all) if paid(a)], [a for a in sorted(star_all) if not paid(a)], len(bare_all | star_all) > 150), ([], [], True))
+check("star piece: the multiple-of-25 test alone is wrong for exactly those awards", sorted(a for a in bare_all | star_all if bool(a % 25) != paid(a)), sorted(odd))
+REAL_WITH = (337, 412, 187, 3037, 224, 2287, 937, 1537, 1162, 1912, 3787, 2849, 487, 787, 599, 974, 1443, 3187, 6337)
+REAL_BARE = (125, 225, 150, 275, 2025, 1525, 775, 625, 325, 1025, 525, 1900, 1275, 962, 400, 650, 2525, 1925, 2125, 4225, 975, 9125, 1950)
+check("star piece: the 42 different awards of the 29,636 logged catches (a first-catch bonus among them) read as they were paid",
+      ([a for a in REAL_WITH if not paid(a)], [a for a in REAL_BARE if paid(a)], len(set(REAL_WITH + REAL_BARE))), ([], [], 42))
+check("star piece: on a day without an event a boosted catch with one pays 224, not 225 (568 logged) -- 225 is a 2x catch without one",
+      (paid(224), paid(187), paid(225), 224 in star_all, 225 in star_all, 225 in bare_all), (True, True, False, True, False, True))
+sp_keep, sp_lines = dict(ns["SP"]), []
+ns["SP"].clear()
+ns["SP"].update(on=False, off=False, since=None, bare=0, last=None)
+got = lambda dex, dust: ns["starpiece_seen"](f"CATCH Wild #{dex} ball=1 p=0.30 att=1 berry=0 0.9s dust={dust} candy=3", sp_lines.append)
+got(16, 125); got(415, 962); got(16, 150)
+check("star piece: a plain day without one, a boosted Combee (962): the chip never says ON, nothing is said",
+      (ns["SP"]["last"], ns["SP"]["on"], sp_lines), (False, False, []))
+got(568, 962); got(53, 1212)
+check("star piece: ...a boosted Trubbish (962) and Persian (1212) the same", (ns["SP"]["last"], ns["SP"]["on"], sp_lines), (False, False, []))
+got(632, 962)
+check("star piece: ...and a 962 that the result queue put on another species' line", (ns["SP"]["last"], ns["SP"]["on"]), (False, False))
+got(16, 187); got(16, 224); got(415, 1443)
+check("star piece: with one on a plain day (187, boosted 224, a boosted Combee 1443): ON", (ns["SP"]["last"], ns["SP"]["on"], sp_lines), (True, True, []))
+got(415, 962)
+check("star piece: it ran out -- a boosted Combee without one (962) is the first bare catch", (ns["SP"]["last"], ns["SP"]["bare"], ns["SP"]["off"]), (False, 1, False))
+got(16, 125)
+check("star piece: ...the next catch is the second: STARPIECE off, one line", (ns["SP"]["off"], len(sp_lines), sp_lines[-1][:14]), (True, 1, "STARPIECE off:"))
+got(415, 962); got(415, 2837)
+check("star piece: ...and no boosted Combee switches it back on (962, 2837 at 3x)", (ns["SP"]["off"], len(sp_lines)), (True, 1))
+got(415, 2849)
+check("star piece: a boosted Combee WITH one in a 2x event (2849) does", (ns["SP"]["off"], len(sp_lines), sp_lines[-1][:13]), (False, 2, "STARPIECE on "))
+check("star piece: a table value whose boosted award another species pays WITH one keeps the old read (250: 337 = 100 at 2x with one)",
+      (337 in ns["sp_bare_odd"]([100, 250]), 962 in ns["sp_bare_odd"]([100, 250]), sorted(ns["sp_bare_odd"]([100, 300, 500, 1000]))), (False, True, []))
+ns["_DUST"]["table"] = None
+check("star piece: no species table -> the multiple-of-25 test, as before", (paid(962), paid(337), paid(225)), (True, True, False))
+sys.path.insert(0, HERE)
+import ballsave_plan   # noqa: E402  (the ball-saver planner reads the same awards on the PC)
+check("star piece: the ball-saver planner works the same awards out the same way, from the same table",
+      (ballsave_plan.BARE_ODD == odd, ballsave_plan.bare_odd([100, 250, 750]) == ns["sp_bare_odd"]([100, 250, 750]), ballsave_plan.sp_basis(962), ballsave_plan.sp_basis(337)),
+      (True, True, 1443.0, 337.0))
+ns["SP"].clear()
+ns["SP"].update(sp_keep)
 fresh(table=T_text, switch="1")
 ns["dust_skip"](1000.0)
 bn = ns["dust_boost_note"]

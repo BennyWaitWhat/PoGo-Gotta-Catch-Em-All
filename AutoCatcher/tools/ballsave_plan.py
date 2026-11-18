@@ -18,14 +18,16 @@ usage: python tools/ballsave_plan.py --ledger L.jsonl [--log catch_loop.log] --s
            minute come from the minutes BEFORE it; a species still thrown at uses the whole window
   recent   balls per minute from only the last N throwing minutes (a left-alone species: the last N before --since).
            11-16: the shower faded, whole-evening rates held ~20% too many balls back
-STAR PIECE BASIS: an award without a Star Piece is a multiple of 25 (225, 2025 ...); it counts x1.5, so a lapse
-(11-16 18:47-19:09) does not rank its species lower. The cut is in Star Piece stardust; the order never changes.
+STAR PIECE BASIS: an award without a Star Piece is a multiple of 25 (225, 2025 ...) -- or, for a boosted catch of a
+species at 750 / 950 on a day without an event, 962 / 1212 (bare_odd); it counts x1.5, so a lapse (11-16
+18:47-19:09) does not rank its species lower. The cut is in Star Piece stardust; the order never changes.
 Per species: stardust per ball = (catches + 2 x c0) x average award / (balls thrown + 2 x b0), c0 / b0 = catches /
 balls per spawn over ALL species (two average spawns of prior: a species seen once is neither perfect nor worthless).
 Activate = /data/local/tmp/pogo_ballsave.json on the phone; delete it = catch everything again."""
 import argparse
 import collections
 import json
+import os
 import re
 import sys
 import time
@@ -34,10 +36,38 @@ CATCH = re.compile(r" CATCH \S+ #(\d+) .*?dust=(\d+)")
 FLOORS = 15   # catch_loop_fast CFG floors: 5 Poke + 5 Great + 5 Ultra, always kept
 
 
+def bare_odd(values, mults=range(1, 9)):
+    """catch_loop_fast.sp_bare_odd, kept the same (catcher_ballsave_sim.py holds the two against each other): the awards
+    WITHOUT a Star Piece that are not a multiple of 25 -- a weather-boosted catch of a species at 750 / 950 on a day
+    with an odd event multiplier (962, 1212 ...). n = species stardust x multiplier: without one n + 25 + n // 4, with
+    one each part x 1.5 and each cut to a whole number."""
+    bare, star = set(), set()
+    for t in set(values):
+        for m in mults:
+            n = m * t
+            bare.add(n + 25 + n // 4)
+            star.update((n * 3 // 2 + 37, n * 3 // 2 + 37 + n * 3 // 8))
+    return frozenset(a for a in bare - star if a % 25)
+
+
+def _table_values():
+    """The species stardust values of the catcher's table (tracked next to the catcher); none when it is not there."""
+    try:
+        with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), os.pardir, "system", "scripts", "game_write", "catch_dust.json"),
+                  encoding="utf-8") as fh:
+            return {int(r[2]) for r in json.load(fh)["dust"]}
+    except (OSError, ValueError, KeyError, TypeError, IndexError):
+        return set()
+
+
+BARE_ODD = bare_odd(_table_values())
+
+
 def sp_basis(v):
-    """An award on the Star Piece basis: a bare one (a multiple of 25) x 1.5."""
+    """An award on the Star Piece basis: a bare one x 1.5. Bare = a multiple of 25, or one of BARE_ODD (962: a boosted
+    Combee without a Star Piece on a day without an event; until 2026-11-18 those counted as paid with one)."""
     v = int(v)
-    return v * 1.5 if v % 25 == 0 else float(v)
+    return v * 1.5 if v % 25 == 0 or v in BARE_ODD else float(v)
 
 
 def gm_bonus(path):
@@ -150,6 +180,8 @@ def _selftest():
     plan, sm = build(rec, S, S + 3600, keep=50, bonus={316: 300})
     check("species (before --start dropped)", sorted(plan["species"]), ["10", "774"])
     check("a bare award counts x1.5 (Star Piece basis)", sp_basis(2025), 3037.5)
+    check("a boosted Combee without one (962) is bare too; 337 / 224 / 1443 are with one",
+          (sp_basis(962), sp_basis(1212), sp_basis(337), sp_basis(224), sp_basis(1443), sorted(BARE_ODD)[:2]), (1443.0, 1818.0, 337.0, 224.0, 1443.0, [962, 1212]))
     check("dust from the ledger's d", sm["dust_from"], "ledger")
     c0, b0 = 18 / 20, 25 / 20
     want = round((8 + 2 * c0) * 3037.125 / (10 + 2 * b0), 1)
