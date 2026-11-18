@@ -19,17 +19,27 @@ TAPFLAG=/data/local/tmp/pogo_tap.on
 PERFFLAG=/data/local/tmp/pogo_perfect.on
 # Apples: tap event map tappables (TAPPABLE_TYPE_MAPLE at Mossy-lured stops) the way a finger does.
 APPLEFLAG=/data/local/tmp/pogo_apples.on
+# Gym Battle (app 1.3, Benny 2026-11-18: "any gym i visit and enter it will automatically go drill and finish and place
+# shiny gyrados"). The gym runner lives on the PC, which reads this flag over adb. NOTHING on the phone runs for it:
+# gym-on / gym-off only write the flag. They never start, keep alive or stop the catcher, reconcile ignores the flag, and
+# run_catch.sh's on() does not count it.
+GYMFLAG=/data/local/tmp/pogo_gym.on
+# Berries (catch_loop_fast.berry_mode, read every second): 1 = Pinap and Razz, pinap = Pinap only, razz = Razz only,
+# anything else = none. Only the catcher reads it; it keeps no process alive either.
+BERRYFLAG=/data/local/tmp/pogo_berries.on
 
 # [c]/[r] trick: the patterns never match this grep's own cmdline (avoids the pgrep self-match false positive).
 # The supervisor (run_catch.sh) counts as running: it is alive while it waits for the game.
 running() { ps -ef 2>/dev/null | grep -qE "[c]atch_phone\.py|[r]un_catch\.sh"; }
 
 flag_on() { [ "$(cat "$1" 2>/dev/null | tr -d '[:space:]')" = "1" ]; }
+# What the berries flag says, the way the catcher reads it: 1 / pinap / razz, anything else = 0 (none).
+berry_mode() { b=$(cat "$BERRYFLAG" 2>/dev/null | tr -d '[:space:]'); case "$b" in 1|pinap|razz) echo "$b" ;; *) echo 0 ;; esac; }
 
 # AUDIT: every flag transition is logged with the verb that caused it, so a toggle that silently
 # flips off can be traced to its cause instead of guessed at.
 FLAGLOG="$HOME/pogo/system/analysis/pokemod/flags.log"
-setflag() { # setflag <file> <0|1> <label>
+setflag() { # setflag <file> <value> <label>   value = 0 / 1; the berries flag also takes pinap / razz
   old=$(cat "$1" 2>/dev/null | tr -d '[:space:]')
   [ -z "$2" ] && return 0                     # never write an empty value
   { echo "$2" > "$1"; } 2>/dev/null || mkflag "$1" "$2"
@@ -137,6 +147,12 @@ case "$1" in
   tap-off)    setflag "$TAPFLAG" 0 "tap-off"; reconcile ;;
   apples-on)  setflag "$APPLEFLAG" 1 "apples-on"; ensure_live ;;
   apples-off) setflag "$APPLEFLAG" 0 "apples-off"; reconcile ;;
+  gym-on)     setflag "$GYMFLAG" 1 "gym-on" ;;    # the flag only: the PC's gym runner reads it (see GYMFLAG above)
+  gym-off)    setflag "$GYMFLAG" 0 "gym-off" ;;
+  berries-off)   setflag "$BERRYFLAG" 0 "berries-off" ;;        # the flag only: the catcher reads it every second
+  berries-pinap) setflag "$BERRYFLAG" pinap "berries-pinap" ;;
+  berries-razz)  setflag "$BERRYFLAG" razz "berries-razz" ;;
+  berries-on)    setflag "$BERRYFLAG" 1 "berries-on" ;;
   restart)    stop_proc; sleep 1; start_proc ;;
   reconcile)  reconcile ;;   # boot hook: starts the supervisor only if a toggle was left on
   rewards)
@@ -155,6 +171,6 @@ case "$1" in
     reconcile
     ;;
   toggle)     if flag_on "$CATCHFLAG"; then echo 0 > "$CATCHFLAG"; else echo 1 > "$CATCHFLAG"; fi; reconcile ;;
-  status)     echo "proc=$(running && echo up || echo down) catch=$(flag_on "$CATCHFLAG" && echo 1 || echo 0) spin=$(flag_on "$SPINFLAG" && echo 1 || echo 0) perfect=$(flag_on "$PERFFLAG" && echo 1 || echo 0) tap=$(flag_on "$TAPFLAG" && echo 1 || echo 0) apples=$(flag_on "$APPLEFLAG" && echo 1 || echo 0)" ;;
-  *) echo "usage: catcher_ctl.sh start|stop|restart|reconcile|catch-on|catch-off|spin-on|spin-off|perfect-on|perfect-off|tap-on|tap-off|apples-on|apples-off|rewards|toggle|status" ;;
+  status)     echo "proc=$(running && echo up || echo down) catch=$(flag_on "$CATCHFLAG" && echo 1 || echo 0) spin=$(flag_on "$SPINFLAG" && echo 1 || echo 0) perfect=$(flag_on "$PERFFLAG" && echo 1 || echo 0) tap=$(flag_on "$TAPFLAG" && echo 1 || echo 0) apples=$(flag_on "$APPLEFLAG" && echo 1 || echo 0) gym=$(flag_on "$GYMFLAG" && echo 1 || echo 0) berries=$(berry_mode)" ;;
+  *) echo "usage: catcher_ctl.sh start|stop|restart|reconcile|catch-on|catch-off|spin-on|spin-off|perfect-on|perfect-off|tap-on|tap-off|apples-on|apples-off|gym-on|gym-off|berries-off|berries-pinap|berries-razz|berries-on|rewards|toggle|status" ;;
 esac
