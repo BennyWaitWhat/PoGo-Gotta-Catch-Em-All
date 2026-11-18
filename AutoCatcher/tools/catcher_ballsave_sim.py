@@ -13,7 +13,7 @@ import time
 ns = {"CFG": {"floors": {"1": 5, "2": 5, "3": 5}}, "_BS": {"mtime": None, "plan": None, "note": "off"}, "re": re, "time": time,
       "SP": {"on": False, "off": False, "since": None, "bare": 0}, "SHINYFIELD": {"ok": True}}
 for name in ("usable_balls", "ballsave_skip", "plan_reserve", "plan_live", "floor_short", "reserve_floors", "ballsave_reserve",
-             "ballsave_now", "ballsave_log", "cfg_now", "starpiece_seen", "balls_why", "starpiece_why"):
+             "ballsave_now", "ballsave_log", "cfg_now", "starpiece_seen", "balls_why", "starpiece_why", "berry_mode"):
     exec(re.search(rf"^def {name}\(.*?(?=^\n\ndef )", src, re.S | re.M).group(0), ns)
 exec(re.search(r"^SPIN_WHY = .*$", src, re.M).group(0), ns)
 skip_of, usable = ns["ballsave_skip"], ns["usable_balls"]
@@ -133,7 +133,8 @@ log(300)
 check("then silent", len(lines), 4)
 
 # the reserve rides on the Poke Ball floor while a plan file is on the phone (also after its end time)
-ns.update(FLAGS={}, flag=lambda k: False)
+NOFILE = os.path.join(tempfile.gettempdir(), "pogo_berries_sim_no_such_file.on")   # the berries switch: missing = none
+ns.update(FLAGS={"berries": NOFILE}, flag=lambda k: False)
 ns["CFG"].update(floors={"1": 5, "2": 5, "3": 5})
 json.dump(dict(PLAN, end=time.time() - 60, reserve=100), open(pf, "w"))
 os.utime(pf, (time.time() + 20, time.time() + 20))
@@ -183,14 +184,31 @@ check("the attach pushes its shiny outcome either way",
       bool(re.search(r"\n    cfg = cfg_now\(\)\n    sc\.exports_sync\.cfg\(cfg\)", src)), True)
 check("a 'SHINY LOOK suspended' line turns it off for the run",
       bool(re.search(r'if line\.startswith\("SHINY LOOK suspended"\):[^\n]*\n\s+SHINYFIELD\.update\(ok=False, suspended=True\)', src)), True)
-# berries (Benny 11-16 22:14 "stop auto feeding berries for now"): Pinap / Razz only while pogo_berries.on says 1
+# berries (Benny 11-16 22:14 "stop auto feeding berries for now"; 11-18 "start catching with only pinap berries fed"):
+# the switch file says what may be fed -- 1 = Pinap and Razz as configured, pinap / razz = only that one, else none
 ns["CFG"].update(pinap=True, razz=True)
 c = ns["cfg_now"]()
-check("berries switch off/missing: no Pinap, no Razz", (c["pinap"], c["razz"]), (False, False))
-ns.update(FLAGS={"berries": "/x"}, flag=lambda k: k == "berries")
+check("berries switch missing: no Pinap, no Razz", (c["pinap"], c["razz"], c["berries"]), (False, False, ""))
+check("berries switch: the config itself is not touched", (ns["CFG"]["pinap"], ns["CFG"]["razz"]), (True, True))
+bdir = tempfile.mkdtemp()
+ns.update(FLAGS={"berries": os.path.join(bdir, "pogo_berries.on")})
+for text, want in (("1", (True, True, "on")), ("1\n", (True, True, "on")), ("pinap\n", (True, False, "pinap")),
+                   (" PINAP ", (True, False, "pinap")), ("razz", (False, True, "razz")), ("0", (False, False, "")),
+                   ("", (False, False, "")), ("yes", (False, False, "")), ("pinap razz", (False, False, ""))):
+    with open(ns["FLAGS"]["berries"], "w") as fh:
+        fh.write(text)
+    c = ns["cfg_now"]()
+    check(f"berries switch {text!r}: Pinap, Razz, mode", (c["pinap"], c["razz"], c["berries"]), want)
+ns["CFG"].update(razz=False)
+with open(ns["FLAGS"]["berries"], "w") as fh:
+    fh.write("1")
 c = ns["cfg_now"]()
-check("berries switch on: as configured", (c["pinap"], c["razz"], ns["CFG"]["pinap"]), (True, True, True))
-ns.update(FLAGS={}, flag=lambda k: False)
+check("berries switch on: never turns on what the config has off", (c["pinap"], c["razz"]), (True, False))
+ns["CFG"].update(razz=True)
+os.remove(ns["FLAGS"]["berries"])
+os.rmdir(bdir)
+ns.update(FLAGS={"berries": NOFILE}, flag=lambda k: False)
+check("the toggles line names the berry mode", "{k}={c[k] if isinstance(c[k], str) and c[k] else 'on' if c[k] else 'off'}" in src, True)
 # why no ball is thrown (the app shows it): the plan's balls IN ALL, and a shiny's promise only while it can keep it
 ns["CFG"].update(mightyKeep=30)
 ns["flag"] = lambda k: k == "catch"
@@ -289,6 +307,13 @@ api.set('ITEMC', {1: 3, 2: 2, 3: 0}); res.ball.push(api.call('pickBall', null, f
 api.set('M', {useItem: 'U'}); api.set('ITEMC', {1: 40, 2: 5, 3: 5, 701: 3, 705: 50});
 api.call('applyCfg', {pinap: true, pinapFloor: 20, razz: true, razzFloor: 5, razzThresh: 0.45});
 res.berry = [api.call('berryFor', {probs: {1: 0.3}, prio: false, mighty: 0, shiny: 0}), api.call('berryFor', {probs: {1: 0.3}, prio: false, mighty: 0, shiny: 1})];
+// Pinap only (11-18 "only pinap berries fed"): Razz off -> a hard throw, a shiny and an easy throw get the Pinap; none left = no berry
+api.set('ITEMC', {1: 400, 2: 50, 3: 50, 701: 30, 705: 50});
+api.call('applyCfg', {reserve: 0, pinap: true, pinapFloor: 0, razz: false});
+res.pinapOnly = [api.call('berryFor', {probs: {1: 0.3}, prio: false, mighty: 0, shiny: 0}), api.call('berryFor', {probs: {1: 0.3}, prio: false, mighty: 0, shiny: 1}),
+                 api.call('berryFor', {probs: {1: 0.9}, prio: false, mighty: 0, shiny: 0})];
+api.set('ITEMC', {1: 400, 2: 50, 3: 50, 701: 30, 705: 0});
+res.pinapOnly.push(api.call('berryFor', {probs: {1: 0.3}, prio: false, mighty: 0, shiny: 0}));
 // a ball in the air: the 3 s poll may lower its count, never raise it (11-16 20:59: the 50 kept ended at 48)
 api = mk();
 api.set('call', () => 'R'); api.set('s32', () => api.get('BAG')); api.set('i32arg', (v) => v);
@@ -513,6 +538,8 @@ except ValueError:
     got2 = {}
 check("JS: a shiny's ball (floors, odds, none)", got2.get("ball"), [0, 3, 1, 0, 2])
 check("JS: no ball -> no berry; shiny gets Razz", got2.get("berry"), [0, 701])
+check("JS: Pinap only: hard throw, shiny, easy throw get the Pinap, never a Razz; no Pinap left = no berry",
+      got2.get("pinapOnly"), [705, 705, 705, 0])
 check("JS: in-flight poll lowers, never raises", got2.get("poll"), [40, 39, 45, 41])
 check("JS: shiny Mighty -> Safari, then Ultra", got2.get("mighty"), [7, 3])
 check("JS: another species' reply is not ours", got2.get("other"), [None, 10, -1])
