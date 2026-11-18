@@ -506,11 +506,13 @@ def hundo_roles(copies, cp_at, top, price=None, held=None, final=True):
     return {c[0]: r for c, r in zip(best[1], roles) if c and G[c, r] > c[2]}
 
 
-def hundo_buckets(held=None):
+def hundo_buckets(held=None, evolving=None):
     """-> ({tag name: {uid_hex}}, n_unread) for the four buckets, from this walk's bag (pokemon.db) and the pvpoke game master's base
     stats and evolution graph (keep_policy's: a stage that can still evolve is not final, and takes the capped buckets only --
     hundo_roles). A copy whose computed CP is not the walk's CP (level not read) is left out and counted. held: {uid (hex, any
-    spelling): tag name} -- the buckets on the phone now (the twins' tie-break in hundo_roles)."""
+    spelling): tag name} -- the buckets on the phone now (the twins' tie-break in hundo_roles).
+    evolving: the uids told to evolve (default: this pass's advice table, system/analysis/evolve_advice.json) -- a hundo wearing
+    an Evolve tag gets no power-up tag until it has evolved: the bucket would be for the stage it is leaving (2026-11-18)."""
     role_of = {n: r for r, (n, _) in HUNDO_TAGS.items()}
     held = {format(int(u, 16), 'x'): role_of[n] for u, n in (held or {}).items() if n in role_of}
     import contextlib, io
@@ -529,8 +531,16 @@ def hundo_buckets(held=None):
                          'WHERE in_bag=1 AND iv_atk=15 AND iv_def=15 AND iv_sta=15').fetchall()
     finally:
         c.close()
+    if evolving is None:
+        try:
+            evolving = list(json.load(open(os.path.join(HERE, 'system', 'analysis', 'evolve_advice.json'), encoding='utf-8')))
+        except (OSError, ValueError):
+            evolving = []
+    evolving = {format(int(u, 16), 'x') for u in evolving}
     by, unread = {}, 0
     for uid, name, form, cp, level, al, lucky, dex in rows:
+        if format(int(uid, 16), 'x') in evolving:
+            continue
         s = pvid(name, form or 0)
         if s not in bs:
             continue
@@ -549,6 +559,52 @@ def hundo_buckets(held=None):
         for uid, role in hundo_roles(copies, lambda i, s=s: cp_at(s, i), rc.MAX_LEVEL_IDX, price, now, final=not is_pre.get(s)).items():
             out[HUNDO_TAGS[role][0]].add(uid)
     return out, unread
+
+
+def hundo_combup(hundos, own, later, depth, blocked=None, nice=None):
+    """THE HUNDO COMB-UP (Benny 2026-11-18: "i just want my hundos comb'd up to ya know? like if i have 3 hundo charmamander,
+    then id like one for each stage filling in the final evo first"; a lone hundo under a later stage that has none goes too:
+    "yes, thats how the logic works"). -> {uid: (target stage, why it stops there or None)}.
+    hundos: the kept 15/15/15 rows (dicts: uid_hex, cp, fresh_alignment, fresh_shiny). own(r) -> the stage it is;
+    later(r) -> the later stages THIS copy can become (form, costume and gender locked; empty = it cannot evolve);
+    depth(stage) -> evolutions left after that stage (0 = final); blocked(r) -> why the label law keeps this copy what it is,
+    or None; nice(stage) -> its name for the words.
+    Per line, shadow hundos apart (a shadow evolves only into a shadow): the stages are filled FINAL FIRST. A stage that
+    holds no hundo takes ONE from the nearest earlier stage that has a free one -- of several there the highest CP, a shiny
+    last -- and the stage that copy leaves is filled in its turn. A copy whose line branches (two stages equally far from
+    the end: Poliwhirl, Eevee, a male Kirlia) is never moved: that is a pick, not a rule. A blocked copy still holds its stage."""
+    blocked = blocked or (lambda r: None)
+    nice = nice or (lambda s: s.replace('_', ' ').title())
+    out = {}
+    for sh in (False, True):
+        hs = [r for r in hundos if ((r.get('fresh_alignment') or 0) == 1) == sh]
+        at, chain = {}, {}
+        for r in hs:
+            at.setdefault(own(r), set()).add(r['uid_hex'])
+        held0 = {s for s, us in at.items() if us}
+        for r in hs:
+            st = {own(r)} | set(later(r) or ())
+            if len(st) > 1 and len({depth(s) for s in st}) == len(st) and not blocked(r):
+                chain[r['uid_hex']] = st
+        row = {r['uid_hex']: r for r in hs}
+        goes = {}
+        for t in sorted({s for st in chain.values() for s in st}, key=lambda s: (depth(s), s)):
+            if at.get(t):
+                continue
+            c = [u for u, st in chain.items() if u not in goes and t in st and depth(own(row[u])) > depth(t)]
+            if not c:
+                continue
+            u = min(c, key=lambda u: (depth(own(row[u])), bool(row[u].get('fresh_shiny')), -(row[u].get('cp') or 0), u))
+            goes[u] = t
+            at[own(row[u])].discard(u)
+            at.setdefault(t, set()).add(u)
+        filled = {t: u for u, t in goes.items()}
+        for u, t in goes.items():
+            on = sorted((s for s in chain[u] if depth(s) < depth(t)), key=depth, reverse=True)
+            why = '; '.join(('another hundo is evolving into %s' if s in filled else 'you have a hundo %s') % nice(s)
+                            for s in on if s in filled or s in held0)
+            out[u] = (t, why or None)
+    return out
 
 
 # ----------------------------------------------------------------------------------------------------------------- self-test
@@ -790,6 +846,34 @@ def _selftest():
        'hundo that can still evolve, a species under 500 at L50: no tag (the final stage of such a species still maxes out)')
     ck(sorted(n for n, _ in HUNDO_TAGS.values()) == ['Hundo 1501-2500', 'Hundo 501-1500', 'Hundo Max Out', 'Hundo Under 500']
        and all(0 <= col <= 8 for _, col in HUNDO_TAGS.values()), 'hundo: the four tag names and colours on the phone')
+
+    # ---- the hundo comb-up (2026-11-18): one hundo per stage, the final stage first
+    H = lambda u, cp=100, a=0, sh=0: {'uid_hex': u, 'cp': cp, 'fresh_alignment': a, 'fresh_shiny': sh}
+    LINE = {'c': 'charmander', 'm': 'charmeleon', 'z': 'charizard', 'p': 'poliwag', 's': 'cyndaquil', 't': 'typhlosion'}
+    LATER = {'charmander': ['charmeleon', 'charizard'], 'charmeleon': ['charizard'], 'cyndaquil': ['quilava', 'typhlosion'],
+             'poliwag': ['poliwhirl', 'poliwrath', 'politoed']}
+    DEPTH = {'charmander': 2, 'charmeleon': 1, 'cyndaquil': 2, 'quilava': 1, 'poliwag': 2, 'poliwhirl': 1}
+    own_ = lambda r: LINE[r['uid_hex'][0]]
+    hc = lambda hs, blocked=None: {u: v[0] for u, v in hundo_combup(hs, own_, lambda r: LATER.get(own_(r), ()),
+                                                                 lambda s: DEPTH.get(s, 0), blocked).items()}
+    ck(hc([H('c1', 300), H('c2', 500), H('c3', 400)]) == {'c2': 'charizard', 'c3': 'charmeleon'},
+       'hundo comb-up: three Charmanders -> one per stage, the final stage first, the highest CP furthest')
+    ck(hc([H('c1')]) == {'c1': 'charizard'} and hc([H('c1'), H('z1')]) == {'c1': 'charmeleon'}
+       and hc([H('c1'), H('m1'), H('z1')]) == {} and hc([H('z1'), H('z2')]) == {},
+       'hundo comb-up: a lone hundo goes to the furthest stage with none; every stage held = nothing; no way back')
+    ck(hc([H('c1'), H('m1')]) == {'m1': 'charizard', 'c1': 'charmeleon'},
+       'hundo comb-up: the nearest earlier stage gives its hundo, and the stage it leaves is filled in its turn')
+    ck(hc([H('c1', 300), H('c2', 500)], lambda r: 'built' if r['uid_hex'] == 'c2' else None) == {'c1': 'charizard'}
+       and hc([H('c1'), H('m1')], lambda r: 'x' if r['uid_hex'] == 'm1' else None) == {'c1': 'charizard'},
+       'hundo comb-up: a copy the label law keeps stays and still holds its stage; the next one goes')
+    ck(hc([H('p1'), H('p2')]) == {} and hc([H('c1'), H('z1', a=1)]) == {'c1': 'charizard'}
+       and hc([H('c1', a=1), H('c2', a=2), H('z1')]) == {'c1': 'charizard', 'c2': 'charmeleon'},
+       'hundo comb-up: a line that branches is left alone; shadow hundos are a line of their own, purified count as regular')
+    ck(hc([H('c1', 500, sh=1), H('c2', 300)]) == {'c2': 'charizard', 'c1': 'charmeleon'}, 'hundo comb-up: a shiny goes last')
+    _w = hundo_combup([H('s1'), H('t1')], own_, lambda r: LATER.get(own_(r), ()), lambda s: DEPTH.get(s, 0))
+    ck(_w == {'s1': ('quilava', 'you have a hundo Typhlosion')}, 'hundo comb-up: the lone Cyndaquil case, with its reason')
+    _w = hundo_combup([H('c1', 300), H('c2', 500)], own_, lambda r: LATER.get(own_(r), ()), lambda s: DEPTH.get(s, 0))
+    ck(_w == {'c2': ('charizard', None), 'c1': ('charmeleon', 'another hundo is evolving into Charizard')}, 'hundo comb-up: words')
 
     # ---- wiring: the 2nd-move price is chosen by alignment, and the CLI runs nothing on a guessed flag
     src = inspect.getsource(second_moves)

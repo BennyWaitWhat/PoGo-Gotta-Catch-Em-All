@@ -372,6 +372,8 @@ def main():
                     if not _sh_collectible(rows[u]):
                         _shp_at[_k].append(rows[u]['iv_total'] or 0)
             continue
+        if src_of.get(u) == 'hundo':                         # a hundo comb-up (2026-11-18): audit_labels re-derives its three rules
+            why['hundo: the first hundo at that stage'] += 1; continue
         if src_of.get(u) == 'size':                          # a showcase pick, whatever its count tag (2026-09-29)
             why['size: a bigger showcase entry at that stage'] += 1; continue
         if rows[u]['fresh_has_location_card']:

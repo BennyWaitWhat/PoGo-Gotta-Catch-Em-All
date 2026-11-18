@@ -517,6 +517,8 @@ def _stop_reason(e, r, c):
         return _promise_words(v, r['iv_total'])
     if src == 'size':
         return _size_words(v)
+    if src == 'hundo':                                    # the hundo comb-up (2026-11-18): the later stages have theirs
+        return ('stop', v['text']) if v.get('text') else (None, None)
     return None, None
 
 

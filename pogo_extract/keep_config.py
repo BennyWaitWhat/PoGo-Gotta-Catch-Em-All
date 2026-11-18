@@ -147,6 +147,11 @@ DEFAULTS = {
         #                                 stage a held copy can still become but none of that kind holds keeps ONE spare that can
         #                                 become it (keep_policy.align_line_picks; user 2026-11-16: "culling pokemon i dont have all
         #                                 shadow or purified evos of"); OFF = as before
+        "hundo_combup": False,          # evolve advice -- a 15/15/15 is told to evolve into a later stage of its line where you hold
+        #                                 no hundo: the final stage first, ONE per stage, a lone hundo too (granular_tags.hundo_advice;
+        #                                 user 2026-11-18: "if i have 3 hundo charmamander, then id like one for each stage filling in
+        #                                 the final evo first", then "yes, thats how the logic works"); OFF = a hundo never wears an
+        #                                 Evolve tag
         "min_skips_evolving": False,    # THE MINIMUMS -- a copy told to evolve (any Evolve tag) counts toward no minimum of the kind
         #                                 it leaves: species_min / pattern_min / regular_min keep the best of the rest instead, so the
         #                                 kind is not one short once he evolves it (keep_policy.min_topup; 2026-11-16 the plain
