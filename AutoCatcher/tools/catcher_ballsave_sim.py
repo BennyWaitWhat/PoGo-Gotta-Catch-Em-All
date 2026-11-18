@@ -1,6 +1,8 @@
-"""Offline test of the BALL-SAVER in catch_loop_fast.py (no phone): python tools/catcher_ballsave_sim.py
-Python side: the greedy cut (ballsave_skip) and the ball count (usable_balls). JS side (node): the species list from the
-config, a spawn left alone counted once, its 20 s look-again, and its ledger record. Exit code 1 when any check fails."""
+"""Offline test of the BALL-SAVER and of STARDUST ONLY in catch_loop_fast.py (no phone): python tools/catcher_ballsave_sim.py
+Python side: the greedy cut (ballsave_skip) and the ball count (usable_balls); the stardust switch, its species table, the
+weather-boost record. JS side (node): the species list from the config, a spawn left alone counted once, its 20 s
+look-again, its ledger record, the shiny look, the weather flag. Exit code 1 when any check fails."""
+import json
 import os
 import re
 import subprocess
@@ -11,12 +13,20 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 src = open(os.path.join(HERE, os.pardir, "system", "scripts", "game_write", "catch_loop_fast.py"), encoding="utf-8").read()
 import time
 ns = {"CFG": {"floors": {"1": 5, "2": 5, "3": 5}}, "_BS": {"mtime": None, "plan": None, "note": "off"}, "re": re, "time": time,
-      "SP": {"on": False, "off": False, "since": None, "bare": 0}, "SHINYFIELD": {"ok": True}}
+      "SP": {"on": False, "off": False, "since": None, "bare": 0}, "SHINYFIELD": {"ok": True}, "os": os, "json": json}
+# STARDUST ONLY: no switch file and no table until its own section below = off, so everything before it runs as it always did
+NODUST = os.path.join(tempfile.gettempdir(), "pogo_dust_sim_no_such_file")
+ns.update(DUST_FILE=NODUST + ".on", DUST_TABLE=NODUST + ".json", DUST_LEVELS=NODUST + ".txt", WX_PROOF=NODUST + ".proof",
+          AN=tempfile.gettempdir(), su=lambda cmd, timeout=10: "")
 for name in ("usable_balls", "ballsave_skip", "plan_reserve", "plan_live", "floor_short", "reserve_floors", "ballsave_reserve",
              "ballsave_now", "ballsave_log", "cfg_now", "starpiece_seen", "balls_why", "starpiece_why", "berry_mode",
-             "state_extra"):
+             "state_extra", "dust_min", "dust_levels_text", "dust_levels_write", "dust_table", "wx_judge", "wx_verdict", "wx_load",
+             "wx_seen", "wx_close", "wx_tick", "game_version", "dust_boost_note", "dust_skip", "dust_news", "dust_log", "dust_only",
+             "dust_why", "shiny_look"):   # (wx_load's text ends with the WX_CATCH pattern that follows it)
     exec(re.search(rf"^def {name}\(.*?(?=^\n\ndef )", src, re.S | re.M).group(0), ns)
-exec(re.search(r"^SPIN_WHY = .*$", src, re.M).group(0), ns)
+for pat in (r"^SPIN_WHY = .*$", r"^WX = .*$", r"^WX_NEED = \d+"):
+    exec(re.search(pat, src, re.M).group(0), ns)
+exec(re.search(r"^_DUST = \{.*?\}\n", src, re.S | re.M).group(0), ns)
 skip_of, usable = ns["ballsave_skip"], ns["usable_balls"]
 failed = 0
 
@@ -98,7 +108,6 @@ check("counts not read: all on the Poke floor", rfl(35, {}), {"1": 40, "2": 5, "
 check("fewer balls than the keep: all held", rfl(35, {"1": 10, "2": 6, "3": 5}), {"1": 39, "2": 6, "3": 5})
 
 # ---- the plan file, priority species, and the BALLSAVE log lines
-import json
 tmp = tempfile.mkdtemp()
 pf = os.path.join(tmp, "plan.json")
 ns.update(BALLSAVE_FILE=pf, BALLS={"usable": 1700}, _BS={"mtime": None, "plan": None, "note": "off"}, os=os, json=json, time=time,
@@ -173,14 +182,21 @@ ns["SHINYFIELD"]["ok"] = True
 # the attach check (session_loop): a read distrusted earlier in the run stays off; a later attach that resolves it is on
 blk = re.search(r'    mk = st.get\("mighty"\) or \{\}.*?\n    elif SHINYFIELD\["suspended"\]:\n.*?\n', src, re.S).group(0)
 att = "\n".join(ln[4:] for ln in blk.splitlines())
-said = []
+said, wxl = [], []
 good = {"mighty": {"wildPokemon": 16, "display": 24, "flag": 40, "shiny": 32}}
-env = {"st": good, "SHINYFIELD": {"ok": True, "suspended": True}, "w": said.append}
+attenv = lambda st, sf: {"st": st, "SHINYFIELD": sf, "w": said.append, "wx_load": lambda key, found: wxl.append((key, found)),
+                         "game_version": lambda pid: "0.435.2", "pid": 4711}
+env = attenv(good, {"ok": True, "suspended": True})
 exec(att, env)
 check("distrusted earlier in the run: stays off", (env["SHINYFIELD"]["ok"], said[-1][:20]), (False, "SHINY LOOK stays off"))
-env = {"st": good, "SHINYFIELD": {"ok": False, "suspended": False}, "w": said.append}
+env = attenv(good, {"ok": False, "suspended": False})
 exec(att, env)
 check("resolved at a later attach: on again", env["SHINYFIELD"]["ok"], True)
+check("the attach marks its shiny check as run (STARDUST ONLY leaves nothing alone before it)", env["SHINYFIELD"].get("checked"), True)
+env = attenv({"mighty": dict(good["mighty"], wx=36)}, {"ok": False, "suspended": False})
+exec(att, env)
+check("the attach hands the weather read its key (game version + offsets) and whether its field was found",
+      wxl, [("0.435.2 offsets 16/24/None", False), ("0.435.2 offsets 16/24/None", False), ("0.435.2 offsets 16/24/36", True)])
 check("the attach pushes its shiny outcome either way",
       bool(re.search(r"\n    cfg = cfg_now\(\)\n    sc\.exports_sync\.cfg\(cfg\)", src)), True)
 check("a 'SHINY LOOK suspended' line turns it off for the run",
@@ -221,7 +237,7 @@ check("status keys: the run's first second, an empty bag reading, the last catch
 check("status keys: no '=' with a space in it, no 'why=' (the app splits on spaces; why= must stay last)",
       all("=" in t and not t.startswith("why=") for t in sx(5, {"dust": 9}, {"1": 1, "2": 2, "3": 3}, 61, False).split()), True)
 check("the status line carries them, before why=",
-      'cooling={sp[\'cooling\']} "\n                + state_extra(c, st, it, time.time() - t0, SP.get("last"))).rstrip())' in src, True)
+      'cooling={sp[\'cooling\']} "\n                + state_extra(c, st, it, time.time() - t0, SP.get("last"), dust_only())).rstrip())' in src, True)
 sp0 = dict(ns["SP"])
 ns["SP"].update(on=False, off=False, since=None, bare=0, last=None)
 ns["starpiece_seen"]("CATCH Wild #1 ball=1 p=0.5 att=1 berry=0 0.5s dust=50 candy=3", lambda s: None)
@@ -256,6 +272,446 @@ os.remove(pf)
 ns["ballsave_now"]()
 check("no plan: no Star Piece line", spw(""), "")
 ns["SP"].update(on=False, off=False, since=None, bare=0)
+
+# ================= STARDUST ONLY (Benny 2026-11-18) =================
+# "i also want a catch mode that only catches high stardust pokemon (+ shinies) that can be toggled on"; "make sure you're
+# inclusive of EVERY higher than avg stardust pokemon for that mode"; "yes include weather boosted too".
+# /data/local/tmp/pogo_dust.on: 0 / missing / not a whole number = off; 1 = every species above a normal catch; N = of
+# those, the ones paying N or more. Always caught: shinies, Mighty, priority species, a species the table does not know.
+import shutil
+GW = os.path.join(HERE, os.pardir, "system", "scripts", "game_write")
+BUILDER, REAL = os.path.join(GW, "catch_dust_table.py"), os.path.join(GW, "catch_dust.json")
+sys.path.insert(0, GW)
+import catch_dust_table as dt  # noqa: E402  (the table's builder: its text format and its reader)
+rb = subprocess.run([sys.executable, BUILDER, "--selftest"], capture_output=True, text=True)
+check("dust table builder: its own self-test", (rb.returncode, len(re.findall(r"(?m)^FAIL ", rb.stdout)), len(re.findall(r"(?m)^ok ", rb.stdout)) >= 40), (0, 0, True))
+rc = subprocess.run([sys.executable, BUILDER, "--check"], capture_output=True, text=True)
+check("dust table in git: header counts = body, exactly as the builder writes it", (rc.returncode, rc.stdout[:5]), (0, "ok   "))
+
+dd = tempfile.mkdtemp()
+sw, tb, lv = os.path.join(dd, "pogo_dust.on"), os.path.join(dd, "catch_dust.json"), os.path.join(dd, "pogo_dust_levels.txt")
+su_calls = []
+
+
+def fake_su(cmd, timeout=10):   # root's part of dust_levels_write: copy in, chmod, rename
+    su_calls.append(cmd)
+    m = re.match(r"cp (\S+) (\S+)\.new && chmod 644 (\S+)\.new && mv -f (\S+)\.new (\S+); rm -f (\S+)$", cmd)
+    if m and m.group(2) == m.group(3) == m.group(4) == m.group(5):
+        shutil.copyfile(m.group(1), m.group(5))
+        os.remove(m.group(6))
+    return ""
+
+
+lit = {}   # the catcher's own starting values (the checks above have already looked for a table once)
+exec(re.search(r"^_DUST = \{.*?\}\n", src, re.S | re.M).group(0) + re.search(r"^WX = .*$", src, re.M).group(0), lit)
+DUST0, WX0 = lit["_DUST"], lit["WX"]
+ns.update(DUST_FILE=sw, DUST_TABLE=tb, DUST_LEVELS=lv, AN=dd, WX_PROOF=os.path.join(dd, "dust_wx_proof.json"), su=fake_su)
+ns["CFG"].clear()
+ns["CFG"].update(floors={"1": 5, "2": 5, "3": 5}, priority=[999, 1000, 144, 145, 146], mightyKeep=30, pinap=True, razz=True)
+ns.update(FLAGS={"berries": NOFILE}, flag=lambda k: k == "catch", BALLS={"usable": 1700, "items": {}}, BALLSAVE_FILE=os.path.join(dd, "plan.json"))
+ns["_BS"].clear()
+ns["_BS"].update(mtime=None, plan=None, note="off")
+
+
+def fresh(table=None, switch=None, look="ok", wx="proven"):
+    """A catcher right after an attach: the table file, the switch's text, the shiny look, the weather read's record."""
+    for f in (sw, tb):
+        if os.path.exists(f):
+            os.remove(f)
+    if table is not None:
+        with open(tb, "w", encoding="utf-8", newline="\n") as fh:
+            fh.write(table)
+    if switch is not None:
+        with open(sw, "wb") as fh:
+            fh.write(switch if isinstance(switch, bytes) else switch.encode())
+    ns["_DUST"].clear()
+    ns["_DUST"].update(dict(DUST0, log=[]))
+    ns["SHINYFIELD"].clear()
+    ns["SHINYFIELD"].update({"ok": dict(ok=True, suspended=False, checked=True), "lost": dict(ok=False, suspended=False, checked=True),
+                             "suspended": dict(ok=False, suspended=True, checked=True), "unchecked": dict(ok=True, suspended=False, checked=False)}[look])
+    b, u, bad = {"proven": (40, 160, 1), "proving": (3, 20, 0), "wrong": (10, 10, 12), "nofield": (0, 0, 0), "none": (0, 0, 0)}[wx]
+    ns["WX"].clear()
+    ns["WX"].update(dict(WX0, found=wx != "nofield", key="0.435.2 offsets 56/216/32", b=b, u=u, bad=bad, rows={}, ver={}))
+
+
+# the switch's text -- read the way catcher_ctl.sh's dust_mode() reads it: white space dropped, 1 to 7 digits, else off
+SWITCH = ((None, 0), ("0", 0), ("", 0), ("1", 1), ("1\n", 1), ("500", 500), ("700\n", 700), (" 1000 ", 1000), ("\t500\r\n", 500), ("0700", 700),
+          ("7 00", 700), ("junk", 0), ("-5", 0), ("+700", 0), ("700.0", 0), ("7e2", 0), ("on", 0), ("9999999", 9999999), ("12345678", 0),
+          ("9" * 25, 0), (b"\xff\xfe1", 0), ("1" * 60, 0))
+for text, want in SWITCH:
+    fresh(switch=text)
+    check(f"dust switch {text if text is None or len(text) < 12 else text[:9] + '...'!r} -> {want}", ns["dust_min"](), want)
+# ...and the app's side of the same file: catcher_ctl.sh's own dust_mode(), run on the same texts, says the same numbers
+ctl = re.search(r"^dust_mode\(\) \{.*\}$", open(os.path.join(HERE, os.pardir, "catcher_ctl.sh"), encoding="utf-8").read(), re.M)
+paths = []
+for i, (text, _want) in enumerate(SWITCH):
+    paths.append(os.path.join(dd, f"sw{i}").replace("\\", "/"))
+    if text is not None:
+        with open(paths[-1], "wb") as fh:
+            fh.write(text if isinstance(text, bytes) else text.encode())
+rs = subprocess.run([shutil.which("bash") or "bash", "-c", (ctl.group(0) if ctl else "dust_mode() { echo missing; }") + '\nfor f in "$@"; do DUSTFLAG=$f; dust_mode; done',
+                     "dust_mode", *paths], capture_output=True, text=True)
+check("dust switch: catcher_ctl.sh's dust_mode() reads every one of those texts as the same number", rs.stdout.split(), [str(w) for _t, w in SWITCH])
+
+# OFF = the config the JS gets is byte for byte what it was before the mode existed (the old cfg_now, kept here verbatim)
+exec(r'''def cfg_before():
+    c = dict(CFG)
+    c["skipSp"] = ballsave_now()
+    c["reserve"] = ballsave_reserve()   # the JS spreads it over the live bag (floorOf); reserve_floors() is the same sum
+    live = plan_live(time.time())
+    c["peek"] = live and SHINYFIELD["ok"]   # SHINY LOOK (Benny 11-16: "catch all shinies regardless")
+    # The Mighty hold on Great/Ultra (ballOk): none while a plan spends the bag -- its budget counts them, and a Mighty still
+    # gets any ball. The Razz kept for a Mighty (berryFor: mightyKeep) stays as it is (review 11-16).
+    c["mightyBalls"] = 0 if live else c["mightyKeep"]
+    for k in FLAGS:
+        c[k] = flag(k)
+    c["berries"] = mode = berry_mode()   # what the switch allows; what it leaves out no Mighty and no shiny gets either
+    if mode not in ("on", "pinap"):
+        c["pinap"] = False
+    if mode not in ("on", "razz"):
+        c["razz"] = False
+    c["apples"] = True   # Benny 2026-10-29: "i want anything to always be picked up" -- map items no longer wait on a switch
+    if c.get("abBlockS") and c.get("abKey"):
+        c[c["abKey"]] = c["abArms"][int(time.time() // c["abBlockS"]) % 2]
+    return c
+''', ns)
+real_text = open(REAL, encoding="utf-8").read()
+real = dt.read_table(REAL)
+rd, rbase = real["dust"], real["base"]
+above = {d for d, v in rd.items() if v > rbase}
+prio = set(ns["CFG"]["priority"])
+same = lambda: json.dumps(ns["cfg_now"]()) == json.dumps(ns["cfg_before"]())
+off = []
+for text in (None, "0", "", "junk", "-1", "0.5"):
+    fresh(table=real_text, switch=text)
+    off.append(same())
+check("switch off / missing / junk: the config is byte for byte the old one", off, [True] * 6)
+json.dump(dict(PLAN, end=time.time() + 100 * 60), open(ns["BALLSAVE_FILE"], "w"))
+ns["CFG"]["priority"] = []
+fresh(table=real_text, switch="0")
+c = ns["cfg_now"]()
+check("off with a live plan: its cut, its shiny look, nothing else", (c["skipSp"], c["peek"], "skipWx" in c, same()), ([41], True, False, True))
+bd = tempfile.mkdtemp()
+ns.update(FLAGS={"berries": os.path.join(bd, "b.on")})
+open(ns["FLAGS"]["berries"], "w").write("pinap")
+check("off with a plan and Pinap only: still the old config", same(), True)
+shutil.rmtree(bd)
+ns.update(FLAGS={"berries": NOFILE})
+os.remove(ns["BALLSAVE_FILE"])
+ns["CFG"]["priority"] = sorted(prio)
+check("no table on the phone while the switch is off: nothing changes, no key added", (fresh(switch="0"), same(), sorted(set(ns["cfg_now"]()) - set(ns["cfg_before"]())))[1:], (True, []))
+
+# ---- switch = 1 against the REAL table (Benny: "inclusive of EVERY higher than avg stardust pokemon")
+fresh(table=real_text, switch="1")
+c = ns["cfg_now"]()
+skip = set(c["skipSp"])
+check("the real table: 900+ species, a normal catch is its most common value, hundreds pay more",
+      (len(rd) >= 900, rbase == dt.base_of(rd), len(above) >= 100), (True, True, True))
+check("switch 1: NO species above a normal catch is left alone", sorted(skip & above), [])
+check("switch 1: left alone = exactly the normal-level species (priority ones excepted)", skip == {d for d, v in rd.items() if v <= rbase} - prio, True)
+check("switch 1: left alone + caught = every species in the table", skip | above | (prio & set(rd)) == set(rd), True)
+check("switch 1: a species the table does not know is caught", ([d for d in (902, 2000, 5000) if d in rd], [d for d in (902, 2000, 5000) if d in skip]), ([], []))
+check("switch 1: the shiny look runs with NO plan; every weather-boosted spawn is caught; no keep, the usual Mighty hold",
+      (c["peek"], c["skipWx"], c["reserve"], c["mightyBalls"], ns["plan_live"](time.time())), (True, [], 0, 30, False))
+npk = len([d for d in prio if d in rd and rd[d] <= rbase])
+check("switch 1: the log line names the counts", ns["_DUST"]["note"],
+      f"(every above-normal species, {len(above):,} of {len(rd):,}, and every weather-boosted spawn): leaving {len(skip):,} alone "
+      f"({npk} priority species stay caught); a shiny or a Mighty of any of them is still caught")
+check("switch 1: status key only=1", (ns["dust_only"](), ns["state_extra"](5, {}, {}, 0.2, None, ns["dust_only"]())), (1, "only=1"))
+DUSTJS = {"skip1": sorted(skip), "base": min(skip), "kept": max(above, key=lambda d: (rd[d], -d))}   # for the JS half below
+for n in (500, 700, 1000):
+    fresh(table=real_text, switch=str(n))
+    c = ns["cfg_now"]()
+    skip, swx = set(c["skipSp"]), set(c["skipWx"])
+    kept = {d for d, v in rd.items() if v > rbase and v >= n}
+    lifted = {d for d in skip if 5 * rd[d] >= 4 * n}
+    check(f"switch {n}: the species paying {n}+ are caught, every other one (not priority) is left alone",
+          (sorted(skip & kept), skip | kept | (prio & set(rd)) == set(rd), ns["dust_only"]()), ([], True, n))
+    check(f"switch {n}: left alone even when weather-boosted = the ones x1.25 does not lift to {n}", (swx == skip - lifted, swx <= skip), (True, True))
+
+# ---- a small table, to pin every rule: normal 100; 300 / 500 / 750 / 800 / 950 / 1000 / 1200 / 2100 above it
+TD = {16: 100, 19: 100, 21: 100, 41: 100, 144: 100, 999: 100, 2: 300, 5: 300, 3: 500, 316: 500, 52: 750, 887: 800, 53: 950, 90: 1000, 91: 1200, 531: 2100}
+TD.update({d: 100 for d in range(2001, 2031)})
+TN = {d: f"Mon {d}" for d in TD}
+TN.update({531: "Audino", 91: "Cloyster", 90: "Shellder", 53: "Persian", 887: "Dragapult", 52: "Meowth", 3: "Venusaur", 316: "Gulpin", 2: "Ivysaur", 5: "Charmeleon"})
+T_text = dt.table_text(TD, TN, 7)
+base_sp = {d for d, v in TD.items() if v == 100} - prio
+
+
+def on(n, **kw):
+    fresh(table=T_text, switch=str(n), **kw)
+    c = ns["cfg_now"]()
+    return c, set(c["skipSp"]), set(c.get("skipWx") or [])
+
+
+c, skip, swx = on(1)
+check("at 1: a weather-boosted normal-level species is caught (100 x 1.25 = 125 is above a normal catch)", (16 in skip, 16 in swx, swx), (True, False, set()))
+check("at 1: the normal-level species are left, the priority ones (144, 999) and everything above are not", (skip == base_sp, {144, 999, 2, 531} & skip), (True, set()))
+c, skip, swx = on(500)
+check("at 500: a weather-boosted 300 is NOT caught (375 < 500), boosted or not", (2 in skip, 2 in swx, 5 in swx, swx == skip), (True, True, True, True))
+check("at 500: 500+ caught, 300s left", ({3, 316, 52, 531} & skip, {2, 5} <= skip), (set(), True))
+check("at 500: the log line says no boost reaches it", ns["_DUST"]["note"],
+      f"500+ (8 of {len(TD)} species, no weather boost reaches 500): leaving {len(skip)} alone (2 priority species stay caught); a shiny or a Mighty of any of them is still caught")
+c, skip, swx = on(700)
+check("at 700: 750+ caught, 500s left even when boosted (625 < 700)", ({52, 887, 53, 90} & skip, {3, 316} <= swx), (set(), True))
+c, skip, swx = on(1000)
+check("at 1000: a weather-boosted 800 IS caught (800 x 1.25 = 1,000), and a boosted 950; a boosted 750 is not (937)",
+      (887 in skip, 887 in swx, 53 in skip, 53 in swx, 52 in swx), (True, False, True, False, True))
+check("at 1000: the log line counts them", ns["_DUST"]["note"],
+      f"1000+ (3 of {len(TD)} species, 2 more when weather-boosted): leaving {len(skip)} alone (2 priority species stay caught); a shiny or a Mighty of any of them is still caught")
+c, skip, swx = on(5000)
+check("any whole number: at 5000 nothing pays that much -- all left but priority; a shiny / Mighty still caught by the look",
+      (skip == set(TD) - prio, c["peek"], ns["dust_only"]()), (True, True, 5000))
+c, skip, swx = on(100)
+check("at 100: 'above a normal catch' still holds -- a normal-level species is not caught just because it pays 100", skip == base_sp, True)
+
+# ---- the shiny look not trusted: NOTHING is left alone ("+ shinies" comes first), and it is said
+for look, text in (("lost", "this game version's shiny field is not found"), ("suspended", "its shiny check was switched off for this run"),
+                   ("unchecked", "this attach's shiny check has not run yet")):
+    c, skip, swx = on(1, look=look)
+    check(f"shiny look {look}: everything is caught, the config is the old one, no status key",
+          (c["skipSp"], "skipWx" in c, same(), ns["dust_only"](), ns["_DUST"]["state"]), ([], False, True, 0, "nolook"))
+    check(f"shiny look {look}: the app is told why", ns["dust_why"]("", [], True),
+          f"stardust only is switched on but NOT applied: the catcher cannot see shinies ({text}), so it catches everything")
+c, skip, swx = on(700, look="suspended")
+check("shiny look suspended at 700: the same, with the level named", (c["skipSp"], ns["_DUST"]["note"]),
+      ([], "700+ NOT applied: the shiny read was distrusted in this run (SHINY LOOK suspended) -- a shiny of a left-alone species could not be seen, so every species is caught"))
+# ---- the weather read not trusted where it would decide: nothing is left alone either (never "skip and hope")
+for wxs, text in (("nofield", "it cannot read the weather boost in this game version"),
+                  ("proving", "it is still proving its weather-boost read on live catches: 3 of 12 boosted, 12 of 12 normal"),
+                  ("wrong", "its weather-boost read did not match what the server paid")):
+    c, skip, swx = on(1, wx=wxs)
+    check(f"weather read {wxs} at 1: everything is caught, the config is the old one, no status key",
+          (c["skipSp"], "skipWx" in c, same(), ns["dust_only"](), ns["_DUST"]["state"]), ([], False, True, 0, "nowx"))
+    check(f"weather read {wxs}: the app is told why", ns["dust_why"]("out of balls: 5 Poke, 5 Great, 5 Ultra left", [], True),
+          f"out of balls: 5 Poke, 5 Great, 5 Ultra left; stardust only is switched on but NOT applied yet: {text} -- until then it catches everything")
+c, skip, swx = on(1000, wx="proving")
+check("weather read unproven at 1000 (a boost would decide for the 800s): everything is caught", (c["skipSp"], ns["_DUST"]["state"]), ([], "nowx"))
+c, skip, swx = on(500, wx="nofield")
+check("weather read missing at 500, where no boost can decide anything: the mode runs", (ns["_DUST"]["state"], 2 in skip, swx == skip), ("on", True, True))
+# ---- no table / a broken table: the mode stays off and says so (never a blind skip)
+fresh(switch="1")
+c = ns["cfg_now"]()
+check("no table: everything is caught, the config is the old one", (c["skipSp"], same(), ns["dust_only"](), ns["_DUST"]["state"]), ([], True, 0, "notable"))
+check("no table: the app is told", ns["dust_why"]("", [], True),
+      "stardust only is switched on but NOT applied: the catcher has no species table on the phone, so it catches everything")
+lines = []
+ns["dust_log"](lines.append)
+check("no table: one DUST TABLE line, one DUST ONLY line", (len(lines), lines[0][:35], lines[1][:43]),
+      (2, "DUST TABLE: no species table at " + tb[:3], "DUST ONLY NOT applied: no species table at "))
+for bad in ("{not json", '{"dust": []}', '{"dust": [[1, "A", 0]]}', '{"dust": [["x", "A", 100]]}', '[1, 2]'):
+    fresh(table=bad, switch="1")
+    c = ns["cfg_now"]()
+    off.append((c["skipSp"], ns["_DUST"]["state"], "does not read" in ns["_DUST"]["twhy"]))
+check("a table that is not one (5 kinds): everything is caught", off[-5:], [([], "notable", True)] * 5)
+# ---- the table is re-read when it changes (about once a minute): no restart
+fresh(table=T_text, switch="1")
+ns["dust_skip"](1000.0)
+n_su = len(su_calls)
+lines = []
+ns["dust_log"](lines.append)
+check("table loaded: one DUST TABLE line + the mode's line", lines,
+      [f"DUST TABLE batch 7: {len(TD)} species, 10 pay more than a normal catch (100)",
+       f"DUST ONLY (every above-normal species, 10 of {len(TD)}, and every weather-boosted spawn): leaving {len(base_sp)} alone "
+       f"(2 priority species stay caught); a shiny or a Mighty of any of them is still caught"])
+open(tb, "w", encoding="utf-8", newline="\n").write(dt.table_text({**TD, 16: 300, 3000: 100}, {**TN, 3000: "Newmon"}, 8))
+os.utime(tb, (time.time() + 50, time.time() + 50))
+check("a changed table inside the same minute: not looked at yet", 16 in ns["dust_skip"](1030.0), True)
+check("a minute later: re-read, the raised species is caught", (16 in ns["dust_skip"](1061.0), 3000 in ns["dust_skip"](1061.0)), (False, True))
+lines = []
+ns["dust_log"](lines.append)
+check("the re-read says what changed, and the mode's line follows", lines,
+      [f"DUST TABLE batch 8: {len(TD) + 1} species, 11 pay more than a normal catch (100); re-read: 2 raised or new: Mon 16 100 -> 300, Newmon new -> 100",
+       f"DUST ONLY (every above-normal species, 11 of {len(TD) + 1}, and every weather-boosted spawn): leaving {len(base_sp)} alone "
+       f"(2 priority species stay caught); a shiny or a Mighty of any of them is still caught"])
+check("each load wrote the app's levels file again", len(su_calls) - n_su, 1)
+# ---- the app's levels file (it reads exactly this)
+fresh(table=T_text, switch="0")
+if os.path.exists(lv):
+    os.remove(lv)
+n_su = len(su_calls)
+ns["cfg_now"]()
+check("levels file: written at the table load, switch on or off", open(lv, encoding="utf-8").read(),
+      f"base=100 species={len(TD)} batch=7\n"
+      "1 10 Audino, Cloyster, Shellder, Persian, Dragapult, Meowth, Venusaur, Gulpin, Ivysaur, Charmeleon\n"
+      "500 8 Audino, Cloyster, Shellder, Persian, Dragapult, Meowth, Venusaur, Gulpin\n"
+      "700 6 Audino, Cloyster, Shellder, Persian, Dragapult, Meowth\n"
+      "1000 3 Audino, Cloyster, Shellder\n")
+check("levels file: root copies it in and renames it (Termux cannot create a file there); the temp copy is gone",
+      (len(su_calls) - n_su, bool(re.match(r"cp \S+ \S+\.new && chmod 644 \S+\.new && mv -f \S+\.new \S+; rm -f \S+$", su_calls[-1])),
+       os.path.exists(os.path.join(dd, "dust_levels.tmp"))), (1, True, False))
+fresh(table=T_text, switch="0")
+n_su = len(su_calls)
+ns["cfg_now"]()
+check("levels file: already says the same -> no root call", len(su_calls) - n_su, 0)
+big = {d: (300 if d <= 30 else 100) for d in range(1, 101)}
+lt = ns["dust_levels_text"]({"dust": big, "names": {d: f"N{d}" for d in big}, "base": 100, "batch": 9})
+check("levels file: names only while a level has 25 or fewer; an empty level is just its count", lt, "base=100 species=100 batch=9\n1 30\n500 0\n700 0\n1000 0\n")
+rl = ns["dust_levels_text"]({"dust": rd, "names": real["names"], "base": rbase, "batch": real["batch"]}).splitlines()
+top = sorted((d for d in rd if rd[d] > rbase and rd[d] >= 1000), key=lambda d: (-rd[d], d))
+check("levels file, real table: 5 lines, the level-1 count is every above-normal species, names highest stardust first",
+      (len(rl), rl[0], rl[1].split()[:2], rl[4]),
+      (5, f"base={rbase} species={len(rd)} batch={real['batch']}", ["1", str(len(above))],
+       f"1000 {len(top)}" + (" " + ", ".join(real["names"][d] for d in top) if 0 < len(top) <= 25 else "")))
+# ---- with a ball-saver plan running too: what either one leaves alone; the plan's species stay left even when boosted
+json.dump(dict(PLAN, end=time.time() + 100 * 60, species={"531": [2500, 4.0], "316": [1300, 2.0], "3": [380, 12.0], "16": [150, 8.0]}), open(ns["BALLSAVE_FILE"], "w"))
+ns["BALLS"]["usable"] = 300
+c, skip, swx = on(1)
+check("plan + switch 1: the plan's cut (3, 16, 316) and the normal-level species, together", (ns["ballsave_now"](), skip == base_sp | {3, 316}), ([3, 16, 316], True))
+check("plan + switch 1: a boosted normal-level one is caught unless the PLAN left its species (the plan is a ball budget)",
+      (swx, 19 in swx, c["peek"], c["mightyBalls"]), ({3, 16, 316}, False, True, 0))
+check("plan + switch 1: the plan's own note is not touched", " leaving 3 of 4 species alone" in ns["_BS"]["note"], True)
+os.remove(ns["BALLSAVE_FILE"])
+ns["ballsave_now"]()
+ns["BALLS"]["usable"] = 1700
+# ---- the log: one line per change, silent on days the switch is never used
+fresh(table=T_text, switch="0")
+lines = []
+ns["cfg_now"]()
+ns["dust_log"](lines.append)
+check("switch never on: only the table's own line", [ln[:19] for ln in lines], ["DUST TABLE batch 7:"])
+for text in ("1", "1", "700", "0", "0"):
+    open(sw, "w").write(text)
+    ns["cfg_now"]()
+    ns["dust_log"](lines.append)
+check("on -> one line; unchanged -> none; another level -> one; off -> one; then silent", [ln[:28] for ln in lines[1:]],
+      ["DUST ONLY (every above-norma", "DUST ONLY 700+ (6 of 46 spec", "DUST ONLY off: every species"])
+# ---- the app's why line and status key
+H = lambda rows: [(1000.0 - ago, f, o, t, c, h) for ago, f, o, t, c, h in rows]
+quiet = H([(60, 100, 3, 3, 3, 6), (30, 900, 9, 3, 3, 12), (0, 1800, 15, 3, 3, 18)])     # looks opened, nothing thrown, nothing caught
+busy = H([(60, 100, 3, 3, 3, 6), (30, 900, 9, 4, 4, 12), (0, 1800, 15, 5, 5, 18)])
+on(1)
+W1 = "no Pokemon worth a ball in range (stardust only: 10 of 46 species, and every weather-boosted spawn; a shiny of the others is still caught)"
+dw = ns["dust_why"]
+check("why: applied and nothing thrown for a minute = the mode at work", dw("", quiet, True), W1)
+check("why: a catch in the last minute -> nothing to say", dw("", busy, True), "")
+check("why: 'no Pokemon in range' becomes the mode's line (they are there, just not worth a ball)", dw("no Pokemon in range right now", quiet, True), W1)
+check("why: a spin note stays behind it, a Star Piece note in front",
+      (dw("spins are being refused by the server (6 in a row, retrying every 30 s)", quiet, True),
+       dw("the Star Piece ran out at 20:45:57: catches pay a third less stardust; no Pokemon in range right now", quiet, True)),
+      (W1 + "; spins are being refused by the server (6 in a row, retrying every 30 s)",
+       "the Star Piece ran out at 20:45:57: catches pay a third less stardust; " + W1))
+real_trouble = ["the game is not answering: 9 encounters opened, 0 answered in the last minute", "out of balls: 5 Poke, 5 Great, 5 Ultra left (it saves the last 5/5/5 for you)",
+                "paused: Pokemon GO is not showing its map (40 s) -- it only catches while the map is on screen", "Pokemon storage is full",
+                "no Pokemon worth a ball in range (saving balls: leaving 3 of 4 species alone)"]
+check("why: a real problem is never replaced", [dw(x, quiet, True) for x in real_trouble], real_trouble)
+check("why: catch switched off, or too little history -> nothing", (dw("", quiet, False), dw("", quiet[:2], True)), ("", ""))
+on(700)
+check("why at a level names it", dw("", quiet, True),
+      "no Pokemon worth a ball in range (stardust only 700+: 6 of 46 species, no weather boost reaches 700; a shiny of the others is still caught)")
+fresh(table=T_text, switch="0")
+ns["cfg_now"]()
+check("why: switch off -> untouched", (dw("", quiet, True), dw("no Pokemon in range right now", quiet, True), ns["dust_only"]()), ("", "no Pokemon in range right now", 0))
+sx = ns["state_extra"]
+check("status key: only=N comes last (after sp=, before why=); absent when the mode is not applied",
+      (sx(109, {"dust": 74725}, {"1": 2280, "2": 6, "3": 6, "705": 202, "701": 10}, 474.2, True, 700),
+       sx(109, {"dust": 74725}, {"1": 2280, "2": 6, "3": 6, "705": 202, "701": 10}, 474.2, True, 0)),
+      ("rate=13.8 up=474 dust=74725 balls=2280/6/6 pinap=202 razz=10 sp=1 only=700", "rate=13.8 up=474 dust=74725 balls=2280/6/6 pinap=202 razz=10 sp=1"))
+# out of balls with the mode applied: the JS keeps looking (PEEKONLY), so a shiny still gets one -- said only then
+on(1)
+bw = lambda it: ns["balls_why"](it, {"hold": 0, "holdWhy": ""})
+check("out of balls, mode applied: a shiny still gets one", bw({"1": 5, "2": 5, "3": 5}),
+      "out of balls: 5 Poke, 5 Great, 5 Ultra left (it saves the last 5/5/5 for you) -- a shiny still gets one")
+check("out of balls, not one ball left: no promise", bw({"1": 0, "2": 0, "3": 0}), "out of balls: 0 Poke, 0 Great, 0 Ultra left (it saves the last 5/5/5 for you)")
+on(1, look="lost")
+check("out of balls, mode not applied: as before", bw({"1": 5, "2": 5, "3": 5}), "out of balls: 5 Poke, 5 Great, 5 Ultra left (it saves the last 5/5/5 for you)")
+fresh(table=T_text, switch="0")
+ns["cfg_now"]()
+check("out of balls, mode off: as before", bw({"1": 5, "2": 5, "3": 5}), "out of balls: 5 Poke, 5 Great, 5 Ultra left (it saves the last 5/5/5 for you)")
+check("mode off, no plan: the Mighty line as before", ns["balls_why"]({"1": 3, "2": 40, "3": 40}, {"hold": 0, "holdWhy": "", "mightyOn": True})[:17], "out of Poke Balls")
+# a Star Piece that ran out matters in this mode too (it is a stardust mode)
+ns["SP"].update(on=True, off=True, since="20:45:57")
+on(1)
+check("Star Piece ran out while the switch is on: it leads the why", ns["starpiece_why"]("", time.time()),
+      "the Star Piece ran out at 20:45:57: catches pay a third less stardust")
+fresh(table=T_text, switch="0")
+ns["cfg_now"]()
+check("...and says nothing when the switch is off and no plan runs", ns["starpiece_why"]("", time.time()), "")
+ns["SP"].update(on=False, off=False, since=None, bare=0)
+
+# ---- WEATHER BOOST read: the track record on catches made anyway, before the flag may decide anything
+wj = ns["wx_judge"]
+check("weather: boosted paid the step (275 / 225), unboosted did not -> all agree", wj([(225, False)] * 12 + [(275, True)] * 4), (4, 12, 0))
+check("weather: no event (150 / 125), a Star Piece minute (412 / 337, 224 / 187)", (wj([(125, False)] * 3 + [(150, True)] * 2), wj([(337, False), (412, True)]),
+                                                                              wj([(187, False), (224, True)])), ((2, 3, 0), (1, 1, 0), (1, 1, 0)))
+check("weather: an unflagged catch that paid the boost, a flagged one that paid normal -> against the flag", wj([(225, False)] * 5 + [(275, False), (275, True), (275, True), (225, True)]), (2, 5, 2))
+check("weather: the flag upside down -> every catch against it", wj([(275, False)] * 5 + [(225, True)] * 4), (0, 0, 9))
+check("weather: flagged and unflagged paid the same -> the flag says nothing", wj([(225, False)] * 5 + [(225, True)] * 4), (0, 0, 4))
+check("weather: a flag that never sets while two pay levels show -> the higher ones are against it", wj([(225, False)] * 10 + [(275, False)] * 3), (0, 0, 3))
+check("weather: a flag that always sets while two pay levels show -> the lower ones are against it", wj([(225, True)] * 10 + [(275, True)] * 3), (0, 0, 10))
+check("weather: one kind, one pay level -> nothing proven, nothing against", (wj([(225, False)] * 9), wj([(275, True)] * 9), wj([(225, False)]), wj([])), ((0, 0, 0),) * 4)
+check("weather: another catch's award swapped in (2025) or a first-catch bonus (2025 / 9125) is not judged", wj([(225, False)] * 6 + [(275, True)] * 3 + [(2025, False), (9125, True)]), (3, 6, 0))
+fresh(table=T_text, switch="1", wx="none")
+ns["dust_skip"](1000.0)
+said = []
+feed = lambda t, dex, award, wxf, tag="": ns["wx_seen"](f"CATCH Wild #{dex} ball=1 p=0.50 att=1 berry=0 0.6s{tag} dust={award} candy=3" + ("" if wxf is None else f" wx={wxf}"), t)
+ns["wx_tick"](6000.0, said.append)
+check("weather: at the start it says it is being proven, and decides nothing", (len(said), said[0][:42], ns["wx_verdict"](), ns["_DUST"]["state"]),
+      (1, "WEATHER BOOST read being proven on the cat", "proving", "nowx"))
+for i in range(6):
+    feed(6000 + i, 16, 225, 0)
+for i in range(3):
+    feed(6010 + i, 19, 275, 3)
+feed(6020, 52, 1525, 0)                 # not a normal-level species
+feed(6021, 16, 225, 0, " [mighty]")     # a Mighty: its own pay
+feed(6022, 16, 275, None)               # no flag read on that line
+feed(6023, 16, 50, 0)                   # not a catch award
+ns["wx_tick"](6030.0, said.append)
+check("weather: nothing is judged before its minute ends", (ns["WX"]["b"], ns["WX"]["u"]), (0, 0))
+ns["wx_tick"](6061.0, said.append)
+check("weather: the minute's normal-level catches judged (other species, Mighty, flagless lines left out)", (ns["WX"]["b"], ns["WX"]["u"], ns["WX"]["bad"], len(said)), (3, 6, 0, 1))
+for mnt in range(102, 105):
+    for i in range(6):
+        feed(mnt * 60 + i, 21, 337, 0)
+    for i in range(3):
+        feed(mnt * 60 + 10 + i, 41, 412, 5)
+ns["wx_tick"](105 * 60 + 1.0, said.append)
+check("weather: 12 boosted + 12 unboosted that agree = PROVEN, said once", (ns["WX"]["b"], ns["WX"]["u"], ns["wx_verdict"](), len(said), said[-1]),
+      (12, 24, "proven", 2, "WEATHER BOOST read PROVEN for 0.435.2 offsets 56/216/32: 12 boosted catches paid the +25% and 24 unboosted ones did not (0 of 36 paid against their flag)"))
+check("weather: once proven the mode applies", (ns["cfg_now"]()["skipWx"], ns["_DUST"]["state"], ns["dust_only"]()), ([], "on", 1))
+rec = json.load(open(ns["WX_PROOF"]))
+check("weather: the record is kept in a file, per game version + offsets", (rec["key"], rec["b"], rec["u"], rec["bad"], rec["verdict"]),
+      ("0.435.2 offsets 56/216/32", 12, 24, 0, "proven"))
+ns["wx_load"]("0.435.2 offsets 56/216/32", True)
+check("weather: a re-attach on the same game version keeps the proof", (ns["WX"]["b"], ns["WX"]["u"], ns["wx_verdict"]()), (12, 24, "proven"))
+ns["wx_load"]("0.437.0 offsets 56/216/36", True)
+check("weather: a game update (another version / offset) starts from nothing", (ns["WX"]["b"], ns["WX"]["u"], ns["wx_verdict"]()), (0, 0, "proving"))
+ns["wx_load"]("0.437.0 offsets 56/216/None", False)
+said = []
+ns["wx_tick"](7000.0, said.append)
+check("weather: field not found at attach -> said, decides nothing", (ns["wx_verdict"](), said[0][:60]), ("nofield", "WEATHER BOOST read off: PokemonDisplayProto.WeatherBoostedCo"))
+ns["WX"].update(found=True, b=12, u=12, bad=2)
+v1 = ns["wx_verdict"]()
+ns["WX"].update(bad=1)
+v2 = ns["wx_verdict"]()
+ns["WX"].update(b=30, u=30, bad=25)
+check("weather: proven needs at most 1 in 20 against the flag; 10+ and over a quarter against = WRONG", (v1, v2, ns["wx_verdict"]()), ("proving", "proven", "wrong"))
+asked = []
+ns["su"] = lambda cmd, timeout=10: asked.append(cmd) or "    versionName=0.435.2-G\n"
+gv = ns["game_version"]
+check("weather: the game's version name is asked once per game process; a process whose pid is not known, every attach",
+      (gv(4711), gv(4711), len(asked), gv(4712), len(asked), "dumpsys package" in asked[0], gv(None), gv(None), len(asked)),
+      ("0.435.2-G", "0.435.2-G", 1, "0.435.2-G", 2, True, "0.435.2-G", "0.435.2-G", 4))
+ns["su"] = lambda cmd, timeout=10: ""
+check("weather: no answer from the package manager -> '?' (a key of its own, never another version's proof)", gv(4713), "?")
+ns["su"] = fake_su
+fresh(table=T_text, switch="1")
+ns["dust_skip"](1000.0)
+bn = ns["dust_boost_note"]
+check("a catch made for the boost alone says what it pays (table x 1.25); one whose flag did not read says that",
+      (bn("CATCH Wild #16 ball=2 p=0.60 att=1 berry=0 0.6s [boosted] dust=150 candy=3 wx=3"), bn("CATCH Wild #887 ball=2 p=0.60 att=1 berry=0 0.6s [boosted] dust=1275 candy=3 wx=1").split(" -- ")[-1],
+       bn("CATCH Incense #16 ball=1 p=0.40 att=2 berry=705 1.1s [boost?] dust=225 candy=6").split(" -- ")[-1],
+       bn("CATCH Wild #16 ball=2 p=0.60 att=1 berry=0 0.6s dust=150 candy=3 wx=3"), bn("FLED Wild #16 ball=2 p=0.60 att=1 berry=0 0.6s [boosted]")),
+      ("CATCH Wild #16 ball=2 p=0.60 att=1 berry=0 0.6s [boosted] dust=150 candy=3 wx=3 -- weather-boosted, pays 125", "weather-boosted, pays 1000", "its weather flag did not read: caught, not skipped on a guess",
+       "CATCH Wild #16 ball=2 p=0.60 att=1 berry=0 0.6s dust=150 candy=3 wx=3", "FLED Wild #16 ball=2 p=0.60 att=1 berry=0 0.6s [boosted]"))
+check("the catcher's lines keep the shapes their readers use (star piece, ball-saver plan, tripwires)",
+      (bool(re.search(r"(?:^|\s)CATCH \S+ #\d+ .*?dust=(\d+)", bn("CATCH Wild #16 ball=2 p=0.60 att=1 berry=0 0.6s [boosted] dust=150 candy=3 wx=3"))),
+       "(e.wx >= 0 ? ' wx=' + e.wx : '')" in src, "w(dust_boost_note(line))" in src, "wx_seen(line, time.time())" in src, "wx_tick(time.time(), w)" in src, "dust_log(w)" in src),
+      (True, True, True, True, True, True))
+check("this attach's shiny check gates the mode; the table is loaded at the start, PoGo open or not",
+      (bool(re.search(r'\n    SHINYFIELD\["checked"\] = False[^\n]*\n    t_att = time\.time\(\)\n    sess, _ = pg\.get_session\(\)', src)),
+       bool(re.search(r'catcher start \(rebuilt\)[^\n]*\n    dust_table\(time\.time\(\)\)[^\n]*\n    dust_news\(w\)', src))), (True, True))
+shutil.rmtree(dd, ignore_errors=True)
 
 # ---- JS (node): applyCfg + ballsave()
 i = src.index('JS = r"""') + 9
@@ -385,7 +841,7 @@ const ent = (pid) => ({pid: pid, cls: 'WildMapPokemon', st: 'new', seen: NOW, at
 api.set('E', {s1: ent(10), s2: ent(10), k1: ent(774)}); api.set('NE', 3); api.set('PEND', ['s1', 's2', 'k1']); api.set('LIVE', {s1: {}, s2: {}, k1: {}});
 api.call('catchTick', NOW);
 res.open = [opened.slice(), api.get('E.s1.peek'), api.get('E.s2.peek'), api.get('E.k1.peek')];
-api.set('RESP', {s1: {st: 1, p: {1: 0.5, 2: 0.6, 3: 0.7}, t: NOW + 500, strong: 0, shiny: 0},
+api.set('RESP', {s1: {st: 1, p: {1: 0.5, 2: 0.6, 3: 0.7}, t: NOW + 500, strong: 0, shiny: 0, wx: 0},
                  s2: {st: 1, p: {1: 0.2, 2: 0.3, 3: 0.4}, t: NOW + 500, strong: 0, shiny: 1},
                  k1: {st: 1, p: {1: 0.3, 2: 0.4, 3: 0.5}, t: NOW + 500, strong: 0, shiny: 0}});
 api.set('ITEMC', {1: 40, 2: 5, 3: 5}); api.call('applyCfg', {floors: {'1': 40, '2': 5, '3': 5}});   // at the reserve: no ordinary ball
@@ -542,6 +998,122 @@ api.set('ITEMC', {1: 0, 2: 20, 3: 20, 701: 20});
 res.mightyHold = [api.call('ballOk', 2), api.call('berryFor', {probs: {2: 0.3}, prio: false, mighty: 0, shiny: 0})];
 api.call('applyCfg', {mightyBalls: 30});
 res.mightyHold.push(api.call('ballOk', 2));
+// ---- STARDUST ONLY (Benny 11-18: "only catches high stardust pokemon (+ shinies)"; "yes include weather boosted too").
+// The left-alone list is the REAL table's at switch 1 (every normal-level species); each spawn of one is opened for a look.
+const dust = JSON.parse(fs.readFileSync(process.argv[4], 'utf8')), B = dust.base, K = dust.kept;
+const dmk = (extra) => { const a = mk();
+  a.call('applyCfg', Object.assign({catch: true, skipSp: dust.skip1, skipWx: [], peek: true, floors: {'1': 5, '2': 5, '3': 5}, openMs: 0, maxOpen: 12,
+                                    readyMs: 150, nearWait: 0}, extra || {}));
+  a.set('walk', () => {}); a.set('ITEMC', {1: 100, 2: 50, 3: 50}); return a; };
+const stubs = (a, op, th) => { a.set('openOne', (enc, e, o, now) => { op.push(enc); e.st = 'open'; e.tOpen = now; e.opens++; });
+  a.set('throwAt', (e, enc, o, now) => { th.push(enc); e.st = 'thrown'; e.ball = 1; e.att++; e.tThrow = now; }); };
+const queue = (a, ents) => { const live = {}; Object.keys(ents).forEach(k => { live[k] = {}; });
+  a.set('E', ents); a.set('NE', Object.keys(ents).length); a.set('PEND', Object.keys(ents)); a.set('LIVE', live); };
+const rp = (o) => Object.assign({st: 1, p: {1: 0.5, 2: 0.6, 3: 0.7}, t: NOW + 500, strong: 0, shiny: 0}, o);
+const lk = (pid) => Object.assign(ent(pid), {st: 'open', tOpen: NOW, opens: 1, peek: 1});
+api = dmk();
+res.dustCfg = [Object.keys(api.get('CFG.skipSp')).length === dust.skip1.length, JSON.stringify(api.get('CFG.skipWx')), api.get('CFG.peek'),
+               api.get('CFG.skipSp')[B], api.get('CFG.skipSp')[K] || 0];
+const dop = [], dth = [];
+stubs(api, dop, dth);
+queue(api, {b1: ent(B), b2: ent(B), b3: ent(B), b4: ent(B), k1: ent(K), b6: ent(B)});
+api.call('catchTick', NOW);
+res.dustOpen = [dop.slice(), ['b1', 'b2', 'b3', 'b4', 'k1', 'b6'].map(k => api.get('E.' + k + '.peek'))];
+// the replies: plain, weather-boosted, shiny, Mighty, a kept species, and one whose weather flag did not read
+api.set('RESP', {b1: rp({wx: 0}), b2: rp({wx: 3}), b3: rp({wx: 0, shiny: 1}), b4: rp({wx: 0, strong: 1}), k1: rp({wx: 0}), b6: rp({wx: -1})});
+api.call('catchTick', NOW + 600);
+res.dustReply = [api.get('E.b1') === undefined, api.get('PEEKED.b1'), api.get('OUT.led').map(r => [r.e, r.r, r.pk, r.wx]),
+                 api.get('E.b2.wxc'), api.get('E.b2.peek'), api.get('E.b3.shiny'), api.get('E.b3.peek'), api.get('E.b4.mighty'), api.get('E.b6.wxc'), api.get('E.k1.wx'),
+                 api.get('OUT.log').filter(l => l.indexOf('SHINY Wild #' + B + ' ') === 0 && l.indexOf(' -- of a species being left alone, caught anyway') > 0).length];
+api.call('catchTick', NOW + 1000);
+res.dustThrown = dth.slice();
+api.set('RES', {b2: {st: 1, dust: 275, candy: 3, xp: 100, t: NOW + 1500}, k1: {st: 1, dust: 4225, candy: 3, xp: 100, t: NOW + 1500},
+                b6: {st: 1, dust: 225, candy: 3, xp: 100, t: NOW + 1500}});
+api.call('catchTick', NOW + 1600);
+res.dustCatch = api.get('OUT.log').filter(l => l.indexOf('CATCH ') === 0);
+res.dustLed = api.get('OUT.led').filter(r => r.r === 'caught').map(r => [r.e, r.pk, r.wx, r.d]);
+// at a level: the species x1.25 does not lift to it stay left even when boosted (CFG.skipWx), and are marked; the level is
+// lowered -> that spawn is looked at again, a plainly left one is not
+api = dmk({skipWx: [B]});
+const op7 = [], th7 = []; stubs(api, op7, th7);
+queue(api, {x1: lk(B), y1: lk(B)}); api.set('PEND', []);
+api.set('RESP', {x1: rp({wx: 3}), y1: rp({wx: 0})});
+api.call('catchTick', NOW + 600);
+res.dustLevel = [api.get('E.x1') === undefined, api.get('PEEKED.x1'), api.get('PEEKED.y1'), api.call('lookedAt', 'x1', B), api.call('lookedAt', 'y1', B)];
+api.call('applyCfg', {skipSp: dust.skip1, skipWx: []});
+res.dustLevel.push(api.call('lookedAt', 'x1', B), api.call('lookedAt', 'y1', B));
+queue(api, {x1: ent(B), y1: ent(B)});
+api.call('catchTick', NOW + 30000);
+res.dustLevel.push(op7.slice(), api.get('E.y1') === undefined);
+// a species the boost DOES lift over the level (L): boosted -> caught; not boosted -> left; a boosted lower one -> left
+const L = 5001;
+api = dmk({skipSp: [B, L], skipWx: [B]});
+const opA = [], thA = []; stubs(api, opA, thA);
+queue(api, {l1: lk(L), l2: lk(L), l3: lk(B)}); api.set('PEND', []);
+api.set('RESP', {l1: rp({wx: 2}), l2: rp({wx: 0}), l3: rp({wx: 2})});
+api.call('catchTick', NOW + 600);
+res.dust1000 = [api.get('E.l1.wxc'), api.get('E.l1.peek'), api.get('E.l2') === undefined, api.get('PEEKED.l2'), api.get('E.l3') === undefined, api.get('PEEKED.l3')];
+// no ball to spend (every ball at its floor): a boosted one is left too, and comes back when the balls do
+api = dmk({floors: {'1': 100, '2': 50, '3': 50}});
+const op8 = [], th8 = []; stubs(api, op8, th8);
+queue(api, {p1: lk(B)}); api.set('PEND', []);
+api.set('RESP', {p1: rp({wx: 3})});
+api.call('catchTick', NOW + 600);
+res.dustNoBall = [api.get('PEEKONLY'), api.get('E.p1') === undefined, api.get('PEEKED.p1'), th8.length];
+api.set('ITEMC', {1: 300, 2: 50, 3: 50});
+queue(api, {p1: ent(B)});
+api.call('catchTick', NOW + 30000);
+res.dustNoBall.push(api.get('PEEKONLY'), op8.slice());
+// a ball-saver plan alone sends no weather list: a boosted spawn of a species it leaves is left, exactly as before
+api = mk();
+api.call('applyCfg', {catch: true, skipSp: [B], peek: true, floors: {'1': 5, '2': 5, '3': 5}, openMs: 0, maxOpen: 6, readyMs: 150, nearWait: 0});
+api.set('walk', () => {}); api.set('ITEMC', {1: 100, 2: 50, 3: 50});
+const op9 = [], th9 = []; stubs(api, op9, th9);
+queue(api, {q1: lk(B)}); api.set('PEND', []);
+api.set('RESP', {q1: rp({wx: 3})});
+api.call('catchTick', NOW + 600);
+res.dustPlanOnly = [api.get('CFG.skipWx'), api.get('E.q1') === undefined, api.get('PEEKED.q1'), api.call('lookedAt', 'q1', B)];
+api.call('applyCfg', {skipSp: [B], skipWx: []}); res.dustPlanOnly.push(JSON.stringify(api.get('CFG.skipWx')), api.call('lookedAt', 'q1', B));
+api.call('applyCfg', {skipSp: [B]}); res.dustPlanOnly.push(api.get('CFG.skipWx'), api.call('lookedAt', 'q1', B));
+// walk(): 46 s of nothing but left-alone spawns keeps the map "alive" (no 45 s REFRESH), each spawn counted once; the
+// mode switched off -> the spawn is caught once its 20 s have passed
+api = mk(); walkSetup(api);
+api.call('applyCfg', {catch: true, skipSp: dust.skip1, skipWx: [], peek: true});
+api.set('COLL', [{enc: 'r1', pid: B}]); api.set('PEEKED', {r1: 1}); api.set('LASTVIS', 0);
+[0, 10000, 30000, 46000].forEach(ms => api.call('walk', NOW + ms));
+res.dustWalk = [api.get('LASTVIS') - NOW, Object.keys(api.get('E')).length, api.get('ST.skip.ballsave'), api.get('OUT.led').length];
+api.call('applyCfg', {skipSp: []});
+api.call('walk', NOW + 47000); res.dustWalk.push(Object.keys(api.get('E')).length);
+api.call('walk', NOW + 51000); res.dustWalk.push(Object.keys(api.get('E')));
+// walk(): never looked at -> tracked for its look; left for its boost under another level -> tracked again; plainly left -> left
+api = mk(); walkSetup(api);
+api.call('applyCfg', {catch: true, skipSp: dust.skip1, skipWx: [], peek: true});
+api.set('COLL', [{enc: 'w2', pid: B}, {enc: 'w1', pid: B}, {enc: 'w0', pid: B}]); api.set('PEEKED', {w2: 2, w1: 1});
+api.call('walk', NOW);
+res.dustWalk2 = [Object.keys(api.get('E')).sort(), api.get('ST.skip.ballsave')];
+// the weather flag itself: PokemonProto -> display -> WeatherBoostedCondition (the object the shiny byte is read from)
+api = mk();
+api.set('OFF.pkDisp', 0x30); api.set('OFF.dWx', 0x20);
+const dispW = (v) => ({isNull: () => false, add: (o) => ({readS32: () => (o === 0x20 ? v : 77)})});
+const pkW = (v) => ({isNull: () => false, add: (o) => ({readPointer: () => (o === 0x30 ? dispW(v) : NUL)})});
+res.wxOf = [api.call('wxOf', pkW(3)), api.call('wxOf', pkW(0)), api.call('wxOf', pkW(99)), api.call('wxOf', pkW(-1)), api.call('wxOf', NUL), api.call('wxOf', null)];
+api.set('OFF.dWx', -1); res.wxOf.push(api.call('wxOf', pkW(3)));
+api.set('OFF.dWx', 0x20); api.set('OFF.pkDisp', -1); res.wxOf.push(api.call('wxOf', pkW(3)));
+api.set('OFF.pkDisp', 0x30); res.wxOf.push(api.call('wxOf', {isNull: () => false, add: () => ({readPointer: () => NUL})}));
+api = mk();
+api.set('OFF.wPk', 0x20); api.set('OFF.pkDisp', 0x30); api.set('OFF.dShiny', 0x40); api.set('OFF.dWx', 0x44); api.set('OFF.pkId', 0x50);
+api.set('readProbs', () => ({1: 0.5})); api.set('strongOf', () => 0); api.set('mightyOf', () => 0);
+const dispX = (sh, wx) => ({isNull: () => false, add: (o) => ({readU8: () => (o === 0x40 ? sh : 0), readS32: () => (o === 0x44 ? wx : 77)})});
+const pkX = (sp, sh, wx) => ({isNull: () => false, add: (o) => ({readS32: () => sp, readPointer: () => (o === 0x30 ? dispX(sh, wx) : NUL)})});
+const wildX = (id, sh, wx) => ({isNull: () => false, add: (o) => ({readU64: () => ({compare: () => 1, toString: () => id}), readPointer: () => (o === 0x20 ? pkX(0, sh, wx) : NUL)})});
+const encX = (id, sh, wx) => ({add: (o) => ({readPointer: () => (o === 0x10 ? wildX(id, sh, wx) : NUL), readS32: () => 1})});
+api.set('RESP', {});
+api.call('onEncounterOut', encX('111', 0, 4)); api.call('onEncounterOut', encX('222', 1, 0));
+res.wxRead = [api.get('RESP')['111'].wx, api.get('RESP')['111'].shiny, api.get('RESP')['222'].wx, api.get('RESP')['222'].shiny];
+api.set('NWOFF', {X: {res: 1, pk: 2, cp: 3}});
+api.set('E', {a: {pid: 10, st: 'open'}}); api.set('NWQ', [{enc: 'a', t: NOW}]); api.set('LASTNW', {t: 0, sig: ''});
+api.call('onOtherEncounterOut', {add: (o) => ({readS32: () => 1, readPointer: () => (o === 2 ? pkX(10, 0, 2) : NUL)})}, 'X');
+res.wxRead.push(api.get('RESP.a') ? api.get('RESP.a').wx : null);
 console.log(JSON.stringify(res));
 """)
 import random
@@ -555,7 +1127,9 @@ for _ in range(600):   # Python's reserve_floors() on random bags: the JS floorO
     cases.append([bag["1"], bag["2"], bag["3"], rv, [rf["1"], rf["2"], rf["3"]]])
 cp = os.path.join(d, "floors.json")
 json.dump(cases, open(cp, "w"))
-r2 = subprocess.run(["node", t2, p, cp], capture_output=True, text=True)
+dj = os.path.join(d, "dust.json")
+json.dump(DUSTJS, open(dj, "w"))
+r2 = subprocess.run(["node", t2, p, cp, dj], capture_output=True, text=True)
 try:
     got2 = json.loads(r2.stdout.strip() or "{}")
 except ValueError:
@@ -586,6 +1160,37 @@ check("JS: not shiny left; shiny kept + logged", got2.get("reply"),
 check("JS: the shiny gets Ultra; k1 waits (reserve)", got2.get("thrown"), [[3], "ready"])
 check("JS: no ball to spend: look, don't hold", got2.get("peekOnly"), [True, 0, 1, 4])
 check("JS: 'shiny' on >1 in 10 replies: distrusted", got2.get("wrongField"), [True, True, 1])
+B, K = DUSTJS["base"], DUSTJS["kept"]
+check("JS dust: the real list arrives (every normal-level species); an empty weather list still means 'applied'",
+      got2.get("dustCfg"), [True, "{}", True, 1, 0])
+check("JS dust: every spawn is opened -- a left-alone species' as a look, a kept species' as a catch",
+      got2.get("dustOpen"), [["b1", "b2", "b3", "b4", "k1", "b6"], [1, 1, 1, 1, 0, 1]])
+check("JS dust: not boosted -> left (its record: looked, wx 0); boosted -> a throw; shiny and Mighty stay; a flag that did not read -> a throw",
+      got2.get("dustReply"), [True, 1, [["b1", "ballsave", 1, 0]], 1, 0, 1, 1, 1, 2, 0, 1])
+check("JS dust: thrown at: the boosted one, the shiny, the Mighty, the kept species, the unread one -- never the plain one",
+      got2.get("dustThrown"), ["b2", "b3", "b4", "k1", "b6"])
+check("JS dust: CATCH lines: [boosted] + wx= on the boosted one, wx=0 on the kept species, [boost?] and no wx= when it did not read",
+      got2.get("dustCatch"), [f"CATCH Wild #{B} ball=1 p=0.50 att=1 berry=0 1.6s [boosted] dust=275 candy=3 wx=3",
+                              f"CATCH Wild #{K} ball=1 p=0.50 att=1 berry=0 1.6s dust=4225 candy=3 wx=0",
+                              f"CATCH Wild #{B} ball=1 p=0.50 att=1 berry=0 1.6s [boost?] dust=225 candy=3"])
+check("JS dust: the catch records carry the flag and the award", got2.get("dustLed"), [["b2", 0, 3, 275], ["k1", 0, 0, 4225], ["b6", 0, None, 225]])
+check("JS dust -> Python: the weather record reads those lines (species, award, flag); a line without wx= is never judged",
+      [(int(x.group(1)), int(x.group(3)), int(x.group(4))) if x else None for x in map(ns["WX_CATCH"].search, got2.get("dustCatch") or [])],
+      [(B, 275, 3), (K, 4225, 0), None])
+check("JS dust: a level leaves a species even when boosted (marked); the level lowered -> looked at again, the plainly left one not",
+      got2.get("dustLevel"), [True, 2, 1, True, True, False, True, ["x1"], True])
+check("JS dust: a species the boost lifts over the level: boosted -> caught, not boosted -> left; a boosted lower one -> left",
+      got2.get("dust1000"), [1, 0, True, 1, True, 2])
+check("JS dust: no ball to spend -> a boosted one is left too; balls back -> looked at again", got2.get("dustNoBall"), [True, True, 2, 0, False, ["p1"]])
+check("JS dust: a ball-saver plan alone (no weather list): boosted is left as before; the list comes and goes with the config",
+      got2.get("dustPlanOnly"), [None, True, 2, True, "{}", False, None, True])
+check("JS dust: 46 s of only left-alone spawns: the map stays alive, each counted once; switched off -> back after its 20 s",
+      got2.get("dustWalk"), [46000, 0, 1, 1, 0, ["r1"]])
+check("JS dust: walk(): never looked at -> tracked; left for its boost under another level -> tracked again; plainly left -> left",
+      got2.get("dustWalk2"), [["w0", "w2"], 1])
+check("JS dust: the weather flag read (3, 0, out of range, negative, null pointers, field not found, no display)",
+      got2.get("wxOf"), [3, 0, -1, -1, -1, -1, -1, -1, -1])
+check("JS dust: the encounter reply carries it, read off the shiny byte's own object (wild x2, a lure reply)", got2.get("wxRead"), [4, 0, 0, 1, 2])
 if r2.returncode or r2.stderr.strip():
     print(r2.stderr[-1500:])
     failed += 1

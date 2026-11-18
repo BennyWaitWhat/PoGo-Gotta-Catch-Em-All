@@ -40,6 +40,18 @@ FLAGS = {k: f"/data/local/tmp/pogo_{k}.on" for k in ("catch", "spin", "tap", "pe
 # switch in the app: adb su -c 'echo pinap > /data/local/tmp/pogo_berries.on' (read every second, no restart).
 # BALL-SAVER plan (AutoCatcher/tools/ballsave_go.py builds + pushes it; delete it = catch everything again): see ballsave_skip()
 BALLSAVE_FILE = "/data/local/tmp/pogo_ballsave.json"
+# STARDUST ONLY (Benny 2026-11-18: "i also want a catch mode that only catches high stardust pokemon (+ shinies) that can be
+# toggled on"; "make sure you're inclusive of EVERY higher than avg stardust pokemon for that mode"; "yes include weather
+# boosted too"). pogo_dust.on holds a whole number: 0 / no file / anything else = off; 1 = catch only what pays more than a
+# normal catch; N = of those, only what pays N or more (the app offers 500 / 700 / 1000). What a catch pays = its species'
+# stardust (catch_dust.json next to this file), x1.25 when the spawn is weather-boosted. Every shiny, every Mighty and the
+# priority species are caught whatever it says; the "legendary" list below stays his, as always. catch_dust_table.py keeps
+# the table current by itself (re-read here when it changes); the app's picker reads the counts from
+# pogo_dust_levels.txt, written at every table load. See dust_skip().
+DUST_FILE = "/data/local/tmp/pogo_dust.on"
+DUST_TABLE = os.path.join(HERE, "catch_dust.json")
+DUST_LEVELS = "/data/local/tmp/pogo_dust_levels.txt"
+WX_PROOF = os.path.join(AN, "dust_wx_proof.json")   # the weather-boost read's track record, per game version (wx_seen)
 COLD_AGE_S = 12      # attach once PoGo is this old; install() then retries every 3 s until the map has loaded.
                      # (30 s was for the old catcher's heavy RPC-thread setup; this one does metadata + one lookup.)
 # PAUSE HANDSHAKE: another tool that needs the game to itself (a cull, the reward catcher) writes an epoch-seconds
@@ -253,7 +265,7 @@ function encOf(o) { var r = call(method(o, 'get_EncounterId', 0), o, []); return
 var K = {}, M = {}, OFF = {}, PBT_VT = false;
 var CFG = {catch: false, spin: false, tap: false, perfect: false, apples: false, appleSpecies: {}, openMs: 667, maxOpen: 6, nearWait: 0, nearM: 55, readyMs: 150, thresh: 0.28,
            ballOrder: [2, 1, 3], floors: {1: 5, 2: 5, 3: 5}, pinap: true, pinapFloor: 20, razz: true, razzFloor: 5, razzThresh: 0.45, mightyP: 0.02, mightyKeep: 30, mightyMin: 30,
-           legendary: {}, priority: {}, order: 'fifo', skipSp: {}, peek: false, reserve: 0, mightyBalls: 30};
+           legendary: {}, priority: {}, order: 'fifo', skipSp: {}, peek: false, reserve: 0, mightyBalls: 30, skipWx: null};
 var S = {ready: false, stale: 'first attach', nextLookup: 0, tries: 0, msvc: NULL, ib: NULL, avatar: NULL, ps: NULL};
 /* STALE MAP (2026-09-24 22:27-22:46: 20 min of vis=0 while attached, 3 Pokemon the second it re-attached). The game
    can rebuild its map -- a new MapPlaceDirectoryService, a new map camera -- and the objects found at attach then read
@@ -476,6 +488,9 @@ var COOL = {};   /* enc -> time before which a not-final encounter is left alone
 var FINAL = {caught: 1, fled: 1, legendary: 1, maxthrows: 1, catcherr: 1};
 /* BALL-SAVER (Benny 2026-11-16 meteor shower, spins refused): CFG.skipSp = the species the Python side's plan leaves
    alone right now (the least stardust per ball while the balls cannot cover every species until the plan's end).
+   STARDUST ONLY (11-18) fills the same list from its stardust table, plan or no plan (Python: dust_skip): nothing here
+   may take "a species is left alone" to mean "a plan is running" -- the keep, the floors and the Mighty hold come as
+   their own config values.
    Looked at again after 20 s, so a species comes back the moment the plan keeps it. Each spawn is counted once. */
 /* SHINY LOOK (Benny 2026-11-16 20:51: "when in these kinds of star dust modes, you need to catch all shinies regardless"):
    the map never says shiny -- only the encounter reply does. So while a plan is on the phone (CFG.peek) a spawn of a
@@ -493,7 +508,11 @@ function ballsave(enc, now, pid, cls) {
   }
   COOL[enc] = now + 20000;
 }
-function peeked(enc) { PEEKED[enc] = 1; if (++NPEEKED > 5000) { PEEKED = {}; NPEEKED = 0; } ST.peeked = (ST.peeked || 0) + 1; }
+function peeked(enc, v) { PEEKED[enc] = v || 1; if (++NPEEKED > 5000) { PEEKED = {}; NPEEKED = 0; } ST.peeked = (ST.peeked || 0) + 1; }
+/* Looked at already, and does that look still stand? A spawn left although its weather flag said boosted (or did not
+   read) is marked 2: it is looked at again once STARDUST ONLY would catch a boosted one of its species -- the level was
+   lowered, the mode was switched on over a plan's look, or balls came back after a look with none to spend. */
+function lookedAt(enc, pid) { var p = PEEKED[enc]; return !!p && !(p === 2 && !!CFG.skipWx && !CFG.skipWx[pid] && !PEEKONLY); }
 function finish(enc, why) {
   if (E[enc]) { ledgerEnd(E[enc], enc, why, Date.now()); delete E[enc]; NE--; }
   if (why && why !== 'caught') bump(ST.skip, why);
@@ -550,7 +569,8 @@ function ledgerEnd(e, enc, why, now) {
                 exp: e.exp || null, tx: e.tx || null, tth: e.tth, d0: e.d0, dT: e.dT === undefined ? null : e.dT, d1: (me && e.lat !== null) ? Math.round(meters(me.lat, me.lng, e.lat, e.lng)) : null,
                 tO: e.tO || null, tR: e.tR || null, rs: e.rs, tT: e.tT || null, tC: e.tC || null, n: e.att, opens: e.opens,
                 b: e.ball || null, pr: p, m: e.mighty ? 1 : 0, ord: CFG.order, om: CFG.openMs, nw: CFG.nearWait, nwt: e.nwait || 0, rm: CFG.readyMs, r: why, t1: now,
-                d: e.dust === undefined ? null : e.dust, sh: e.shiny ? 1 : 0, pk: e.peek ? 1 : 0});   /* d = the catch's stardust: the ball-saver plan reads it */
+                d: e.dust === undefined ? null : e.dust, sh: e.shiny ? 1 : 0, pk: e.peek ? 1 : 0,
+                wx: e.wx >= 0 ? e.wx : null});   /* d = the catch's stardust: the ball-saver plan reads it; wx = the reply's weather flag */
   } catch (x) { ST.errs++; }
 }
 function ledgerSaved(enc, pid, cls, now) {   /* a spawn the ball-saver left alone without opening it: same keys, nothing measured */
@@ -627,7 +647,7 @@ function walk(now) {
     }
     var pid = s32(call(method(o, 'get_PokemonId', 0), o, []));
     if (CFG.legendary[pid]) { c[4]++; finish(enc, 'legendary'); return; }
-    if (CFG.skipSp[pid] && !appleMon && (!peekOn() || PEEKED[enc])) { c[4]++; LASTVIS = now; ballsave(enc, now, pid, cls); return; }   /* apple reveals: the game opens their screen itself */
+    if (CFG.skipSp[pid] && !appleMon && (!peekOn() || lookedAt(enc, pid))) { c[4]++; LASTVIS = now; ballsave(enc, now, pid, cls); return; }   /* apple reveals: the game opens their screen itself */
     if (PEEKONLY && PEEKED[enc] && !appleMon) { c[4]++; LASTVIS = now; ballsave(enc, now, pid, cls); return; }   /* looked at already: not shiny */
     LIVE[enc] = o; vis++; c[1]++;
     e = E[enc] = {pid: pid, cls: cls, prio: !!CFG.priority[pid], st: 'new', seen: now, att: 0, opens: 0, berry: 0, apple: appleMon};
@@ -691,12 +711,12 @@ function outcome(e, enc, r, now) {
   var p =(e.probs && e.probs[e.ball] !== undefined) ? e.probs[e.ball] : -1;
   var line = e.cls.replace('MapPokemon', '').replace('MapPlacePokemon', '') + ' #' + e.pid + ' ball=' + e.ball + ' p=' + (p < 0 ? '?' : p.toFixed(2)) +
              ' att=' + e.att + ' berry=' + (e.fedWith || 0) + ' ' + ((now - e.tOpen) / 1000).toFixed(1) + 's' + (e.apple ? ' [apple]' : '') + (e.mighty ? ' [mighty]' : '') +
-             (e.shiny ? ' [shiny]' : '');
+             (e.shiny ? ' [shiny]' : '') + (e.wxc === 1 ? ' [boosted]' : (e.wxc ? ' [boost?]' : ''));
   if (e.mighty && r.st === 1) ST.mCaught++; else if (e.mighty && r.st === 3) ST.mFled++;
   if (r.st === 1) {
     ST.caught++; FLEESTREAK = 0; LASTCATCHMS = now - e.tOpen;
     ST.dust += r.dust; ST.candy += r.candy; ST.xp += r.xp; e.dust = r.dust;
-    log('CATCH ' + line + ' dust=' + r.dust + ' candy=' + r.candy);
+    log('CATCH ' + line + ' dust=' + r.dust + ' candy=' + r.candy + (e.wx >= 0 ? ' wx=' + e.wx : ''));   /* wx: the reply's weather flag, read on every catch */
     finish(enc, 'caught');
   } else if (r.st === 3) {
     ST.fled++;
@@ -733,7 +753,7 @@ function catchTick(now) {
   for (var tries = PEND.length; tries > 0 && !holding && now - LASTOPEN >= CFG.openMs && n < CFG.maxOpen; tries--) {
     enc = PEND.shift(); e = E[enc]; if (!e || e.st !== 'new') continue;
     var drop = CFG.skipSp[e.pid] && !e.apple;   /* queued before the plan dropped its species */
-    if (drop && (!peekOn() || PEEKED[enc])) { ballsave(enc, now); continue; }
+    if (drop && (!peekOn() || lookedAt(enc, e.pid))) { ballsave(enc, now); continue; }
     if (PEEKONLY && PEEKED[enc] && !e.apple) { ballsave(enc, now); continue; }
     e.peek = (!e.apple && ((drop && peekOn()) || PEEKONLY)) ? 1 : 0;   /* SHINY LOOK: opened only to see whether it is shiny */
     o = LIVE[enc];
@@ -770,6 +790,7 @@ function catchTick(now) {
         if (e.apple) log('APPLEOPEN #' + e.pid + ' enc=' + enc + ' reply status=' + r.st);
         if (r.st === 1) {
           e.probs = r.p; e.st = 'ready'; e.due = now + CFG.readyMs; e.mighty = mightyOf(r, e.pid);
+          e.wx = (typeof r.wx === 'number') ? r.wx : -1;
           ST.rep1++;
           /* a wrong field read would call every Pokemon shiny and spend the kept balls: more than 1 in 10 is not real
              (Community Day odds are 1 in 25) -> stop trusting it for this attach */
@@ -780,14 +801,17 @@ function catchTick(now) {
           if (e.shiny && !e.slog) {   /* one line per shiny: what the ball-saver would have done, the odds, the ball it gets */
             e.slog = 1; ST.shiny = (ST.shiny || 0) + 1;
             log('SHINY ' + e.cls.replace('MapPokemon', '').replace('MapPlacePokemon', '') + ' #' + e.pid + ' odds ' + oddsStr(r.p) +
-                (e.peek ? ' -- left alone by the ball-saver, caught anyway' : '') + ' | bag P=' + ITEMC[1] + ' G=' + ITEMC[2] + ' U=' + ITEMC[3] +
+                (e.peek ? ' -- of a species being left alone, caught anyway' : '') + ' | bag P=' + ITEMC[1] + ' G=' + ITEMC[2] + ' U=' + ITEMC[3] +
                 ' -> ball ' + pickBall(e.probs, e.prio, e.mighty, 1));
           }
           if (e.peek && !e.shiny) {
             /* looked: not shiny -> left alone. A Mighty one stays: the look found it, and Mighty Pokemon get their own balls */
-            if (!e.mighty && (CFG.skipSp[e.pid] || PEEKONLY)) { peeked(enc); ballsave(enc, now); continue; }   /* the list decides, not
-               the look: a look in flight when the shiny read is distrusted (SHINYOFF) stays left alone (review 11-16) */
-            e.peek = 0;   /* the plan keeps its species again, balls came back, or a Mighty: caught as usual */
+            if (!e.mighty && (CFG.skipSp[e.pid] || PEEKONLY)) {   /* the list decides, not the look: a look in flight when
+               the shiny read is distrusted (SHINYOFF) stays left alone (review 11-16) */
+              if (!wxCatch(e)) { peeked(enc, e.wx !== 0 ? 2 : 1); ballsave(enc, now); continue; }
+              e.wxc = e.wx > 0 ? 1 : 2;   /* STARDUST ONLY: weather-boosted, so it pays 1.25x -- caught for that alone (2: its flag did not read) */
+            }
+            e.peek = 0;   /* the plan keeps its species again, balls came back, a Mighty, or weather-boosted: caught as usual */
           }
           if (e.mighty && !e.mlog) {   /* one line per Mighty: the flag, the odds the server gave per ball, what the bag holds */
             e.mlog = 1; ST.mSeen++; MLAST = now;
@@ -866,6 +890,22 @@ function shinyOf(pk) {   /* PokemonProto -> PokemonDisplayProto.Shiny: the encou
     var d = pk.add(OFF.pkDisp).readPointer(); return (!d.isNull() && d.add(OFF.dShiny).readU8()) ? 1 : 0;
   } catch (e) { return 0; }
 }
+/* WEATHER BOOST (Benny 2026-11-18, STARDUST ONLY: "yes include weather boosted too"): the same display object carries
+   PokemonDisplayProto.WeatherBoostedCondition -- the weather that boosts THIS spawn, 0 = not boosted. The spawn's own
+   word, never a weather + type table. -1 = not readable (field not found, no display). The server pays a boosted catch
+   +25%; Python holds every catch's flag against its award (wx_seen) before the flag may decide anything. */
+function wxOf(pk) {
+  try {
+    if (!(OFF.pkDisp >= 0) || !(OFF.dWx >= 0) || !pk || pk.isNull()) return -1;
+    var d = pk.add(OFF.pkDisp).readPointer(); if (d.isNull()) return -1;
+    var v = d.add(OFF.dWx).readS32(); return (v >= 0 && v <= 15) ? v : -1;   /* GameplayWeatherProto.WeatherCondition: 0-7 today */
+  } catch (e) { return -1; }
+}
+/* STARDUST ONLY counts a weather-boosted spawn as paying 1.25x: CFG.skipWx (sent only while that mode is applied; an
+   empty list = applied, every boosted spawn is caught) = the species left alone EVEN WHEN boosted. A flag that does not
+   read on this reply (-1) counts as boosted: never "skip and hope". With no ball to spend at all (PEEKONLY) a boosted one
+   is left too: only a shiny or a Mighty goes under the floors. */
+function wxCatch(e) { return !!CFG.skipWx && e.wx !== 0 && !PEEKONLY && !CFG.skipWx[e.pid]; }
 /* a Mighty answered an encounter (any thread: no game call). Starts / extends THE MIGHTY RESERVE. A reply to an open
    that is not the catcher's gets its line here (the catcher's own get theirs, with the ball chosen, in catchTick):
    with Auto-Catch off that is how the odds stay visible. Live 11-15 15:09-15:12, 4 Mighty (Incense and Wild): each
@@ -881,7 +921,7 @@ function onEncounterOut(s) {   /* EncounterOutProto: status @0x1c, WildPokemon @
   var pk = s.add(0x10).readPointer(); if (pk.isNull()) return;
   var ev = pk.add(0x10).readU64(); if (ev.compare(uint64(0)) === 0) return;
   var est = s.add(0x1c).readS32(); if (est === 0) return;   /* status not set yet: a half-filled object */
-  var wp = OFF.wPk >= 0 ? pk.add(OFF.wPk).readPointer() : NULL, r = {st: est, p: readProbs(s.add(0x20).readPointer()), t: Date.now(), strong: strongOf(wp), shiny: shinyOf(wp)};
+  var wp = OFF.wPk >= 0 ? pk.add(OFF.wPk).readPointer() : NULL, r = {st: est, p: readProbs(s.add(0x20).readPointer()), t: Date.now(), strong: strongOf(wp), shiny: shinyOf(wp), wx: wxOf(wp)};
   RESP[ev.toString()] = r;
   if (est === 1 && mightyOf(r, 0)) mightySeen(ev.toString(), r, 'Wild', (OFF.pkId >= 0 && !wp.isNull()) ? wp.add(OFF.pkId).readS32() : 0);
   return true;
@@ -893,8 +933,8 @@ function onEncounterOut(s) {   /* EncounterOutProto: status @0x1c, WildPokemon @
 var NWOFF = {};   /* proto class name -> {res, pk, cp} */
 function onOtherEncounterOut(s, pn) {
   var o = NWOFF[pn] || {res: 0x10, pk: -1, cp: 0x20}, now = Date.now();
-  var st = s.add(o.res).readS32(), p = readProbs(s.add(o.cp).readPointer()), sp = -1, strong = 0, shiny = 0;
-  if (o.pk >= 0 && OFF.pkId >= 0) { try { var pk = s.add(o.pk).readPointer(); if (!pk.isNull()) { sp = pk.add(OFF.pkId).readS32(); strong = strongOf(pk); shiny = shinyOf(pk); } } catch (e) {} }
+  var st = s.add(o.res).readS32(), p = readProbs(s.add(o.cp).readPointer()), sp = -1, strong = 0, shiny = 0, wx = -1;
+  if (o.pk >= 0 && OFF.pkId >= 0) { try { var pk = s.add(o.pk).readPointer(); if (!pk.isNull()) { sp = pk.add(OFF.pkId).readS32(); strong = strongOf(pk); shiny = shinyOf(pk); wx = wxOf(pk); } } catch (e) {} }
   var sig = pn + '|' + st + '|' + sp + '|' + shiny + '|' + JSON.stringify(p);
   if (sig === LASTNW.sig && now - LASTNW.t < 300) return;   /* same reply through a second MergeFrom overload */
   LASTNW = {sig: sig, t: now};
@@ -904,7 +944,7 @@ function onOtherEncounterOut(s, pn) {
   /* species unknown -> the oldest open. A KNOWN species no open of ours matches = someone else's encounter (a tap,
      Pokemod reading stats): handing it to another open gave that one wrong odds -- and with SHINY LOOK a wrong shininess */
   if (best < 0 && NWQ.length && sp <= 0) best = 0;
-  var nr = {st: st, p: p, t: now, strong: strong, sp: sp, shiny: shiny};
+  var nr = {st: st, p: p, t: now, strong: strong, sp: sp, shiny: shiny, wx: wx};
   if (st === 1 && mightyOf(nr, sp)) mightySeen(best >= 0 ? NWQ[best].enc : '', nr, pn.replace('EncounterOutProto', ''), sp);
   if (best >= 0) { RESP[NWQ[best].enc] = nr; NWQ.splice(best, 1); }
   return true;
@@ -1300,6 +1340,8 @@ function applyCfg(c) {
   if (c.legendary) { CFG.legendary = {}; c.legendary.forEach(function (d) { CFG.legendary[d] = 1; }); }
   if (c.priority) { CFG.priority = {}; c.priority.forEach(function (d) { CFG.priority[d] = 1; }); }
   if (c.skipSp) { CFG.skipSp = {}; c.skipSp.forEach(function (d) { CFG.skipSp[d] = 1; }); }
+  CFG.skipWx = null;   /* absent = STARDUST ONLY is not applied: weather decides nothing (every config push carries the whole config) */
+  if (c.skipWx) { CFG.skipWx = {}; c.skipWx.forEach(function (d) { CFG.skipWx[d] = 1; }); }
   if (c.appleSpecies) { CFG.appleSpecies = {}; c.appleSpecies.forEach(function (d) { CFG.appleSpecies[d] = 1; }); }
   if (GATE) GATE.add(24).writeS64(CFG.tap ? 1 : 0);   /* tap-to-move polls input every frame */
 }
@@ -1385,9 +1427,10 @@ rpc.exports = {
     if (OFF.pkDisp < 0 && PKP) OFF.pkDisp = byType(PKP, 'mdisp', /(^|\.)PokemonDisplayProto$/);
     OFF.dStrong = MK.PokemonDisplayProto ? off1(MK.PokemonDisplayProto, ['IsStrongPokemon', 'isStrongPokemon_']) : -1;
     OFF.dShiny = MK.PokemonDisplayProto ? off1(MK.PokemonDisplayProto, ['Shiny', 'shiny_']) : -1;   /* SHINY LOOK */
+    OFF.dWx = MK.PokemonDisplayProto ? off1(MK.PokemonDisplayProto, ['WeatherBoostedCondition', 'weatherBoostedCondition_']) : -1;   /* wxOf */
     OFF.wPk = MK.WildPokemonProto ? off1(MK.WildPokemonProto, ['Pokemon', 'pokemon_']) : -1;
     if (OFF.wPk < 0 && MK.WildPokemonProto) OFF.wPk = byType(MK.WildPokemonProto, 'mwpk', /(^|\.)PokemonProto$/);
-    st.mighty = {wildPokemon: OFF.wPk, display: OFF.pkDisp, flag: OFF.dStrong, shiny: OFF.dShiny};
+    st.mighty = {wildPokemon: OFF.wPk, display: OFF.pkDisp, flag: OFF.dStrong, shiny: OFF.dShiny, wx: OFF.dWx};
     st.otherTypes = [];
     outs.forEach(function (x) {
       var nm = x[0], kl = x[1];
@@ -1589,8 +1632,15 @@ def cur_pos():
 
 
 BALLS = {"usable": None, "items": {}}  # Poke + Great + Ultra above their floors, and the bag counts, from the last stats read (10 s)
-SHINYFIELD = {"ok": True, "suspended": False}   # the shiny read resolved at attach and not distrusted (else SHINY LOOK opens for nothing)
+# the shiny read resolved at attach and not distrusted (else SHINY LOOK opens for nothing); checked = THIS attach's check ran
+SHINYFIELD = {"ok": True, "suspended": False, "checked": False}
 _BS = {"mtime": None, "plan": None, "note": "off"}
+_DUST = {"n": 0, "state": "off", "skip": [], "skipwx": [], "kept": 0, "note": "", "why": "", "said": None, "key": None, "mtime": None, "table": None,
+         "twhy": "", "tcheck": 0, "log": []}
+# WEATHER BOOST read (wxOf in the JS): found = its field resolved at this attach; b / u / bad = the track record of this game
+# version -- boosted catches that paid the +25%, unboosted ones that did not, catches that paid against their flag
+WX = {"found": False, "key": "", "b": 0, "u": 0, "bad": 0, "min": None, "rows": {}, "said": None, "saved": None, "savet": 0, "ver": {}}
+WX_NEED = 12   # boosted AND unboosted catches that must agree with the server's pay before the flag may decide anything
 SPIN_WHY = ("spins are being refused", "the daily spin limit")   # why_idle()'s spin parts: logged as NOT SPINNING
 SP = {"on": False, "off": False, "since": None, "bare": 0, "last": None}   # last: did the newest catch pay with one
 
@@ -1749,12 +1799,361 @@ def ballsave_log(w, now):
         w(f"BALLSAVE {note}")
 
 
+def dust_min():
+    """What the STARDUST ONLY switch holds (DUST_FILE): a whole number 1 or more = on; 0, no file, or anything that is
+    not a whole number = off. Read the way catcher_ctl.sh's dust_mode() reads it (white space dropped, 1 to 7 digits), so
+    the app and the catcher never disagree about the one file."""
+    try:
+        with open(DUST_FILE, encoding="ascii", errors="replace") as fh:
+            v = "".join(fh.read(4096).split())
+    except (OSError, ValueError):
+        return 0
+    return int(v) if re.fullmatch(r"[0-9]{1,7}", v) else 0
+
+
+def dust_levels_text(tab):
+    """The app's picker (it reads exactly this): line 1 'base=100 species=1024 batch=<id>', then one line per level it
+    offers -- 1 (every species above a normal catch), 500, 700, 1000: '<N> <count>' and, while the count is 25 or
+    fewer, a space and the names, highest stardust first, joined with ', '."""
+    dust, base, names = tab["dust"], tab["base"], tab["names"]
+    out = [f"base={base} species={len(dust)} batch={tab['batch']}"]
+    for n in (1, 500, 700, 1000):
+        kept = sorted((d for d, v in dust.items() if v > base and v >= n), key=lambda d: (-dust[d], d))
+        out.append(f"{n} {len(kept)}" + (" " + ", ".join(names.get(d) or f"#{d}" for d in kept) if 0 < len(kept) <= 25 else ""))
+    return "\n".join(out) + "\n"
+
+
+def dust_levels_write(text):
+    """Put the levels file where the app reads it. Termux cannot create a file in /data/local/tmp, so root copies it in
+    and renames it (a rename in one folder: the app never sees half a file), world-readable. Not rewritten when it
+    already says the same."""
+    try:
+        with open(DUST_LEVELS, encoding="utf-8") as fh:
+            if fh.read() == text:
+                return
+    except (OSError, ValueError):
+        pass
+    tmp = os.path.join(AN, "dust_levels.tmp")
+    try:
+        with open(tmp, "w", encoding="utf-8") as fh:
+            fh.write(text)
+    except OSError:
+        return
+    su(f"cp {tmp} {DUST_LEVELS}.new && chmod 644 {DUST_LEVELS}.new && mv -f {DUST_LEVELS}.new {DUST_LEVELS}; rm -f {tmp}")
+
+
+def dust_table(now):
+    """The species table next to this file: {"dust": {dex: stardust}, "names": {dex: name}, "base", "batch"}, or None (no
+    file, or not a table -- _DUST["twhy"] says which). Looked at when the catcher starts and then about once a minute,
+    re-read when the file changed (deploy.sh or the updater replaced it: no restart). Every load writes the app's levels
+    file and queues one DUST TABLE line (dust_log)."""
+    if _DUST["tcheck"] and 0 <= now - _DUST["tcheck"] < 60:
+        return _DUST["table"]
+    _DUST["tcheck"] = now
+    try:
+        st = os.stat(DUST_TABLE)
+        m = (st.st_mtime, st.st_size)
+    except OSError:
+        m = "none"
+    if m == _DUST["mtime"]:
+        return _DUST["table"]
+    tab, why = None, f"no species table at {DUST_TABLE}"
+    if m != "none":
+        try:
+            with open(DUST_TABLE, encoding="utf-8") as fh:
+                doc = json.load(fh)
+            dust = {int(r[0]): int(r[2]) for r in doc["dust"]}
+            vals = sorted(dust.values())
+            if not dust or vals[0] < 1 or min(dust) < 1:
+                raise ValueError("no species in it")
+            base = doc.get("base")
+            if not isinstance(base, int) or base not in dust.values():
+                base = max(sorted(set(vals)), key=vals.count)   # a normal catch: the most common value (a tie: the lower)
+            tab = {"dust": dust, "names": {int(r[0]): str(r[1]) for r in doc["dust"]}, "base": base, "batch": int(doc.get("batch") or 0)}
+        except (OSError, ValueError, KeyError, TypeError, IndexError, AttributeError, OverflowError) as e:
+            why = f"the species table {DUST_TABLE} does not read ({str(e)[:50] or type(e).__name__})"
+    old = _DUST["table"]
+    _DUST.update(mtime=m, table=tab, key=None, twhy="" if tab else why)
+    if not tab:
+        _DUST["log"].append(f"DUST TABLE: {why} -- stardust only cannot run without it")
+        return None
+    d, nm = tab["dust"], tab["names"]
+    line = f"DUST TABLE batch {tab['batch']}: {len(d):,} species, {sum(v > tab['base'] for v in d.values()):,} pay more than a normal catch ({tab['base']})"
+    if old:   # re-read while running: what changed
+        od = old["dust"]
+        some = lambda ds: ", ".join(f"{nm.get(x) or '#%d' % x} {od.get(x, 'new')} -> {d[x]}" for x in sorted(ds)[:6]) + (" ..." if len(ds) > 6 else "")
+        up = [x for x in d if x not in od or d[x] > od[x]]
+        down = [x for x in d if x in od and d[x] < od[x]]
+        line += ("; re-read: " + "; ".join(t for t in ((f"{len(up)} raised or new: {some(up)}" if up else ""), (f"{len(down)} lowered: {some(down)}" if down else "")) if t)
+                 if up or down else "; re-read: no species changed level")
+    _DUST["log"].append(line)
+    dust_levels_write(dust_levels_text(tab))
+    return tab
+
+
+def wx_judge(rows):
+    """One minute's catches of normal-level species in one Star Piece state, rows = [(award, flag says boosted)] ->
+    (boosted ones that agree, unboosted ones that agree, catches that paid AGAINST their flag). The server pays a boosted
+    catch +25% on the stardust (150 against 125, 275 against 225, 412 against 337: 1.20-1.22x with the flat 25).
+    Both kinds in the minute: each is held against its own kind's usual pay. One kind only: nothing can be proven, but
+    two pay levels a step apart under ONE flag value means the flag missed some. Awards far off both levels (another
+    catch's award swapped in by the result queue, a first-catch bonus) are not judged."""
+    u, b = sorted(a for a, f in rows if not f), sorted(a for a, f in rows if f)
+    mid = lambda v: v[(len(v) - 1) // 2]
+    near = lambda a, m: abs(a / float(m) - 1) <= 0.03
+    step = lambda a, m: 1.12 <= a / float(m) <= 1.30
+    if u and b:
+        mu, mb = mid(u), mid(b)
+        if step(mb, mu):
+            return sum(near(a, mb) for a in b), sum(near(a, mu) for a in u), sum(step(a, mu) for a in u) + sum(near(a, mu) for a in b)
+        if step(mu, mb):   # upside down: the unflagged ones paid the boost, the flagged ones did not
+            return 0, 0, len(u) + len(b)
+        return (0, 0, len(b)) if near(mb, mu) else (0, 0, 0)   # flagged and unflagged paid the same: the flag says nothing
+    one = u or b
+    if len(one) < 2 or not any(step(a, one[0]) for a in one):
+        return 0, 0, 0
+    return 0, 0, sum(step(a, one[0]) for a in one) if u else sum(near(a, one[0]) for a in one)
+
+
+def wx_verdict():
+    """nofield (not found at this attach) / proving / proven / wrong -- only 'proven' lets the flag decide anything."""
+    if not WX["found"]:
+        return "nofield"
+    n = WX["b"] + WX["u"] + WX["bad"]
+    if WX["bad"] >= 10 and 4 * WX["bad"] > n:
+        return "wrong"
+    return "proven" if WX["b"] >= WX_NEED and WX["u"] >= WX_NEED and 20 * WX["bad"] <= n else "proving"
+
+
+def wx_load(key, found):
+    """This attach's weather read: found or not, and the track record kept for this game version + these offsets (they
+    move on a game update: a new key starts from nothing)."""
+    WX.update(found=bool(found), key=key, b=0, u=0, bad=0, min=None, rows={})
+    try:
+        with open(WX_PROOF, encoding="utf-8") as fh:
+            rec = json.load(fh)
+        if rec.get("key") == key:
+            WX.update(b=int(rec["b"]), u=int(rec["u"]), bad=int(rec["bad"]))
+    except (OSError, ValueError, KeyError, TypeError, AttributeError):
+        pass
+    WX["saved"] = (key, WX["b"], WX["u"], WX["bad"])
+
+
+WX_CATCH = re.compile(r"(?:^|\s)CATCH \S+ #(\d+) (.*?)dust=(\d+) candy=-?\d+ wx=(\d+)")
+
+
+def wx_seen(line, now):
+    """THE TRACK RECORD (Benny's rule: the game's own records, never an estimate). Every catch the catcher makes anyway
+    carries the reply's weather flag (wx=) and the server's award. Catches of normal-level species are collected per
+    minute and Star Piece state and judged when the minute ends (wx_judge)."""
+    m = WX_CATCH.search(line)
+    tab = _DUST["table"]
+    if not m or not tab or not WX["found"] or "[mighty]" in m.group(2) or "[apple]" in m.group(2):
+        return
+    dex, award = int(m.group(1)), int(m.group(3))
+    if tab["dust"].get(dex) != tab["base"] or award < 100:
+        return
+    if WX["min"] != int(now // 60):
+        wx_close()
+        WX["min"] = int(now // 60)
+    WX["rows"].setdefault(bool(award % 25), []).append((award, int(m.group(4)) > 0))
+
+
+def wx_close():
+    for rows in WX["rows"].values():
+        b, u, bad = wx_judge(rows)
+        WX.update(b=WX["b"] + b, u=WX["u"] + u, bad=WX["bad"] + bad)
+    WX["rows"] = {}
+
+
+def wx_tick(now, w):
+    """Judge a minute nobody caught in after it, say a change of verdict once, keep the record on disk (about once a
+    minute while it moves)."""
+    if WX["min"] is not None and int(now // 60) > WX["min"]:
+        wx_close()
+        WX["min"] = None
+    v, n = wx_verdict(), WX["b"] + WX["u"] + WX["bad"]
+    if (WX["key"], v) != WX["said"]:
+        WX["said"] = (WX["key"], v)
+        w("WEATHER BOOST read " + {
+            "nofield": "off: PokemonDisplayProto.WeatherBoostedCondition was not found in this game version -- a boosted spawn cannot be told",
+            "proving": f"being proven on the catches made anyway: {WX['b']} boosted and {WX['u']} unboosted ones agree with the server's pay so far, "
+                       f"{WX['bad']} do not -- it decides nothing before {WX_NEED} of each agree",
+            "proven": f"PROVEN for {WX['key']}: {WX['b']} boosted catches paid the +25% and {WX['u']} unboosted ones did not ({WX['bad']} of {n} paid against their flag)",
+            "wrong": f"WRONG for {WX['key']}: {WX['bad']} of {n} catches paid against their flag -- it decides nothing",
+        }[v])
+        WX["savet"] = 0
+    snap = (WX["key"], WX["b"], WX["u"], WX["bad"])
+    if snap != WX["saved"] and now - WX["savet"] >= 60:
+        WX.update(saved=snap, savet=now)
+        try:
+            with open(WX_PROOF + ".tmp", "w", encoding="utf-8") as fh:
+                json.dump({"key": WX["key"], "b": WX["b"], "u": WX["u"], "bad": WX["bad"], "verdict": v, "at": time.strftime("%Y-%m-%d %H:%M:%S")}, fh)
+            os.replace(WX_PROOF + ".tmp", WX_PROOF)
+        except OSError:
+            pass
+
+
+def game_version(pid):
+    """PoGo's version name (0.435.2), asked once per game process: the weather read's proof is kept per version. A game
+    process whose pid is not known is asked every attach (it could be another one)."""
+    if pid is None or pid not in WX["ver"]:
+        m = re.search(r"versionName=(\S+)", su("dumpsys package com.nianticlabs.pokemongo | grep -m1 versionName"))
+        WX["ver"] = {pid: m.group(1) if m else "?"}
+    return WX["ver"][pid]
+
+
+def dust_boost_note(line):
+    """A catch made for its weather boost alone says so: the JS tags it [boosted] (what it pays: table stardust x 1.25) or
+    [boost?] (the flag did not read on that reply, so it was caught rather than skipped on a guess)."""
+    m = re.search(r"(?:^|\s)CATCH \S+ #(\d+) .*\[(boosted|boost\?)\]", line)
+    tab = _DUST["table"]
+    if not m:
+        return line
+    if m.group(2) != "boosted":
+        return f"{line} -- its weather flag did not read: caught, not skipped on a guess"
+    if not tab or int(m.group(1)) not in tab["dust"]:
+        return line
+    return f"{line} -- weather-boosted, pays {tab['dust'][int(m.group(1))] * 5 // 4}"
+
+
+def dust_skip(now):
+    """STARDUST ONLY: the species to leave alone right now ([] = the mode changes nothing); _DUST says the state.
+      off      the switch is 0 / missing / not a whole number
+      on       N >= 1: leave alone every species the table has at a normal catch's stardust (its base) or under N. A
+               species the table does not know is caught; so are the priority species. The JS still OPENS each left-alone
+               spawn to read its shiny bit and its Mighty flag (SHINY LOOK: no ball spent) and catches those.
+               WEATHER (Benny 11-18: "yes include weather boosted too"): a boosted spawn pays x1.25, so it is caught when
+               table x 1.25 is above the base and at least N -- at 1 that is EVERY boosted spawn, at a level only the
+               species the boost lifts over it. _DUST["skipwx"] = the left-alone species that stay left even when boosted.
+               The spawn's own flag says "boosted" (the JS's wxOf, read at the same look as the shiny bit); a reply whose
+               flag does not read counts as boosted.
+      notable  switched on, but there is no readable table: everything is caught, and the app is told why
+      nolook   switched on, but the shiny read cannot be trusted (not found at this attach, or suspended for this run): a
+               left-alone shiny could not be seen, so NOTHING is left alone until it can ("+ shinies" comes first).
+      nowx     switched on, a boost matters at this N, but the weather read is not found / not proven yet / proven wrong:
+               a boosted spawn could not be told, so nothing is left alone until it can. Never "skip and hope"."""
+    n = dust_min()
+    tab = dust_table(now)
+    look = bool(SHINYFIELD["ok"] and SHINYFIELD.get("checked"))
+    wxv = wx_verdict()
+    key = (n, _DUST["mtime"], look, bool(SHINYFIELD.get("suspended")), bool(SHINYFIELD.get("checked")), tuple(CFG.get("priority") or ()),
+           wxv, (WX["b"], WX["u"], WX["bad"]) if wxv == "proving" else None)
+    if key == _DUST["key"]:
+        return _DUST["skip"]
+    name = "stardust only" if n == 1 else f"stardust only {n}+"
+    lvl = "" if n == 1 else f"{n}+ "
+    skip, skipwx, kept, why = [], [], 0, ""
+    if not n:
+        st, note = "off", "off: every species is caught again"
+    elif not tab:
+        st, note = "notable", f"{lvl}NOT applied: {_DUST['twhy']} -- every species is caught"
+        why = f"{name} is switched on but NOT applied: the catcher has no species table on the phone, so it catches everything"
+    elif not look:
+        st = "nolook"
+        if SHINYFIELD.get("suspended"):
+            long, short = "the shiny read was distrusted in this run (SHINY LOOK suspended)", "its shiny check was switched off for this run"
+        elif SHINYFIELD.get("checked"):
+            long, short = "this game version's shiny field was not found at attach", "this game version's shiny field is not found"
+        else:
+            long = short = "this attach's shiny check has not run yet"
+        note = f"{lvl}NOT applied: {long} -- a shiny of a left-alone species could not be seen, so every species is caught"
+        why = f"{name} is switched on but NOT applied: the catcher cannot see shinies ({short}), so it catches everything"
+    else:
+        st, dust, base, prio = "on", tab["dust"], tab["base"], set(CFG.get("priority") or [])
+        pays = lambda d: dust[d] > base and dust[d] >= n        # more than a normal catch AND at least N
+        kept = sum(1 for d in dust if pays(d))
+        skip = sorted(d for d in dust if not pays(d) and d not in prio)
+        pk = sum(1 for d in prio if d in dust and not pays(d))
+        lifted = [d for d in skip if 5 * dust[d] > 4 * base and 5 * dust[d] >= 4 * n]   # x1.25 puts it above the base AND at N
+        if lifted and wxv != "proven":   # the flag would decide here and cannot be trusted: leave nothing alone
+            st, skip, kept = "nowx", [], 0
+            long, short = {"nofield": ("the weather-boost field was not found in this game version", "it cannot read the weather boost in this game version"),
+                           "wrong": (f"the weather-boost read was proven WRONG on live catches ({WX['bad']} paid against their flag)",
+                                     "its weather-boost read did not match what the server paid"),
+                           }.get(wxv, (f"the weather-boost read is not proven yet ({WX['b']} boosted and {WX['u']} unboosted catches agree with the server's pay, "
+                                       f"{WX_NEED} of each needed)",
+                                       f"it is still proving its weather-boost read on live catches: {min(WX['b'], WX_NEED)} of {WX_NEED} boosted, "
+                                       f"{min(WX['u'], WX_NEED)} of {WX_NEED} normal"))
+            note = (f"{lvl}NOT applied: {long.split(' (')[0] if wxv == 'proving' else long} -- a weather-boosted spawn of a left-alone species could "
+                    f"not be told, so every species is caught")
+            why = f"{name} is switched on but NOT applied yet: {short} -- until then it catches everything"
+        else:
+            skipwx = sorted(d for d in skip if d not in lifted)
+            if n == 1:
+                head = f"(every above-normal species, {kept:,} of {len(dust):,}, and every weather-boosted spawn)"
+                wxs = "and every weather-boosted spawn"
+            else:
+                wxs = f"{len(lifted)} more when weather-boosted" if lifted else f"no weather boost reaches {n}"
+                head = f"{n}+ ({kept:,} of {len(dust):,} species, {wxs})"
+            note = (f"{head}: leaving {len(skip):,} alone" + (f" ({pk} priority species stay caught)" if pk else "")
+                    + "; a shiny or a Mighty of any of them is still caught")
+            why = f"no Pokemon worth a ball in range ({name}: {kept:,} of {len(dust):,} species, {wxs}; a shiny of the others is still caught)"
+    _DUST.update(key=key, n=n, state=st, skip=skip, skipwx=skipwx, kept=kept, note=note, why=why)
+    return skip
+
+
+def dust_news(w):
+    """The table's own lines (loaded, re-read, not readable), queued by dust_table()."""
+    while _DUST["log"]:
+        w(_DUST["log"].pop(0))
+
+
+def dust_log(w):
+    """One DUST ONLY line whenever the mode's state changes (on, another level, off, not applied and why). Silent on days
+    the switch is never used."""
+    dust_news(w)
+    said = (_DUST["state"], _DUST["n"], len(_DUST["skip"]), _DUST["note"])
+    if said != _DUST["said"] and not (_DUST["state"] == "off" and _DUST["said"] is None):
+        _DUST["said"] = said
+        w("DUST ONLY " + _DUST["note"])
+
+
+def dust_only():
+    """The app's status key only=N (1 = every above-normal species, 500 / 700 / 1000 = a level): the switch is on AND the
+    mode is applied. 0 = no key."""
+    return _DUST["n"] if _DUST["state"] == "on" else 0
+
+
+def dust_why(why, hist, catch_on):
+    """STARDUST ONLY in the app's why line.
+    Applied, catching on, and no throw and no catch for a minute: that is the mode at work, said like the ball-saver's "no
+    Pokemon worth a ball" -- unless something real is wrong, which stays as it is (a Star Piece or a spin note is kept).
+    Switched on but NOT applied (no table / the shiny read not trusted): said after whatever else there is -- he flipped
+    the switch and everything is still being caught."""
+    if _DUST["state"] in ("notable", "nolook", "nowx"):
+        return (why + "; " if why else "") + _DUST["why"]
+    if _DUST["state"] != "on" or not _DUST["skip"] or not catch_on or len(hist) < 3:
+        return why
+    now = hist[-1]
+    old = next(h for h in hist if now[0] - h[0] <= 60)   # the oldest sample of the last minute
+    if now[0] - old[0] < 28 or now[3] != old[3] or now[4] != old[4]:   # too little history, or a throw / a catch in it
+        return why
+    parts = [x for x in why.split("; ") if x]
+    if any(not x.startswith(SPIN_WHY + ("the Star Piece ran out", "no Pokemon in range")) for x in parts):
+        return why
+    lead = [x for x in parts if x.startswith("the Star Piece ran out")]
+    return "; ".join(lead + [_DUST["why"]] + [x for x in parts if x.startswith(SPIN_WHY)])
+
+
+def shiny_look(now):
+    """Is the JS opening left-alone spawns to read their shiny bit (cfg "peek")? While a plan is live and the read is
+    trusted, or while STARDUST ONLY is applied (it is only ever applied with a trusted read)."""
+    return bool((plan_live(now) and SHINYFIELD["ok"]) or (_DUST["state"] == "on" and _DUST["skip"]))
+
+
 def cfg_now():
     c = dict(CFG)
     c["skipSp"] = ballsave_now()
     c["reserve"] = ballsave_reserve()   # the JS spreads it over the live bag (floorOf); reserve_floors() is the same sum
     live = plan_live(time.time())
     c["peek"] = live and SHINYFIELD["ok"]   # SHINY LOOK (Benny 11-16: "catch all shinies regardless")
+    dust = dust_skip(time.time())   # STARDUST ONLY: [] unless switched on, the table read and the shiny read trusted
+    if dust:                        # (switched off = this function gives exactly what it gave before the mode existed)
+        c["skipWx"] = sorted(set(c["skipSp"]) | set(_DUST["skipwx"]))   # left alone even when weather-boosted: what a plan
+        # leaves (a plan is a ball budget: weather does not change it) + what x1.25 still does not lift to this level
+        c["skipSp"] = sorted(set(c["skipSp"]) | set(dust))   # with a plan running too: what either one leaves alone
+        c["peek"] = True            # a left-alone spawn is still opened for its shiny bit / Mighty flag, plan or no plan
     # The Mighty hold on Great/Ultra (ballOk): none while a plan spends the bag -- its budget counts them, and a Mighty still
     # gets any ball. The Razz kept for a Mighty (berryFor: mightyKeep) stays as it is (review 11-16).
     c["mightyBalls"] = 0 if live else c["mightyKeep"]
@@ -1925,10 +2324,12 @@ def balls_why(it, stt):
         return ((f"keeping the last {kept} balls (the ball-saver's plan)" if have >= kept
                  else f"holding the last {have} balls (the ball-saver's plan keeps {kept})")
                 + f": {balls[0]} Poke, {balls[1]} Great, {balls[2]} Ultra left"
-                + (" -- a shiny still gets one" if plan_live(time.time()) and flag("catch") and SHINYFIELD["ok"] else ""))
+                + (" -- a shiny still gets one" if shiny_look(time.time()) and flag("catch") else ""))
     if all(0 <= n <= fl[k] for n, k in zip(balls, ("1", "2", "3"))):   # every ball type at its floor: no throw is allowed
         return (f"out of balls: {balls[0]} Poke, {balls[1]} Great, {balls[2]} Ultra left "
-                f"(it saves the last {fl['1']}/{fl['2']}/{fl['3']} for you)")
+                f"(it saves the last {fl['1']}/{fl['2']}/{fl['3']} for you)"
+                # STARDUST ONLY (like a live plan) keeps looking: the JS opens every spawn and a shiny gets one of those balls
+                + (" -- a shiny still gets one" if _DUST["state"] == "on" and shiny_look(time.time()) and flag("catch") and any(n > 0 for n in balls) else ""))
     if stt.get("mightyOn") and 0 <= balls[0] <= fl["1"] and not plan_live(time.time()):   # (a live plan holds no Mighty reserve)
         return (f"out of Poke Balls: the {max(balls[1], 0)} Great and {max(balls[2], 0)} Ultra left are kept for Mighty Pokemon "
                 f"(the last {CFG['mightyKeep']} of each while they are around)")
@@ -1936,18 +2337,19 @@ def balls_why(it, stt):
 
 
 def starpiece_why(why, now):
-    """A Star Piece that ran out while a plan runs leads the why (the app shows it under the switches); it never hides a
-    catching problem, only a spin one."""
-    if SP["off"] and plan_live(now) and (not why or why.startswith(SPIN_WHY)):
+    """A Star Piece that ran out while a plan runs -- or while STARDUST ONLY is switched on -- leads the why (the app shows
+    it under the switches); it never hides a catching problem, only a spin one."""
+    if SP["off"] and (plan_live(now) or _DUST["n"]) and (not why or why.startswith(SPIN_WHY)):
         return f"the Star Piece ran out at {SP['since']}: catches pay a third less stardust" + (f"; {why}" if why else "")
     return why
 
 
-def state_extra(c, st, it, up, sp_last):
+def state_extra(c, st, it, up, sp_last, only=0):
     """The optional keys of the app's status card (app 1.3; Benny 11-18 asked "status?" and "how long til 1mil" by hand
     all day): catches per minute and the seconds of this run, the stardust it gained, the three ball counts, the berries
-    left, and whether the newest catch paid with a Star Piece. A number the game has not reported yet is left out,
-    never guessed -- the app shows a part only when its key is there. They sit after the old counters and before why=."""
+    left, whether the newest catch paid with a Star Piece, and only=N while STARDUST ONLY is applied (1 = every species
+    above a normal catch, 500 / 700 / 1000 = a level). A number the game has not reported yet is left out, never guessed
+    -- the app shows a part only when its key is there. They sit after the old counters and before why=."""
     out = []
     if up >= 1:
         out.append(f"rate={c / (up / 60.0):.1f} up={int(up)}")
@@ -1961,6 +2363,8 @@ def state_extra(c, st, it, up, sp_last):
             out.append(f"{name}={it[key]}")
     if sp_last is not None:
         out.append(f"sp={1 if sp_last else 0}")
+    if only:
+        out.append(f"only={only}")
     return " ".join(out)
 
 
@@ -2032,10 +2436,10 @@ def report(w, stt, t0, base):
                 w(f"{'NOT SPINNING' if why.startswith(SPIN_WHY) else 'NOT CATCHING'}: {why}")
     else:
         base["whykind"] = ""
-    why = starpiece_why(why, time.time())
+    why = dust_why(starpiece_why(why, time.time()), list(hist), flag("catch"))
     state(why, (f"caught={c} fled={st['fled']} spins={sp['ok']} xp={sp['xp']} items={sp['items']} "
                 f"ready={max(0, sp['inRange'] - sp['cooling'])} cooling={sp['cooling']} "
-                + state_extra(c, st, it, time.time() - t0, SP.get("last"))).rstrip())
+                + state_extra(c, st, it, time.time() - t0, SP.get("last"), dust_only())).rstrip())
 
 
 def session_loop(w, done_ids, base):
@@ -2062,6 +2466,7 @@ def session_loop(w, done_ids, base):
         time.sleep(COLD_AGE_S - age)
     if paused_until():   # a pause may have landed during the waits above -- honour it before attaching
         return
+    SHINYFIELD["checked"] = False   # STARDUST ONLY leaves nothing alone before THIS attach's shiny check has run (below)
     t_att = time.time()
     sess, _ = pg.get_session()
     SESS["s"] = sess
@@ -2097,6 +2502,9 @@ def session_loop(w, done_ids, base):
     mk = st.get("mighty") or {}   # shinyOf() reads WildPokemon -> PokemonProto.display -> PokemonDisplayProto.Shiny
     lost = [k for k in ("wildPokemon", "display", "shiny") if not (isinstance(mk.get(k), int) and mk[k] >= 0)]
     SHINYFIELD["ok"] = not lost and not SHINYFIELD["suspended"]
+    SHINYFIELD["checked"] = True
+    wx_load(f"{game_version(pid)} offsets {mk.get('wildPokemon')}/{mk.get('display')}/{mk.get('wx')}",
+            not [k for k in ("wildPokemon", "display", "wx") if not (isinstance(mk.get(k), int) and mk[k] >= 0)])
     if lost:
         w(f"SHINY LOOK off: {', '.join(lost)} offset not found -- skipped species stay unopened (a shiny of one can be missed)")
     elif SHINYFIELD["suspended"]:
@@ -2118,10 +2526,13 @@ def session_loop(w, done_ids, base):
             cfg = c
             sc.exports_sync.cfg(c)
         ballsave_log(w, time.time())
+        wx_tick(time.time(), w)
+        dust_log(w)
         d = sc.exports_sync.drain()
         for line in d["log"]:
-            w(line)
+            w(dust_boost_note(line))
             starpiece_seen(line, w)
+            wx_seen(line, time.time())
             if line.startswith("SHINY LOOK suspended"):   # off for the rest of this run: a re-attach must not trust the read again
                 SHINYFIELD.update(ok=False, suspended=True)
         if d.get("led") or d.get("pos"):
@@ -2185,6 +2596,8 @@ def main():
         signal.signal(sg, graceful)
     w = Log(LOG)
     w(f"===== catcher start (rebuilt) openMs={CFG['openMs']} =====")
+    dust_table(time.time())   # the stardust table: loaded now, PoGo open or not, so the app's levels file is there
+    dust_news(w)
     done_ids = deque(maxlen=4000)   # handled encounters survive a re-attach: never re-open or re-throw one
     base = {}
     fails = 0
