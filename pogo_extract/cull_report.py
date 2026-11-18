@@ -701,14 +701,17 @@ def main():
     # ---- what improved ----
     arr = [C[u] for u in origin]
     ev, ca = [r for r in arr if origin[r['uid_hex']]], [r for r in arr if not origin[r['uid_hex']]]
-    best_prev = collections.defaultdict(int)
-    hundo_prev = set()
-    for x in P.values():
-        k = stage_ng(x)
-        if not keep_config.is_fused_component(x):       # (2026-09-26) fused components hold no ladder slot
-            best_prev[k] = max(best_prev[k], x['iv_total'] or 0)
-        if (x['iv_total'] or 0) == 45:
-            hundo_prev.add(k)
+    hundo_prev = {stage_ng(x) for x in P.values() if (x['iv_total'] or 0) == 45}
+
+    def _top1(x):
+        """the leagues where x is #1 at a stage that reaches the cap -- gl_rank / ul_rank is the CHAIN's best (gl_stage may be a
+        later stage): judge that stage's reach, and name it"""
+        for _lg, _cap in (('gl', pv.GL_CAP), ('ul', pv.UL_CAP)):
+            _st = x[_lg + '_stage'] or sid(x)
+            if x[_lg + '_rank'] == 1 and pv.maxcp(_st, BS) > _cap + pv.VIABILITY_MARGIN:
+                yield _lg, _st
+    # what makes a new copy stand out: the bold marks of What improved AND the standout catches of the five jobs -- one test
+    marks = new_copy_marks(arr, origin, P, stage_ng, _top1, keep_config.is_fused_component)
     # "YOUR FIRST" = the GAME'S record (user 2026-09-29: "that wasnt my first hundo panpour, ive had one before. i evolved
     # it."): the Pokedex FOUR_STAR category as it stood at the LAST REPORT's walk -- the same moment "since the last
     # report" counts from. H05-6: pokedex_hundos_live.prev.json is rotated by EVERY walk (pogo_pipeline.step_read_dex) and is
@@ -1098,8 +1101,8 @@ def main():
         _cn = {norm(u) for u in C}
         _built, _seed = set(_js.get('built') or ()), _js.get('seed')
         _evo = {norm(u) for u, s in origin.items() if s}                    # the copies you evolved this pass
-        _series = [x for x in (_js.get('series') or [])       # a record without a size is the first version's: not this chart's
-                   if isinstance(x, dict) and 'n' in x and x.get('walk') != cur_stamp][-JOB_SERIES_MAX:]
+        _series = [x for x in (_js.get('series') or [])       # a record of an earlier version counted other things: not this chart's
+                   if isinstance(x, dict) and x.get('v') == JOB_SERIES_V and x.get('walk') != cur_stamp][-JOB_SERIES_MAX:]
         # the record first: a failure in the scoring below never loses this pass's evolutions or the rules in force
         _jobs_state = {'stamp': _stamp or _was, 'stamp_prev': _was, 'seed': _seed,
                        'built': sorted(b for b in _built | _evo if b in _cn), 'series': _series}
@@ -1113,9 +1116,10 @@ def main():
                 'first report for this account' if _first else "the last report's walk is not on disk, so its pile has no walk to pair with"))
         else:
             _jx = job_context(_gm['pokemon'])
-            _res = job_pass(P, C, prev_pile, pile_set, origin, _built, _jx, _moved)
+            _res = job_pass(P, C, prev_pile, pile_set, origin, _built, _jx, _moved, job_standout(C, origin, pile_set, marks))
             out.extend(job_lines(_res, job_chart(_series), job_namer(P, C, _jx, stg), '%s -> %s' % (_hm(prev_stamp), _cur_hm)))
-            _jobs_state['series'] = (_series + [{'walk': cur_stamp, 'n': _res['n'], 'g': [_res['jobs'][j]['rg'] for j in JOBS],
+            _jobs_state['series'] = (_series + [{'walk': cur_stamp, 'v': JOB_SERIES_V, 'n': _res['n'],
+                                                 'g': [_res['jobs'][j]['rg'] for j in JOBS],
                                                  'l': [_res['jobs'][j]['rl'] for j in JOBS]}])[-JOB_SERIES_MAX:]
         out.append('')
     except Exception as e:
@@ -1143,13 +1147,6 @@ def main():
                 # 'not read yet' was false: the ranks are computed and can stay missing for good (keep_policy 1467-1470)
                 rank_unknown='missing its PvP ranks', data_incomplete='held for incomplete data',
                 fused='held in a fused Kyurem', xxs='XXS')
-    _ab = {}                                             # the best NEW copy per stage, ANY kind: only it can be "the new best"
-    for x in arr:                                        # (R-B review: a new hundo or shiny at the stage outranks the rest)
-        if keep_config.is_fused_component(x):
-            continue
-        _k = stage_ng(x)
-        if _k not in _ab or ((x['iv_total'] or 0), (x['cp'] or 0)) > ((_ab[_k]['iv_total'] or 0), (_ab[_k]['cp'] or 0)):
-            _ab[_k] = x
     def _show(k, x):
         """One keep reason in his words; two of them depend on the mon (2026-11-12): the pattern minimum is a species' own
         number where it has one (Unown: 3), and 'protected' is also a copy he took out of the Transfer tag himself."""
@@ -1171,21 +1168,17 @@ def main():
             # never "no new keepers" over it (R-B review)
             undecided.append(desc(x, False))
             continue
-        tag = []
-        if (x['iv_total'] or 0) == 45:
+        tag, _m = [], marks[x['uid_hex']]                # the facts are new_copy_marks': the five jobs read the same ones
+        if _m['hundo']:
             # an EVOLVED hundo is the same hundo at a new stage, not a new one -- only the Pokedex "first" is news
             if not origin[x['uid_hex']]:
                 tag.append('new hundo' + (', your first' if first_hundo(x) else ''))
             elif first_hundo(x):
                 tag.append('your first hundo %s' % species_label(x))
-        elif (not x['fresh_shiny'] and _ab.get(stage_ng(x)) is x and stage_ng(x) in best_prev
-              and (x['iv_total'] or 0) > best_prev[stage_ng(x)]):
+        elif _m['best']:
             tag.append('new best at its stage')
-        for _lg, _cap in (('gl', pv.GL_CAP), ('ul', pv.UL_CAP)):
-            # gl_rank / ul_rank is the CHAIN's best (gl_stage may be a later stage): judge that stage's reach, and name it
-            _st = x[_lg + '_stage'] or sid(x)
-            if x[_lg + '_rank'] == 1 and pv.maxcp(_st, BS) > _cap + pv.VIABILITY_MARGIN:
-                tag.append(_lg.upper() + ' #1' + ('' if _st == sid(x) else ' as ' + stg(_st)))
+        for _lg, _st in _m['top1']:
+            tag.append(_lg.upper() + ' #1' + ('' if _st == sid(x) else ' as ' + stg(_st)))
         src = origin[x['uid_hex']]
         line = '**%s** (%s)%s: %s' % (desc(x, False), ('just evolved from %s' % species_label(src)) if src else 'just %s' % arrived(x),
                                       (' **%s**' % ', '.join(tag)) if tag else '', ', '.join(rs))
@@ -1563,27 +1556,34 @@ def power_up_block(C, pile_set, why, name):
 # hidden or flagged by a fluke). A job's change is real when
 #   * YOU did it -- a power-up, an evolution, a trade, a release moved an item of it: a deliberate act is never noise, also
 #     when its gains and losses cancel (a trophy evolved into the next stage is one item lost, one gained);
+#   * A STANDOUT CATCH did it (2026-11-18, his "yes" to: "should a standout catch make the verdict say Yes? Standout means a
+#     new hundo, a new shiny, a new PvP #1, or a new best at its stage. Ordinary catches would stay routine") -- the facts
+#     behind the bold marks of What improved (new_copy_marks), so the verdict and that section cannot disagree; one that only
+#     copies what you hold (a second shiny of a look, a second hundo) changes no job: the answer stays, a sentence says so;
 #   * A RULE CHANGE did it;
-#   * ROUTINE catching and culling (catches, the cull's pile, re-read data) moved it more than a control chart allows for a
+#   * ROUTINE catching and culling (the other catches, the cull's pile, re-read data) moved it more than a control chart allows for a
 #     pass of that size. The chart is a Laney u'-chart: the routine gains (and losses) per copy that arrived or changed, so a
 #     5-minute pass and an overnight one are judged alike; its spread is never tighter than a plain count's.
 JOBS = ('battlers', 'trophies', 'pokedex', 'trade', 'projects')
 JOB_NAME = {'battlers': 'Battlers', 'trophies': 'Trophies', 'pokedex': 'Pokedex', 'trade': 'Trade stock', 'projects': 'Projects'}
-# the order of the steps: his actions first (power-ups, evolutions, catches, the copies that ARRIVED already built -- a trade,
-# a catch he powered up before the walk --, his releases of kept copies), then the cull's pile as the rules of the LAST report
-# would have built it, then the rule change (the same as replaying the old rules on the new bag)
+# the order of the steps: his actions first (power-ups, evolutions, the catches that stand out -- before the other catches, so
+# the credit for what they move is theirs --, the other catches, the copies that ARRIVED already built -- a trade, a catch he
+# powered up before the walk --, his releases of kept copies), then the cull's pile as the rules of the LAST report would have
+# built it, then the rule change (the same as replaying the old rules on the new bag)
 JOB_STEPS = (('reread', 're-read data'), ('power-up', 'your power-ups'), ('evolve', 'your evolutions'),
-             ('catch', 'your catches'), ('build', 'your trades and new builds'), ('release', 'your releases'),
-             ('cull', "the cull's pile"), ('rule', 'the rule change'))
+             ('standout', 'your standout catches'), ('catch', 'your catches'), ('build', 'your trades and new builds'),
+             ('release', 'your releases'), ('cull', "the cull's pile"), ('rule', 'the rule change'))
 JOB_YOURS, JOB_ROUTINE = ('power-up', 'evolve', 'build', 'release'), ('reread', 'catch', 'cull')
 # the routine chart's memory before an account has JOB_SERIES_MIN passes of its own: the backtest's 119 recorded passes with a
 # size, 10-29 -> 11-16 -- the copies that arrived or changed in them, each job's routine (gains, losses) summed over them, and
 # each side's sigma_z. An account's own passes are added to these, and replace them at JOB_SERIES_MIN (the last JOB_SERIES_MAX
-# count).
+# count). Re-measured 2026-11-18 without the standout catches, which are no longer routine: they had been 98 of the 144
+# Trophies gains, 78 of the 130 Pokedex ones, 81 of the 569 Trade stock ones and 28 of the 122 Battlers ones.
 JOB_SEED_N = 4402
-JOB_SEED_X = {'battlers': (122, 1), 'trophies': (144, 0), 'pokedex': (130, 3), 'trade': (569, 135), 'projects': (2, 64)}
-JOB_SEED_SZ = {'battlers': (1.0, 1.0), 'trophies': (1.0, 1.0), 'pokedex': (1.0, 1.0), 'trade': (1.34, 1.0), 'projects': (1.0, 1.0)}
+JOB_SEED_X = {'battlers': (94, 1), 'trophies': (46, 0), 'pokedex': (52, 3), 'trade': (488, 135), 'projects': (2, 64)}
+JOB_SEED_SZ = {'battlers': (1.0, 1.0), 'trophies': (1.0, 1.0), 'pokedex': (1.0, 1.0), 'trade': (1.27, 1.0), 'projects': (1.0, 1.0)}
 JOB_SERIES_MIN, JOB_SERIES_MAX, JOB_SIGMA_MIN = 100, 500, 20
+JOB_SERIES_V = 2                                         # 1 (no 'v') counted the standout catches as routine: not this chart's
 # what a power-up, a second move, a purification, a trade, a buddy walk or an evolution moves: a row that keeps all of these is
 # a copy you did not touch
 JOB_TOUCH = ('pokemon_id', 'form', 'fresh_form', 'level', 'cp', 'move1', 'move2', 'move3', 'fresh_alignment', 'is_lucky',
@@ -1839,14 +1839,53 @@ def job_rule_flips(P, C, prev_pile, pile, origin, X):
     return ({u for u in calm if norm(u) not in prev_pile}, {u for u in calm if norm(u) in prev_pile})
 
 
-def job_pass(P, C, prev_pile, pile, origin, built, X, rule_moved=False):
+def new_copy_marks(arr, origin, P, stage_of, top1, is_fused=lambda r: False):
+    """What makes a NEW copy stand out: the facts behind the bold marks of What improved and -- for a catch or a hatch the cull
+    keeps (job_standout) -- what makes it real in the five jobs. ONE test for both, so the two can never disagree.
+    arr: this walk's new rows; origin: {uid: the row it evolved from, or None}; P: the last report's walk (rows by uid);
+    stage_of(row) -> its stage, genders pooled; top1(row) -> [(league, stage)] where it is #1 at a stage that reaches the
+    league's cap; is_fused(row): held inside a fused Kyurem (it holds no ladder slot).
+    -> {uid: {'hundo': 15/15/15, 'best': it beats every copy you held at a stage you already had -- said of the best new copy
+    of the stage only, never of a shiny or a hundo --, 'top1': [(league, stage)]}}"""
+    best_prev, best_new = {}, {}
+    for x in P.values():
+        if not is_fused(x):                              # (2026-09-26) fused components hold no ladder slot
+            k = stage_of(x)
+            best_prev[k] = max(best_prev.get(k, 0), x['iv_total'] or 0)
+    for x in arr:                                        # the best NEW copy per stage, ANY kind: only it can be "the new best"
+        if is_fused(x):                                  # (R-B review: a new hundo or shiny at the stage outranks the rest)
+            continue
+        k = stage_of(x)
+        if k not in best_new or ((x['iv_total'] or 0), (x['cp'] or 0)) > ((best_new[k]['iv_total'] or 0), (best_new[k]['cp'] or 0)):
+            best_new[k] = x
+    out = {}
+    for x in arr:
+        k, hundo = stage_of(x), (x['iv_total'] or 0) == 45
+        out[x['uid_hex']] = {'hundo': hundo, 'top1': list(top1(x)),
+                             'best': bool(not hundo and not x['fresh_shiny'] and best_new.get(k) is x and k in best_prev
+                                          and (x['iv_total'] or 0) > best_prev[k])}
+    return out
+
+
+def job_standout(C, origin, pile, marks):
+    """The catches and hatches that stand out: a new copy the cull keeps -- not one you evolved, not one that arrived already
+    built (a trade, a catch you powered up before the walk: your build) -- that is a shiny or carries a mark of new_copy_marks
+    (a new hundo, a new GL / UL #1, a new best at its stage). Any kept shiny counts, whichever rule keeps it: the shiny-slot
+    reason alone would pass over the shinies another rule holds (a shiny legendary). -> uids of C"""
+    return {u for u, s in origin.items() if not s and u not in pile and not _job_invest(C[u])
+            and (C[u]['fresh_shiny'] or any(marks.get(u, {}).values()))}
+
+
+def job_pass(P, C, prev_pile, pile, origin, built, X, rule_moved=False, standout=()):
     """One pass, step by step. P / C: the two walks' rows by uid; prev_pile: the last report's pile (norm uids); pile: this pass's
     pile (uids of C); origin: {uid of C that is new: the row it evolved from, or None}; built: the copies you evolved before
-    this pass (norm uids); rule_moved: the engine or keep_config stamp moved since the last report.
+    this pass (norm uids); rule_moved: the engine or keep_config stamp moved since the last report; standout: the catches
+    that stand out (job_standout) -- a step of their own, before the other catches, and never the routine chart's to judge.
     A copy that ARRIVED already built (a trade, a catch you powered up before the walk) is your doing, not a routine catch, and
     it is counted even when the cull piles it at once: the pile never takes a copy you put something into without a line.
     -> {'its': [(step, items)], 'jobs': {job: {'parts', 'net' (= the steps added up), 'rg' / 'rl' (what the routine steps
-    gained / lost)}}, 'flips', 'built', 'n' (the copies that arrived or that you changed: the size of the pass)}"""
+    gained / lost)}}, 'flips', 'built', 'n' (the copies that arrived or that you changed: the size of the pass), 'still' (item
+    keys that name the standout catches when they changed no job)}"""
     cache = {}
     S0 = {u: r for u, r in P.items() if norm(u) not in prev_pile}           # what the last pass kept
     cols = lambda r: tuple(map(r.get, JOB_COLS))
@@ -1859,8 +1898,12 @@ def job_pass(P, C, prev_pile, pile, origin, built, X, rule_moved=False):
     A2 = {u: r for u, r in A1.items() if u not in srcs}
     A2.update((u, C[u]) for u in evolved)                                   # your evolutions
     new = [u for u, s in origin.items() if not s]
-    A3 = dict(A2)
-    A3.update((u, C[u]) for u in new if u not in pile and not _job_invest(C[u]))   # catches and hatches the cull kept
+    plain = [u for u in new if u not in pile and not _job_invest(C[u])]     # catches and hatches the cull kept
+    stood = [u for u in plain if u in standout]
+    A2s = dict(A2)
+    A2s.update((u, C[u]) for u in stood)                                    # ... the ones that stand out
+    A3 = dict(A2s)
+    A3.update((u, C[u]) for u in plain)                                     # ... and the others
     A3b = dict(A3)
     A3b.update((u, C[u]) for u in new if _job_invest(C[u]))                 # the ones that arrived built: yours, piled or not
     A4 = {u: r for u, r in A3b.items() if u in C}                           # your releases of copies the last pass kept
@@ -1869,15 +1912,21 @@ def job_pass(P, C, prev_pile, pile, origin, built, X, rule_moved=False):
     old = {u: r for u, r in S3.items() if u not in unflips}                 # ... as the last report's rules would keep it
     old.update((u, A4.get(u) or C[u]) for u in flips)
     built1 = set(built) | {norm(u) for u in evolved}
-    seq = [('start', S0, built), ('reread', A0, built), ('power-up', A1, built), ('evolve', A2, built1), ('catch', A3, built1),
-           ('build', A3b, built1), ('release', A4, built1), ('cull', old, built1), ('rule', S3, built1)]
+    seq = [('start', S0, built), ('reread', A0, built), ('power-up', A1, built), ('evolve', A2, built1), ('standout', A2s, built1),
+           ('catch', A3, built1), ('build', A3b, built1), ('release', A4, built1), ('cull', old, built1), ('rule', S3, built1)]
     its = []
     for i, (n, s, b) in enumerate(seq):                  # a step that moved no copy keeps the items it was handed
         same = i and len(s) == len(seq[i - 1][1]) and all(seq[i - 1][1].get(u) is r for u, r in s.items())
         its.append((n, its[-1][1] if same else job_items(s.values(), b, X, cache)))
     tch = lambda r: tuple(map(r.get, JOB_TOUCH))
     n = len(origin) + sum(1 for u, r in C.items() if u in P and tch(P[u]) != tch(r))
-    out = {'its': its, 'jobs': {}, 'flips': (flips, unflips), 'built': built1, 'n': n}
+    out = {'its': its, 'jobs': {}, 'flips': (flips, unflips), 'built': built1, 'n': n, 'still': []}
+    if stood and all(its[4][1][j] == its[3][1][j] for j in JOBS):          # its[3] = after your evolutions, its[4] = + these
+        # standout catches that changed no job: each only copies a thing you hold (a second shiny of a look, a second hundo).
+        # The block says so in words -- or What improved would print a bold mark the answer never mentions
+        hun = lambda r: (r['iv_atk'], r['iv_def'], r['iv_sta']) == (15, 15, 15)
+        out['still'] = [('hundo',) + _job_look(C[u], X) if hun(C[u]) else ('look',) + _job_look(C[u], X) if C[u]['fresh_shiny']
+                        else ('kind',) + _job_kind(C[u], X) for u in stood]
     for j in JOBS:
         parts = {its[i][0]: job_score(its[i - 1][1][j], its[i][1][j], j) for i in range(1, len(its))}
         out['jobs'][j] = {'parts': parts, 'net': sum(parts.values()),
@@ -1887,12 +1936,12 @@ def job_pass(P, C, prev_pile, pile, origin, built, X, rule_moved=False):
 
 
 def job_chart(series):
-    """The routine chart (Laney u'). series: this account's recorded passes, oldest first -- {'n': the copies that arrived or
-    changed, 'g' / 'l': each job's routine gains / losses, JOBS order}; a record of another shape is not counted. Until
-    JOB_SERIES_MIN of them are on record the backtest's recorded passes (JOB_SEED_*) are counted with them.
+    """The routine chart (Laney u'). series: this account's recorded passes, oldest first -- {'v': JOB_SERIES_V, 'n': the copies
+    that arrived or changed, 'g' / 'l': each job's routine gains / losses, JOBS order}; a record of another shape or version
+    is not counted. Until JOB_SERIES_MIN of them are on record the backtest's recorded passes (JOB_SEED_*) are counted with them.
     -> {job: ((rate per copy, sigma_z) of the routine gains, the same of the routine losses)}; sigma_z -- how much wider than a
     plain count the job runs, from the median moving range of the z-scores -- is never under 1."""
-    ok = lambda s: (isinstance(s, dict) and isinstance(s.get('n'), int) and s['n'] > 0
+    ok = lambda s: (isinstance(s, dict) and s.get('v') == JOB_SERIES_V and isinstance(s.get('n'), int) and s['n'] > 0
                     and all(isinstance(s.get(k), list) and len(s[k]) == len(JOBS) for k in 'gl'))
     own = [s for s in series if ok(s)][-JOB_SERIES_MAX:]
     seed = len(own) < JOB_SERIES_MIN
@@ -1994,10 +2043,11 @@ def job_namer(P, C, X, stg=None):
 
 
 def job_lines(res, chart, name, walks, show=3):
-    """The block. The first words answer the question; then one line per job whose change is real -- you did it, a rule change
-    did it (a step that moved an item, whatever its total), or routine catching and culling moved more than the chart
-    (job_chart) allows for a pass of this size -- naming what moved and who moved it; the other jobs share one line. A pass
-    where nothing real changed: one line."""
+    """The block. The first words answer the question; then one line per job whose change is real -- you did it, a standout
+    catch did it, a rule change did it (a step that moved an item, whatever its total), or routine catching and culling moved
+    more than the chart (job_chart) allows for a pass of this size -- naming what moved and who moved it; the other jobs share
+    one line. A pass where nothing real changed: one line. Standout catches that changed no job (res['still']: each copies a
+    thing you hold) close the block in a sentence of their own, so the answer never passes over a bold mark of What improved."""
     words, n = dict(JOB_STEPS), res['n']
     steps = list(zip(res['its'], res['its'][1:]))
     usual = lambda lim: 'normal is %s for %d new or changed Pokemon' % ('none' if lim < 1 else 'up to %d' % int(lim), n)
@@ -2007,7 +2057,8 @@ def job_lines(res, chart, name, walks, show=3):
         (ug, sg), (ul, sl) = chart[j]
         lg, ll = job_ucl(ug, sg, n), job_ucl(ul, sl, n)
         moved = {st for (_s0, a), (st, b) in steps if a[j] is not b[j] and a[j] != b[j]}
-        why = (['your doing'] if moved.intersection(JOB_YOURS) else []) + (['a rule change'] if 'rule' in moved else [])
+        why = ((['your doing'] if moved.intersection(JOB_YOURS) else []) + (['a standout catch'] if 'standout' in moved else [])
+               + (['a rule change'] if 'rule' in moved else []))
         if v['rg'] > lg:
             why.append('unusual: %d gained, %s' % (v['rg'], usual(lg)))
         if v['rl'] > ll:
@@ -2031,13 +2082,17 @@ def job_lines(res, chart, name, walks, show=3):
         if v['net']:
             (better if v['net'] > 0 else worse).append('%s %+d' % (JOB_NAME[j], v['net']))
     head = '**Did your collection get better?**'
+    still = list(dict.fromkeys(name(k) for k in res.get('still', ())))      # standout catches that changed no job, by name
+    note = ('Your standout catch%s changed none of the five jobs -- you already hold one as good%s: %s%s.' % (
+        'es' if len(still) > 1 else '', ' of each' if len(still) > 1 else '', ', '.join(still[:show]),
+        ' and %d more' % (len(still) - show) if len(still) > show else '')) if still else ''
     if not real:
-        return ['%s Nothing real changed (walk %s): %s -- routine catching and culling, inside its normal range.'
-                % (head, walks, ', '.join(quiet))]
+        return ['%s Nothing real changed (walk %s): %s -- routine catching and culling, inside its normal range.%s'
+                % (head, walks, ', '.join(quiet), ' ' + note if note else '')]
     verdict = ('Mixed: better %s; worse %s' % (', '.join(better), ', '.join(worse)) if better and worse
                else 'Yes: ' + ', '.join(better) if better else 'No: ' + ', '.join(worse) if worse else 'No net change')
     return (['%s %s (walk %s).' % (head, verdict, walks)] + real
-            + (['- Routine, inside its normal range: %s.' % ', '.join(quiet)] if quiet else []))
+            + (['- Routine, inside its normal range: %s.' % ', '.join(quiet)] if quiet else []) + (['- ' + note] if note else []))
 
 
 def _job_sig_rows(path):
@@ -2248,9 +2303,10 @@ def _job_selftest():
         return r
     bag = lambda *rs: {r['uid_hex']: r for r in rs}
 
-    def run(P, C, pile=(), rule=False, built=()):
+    def run(P, C, pile=(), rule=False, built=(), standout=()):
         gone = {sig(P[u]): P[u] for u in sorted(set(P) - set(C))}
-        return job_pass(P, C, set(), set(pile), {u: gone.get(sig(C[u])) for u in sorted(set(C) - set(P))}, set(built), X, rule)
+        return job_pass(P, C, set(), set(pile), {u: gone.get(sig(C[u])) for u in sorted(set(C) - set(P))}, set(built), X, rule,
+                        standout)
     part = lambda res, j, st: res['jobs'][j]['parts'].get(st, 0)
     a1, a2, a3 = mk('a1', 'Pikachu', 25, (15, 14, 13)), mk('a2', 'Pikachu', 25, (10, 10, 10)), mk('a3', 'Pikachu', 25, (12, 12, 12))
     c1 = mk('c1', 'Pikachu', 25, (0, 15, 15), gl_chain_ranks='pikachu:3(99.0%);raichu:1(100.00%)')
@@ -2293,8 +2349,10 @@ def _job_selftest():
     assert job_chart([])['trade'] == ((JOB_SEED_X['trade'][0] / JOB_SEED_N, JOB_SEED_SZ['trade'][0]),
                                       (JOB_SEED_X['trade'][1] / JOB_SEED_N, JOB_SEED_SZ['trade'][1]))
     assert job_ucl(0.0, 1.0, 50) == 0 and job_ucl(0.02, 1.0, 0) == 0 and job_ucl(0.02, 1.0, 400) > job_ucl(0.02, 1.0, 40) > 1
-    own = [{'walk': 'w%d' % t, 'n': 30, 'g': [0, 0, 0, 3, 0], 'l': [0, 0, int(t % 7 == 0), 0, 0]} for t in range(JOB_SERIES_MIN)]
-    ch = job_chart(own + [{'walk': 'the first version', 'g': [9] * 5, 'l': [9] * 5}, 'junk', {'n': 0, 'g': [9] * 5, 'l': [9] * 5}])
+    own = [{'walk': 'w%d' % t, 'v': JOB_SERIES_V, 'n': 30, 'g': [0, 0, 0, 3, 0], 'l': [0, 0, int(t % 7 == 0), 0, 0]}
+           for t in range(JOB_SERIES_MIN)]
+    ch = job_chart(own + [{'walk': 'the first version', 'g': [9] * 5, 'l': [9] * 5}, 'junk', {'v': JOB_SERIES_V, 'n': 0, 'g': [9] * 5, 'l': [9] * 5},
+                          {'walk': 'before the standout step', 'n': 30, 'g': [9] * 5, 'l': [9] * 5}])
     assert ch['trade'][0] == (0.1, 1.0) and ch['battlers'] == ((0.0, 1.0), (0.0, 1.0)), 'its own passes only; the odd records left out'
     assert 1 < job_ucl(*ch['pokedex'][1], 30) < 2, 'a loss seen in 1 pass of 7 is routine; two in one pass are not'
     assert job_ucl(*ch['pokedex'][1], 2) < 1, 'the same loss in a pass of 2 copies is not routine'
@@ -2338,6 +2396,43 @@ def _job_selftest():
                   "- **Projects +0: real** (your doing): your trades and new builds +1 -- Eevee 9/7/8 CP 500 (traded); "
                   "the cull's pile -1 -- lost Eevee 9/7/8 CP 500 (traded).",
                   '- Routine, inside its normal range: Battlers +0, Trophies +0, Pokedex +0, Trade stock +0.'], l4
+    # 5b. a STANDOUT catch (2026-11-18): a new hundo, a shiny, a new #1 or a new best at its stage is real by itself and the
+    #     verdict names it; every other catch stays routine. The facts are the ones What improved prints in bold
+    st_of, t1 = (lambda r: (r['species_name'].lower(), 0)), (lambda r: [('gl', 'raichu')] if r['gl_rank'] == 1 else [])
+    hd, be, lo = mk('e5', 'Pikachu', 25, (15, 15, 15), cp=560), mk('e6', 'Eevee', 133, (10, 10, 10)), mk('e7', 'Eevee', 133, (9, 9, 9))
+    fs, k1, sh = mk('e8', 'Raichu', 26, (12, 12, 12)), mk('e9', 'Pikachu', 25, (0, 15, 15), gl_rank=1), mk('ea', 'Raichu', 26, (1, 1, 1), fresh_shiny=1)
+    Pm, new7 = bag(a1, b2), [hd, be, lo, fs, k1, sh]
+    og = {r['uid_hex']: None for r in new7}
+    mk7 = new_copy_marks(new7, og, Pm, st_of, t1)
+    assert mk7['e5'] == {'hundo': True, 'top1': [], 'best': False}, 'a hundo is a new hundo, not also a new best'
+    assert mk7['e6']['best'] and not mk7['e7']['best'], 'only the best new copy of a stage can be the new best'
+    assert not mk7['e8']['best'] and not mk7['ea']['best'], 'the first copy of a stage beats nothing; a shiny is never "the new best"'
+    assert mk7['e9']['top1'] == [('gl', 'raichu')] and not mk7['e9']['best'], mk7['e9']
+    assert not any(new_copy_marks([be], {'e6': None}, bag(a1, dict(b2, iv_total=40)), st_of, t1)['e6'].values()), 'a 67% Eevee under your 89% one'
+    Cm = bag(a1, b2, *new7)
+    assert job_standout(Cm, og, {'ea'}, mk7) == {'e5', 'e6', 'e9'}, 'a hundo, a new best, a #1; the shiny went to the pile'
+    assert job_standout(Cm, dict(og, e5=a1), set(), mk7) == {'e6', 'e9', 'ea'}, 'a copy you evolved is your evolution, not a catch'
+    C7 = bag(a1, b2, hd, lo)
+    r7, name7 = run(Pm, C7, standout={'e5'}), job_namer(Pm, C7, X)
+    assert (part(r7, 'trophies', 'standout'), part(r7, 'pokedex', 'standout'), part(r7, 'pokedex', 'catch')) == (1, 1, 1), r7['jobs']
+    assert (r7['jobs']['trophies']['rg'], r7['jobs']['pokedex']['rg']) == (0, 1), 'only the other catch is the routine chart\'s'
+    l7 = job_lines(r7, wide, name7, '10:00 -> 10:05')
+    assert l7[0] == head + 'Yes: Trophies +1, Pokedex +2, Trade stock +2 (walk 10:00 -> 10:05).', l7[0]
+    assert l7[1] == '- **Trophies +1: real** (a standout catch): your standout catches +1 -- hundo Pikachu.', l7[1]
+    assert l7[2] == ('- **Pokedex +2: real** (a standout catch): your standout catches +1 -- best Pikachu 93% -> 100%; '
+                     'your catches +1 -- best Eevee 33% -> 60%.'), l7[2]
+    assert job_lines(run(Pm, C7), wide, name7, '10:00 -> 10:05')[0].startswith(head + 'Nothing real changed'), 'none marked: routine, as before'
+    assert r7['still'] == [], 'a standout catch that moved a job needs no sentence of its own'
+    s0, sb = mk('eb', 'Raichu', 26, (10, 10, 10), fresh_shiny=1), mk('ec', 'Raichu', 26, (1, 1, 1), fresh_shiny=1)
+    P8, C8 = bag(a1, b2, s0), bag(a1, b2, s0, sb)
+    r8 = run(P8, C8, standout={'ec'})                    # a second shiny of a look you hold: it stands out and changes no job
+    assert r8['still'] == [('look',) + _job_look(sb, X)] and not any(any(v['parts'].values()) for v in r8['jobs'].values()), r8['still']
+    l8 = job_lines(r8, wide, job_namer(P8, C8, X), '10:00 -> 10:05')
+    assert l8 == [head + 'Nothing real changed (walk 10:00 -> 10:05): Battlers +0, Trophies +0, Pokedex +0, Trade stock +0, Projects +0 '
+                  '-- routine catching and culling, inside its normal range. Your standout catch changed none of the five jobs -- '
+                  'you already hold one as good: shiny Raichu.'], l8
+    bt = mk('ed', 'Eevee', 133, (9, 9, 9), fresh_shiny=1, is_traded=1)
+    assert job_standout(bag(a1, b2, bt), {'ed': None}, set(), {}) == set(), 'a shiny traded to you is your trade, not a catch'
     # 6. a band is filled whoever holds it, and each copy you built is its own item: equal plain copies move nothing, whatever the uids
     cpv = lambda i: int((193 + 15) * (151 + 15) ** 0.5 * (155 + 15) ** 0.5 * cpm_table.CPM[i] ** 2 / 10)
     li = next(i for i in range(len(cpm_table.CPM) - 1) if cpv(i) <= 500 < cpv(i + 1))
