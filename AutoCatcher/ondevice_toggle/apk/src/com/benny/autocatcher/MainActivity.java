@@ -176,7 +176,7 @@ public class MainActivity extends Activity {
          *  runner answering, High stardust 700+ with the catcher doing it, a levels file and an old stardust list,
          *  Transfer on Catch set up; 2 = switched on but neither the catcher nor the gym runner answers, no levels
          *  file; 3 = the phone's real state, but High stardust switched to All (with a levels file) while the catcher
-         *  does not report it; 4 = the real state with a custom number in the switch file. The species in LEVELS are a
+         *  does not report it and gives a long reason; 4 = the real state with a custom number in the switch file. The species in LEVELS are a
          *  sample for the picture, not the game's list. */
         static final String LEVELS = "base=100 species=1024 batch=sample\n1 476\n500 133\n"
                 + "700 20 Audino, Chimecho, Cloyster, Combee, Delibird, Garbodor, Meowth, Minior, Paras, Parasect, Persian, "
@@ -189,6 +189,11 @@ public class MainActivity extends Activity {
                 s.flags[0] = "1";
                 s.flags[6] = "1";
                 s.levels = LEVELS;
+                if (s.state.length() > 0 && !s.state.contains(" why=")) {   // a long reason: it must wrap, never be cut
+                    s.state += " why=catching everything for now: the shiny and weather reads cannot be trusted yet on "
+                            + "this game version, so High stardust only is not applied (a sample text for the picture)";
+                    s.stateMs = now - 3000;
+                }
             } else if (kind == 4) {
                 s.flags[6] = "250";
                 s.levels = LEVELS;
@@ -384,8 +389,9 @@ final class Logic {
         return (wantsPinap && pinap == 0) || (wantsRazz && razz == 0) ? WAIT : DIM;
     }
 
-    // ---- High stardust only (pogo_dust.on). 0 = catch everything; 1 = every species that pays more than the normal
-    //      catch; N >= 2 = only species worth N+ stardust a catch. Every shiny is always caught. -------------------------
+    // ---- High stardust only (pogo_dust.on). 0 = catch everything; 1 = everything that pays more than a normal catch
+    //      (a higher-paying species, or anything weather-boosted: +25%); N >= 2 = only catches worth N+ stardust, a
+    //      weather boost counted. Every shiny is always caught. ------------------------------------------------------
 
     /** Digits and nothing else, at least one. */
     static boolean digits(String t) {
@@ -442,20 +448,22 @@ final class Logic {
 
     /** The hint under the High stardust row for what the switch file holds. The counts and the names come from the
      *  catcher's levels file, never from text in this app: the species change with the game. Without that file (it is
-     *  not there until a catcher that writes it runs) the hint has no numbers. */
+     *  not there until a catcher that writes it runs) the hint has no numbers. A weather-boosted spawn pays +25% and
+     *  counts as high stardust (Benny 2026-11-18: "yes include weather boosted too"), so every hint says so. */
     static String dustHint(String value, String levels) {
         if (value.equals("0")) return "catching every Pokemon";
         if (!(value.equals("1") || value.equals("500") || value.equals("700") || value.equals("1000")))
             return "custom: " + num(value) + "+";
         String[] lv = dustLevel(levels, value);
         if (value.equals("1")) {
-            if (lv == null) return "only Pokemon that pay more than the normal catch, plus every shiny";
+            if (lv == null) return "only what pays more than a normal catch, weather-boosted included, plus every shiny";
             String base = dustBase(levels);
-            return "only the " + num(lv[0]) + " species that pay more than the normal "
-                    + (base.length() > 0 ? num(base) + " " : "") + "stardust, plus every shiny";
+            return "only what pays more than the normal " + (base.length() > 0 ? num(base) + " " : "") + "stardust: "
+                    + num(lv[0]) + " species and anything weather-boosted, plus every shiny";
         }
-        if (lv == null) return "only Pokemon worth " + num(value) + "+ stardust, plus every shiny";
-        return "only " + num(lv[0]) + " species" + (lv[1].length() > 0 ? ": " + lv[1] : "") + ", plus every shiny";
+        if (lv == null) return "only catches worth " + num(value) + "+ stardust, plus every shiny";
+        return "only catches worth " + num(value) + "+ stardust: " + num(lv[0]) + " species"
+                + (lv[1].length() > 0 ? ": " + lv[1] : "") + " (weather boost counts), plus every shiny";
     }
 
     /** dustchk=<hours> in the state line: how long ago the catcher last checked its stardust list. Above 72 hours the
@@ -597,10 +605,11 @@ final class Screen {
     // (run_gym.sh); gym-off only writes the flag and the supervisor stops by itself. The gym runner writes ONE status
     // line, which the tile shows.
     static final String GYMFLAG = T + "pogo_gym.on", GYM_STATUS = T + "pogo_gym_status.txt";
-    // High stardust only: a whole number. 0 (or no file) = everything; 1 = every species that pays more than the normal
-    // catch; N = only species worth N+ stardust. Every shiny is always caught. The catcher reads it; catcher_ctl.sh
-    // dust-off / dust-on / dust-<N> write it. What each step means today (how many species, which ones) is in a file the
-    // catcher writes, DUST_LEVELS: the species change with the game, so no list is baked into this app.
+    // High stardust only: a whole number. 0 (or no file) = everything; 1 = everything that pays more than a normal
+    // catch (weather-boosted counts); N = only catches worth N+ stardust. Every shiny is always caught. The catcher
+    // reads it; catcher_ctl.sh dust-off / dust-on / dust-<N> write it. What each step means today (how many species,
+    // which ones) is in a file the catcher writes, DUST_LEVELS: the species change with the game, so no list is baked
+    // into this app.
     static final String DUSTFLAG = T + "pogo_dust.on", DUST_LEVELS = T + "pogo_dust_levels.txt";
     // Berries: 1 = Pinap + Razz, pinap, razz, anything else = none. The catcher reads it every second.
     static final String BERRYFLAG = T + "pogo_berries.on";
@@ -1528,7 +1537,7 @@ final class Screen {
             {"Perfect Throw", "Every throw scores Excellent + curveball, including the ones you throw by hand."},
             {"Tap to Move", "Tap a spot on the map to move there, so you can reach things that are out of range."},
             {"Gym Battle", "A gym you open is battled until it is empty, then a shiny Gyarados goes in. An empty gym or a red gym with room gets one straight away. It never moves you to a gym. Runs on the phone."},
-            {"High stardust only", "Leaves normal-stardust Pokemon alone. Every shiny is still caught. The list updates itself."},
+            {"High stardust only", "Catches only what pays more than a normal catch - evolved forms, bonus species and anything weather-boosted - plus every shiny. The list updates itself."},
             {"Berries", "What is fed before the throw. Pinap: a Pinap on every Pokemon. Razz: a Razz on the hard ones only. Both: Razz on the hard ones, Pinap on the rest. Never a Golden Razz or a Silver Pinap."},
             {"Transfer on Catch", "Tags junk the moment you catch it, so less piles up for the cull. It only tags; it never releases anything."},
             {"Catch Rewards", "Clears stacked Field Research reward encounters that piled up while your box was full."},

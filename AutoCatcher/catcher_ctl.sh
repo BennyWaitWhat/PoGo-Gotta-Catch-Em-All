@@ -35,9 +35,10 @@ GYMRUN="$HOME/pogo/run_gym.sh"
 BERRYFLAG=/data/local/tmp/pogo_berries.on
 # High stardust only (Benny 2026-11-18: "a catch mode that only catches high stardust pokemon (+ shinies) that can be
 # toggled on", "inclusive of EVERY higher than avg stardust pokemon for that mode"). A whole number: 0 (or no file, or
-# anything else) = catch everything; 1 = every species that pays more than the normal catch; N >= 2 = only species
-# whose base catch stardust is N or more. Every shiny is always caught. Only the catcher reads it: like the berries
-# flag it keeps no process alive, and run_catch.sh's on() does not count it.
+# anything else) = catch everything; 1 = everything that pays more than a normal catch (a higher-paying species, or
+# anything weather-boosted: "yes include weather boosted too"); N >= 2 = only catches worth N or more stardust.
+# Every shiny is always caught. Only the catcher reads it: like the berries flag it keeps no process alive, and
+# run_catch.sh's on() does not count it.
 DUSTFLAG=/data/local/tmp/pogo_dust.on
 
 # [c]/[r] trick: the patterns never match this grep's own cmdline (avoids the pgrep self-match false positive).
@@ -185,7 +186,7 @@ case "$1" in
   berries-razz)  setflag "$BERRYFLAG" razz "berries-razz" ;;
   berries-on)    setflag "$BERRYFLAG" 1 "berries-on" ;;
   dust-off)   setflag "$DUSTFLAG" 0 "dust-off" ;;                # the flag only: the catcher reads it
-  dust-on)    setflag "$DUSTFLAG" 1 "dust-on" ;;                 # every species that pays more than the normal catch
+  dust-on)    setflag "$DUSTFLAG" 1 "dust-on" ;;                 # everything that pays more than a normal catch
   dust-*)     n=${1#dust-}                                       # dust-500 / dust-700 / dust-1000: a whole number, nothing else
               case "$n" in
                 ''|*[!0-9]*|????????*) echo "usage: catcher_ctl.sh dust-off | dust-on | dust-<whole number>" ;;
