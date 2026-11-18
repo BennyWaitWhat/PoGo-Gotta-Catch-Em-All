@@ -1263,6 +1263,9 @@ def fail_cap_checks():
             raise KeyboardInterrupt                            # the PC case never stops by itself: end it here
         raise KeyError("x")
 
+    made = [nm for nm in ("InvalidOperationError", "TransportError", "ServerNotRunningError") if not hasattr(gym_run.frida, nm)]
+    for nm in made:                                            # CI's stand-in frida has no error classes; main()'s except names them
+        setattr(gym_run.frida, nm, type(nm, (Exception,), {}))
     try:
         gym_run.run, gym_run.Game, gym_run.Mover = boom, G, (lambda *_a, **_k: None)
         gym_run.dd_guard, gym_run.dd_said, gym_run.say = (lambda *_a, **_k: None), (lambda *_a, **_k: None), said.append
@@ -1289,6 +1292,8 @@ def fail_cap_checks():
         for k, v in keep.items():
             setattr(gym_run, k, v)
         gym_run.time.sleep, sys.argv = keep_sleep, keep_argv
+        for nm in made:
+            delattr(gym_run.frida, nm)
     rs = read(os.path.join(os.path.dirname(HERE), "run_gym.sh"))
     check('      if [ "$rc" = 86 ]; then quick=$QUICK_MAX; fi\n      if [ "$quick" -ge "$QUICK_MAX" ]; then' in rs.replace("\r\n", "\n"),
           "run_gym.sh: exit code 86 is STOPPED at once (no second and third start of a runner that gave up)")
