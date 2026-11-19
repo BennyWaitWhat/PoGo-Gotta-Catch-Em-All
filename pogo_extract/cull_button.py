@@ -16,9 +16,12 @@ ON THE PHONE SINCE 2026-11-18 (Benny: "the entire thing needs to run on the phon
 runs in Termux from the repo clone ~/cull, started by ../tools/cull_phone.sh (Termux:Boot starts that), and the whole pass
 runs on the phone with the PC off. ../tools/phone/adb stands in for adb there (root shell commands, local copies). While it
 waits it reads the request file itself (no root call every 15 s); before a pass it takes main from GitHub (fast-forward
-only; no network = the code it has); it refuses while the battery is under BATTERY_MIN % and not charging (the pass's CPU is
-the phone's now) and while a cull from the PC is attached (the phone busy marker, PokemonInventory). The PC no longer runs a
-listener: two would both see a tap.
+only; no network = the code it has); it refuses while a cull from the PC is attached (the phone busy marker,
+PokemonInventory). The PC no longer runs a listener: two would both see a tap.
+2026-11-19 (Benny, two taps turned away for the battery while he was out: "i thought i said this needs to run on the phone
+the same without you whenever im out"): the battery never blocks a tap (his 2026-07-26 rule, see BATTERY_MIN); a low one is
+said in the running line. Idle, the listener takes main every UPDATE_S and restarts on new code, so a fix reaches it with
+nobody there. A listener that restarts keeps the last answer (done / STOPPED) on the app's screen.
 Run on the phone:  bash ~/cull/tools/cull_phone.sh      Offline self-check:  python cull_button.py --selftest
 """
 import datetime as dt
@@ -38,7 +41,12 @@ REQ, STATUS = '/data/local/tmp/pogo_cull.req', '/data/local/tmp/pogo_cull_status
 # Which side this is: the Termux prefix exists only on the phone; POGO_ON_PHONE=1 / 0 says so outright (cull_phone.sh: 1).
 ON_PHONE = os.environ.get('POGO_ON_PHONE', '1' if os.path.isdir('/data/data/com.termux/files/usr') else '0') == '1'
 BUSY = '/data/local/tmp/pogo_desktop_busy'      # pogo_il2cpp's marker: "<name> <deadline epoch>" while a desktop tool is attached
-BATTERY_MIN = 10            # % -- under it, and not charging, no pass starts on the phone (11-18 20:50: 3%, too hot to charge)
+BATTERY_MIN = 10            # % -- under it the running line says the battery. NEVER a block (Benny 2026-07-26: "why on
+                            # earth is there a block for battery level? get rid of that"); 11-19 two taps were turned
+                            # away at 4 % and 8 % on a charger (Android pausing the charging for heat, 41 C) by a block
+                            # that came back with the move to the phone on 11-18.
+UPDATE_S = 1800             # idle, the listener takes main from GitHub this often; new code -> it restarts on it (Benny 11-19:
+                            # "this needs to run on the phone the same without you whenever im out")
 LOG = os.path.join(AN, 'cull_button.log')
 # The listener's own memory of the last tap it handled. On the phone it sits OUTSIDE the data store (system/analysis/*.json
 # travels with every pull): a pull must never hand it an older epoch, or one tap would run twice.
@@ -104,6 +112,31 @@ def parse_battery(text):
     """`dumpsys battery` -> (level %, charging?) or (None, None). status 2 = charging, 5 = full."""
     lv, st = re.search(r'^\s*level:\s*(\d+)', text or '', re.M), re.search(r'^\s*status:\s*(\d+)', text or '', re.M)
     return (int(lv.group(1)), st is not None and st.group(1) in ('2', '5')) if lv else (None, None)
+
+
+def parse_power(text):
+    """`dumpsys battery` -> (level %, on a charger?) or (None, None). On a charger = AC, USB, wireless or dock powered, whatever
+    the status says: on 11-19 16:26-16:38 it read "status: 2" one minute and the kernel "Not charging" the next, at 41 C."""
+    lv = re.search(r'^\s*level:\s*(\d+)', text or '', re.M)
+    if not lv:
+        return None, None
+    return int(lv.group(1)), re.search(r'^\s*(AC|USB|Wireless|Dock) powered:\s*true', text, re.M) is not None
+
+
+def battery_note(level, plugged):
+    """The battery, said in the running line when it is low ('' at BATTERY_MIN % or more, or unread). It never blocks a pass."""
+    if level is None or level >= BATTERY_MIN:
+        return ''
+    return ' (battery %d%%%s)' % (level, ' on the charger' if plugged else ', not on a charger')
+
+
+def keep_answer(line):
+    """A listener that starts keeps the last answer on the app's screen instead of "ready": it restarts on new code right
+    after a pass, and the pass's "release N" line must not vanish. Kept: done, and a STOPPED that is a pass's result. Not
+    kept (-> a fresh ready line): a STOPPED that asks for another tap ("... tap again": its tap never ran, and ready says the
+    same), a queued / running line (a listener that died mid-way), ready, nothing."""
+    s = (line or '').strip()
+    return s.startswith('done ') or (s.startswith('STOPPED ') and 'tap again' not in s)
 
 
 def pc_attached(text, now):
@@ -230,11 +263,8 @@ def one_pass(req_epoch):
     """Everything one tap does; the last status line it writes is the answer."""
     if cull_running():
         status('STOPPED %s: a cull is already running -- tap again when it is done' % hhmm()); return
+    bat = battery_note(*parse_power(adb('dumpsys battery'))) if ON_PHONE else ''
     if ON_PHONE:
-        lv, charging = parse_battery(adb('dumpsys battery'))
-        if lv is not None and lv < BATTERY_MIN and not charging:
-            status('STOPPED %s: battery %d%% and not charging -- the cull runs on the phone, charge it first, then tap again'
-                   % (hhmm(), lv)); return
         if pc_attached(read_local(BUSY) or adb('cat %s 2>/dev/null' % BUSY), int(time.time())):
             status('STOPPED %s: a cull from the PC is attached right now -- tap again in a few minutes' % hhmm()); return
         log('code: %s' % code_update())
@@ -272,8 +302,8 @@ def one_pass(req_epoch):
             told = True
         time.sleep(5)                                     # each look is one root call on the phone
     start = time.time()
-    status('running since %s' % hhmm(start))
-    log('cull for the tap at %s (pid %s, game up %ss)' % (hhmm(req_epoch), pid, up))
+    status('running since %s%s' % (hhmm(start), bat))
+    log('cull for the tap at %s (pid %s, game up %ss%s)' % (hhmm(req_epoch), pid, up, bat))
     with open(CULL_LOG, 'w', encoding='utf-8', errors='replace') as f:
         rc = _run([PY, 'full_audit.py'], cwd=HERE, stdout=f, stderr=subprocess.STDOUT).returncode
     text = open(CULL_LOG, encoding='utf-8', errors='replace').read()
@@ -306,7 +336,9 @@ def main():
         print('cull_button: another listener is already running'); return 3
     st, head = load_state(), _head()
     log('listener up on the phone (pid %s, code %s)' % (os.getpid(), head))
-    status('ready %s: tap Cull Now, then go back to Pokemon GO -- the phone runs one cull' % hhmm())
+    if not keep_answer(read_local(STATUS)):
+        status('ready %s: tap Cull Now, then go back to Pokemon GO -- the phone runs one cull' % hhmm())
+    looked = time.time()
     while True:
         try:
             ep = parse_req(read_req())
@@ -319,6 +351,10 @@ def main():
                     one_pass(ep)
                     if _head() != head:                         # the pass took a newer main: the listener's own code too
                         log('the code moved (%s -> %s): the listener restarts' % (head, _head())); return 0
+            elif time.time() - looked >= UPDATE_S:              # idle: fixes reach it without anyone restarting it
+                looked = time.time()
+                if code_update() != head:
+                    log('new code on main (%s -> %s): the listener restarts on it' % (head, _head())); return 0
         except Exception as e:                                  # the listener stays up; the tap is already marked done
             log('error: %r' % e)
             try:
@@ -360,6 +396,21 @@ def selftest():
     assert parse_battery(bat % (4, 3)) == (3, False), '11-18 20:50: 3%, plugged in, not charging (too hot)'
     assert parse_battery(bat % (2, 3)) == (3, True) and parse_battery(bat % (5, 100)) == (100, True)
     assert parse_battery('') == (None, None) and parse_battery(None) == (None, None)
+    # 11-19: the battery is said, never a block (a charger = AC / USB / wireless / dock powered)
+    full = ('Current Battery Service state:\n  AC powered: %s\n  USB powered: false\n  Wireless powered: false\n'
+            '  Dock powered: false\n  Max charging current: 2200000\n  status: %s\n  health: 2\n  level: %s\n  scale: 100\n')
+    assert parse_power(full % ('true', 4, 8)) == (8, True), '11-19 16:26: 8%, on its charger, charging paused for heat'
+    assert parse_power(full % ('false', 3, 8)) == (8, False) and parse_power('') == (None, None) and parse_power(None) == (None, None)
+    assert parse_power((full % ('false', 2, 4)).replace('USB powered: false', 'USB powered: true')) == (4, True)
+    assert parse_power((full % ('false', 2, 4)).replace('Wireless powered: false', 'Wireless powered: true')) == (4, True)
+    assert parse_power(full % ('false', 2, 4)) == (4, False), 'status 2 alone is not a charger (it said 2 at 3 % and falling)'
+    assert battery_note(8, True) == ' (battery 8% on the charger)' and battery_note(4, False) == ' (battery 4%, not on a charger)'
+    assert battery_note(10, False) == '' and battery_note(55, True) == '' and battery_note(None, None) == ''
+    assert 'wait_battery' not in globals() and 'battery_wait' not in globals(), 'the battery never holds a tap (2026-07-26)'
+    assert keep_answer('done 21:26: release 62 in the Transfer tag | bag 5831/5850 (19 free)\n')
+    assert keep_answer('STOPPED 15:02: an audit failed (nothing was tagged) -- ask Claude') and not keep_answer('running since 21:24')
+    assert not keep_answer('STOPPED 16:26: battery 8% and not charging -- the cull runs on the phone, charge it first, then tap again')
+    assert not keep_answer('queued 16:26: battery 4% ...') and not keep_answer('ready 08:21: tap Cull Now') and not keep_answer(None)
     assert pc_attached('PokemonInventory 1793900300\n', 1793900000) and not pc_attached('PokemonInventory 1793900300', 1793900400)
     assert not pc_attached('PokemonInventoryPhone 1793900300', 1793900000), 'the phone pass\'s own marker never blocks a tap'
     assert not pc_attached('GymBattle 1793900300', 1793900000) and not pc_attached('', 0) and not pc_attached(None, 0)
