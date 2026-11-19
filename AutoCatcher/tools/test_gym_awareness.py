@@ -27,7 +27,12 @@ runs under node against mock Pokemon records.   python test_gym_awareness.py   (
  10. --on-open (the AutoCatcher app's Gym Battle switch, 11-18: "any gym i visit and enter it will automatically go drill
      and finish and place shiny gyrados"): the decision for the gym HE has open (open_plan, case by case and over the
      whole grid), free_slot = the picker's old rule, a jump of his own, the roaming options switched off -- and, read from
-     gym_run.py itself, that the mode reaches no joystick call (ch.api / mv.*) outside a takeover's hold.
+     gym_run.py itself, that the mode reaches no joystick call (ch.api / mv.*) outside a takeover's hold;
+ 11. his run-away and a stuck party screen (11-18 23:22-23:23, --on-open): his give-up prompt + a battle over with no result
+     screen = the tapper disarms in that frame (no Battle, no re-open, no placement) and holds his gym screen until it closes
+     (the REAL hisFlee / fledCheck / markGiveUp under node); our own run-aways, a result screen, an old or last battle's prompt
+     never count; open_plan leaves a held gym to him whatever its team; the drill ends with HELD after a run-away of his, and a
+     stuck party screen is no stop in this mode (the battle runs on under it, then the gym is his) -- every other run still stops.
 """
 import argparse
 import ast
@@ -1190,6 +1195,191 @@ def onopen_checks():
               "him with a reason; the joystick gets the hold of a takeover and nothing else")
 
 
+# ------------------------------------------------------------------------------------------------ 11. his run-away / a stuck party screen
+FLEE_MOCK = r"""
+var SENT = [];
+function send(m) { SENT.push(m); }
+function Ptr(a) { this.a = a; }
+Ptr.prototype.equals = function (o) { return !!o && this.a === o.a; };
+var FLEEHOLD = false, HELD = null, HIS_GIVEUP_AT = 0, OUR_RUN_AT = 0, BATTLE_ON_AT = 0, OUTCOME_AT = 0;
+var IN_BATTLE = false, ONEBYONE = false, AUTODEP = null, PENDING = null, EXPECT_PREP = 0;
+"""
+FLEE_RUN = r"""
+var out = {}, T = 1000000, GS = new Ptr(7), realNow = Date.now;
+Date.now = function () { return T; };
+function reset() { SENT = []; FLEEHOLD = true; HELD = null; HIS_GIVEUP_AT = 0; OUR_RUN_AT = 0; BATTLE_ON_AT = T - 60000; OUTCOME_AT = 0;
+  IN_BATTLE = true; ONEBYONE = false; AUTODEP = {fid: 'gymA'}; PENDING = 'gymA'; EXPECT_PREP = 5; }
+reset(); markGiveUp(T - 1000); out.marked = HIS_GIVEUP_AT === T - 1000;
+out.flee = fledCheck(GS) === true && SENT.length === 1 && SENT[0].k === 'fled' && SENT[0].fid === 'gymA' && SENT[0].held === true && SENT[0].ago === 1000;
+out.disarmed = AUTODEP === null && PENDING === null && EXPECT_PREP === 0 && HELD === GS && HIS_GIVEUP_AT === 0;
+out.once = fledCheck(GS) === false && SENT.length === 1;
+reset(); OUR_RUN_AT = T - 4000; markGiveUp(T - 1000); out.ours = HIS_GIVEUP_AT === 0 && fledCheck(GS) === false && AUTODEP !== null && SENT.length === 0;
+reset(); OUR_RUN_AT = T - 10000; markGiveUp(T - 1000); out.oursOld = HIS_GIVEUP_AT === T - 1000;
+reset(); markGiveUp(T - 5000); OUTCOME_AT = T - 2000; out.outcome = fledCheck(GS) === false && AUTODEP !== null && HELD === null;
+reset(); markGiveUp(T - 20000); out.old = fledCheck(GS) === false && AUTODEP !== null;
+reset(); HIS_GIVEUP_AT = T - 61000; out.lastBattle = fledCheck(GS) === false;
+reset(); FLEEHOLD = false; markGiveUp(T - 1000); out.off = HIS_GIVEUP_AT === 0 && fledCheck(GS) === false && AUTODEP !== null;
+reset(); ONEBYONE = true; markGiveUp(T - 1000); out.obo = HIS_GIVEUP_AT === 0;
+reset(); IN_BATTLE = false; markGiveUp(T - 1000); out.noBattle = HIS_GIVEUP_AT === 0;
+reset(); markGiveUp(T - 1000); out.mapFlee = fledCheck(null) === true && HELD === null && AUTODEP === null && SENT[0].held === false;
+reset(); AUTODEP = null; markGiveUp(T - 1000); out.hisOwn = fledCheck(GS) === true && SENT[0].fid === null && HELD === GS;
+Date.now = realNow;
+console.log(JSON.stringify(out));
+"""
+
+
+def flee_block(js):
+    """The tapper's side (node): his give-up prompt in a battle + no result screen = disarmed in that frame and held."""
+    n0 = len(FAILS)
+    check("\nvar FLEEHOLD = false, HELD = null, HIS_GIVEUP_AT = 0, OUR_RUN_AT = 0, BATTLE_ON_AT = 0, OUTCOME_AT = 0;" in js,
+          "the run-away state (FLEEHOLD, HELD, HIS_GIVEUP_AT, OUR_RUN_AT, BATTLE_ON_AT, OUTCOME_AT) is declared, off by default")
+    src = "\n".join([FLEE_MOCK, js_fn(js, "hisFlee"), js_fn(js, "fledCheck"), js_fn(js, "markGiveUp"), FLEE_RUN])
+    with tempfile.TemporaryDirectory() as td:
+        p = os.path.join(td, "flee.js")
+        with open(p, "w", encoding="utf-8") as f:
+            f.write(src)
+        r = subprocess.run([NODE, p], capture_output=True, text=True)
+    if check(r.returncode == 0, "the run-away code threw under node: " + (r.stderr or r.stdout).strip()[:600]):
+        o = json.loads(r.stdout.strip().splitlines()[-1])
+        for k, what in (("marked", "a dialog in a battle with no run-away of ours before it is HIS give-up prompt"),
+                        ("flee", "his prompt 1 s before the end, no result screen: 'fled' goes to the runner with the gym and the hold"),
+                        ("disarmed", "...and in that frame: no auto-place / Battle (AUTODEP), no re-open (PENDING), no GO (EXPECT_PREP); his gym screen held"),
+                        ("once", "one run-away is one 'fled' (the mark is spent)"),
+                        ("ours", "a prompt 3 s after a run-away of OURS (one-by-one, unhang) is not his"),
+                        ("oursOld", "...one 9 s after ours is"),
+                        ("outcome", "a result screen in the battle (a defeat after a cancelled prompt): not a run-away, nothing disarmed"),
+                        ("old", "a prompt 20 s before the end (cancelled): not a run-away"),
+                        ("lastBattle", "a prompt from the battle before this one: not a run-away"),
+                        ("off", "the switch off (every run but --on-open): nothing is marked, nothing disarmed"),
+                        ("obo", "one-by-one runs its own run-aways: nothing is marked"),
+                        ("noBattle", "a dialog outside a battle is no give-up prompt"),
+                        ("mapFlee", "a battle that ended on the map: disarmed, no gym screen to hold"),
+                        ("hisOwn", "his own battle (nothing armed): still held")):
+            check(o.get(k) is True, f"run-away (tapper): {what} -- {o}")
+    wc = js_fn(js, "walkChain")
+    check(wc.index("send({k: 'end'") < wc.index("fledCheck(gst);") < wc.index("PENDING = AUTODEP.fid;"),
+          "walkChain: the run-away check comes right after 'end' and before the re-open of a battle that ended on the map")
+    check("BATTLE_ON_AT = Date.now();" in wc and wc.index("if (HELD && (!gst || !gst.equals(HELD))) HELD = null;") < wc.index("GAS = gas; GSTATE = gst;"),
+          "walkChain: a battle's start is stamped; a hold ends with its gym screen")
+    ft = js_fn(js, "frameTick")
+    check(ft.index("walkChain()") < ft.index("topScreen(now)") < ft.index("gymScreen(now)"),
+          "frameTick: the state (and its run-away check) is read before gymScreen() could press Battle in the same frame")
+    check("&& !EXPECT_PREP && !HELD) {" in ft, "frameTick: no orphan GO on a held gym")
+    check("OUR_RUN_AT = Date.now();" in js_fn(js, "runAway"), "runAway(): every run-away of ours is stamped (its prompt is never his)")
+    check("    markGiveUp(now); }" in js_fn(js, "topScreen"), "topScreen(): every ModalDialog that comes up is offered to markGiveUp")
+    check("OUTCOME_AT = now;" in js_fn(js, "earlyScreens"), "earlyScreens(): a result screen is stamped")
+    gs = js_fn(js, "gymScreen")
+    check("!NOAUTOBATTLE && !HELD" in gs and "if (ACT === 'battle' && (HELD || prepOpen()" in gs,
+          "gymScreen(): neither the automatic Battle press nor the runner's asked one on a held gym")
+    check("fleehold: function (on) { FLEEHOLD = !!on;" in js and "if (on) { HELD = GSTATE || null; AUTODEP = null; PENDING = null; EXPECT_PREP = 0; }" in js,
+          "exports: fleehold() (the runner's switch) and hold() (a stuck party screen: the gym screen is his)")
+    if len(FAILS) == n0:
+        print("ok: his run-away is read in the frame the battle ends -- disarmed and held; our run-aways, a result screen, an old prompt never count")
+
+
+class FleeSc:
+    """The tapper as the drill sees it: every export it calls is recorded, and answers nothing."""
+    def __init__(self):
+        self.calls = []
+        self.exports_sync = self
+
+    def __getattr__(self, n):
+        if n.startswith("__"):
+            raise AttributeError(n)
+
+        def f(*a, **k):
+            self.calls.append((n,) + a)
+            return {"held": True} if n == "hold" else {}
+        return f
+
+
+def flee_checks():
+    """The runner's side: open_plan leaves a held gym to him, Game reads 'fled', the drill ends with HELD, and a stuck party
+    screen is no stop in --on-open (every other run still stops); the takeover step's HELD branch never backs out of his screen."""
+    n0 = len(FAILS)
+    op, F, E, ME, CAP = gym_run.open_plan, "aaaaaaaa11112222.16", [1, 3], 2, 20
+    rec = lambda team: [team, 200, 51.5007, -0.1246, 0, 3, 0, 9000, 0, 0, 0]
+    for held in ("fled", "stuck"):
+        for t in (0, 1, 2, 3):
+            got = op(F, rec(t), t, E, ME, set(), 5, CAP, held=held)
+            check(got == ("leave", gym_run.HELD_WHY[held]), f"a held gym ({held}, team {t}) is left to him: {got}")
+        check(op(None, None, None, E, ME, set(), 5, CAP, held=held)[0] == "leave", f"...even before the gym screen said which gym ({held})")
+    check(op(F, rec(1), 1, E, ME, set(), 5, CAP) == ("drill", "") and op(F, rec(1), 1, E, ME, set(), 5, CAP, held=None) == ("drill", ""),
+          "no hold: the enemy gym he opens is drilled as before")
+    check("ran from the battle" in gym_run.HELD_WHY["fled"] and "stuck" in gym_run.HELD_WHY["stuck"]
+          and all("until you close it" in v for v in gym_run.HELD_WHY.values()), f"the hold lines say why and until when: {gym_run.HELD_WHY}")
+
+    GYM = "RootState > MapRootState > WorldMapState > MapExploreState > GymRootState > GymState > GymApproachState"
+    MAP = "RootState > MapRootState > WorldMapState > MapExploreState"
+    g = gym_run.Game()
+    said(g.on_msg, {"type": "send", "payload": {"k": "state", "chain": GYM}}, None)
+    g.user_gym, g.armed, g.open_fid = False, True, F
+    out, _ = said(g.on_msg, {"type": "send", "payload": {"k": "fled", "fid": F, "ago": 1200, "held": True}}, None)
+    check(g.hold is not None and g.hold[:2] == ("fled", F) and g.fled[0] == F and g.user_gym and not g.armed,
+          f"Game: 'fled' holds the gym screen that is up, marks it his, and the drill is disarmed: hold {g.hold}, user_gym {g.user_gym}")
+    check("you ran from the battle at aaaaaaaa: your give-up prompt 1.2 s before its end, no result screen" in out, f"the line says it: {out.strip()[:160]}")
+    said(g.on_msg, {"type": "send", "payload": {"k": "state", "chain": MAP}}, None)
+    check(g.hold is None and g.fled is not None, "Game: the hold ends with its gym screen (the run-away stays on record)")
+    g2 = gym_run.Game()
+    said(g2.on_msg, {"type": "send", "payload": {"k": "state", "chain": MAP}}, None)
+    said(g2.on_msg, {"type": "send", "payload": {"k": "fled", "fid": None, "ago": 900, "held": False}}, None)
+    check(g2.hold is None and g2.fled is not None, "Game: a run-away that ended on the map holds no gym screen (there is none)")
+    g3 = gym_run.Game()
+    said(g3.on_msg, {"type": "send", "payload": {"k": "state", "chain": GYM}}, None)
+    said(g3.on_msg, {"type": "send", "payload": {"k": "fled", "fid": F, "ago": 900, "held": False}}, None)
+    check(g3.hold is None, "Game: no hold where the tapper held nothing")
+
+    BATTLE = GYM.replace("GymApproachState", "GymBattleLauncherStateShim > GymBattleState")
+    was_t = gym_run.time
+    gym_run.time = _time                                     # (the drill sleeps 0.2 s a pass while the battle runs on)
+    try:
+        def drill(on_open, stuck=False, fled_at=0, end_at=3):
+            gg, sc, n = gym_run.Game(), FleeSc(), [0]
+            gg.chain, gg.battle, gg.prepstuck = BATTLE, True, stuck
+
+            def tick():
+                n[0] += 1
+                if n[0] in (fled_at, end_at):
+                    gg.battle, gg.round, gg.chain = False, False, GYM
+                if n[0] == fled_at:
+                    gg.fled = (F, _time.time())
+            o, ret = said(gym_run.drill, F, E, gg, sc, argparse.Namespace(on_open=on_open), tick, _time.time() + 30)
+            return gg, sc, o, ret, n[0]
+
+        gg, sc, o, ret, n = drill(True, stuck=True)
+        check(ret == gym_run.HELD and gg.held_why == "stuck" and sc.calls == [("hold", True)] and n == 3,
+              f"--on-open, a stuck party screen: no stop -- the tapper holds the gym, the battle runs on, then the drill hands it over: {ret} {sc.calls} {n}")
+        check(gg.hold is not None and gg.hold[:2] == ("stuck", F) and gg.user_gym and not gg.prepstuck and not gg.armed,
+              f"...the gym screen is his and the stuck mark is spent: {gg.hold} user_gym {gg.user_gym}")
+        check("the party screen stayed over the battle (a game glitch) -- the battle in progress runs on under it" in o, f"...and the line says it: {o.strip()[:160]}")
+        gg, sc, o, ret, n = drill(False, stuck=True)
+        check(ret == gym_run.ABORT and sc.calls == [] and n == 1, f"every other run: a stuck party screen still stops everything at once: {ret} {sc.calls}")
+        gg, sc, o, ret, n = drill(True, fled_at=1)
+        check(ret == gym_run.HELD and gg.held_why == "fled" and sc.calls == [], f"--on-open, his run-away: the drill stops at once, nothing pressed: {ret} {sc.calls}")
+    finally:
+        gym_run.time = was_t
+
+    with open(gym_run.__file__, encoding="utf-8") as f:
+        src = f.read()
+    a_, b_ = src.index("        if final == HELD:"), src.index("        if final == ABORT:")
+    blk = src[a_:b_]
+    check(src.index("        if final in (STALL, DETOUR):") < a_ < b_ < src.index("        if final == 0:"),
+          "the takeover step: the HELD branch comes before the STOP and before any placement step")
+    check("leave_gym(" not in blk and "act(" not in blk and "mv." not in blk and "ch.api" not in blk and "g.user_gym = True" in blk
+          and "sc.exports_sync.autodeploy(None)" in blk and blk.rstrip().endswith("continue"),
+          "the HELD branch never backs out of his screen, presses nothing, moves nothing; it disarms and marks the screen his")
+    check("            if not a.on_open:\n                say(\"STOP: a party screen stayed open over a battle" in src,
+          "the main loop's STOP for a stuck party screen is kept for every other run")
+    check(src.count("sc.exports_sync.fleehold(True)") == 1
+          and src.index("    if a.on_open:                                            # --on-open: HIS run-away") < src.index("sc.exports_sync.fleehold(True)"),
+          "the tapper's run-away watch is switched on in --on-open only")
+    check("autoplace=a.autoplace, held=g.hold[0] if g.hold else None)" in src, "the on-open decision is handed the hold")
+    check("if stuck or (g.fled and g.fled[1] >= d_t0):" in src, "the drill: only a run-away since THIS drill began ends it")
+    if len(FAILS) == n0:
+        print("ok: a gym he ran from (or whose party screen stuck over a battle) is his until he closes it; --on-open never stops for a stuck "
+              "party screen, every other run still does")
+
+
 def main():
     js = gym_tapper.JS
     real_time = gym_run.time
@@ -1203,6 +1393,7 @@ def main():
             free_names(js)
             pick_block(js)
             hold_block(js)
+            flee_block(js)
         jump_checks()
         suspect_checks()
         report_checks()
@@ -1210,6 +1401,7 @@ def main():
         misc_checks()
         stall_checks()
         onopen_checks()
+        flee_checks()
     finally:
         gym_run.time = real_time
     if FAILS:
