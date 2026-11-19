@@ -12,7 +12,8 @@ import keep_config
 import pokemod_rank as pm
 import rank_cache as rc
 
-BS = {'tinkatink': (85, 110, 137), 'tinkatuff': (109, 145, 163), 'tinkaton': (155, 196, 198), 'raichu': (193, 151, 155)}
+BS = {'tinkatink': (85, 110, 137), 'tinkatuff': (109, 145, 163), 'tinkaton': (155, 196, 198), 'raichu': (193, 151, 155),
+      'naclstack': (105, 160, 155)}
 LL, GL, UL, ML = rc.LL_CAP, rc.GL_CAP, rc.UL_CAP, rc.ML_CAP
 assert (LL, GL, UL) == (500, 1500, 2500), (LL, GL, UL)
 
@@ -44,6 +45,22 @@ tied = [i for i in range(4096) if sps[i] == sps[4095]]
 assert pm.rank(sps, srt, 4095) == 1 + sum(1 for v in sps if v > sps[4095]) + len(tied) - 1
 # a spread over the cap at level 1 has no number (no real species does this at 500 CP and up)
 assert pm.products(400, 400, 400, 10) is None
+
+# ---- 2b. THE NUMBER THIS PROJECT USES is tie-inclusive (2026-11-18 20:07: "keep the pokemod numbers but be inclusive of ties."):
+# every spread of a tie group has the group's first number. His case: a hundo Naclstack only TIES the 15/15/14.
+sps = pm.products(*BS['naclstack'], GL)
+srt = sorted(sps, reverse=True)
+HUNDO, NEXT = 4095, (15 << 8) | (15 << 4) | 14
+assert sps[HUNDO] == sps[NEXT] == srt[0], 'a hundo Naclstack and the 15/15/14 have one product: 142 HP each at level 50'
+assert (pm.rank(sps, srt, NEXT), pm.rank(sps, srt, HUNDO)) == (1, 2), 'what Pokemod prints: the lower IV index first'
+assert pm.rank_ties(sps, srt, NEXT) == pm.rank_ties(sps, srt, HUNDO) == 1, 'a tie shares the better number'
+for st in BS:
+    for cap in (LL, GL, UL):
+        sps = pm.products(*BS[st], cap)
+        srt = sorted(sps, reverse=True)
+        for i in list(range(0, 4096, 29)) + [4095]:
+            t = pm.rank_ties(sps, srt, i)
+            assert t == 1 + sum(1 for v in sps if v > sps[i]) and t <= pm.rank(sps, srt, i) < t + sps.count(sps[i]), (st, cap, i)
 
 # ---- 3. the percent is the one Pokemod shows: an exact half goes UP (Python's own formatting would say .12) -------------
 assert pm.pct(0.98125, 1.0) == 98.13 and '%.2f' % 98.125 == '98.12'
@@ -88,19 +105,22 @@ for st in BS:
             assert rc.build_table(a, d, h, cap, shadow) == rc.all_combos_sorted(a, d, h, cap, shadow)
     assert pok.get(st, ML, False)[:2] == rc.all_combos_sorted(a, d, h, ML, False), 'Master League stays native'
     assert pok.get(st, GL, True)[0] == pok.get(st, GL, False)[0] == pm.products(a, d, h, GL), 'a shadow has its normal form numbers'
-for (st, cap), want in WANT.items():
+for (st, cap), want in WANT.items():                 # the ranker: the screen's percent, and the tie-inclusive number
     r = rc.compute_rank_for_iv(pok, st, 13, 15, 15, cap, False)
-    assert (r['rank'], r['pct']) == want, (st, cap, r)
+    sps, srt, _bs = pok.get(st, cap, False)
+    assert r['pct'] == want[1] and r['rank'] == pm.rank_ties(sps, srt, IDX) <= want[0] == pm.rank(sps, srt, IDX), (st, cap, r)
 # native: the leftmost place, shared by a tie group -- exactly what it returned before this switch existed
 for st in BS:
     sps, srt, _bs = nat.get(st, GL, False)
     for i in (0, 1234, 3855, 4095):
         r = rc.compute_rank_for_iv(nat, st, i >> 8, (i >> 4) & 15, i & 15, GL, False)
         assert r['rank'] == srt.index(sps[i]) + 1 and r['pct'] == sps[i] / srt[0] * 100, (st, i, r)
-# Pokemod never gives two spreads one number; the native numbering does
+# ties are inclusive in both numberings: tied spreads share a number, so some numbers are never given
 p_ranks = {rc.compute_rank_for_iv(pok, 'raichu', i >> 8, (i >> 4) & 15, i & 15, UL, False)['rank'] for i in range(4096)}
 n_ranks = {rc.compute_rank_for_iv(nat, 'raichu', i >> 8, (i >> 4) & 15, i & 15, UL, False)['rank'] for i in range(4096)}
-assert p_ranks == set(range(1, 4097)) and len(n_ranks) < 4096
+assert 1 in p_ranks and len(p_ranks) < 4096 and len(n_ranks) < 4096
+# his 2026-11-18 case through the ranker: the hundo Naclstack and the 15/15/14 are both Great League #1
+assert [rc.compute_rank_for_iv(pok, 'naclstack', 15, 15, s, GL, False)['rank'] for s in (15, 14)] == [1, 1]
 # an unknown mode on a cache object without the attribute is native (older pickled callers)
 assert rc.compute_rank_for_iv(type('C', (), {'get': nat.get})(), 'raichu', 15, 15, 15, UL, False)['rank'] == \
     rc.compute_rank_for_iv(nat, 'raichu', 15, 15, 15, UL, False)['rank']

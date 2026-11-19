@@ -1,6 +1,10 @@
 """Pokemod's own PvP rank numbering, so a rank this project prints is the number Pokemod shows on the same Pokemon.
 
-Benny 2026-11-18: "i need you to align with pokemods numbers."
+Benny 2026-11-18: "i need you to align with pokemods numbers." -- and at 20:07, after his hundo Naclstack lost My Best GL to
+a 15/15/14 that only TIES it (the same Attack, Defense and HP at level 50; pvpoke lists the hundo first): "so pokemod is
+wrong?" / "keep the pokemod numbers but be inclusive of ties." So THE NUMBER THIS PROJECT USES is rank_ties():
+Pokemod's number, with every spread of a tie group sharing the group's first number. rank() stays Pokemod's own printed
+number: the proof against his screen, used by no decision.
 
 The math is Pokemod's PVPMetrics.get_Rank as it stood in Pokemod 13.1.1 (the last version that shipped readable code; read
 2026-09-08 and checked against his screen that day: a 13/15/15 Tinkatink printed LL2500(91.25%) GL13(98.00%) UL13(98.00%)).
@@ -67,6 +71,13 @@ def rank(sps, sorted_sp, iv_idx):
     spreads with a lower IV index. sorted_sp is sps sorted descending."""
     v = sps[iv_idx]
     return bisect.bisect_left(sorted_sp, -v, key=_neg) + 1 + sps[:iv_idx].count(v)
+
+
+def rank_ties(sps, sorted_sp, iv_idx):
+    """THE NUMBER THIS PROJECT USES (2026-11-18: "keep the pokemod numbers but be inclusive of ties."): the place of the FIRST spread of the
+    tie group in Pokemod's order -- spreads with the same stat product share one number, so a tie never ranks one copy
+    under another, and a tied copy counts wherever a rule says rank 1-5, #1 or Best."""
+    return bisect.bisect_left(sorted_sp, -sps[iv_idx], key=_neg) + 1
 
 
 def pct(v, best):

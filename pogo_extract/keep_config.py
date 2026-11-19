@@ -152,11 +152,11 @@ DEFAULTS = {
         #                                 user 2026-11-18: "if i have 3 hundo charmamander, then id like one for each stage filling in
         #                                 the final evo first", then "yes, thats how the logic works"); OFF = a hundo never wears an
         #                                 Evolve tag
-        "pokemod_rank_numbering": False,   # WHOSE RANK NUMBERS -- the Little / Great / Ultra League ranks are numbered exactly as
-        #                                 Pokemod prints them: its level table, and tied spreads get numbers one after another
-        #                                 (system/scripts/pokemod_rank.py; Master League stays as it was, Pokemod prints none; user
-        #                                 2026-11-18: "i need you to align with pokemods numbers"); OFF = this project's own
-        #                                 numbering, as before
+        "pokemod_rank_numbering": False,   # WHOSE RANK NUMBERS -- the Little / Great / Ultra League ranks are Pokemod's: its level
+        #                                 table and product, TIES INCLUSIVE (spreads with the same product share the better
+        #                                 number; system/scripts/pokemod_rank.py; Master League stays as it was, Pokemod prints
+        #                                 none; user 2026-11-18: "i need you to align with pokemods numbers", then "keep the
+        #                                 pokemod numbers but be inclusive of ties."); OFF = this project's own numbering
         "min_skips_evolving": False,    # THE MINIMUMS -- a copy told to evolve (any Evolve tag) counts toward no minimum of the kind
         #                                 it leaves: species_min / pattern_min / regular_min keep the best of the rest instead, so the
         #                                 kind is not one short once he evolves it (keep_policy.min_topup; 2026-11-16 the plain
