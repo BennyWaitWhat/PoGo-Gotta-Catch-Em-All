@@ -211,7 +211,8 @@ function il() {
     classFromName: f('il2cpp_class_from_name', 'pointer', ['pointer', 'pointer', 'pointer']), fieldType: f('il2cpp_field_get_type', 'pointer', ['pointer']),
     fieldFlags: f('il2cpp_field_get_flags', 'int', ['pointer']), param: f('il2cpp_method_get_param', 'pointer', ['pointer', 'uint32']),
     fieldFromName: f('il2cpp_class_get_field_from_name', 'pointer', ['pointer', 'pointer']), staticGet: f('il2cpp_field_static_get_value', 'void', ['pointer', 'pointer']),
-    parent: f('il2cpp_class_get_parent', 'pointer', ['pointer'])
+    parent: f('il2cpp_class_get_parent', 'pointer', ['pointer']),
+    classFromType: f('il2cpp_class_from_type', 'pointer', ['pointer'])
   };
   return IL;
 }
@@ -292,7 +293,7 @@ var ITEMC = {}, LASTWORK = 0, LASTWALK = 0, LASTOPEN = 0, LASTPOLL = 0, VIS = 0;
 var HOLD = 0, HOLDWHY = '', FLEESTREAK = 0, LASTCATCHMS = 0;
 var ST = {caught: 0, fled: 0, esc: 0, miss: 0, err: 0, manual: 0, opened: 0, thrown: 0, dust: 0, candy: 0, xp: 0,
           fedPinap: 0, fedRazz: 0, holds: 0, skip: {}, errs: 0, mSeen: 0, mCaught: 0, mFled: 0, safari: 0, shiny: 0, peeked: 0, rep1: 0};
-var SPIN = {next: 0, total: 0, inRange: 0, cooling: 0, spins: 0, ok: 0, xp: 0, items: 0, fail: {}}, SPUN = {}, SPINNER_OFF = -1, SPINM = {};
+var SPIN = {next: 0, total: 0, inRange: 0, cooling: 0, spins: 0, ok: 0, xp: 0, items: 0, fail: {}}, SPUN = {}, SPINF = {}, SPINM = {};
 var OUT = {log: [], done: [], tap: [], revealed: [], led: [], pos: []};
 var WALK_MS = 400, BERRY_MS = 800, RETHROW_MS = 900;   /* reply -> first throw = CFG.readyMs */
 var WILD = 'WildMapPokemon', DISK = 'TroyDiskMapPlacePokemon', INCENSE = 'IncenseMapPokemon';
@@ -1127,17 +1128,96 @@ function fortId(ps) {
   var idp = fd.add(0x10).readPointer(); if (idp.isNull()) return null;
   var len = idp.add(0x10).readS32(); return (len > 0 && len < 200) ? idp.add(0x14).readUtf16String(len) : null;
 }
+function spinMethodIn(k) {   /* the spin: a 0-argument method returning FortSearchOutProto, with code, on the class or a parent */
+  var h = il(), kk = k, d = 0;
+  while (kk && !kk.isNull() && d++ < 6) {
+    var it = Memory.alloc(PS); it.writePointer(NULL); var m;
+    while ((m = h.methods(kk, it)) && !m.isNull()) {
+      if (h.paramCount(m) !== 0 || cstr(h.typeName(h.retType(m))).indexOf('FortSearchOutProto') < 0) continue;
+      if (!m.readPointer().isNull()) return m;              /* (an abstract one has no code to run) */
+    }
+    kk = h.parent(kk);
+  }
+  return null;
+}
 function spinMethodOf(spinner) {   /* resolved by SIGNATURE: obfuscated names change every app update */
   var h = il(), k = h.objClass(spinner), key = k.toString(); if (SPINM[key] !== undefined) return SPINM[key];
-  var found = null, it = Memory.alloc(PS); it.writePointer(NULL); var m;
-  while ((m = h.methods(k, it)) && !m.isNull()) { if (h.paramCount(m) !== 0) continue; if (cstr(h.typeName(h.retType(m))).indexOf('FortSearchOutProto') >= 0) { found = m; break; } }
-  SPINM[key] = found; return found;
+  SPINM[key] = spinMethodIn(k); return SPINM[key];
+}
+function objOk(v) {   /* v looks like a live managed object: its class pointer and the class's name read fine. JS reads only:
+                         a bad pointer throws HERE, never inside the game's code (native calls here propagate a fault) */
+  try {
+    if (!v || v.isNull()) return false;
+    var k = v.readPointer(); if (k.isNull()) return false;
+    var n = k.add(16).readPointer(); return !n.isNull() && n.readCString().length > 0;   /* Il2CppClass: image, gc_desc, name */
+  } catch (e) { return false; }
+}
+function refFieldWithSpin(k, base, hdr) {   /* a reference field of class k, read at base + (its offset - hdr), whose value has the spin
+                                               method: that offset - hdr, or -1. hdr = 16 for a struct held inline (a value type's
+                                               field offsets count the boxed object's 16-byte header) */
+  var h = il(), kk = k, d = 0;
+  while (kk && !kk.isNull() && d++ < 4) {
+    var it = Memory.alloc(PS); it.writePointer(NULL); var f;
+    while ((f = h.fields(kk, it)) && !f.isNull()) {
+      if (h.fieldFlags(f) & 0x10) continue;                 /* static */
+      var fk = h.classFromType ? h.classFromType(h.fieldType(f)) : null;
+      if (!fk || fk.isNull() || h.isValueType(fk)) continue;   /* a reference only: its value is an object or null */
+      var o = h.fieldOffset(f) - hdr; if (o < 0) continue;
+      var v; try { v = base.add(o).readPointer(); } catch (e) { continue; }
+      if (objOk(v) && spinMethodIn(h.objClass(v))) return o;
+    }
+    kk = h.parent(kk);
+  }
+  return -1;
+}
+function fieldList(k) {   /* "name:type@offset" of a class's instance fields, for the log */
+  var h = il(), o = [], it = Memory.alloc(PS); it.writePointer(NULL); var f;
+  while ((f = h.fields(k, it)) && !f.isNull()) { if (h.fieldFlags(f) & 0x10) continue; o.push(cstr(h.fieldName(f)) + ':' + cstr(h.typeName(h.fieldType(f))) + '@' + h.fieldOffset(f)); }
+  return o.join(', ') + (h.isValueType(k) ? ' (a struct)' : ' (a class)');
+}
+function spinnerPath(inter) {   /* how to reach the spinner from the interactive mode, per class: [offset, offset inside the
+                                   wrapper or -1], or null. Up to 0.435 a field ItemSpinner held it. Game 0.437.0 (2026-11-19
+                                   02:20): the field is itemSpinner, a Niantic.Zeppelin.Properties.InterfaceProperty around it,
+                                   and every spin of ours failed (spinfail noField; Benny: "auto spin on and its skipping
+                                   stops"). Not found: tried again a minute later (the NO line is logged once per class) */
+  var h = il(), k = h.objClass(inter), key = k.toString(), now = Date.now();
+  var c = SPINF[key]; if (c && (c.path || now < c.retry)) return c.path;
+  var path = null, how = '', kk = k, d = 0, seen = [], wrap = '';
+  while (!path && kk && !kk.isNull() && d++ < 6) {
+    var it = Memory.alloc(PS); it.writePointer(NULL); var f;
+    while ((f = h.fields(kk, it)) && !f.isNull()) {
+      if (h.fieldFlags(f) & 0x10) continue;
+      var nm = cstr(h.fieldName(f)), ft = h.fieldType(f), tn = cstr(h.typeName(ft)), off = h.fieldOffset(f);
+      if (seen.length < 40) seen.push(nm + ':' + tn + '@' + off);
+      if (nm.toLowerCase() !== 'itemspinner') continue;
+      var fk = h.classFromType ? h.classFromType(ft) : null; if (!fk || fk.isNull()) continue;
+      if (!h.isValueType(fk)) {                             /* a reference: the spinner itself, or a wrapper object around it */
+        var v; try { v = inter.add(off).readPointer(); } catch (e) { continue; }
+        if (!objOk(v)) continue;
+        if (spinMethodIn(h.objClass(v))) { path = [off, -1]; how = nm + ' (' + tn + ')'; break; }
+        wrap = fieldList(h.objClass(v));
+        var w = refFieldWithSpin(h.objClass(v), v, 0);
+        if (w >= 0) { path = [off, w]; how = nm + ' (' + tn + ') -> its field @' + w; break; }
+      } else {                                              /* a struct held inline */
+        wrap = fieldList(fk);
+        var s = refFieldWithSpin(fk, inter.add(off), 16);
+        if (s >= 0) { path = [off + s, -1]; how = nm + ' (' + tn + ', inline) -> @' + (off + s); break; }
+      }
+    }
+    kk = h.parent(kk);
+  }
+  SPINF[key] = {path: path, retry: now + 60000};
+  if (path || !c) log(path ? 'SPIN: spinner of ' + cstr(h.className(k)) + ' found: ' + how
+                           : 'SPIN: NO spinner on ' + cstr(h.className(k)) + ' -- fields: ' + seen.join(', ')
+                             + (wrap ? ' | inside itemSpinner: ' + wrap : ''));
+  return path;
 }
 function spinOne(ps) {
   var inter = call(method(ps, 'StartInteractiveMode', 0), ps, []); if (!inter || inter.isNull()) return 'noInter';
   var done = function (r) { call(method(ps, 'CompleteInteractiveMode', 0), ps, []); return r; };
-  if (SPINNER_OFF < 0) { SPINNER_OFF = fieldOff(il().objClass(inter), 'ItemSpinner'); if (SPINNER_OFF < 0) return done('noField'); }
-  var spinner = inter.add(SPINNER_OFF).readPointer(); if (spinner.isNull()) return done('noSpinner');
+  var p = spinnerPath(inter); if (!p) return done('noField');
+  var spinner; try { spinner = inter.add(p[0]).readPointer(); if (p[1] >= 0 && objOk(spinner)) spinner = spinner.add(p[1]).readPointer(); } catch (e) { return done('noSpinner'); }
+  if (!objOk(spinner)) return done('noSpinner');
   var sm = spinMethodOf(spinner); if (!sm) return done('noSpinMethod');
   call(sm, spinner, []); SPIN.spins++;
   return done('spun');
