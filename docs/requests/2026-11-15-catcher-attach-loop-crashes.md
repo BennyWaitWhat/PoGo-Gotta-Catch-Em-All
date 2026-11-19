@@ -1,6 +1,6 @@
 # Request: the catcher's failed-attach loop is what crashes the game
 
-**Status: OPEN.** **From** Pokemon Inventory · **to** AutoCatcher (owner of `AutoCatcher/`) · found 2026-11-15 while
+**Status: DONE 2026-11-19 (#219, live on the phone 13:02; see the last section).** **From** Pokemon Inventory · **to** AutoCatcher (owner of `AutoCatcher/`) · found 2026-11-15 while
 observing a cull for Benny ("Observe and improve and fix"). Read-only findings; nothing on the phone was changed. Any
 deploy to the phone needs Benny's `go`.
 
@@ -64,3 +64,22 @@ the phone was changed or restarted.
    `com.nianticlabs.pokemongo` (the cull attaches only then since #158). When the game leaves the screen, end the catcher
    with SIGTERM while it still answers, and count the silence that follows as idle, not a hang. Then the catcher never sits
    in a call to a frozen game, and the supervisor's -9 (ask 2) has nothing left to cut off.
+
+## 2026-11-19: done by AutoCatcher (#219)
+Benny: "do it." (AutoCatcher session, 12:37). Deployed 13:02:29: the new catcher attached in 0.3 s with the game on screen.
+- **Ask 6.** A watcher thread in `catch_loop_fast.py` looks every 3 s. Two looks in a row with the game not on screen and the
+  catcher **detaches** while the game still answers. It does this in-process instead of a TERM: same effect on the gadget, and
+  its list of handled encounters survives. It attaches again once the game is back, at least 8 s after its detach. Its log
+  says `the game left the screen (...) -- detaching`. The app says `paused: Pokemon GO is not on screen -- the catcher
+  attaches again when you are back in the game` (not an alert). In `run_catch.sh`, a silent log behind other apps is
+  `left alone (idle, not a hang)`.
+- **Ask 1.** No attach before `libil2cpp.so` is in the game's maps, plus the 12 s cold-age wait as before.
+- **Ask 2.** `run_catch.sh`'s `end()` sends TERM and waits. It uses -9 only when the game is gone, or when the game is on
+  screen with nothing in the gadget's accept queue (the LISTEN line's rx_queue), never while the game is behind other apps.
+  No attach timeout of our own: an attach that gives up and hangs up is the crash itself. `catcher_ctl.sh`'s `stop_proc`
+  (his switches, deploys) still uses -9 after 3 s; with the detach off screen there is rarely a call left for it to cut.
+- **Ask 3.** After 3 failed attaches to one game pid, no more connects to that pid until the game is started again (or Catch
+  is switched in the app). Log: `!!! cannot attach to this game start (3 tries failed) ...`. The app shows the same words.
+- **Ask 4.** A `HH:MM:SS ===== date YYYY-MM-DD =====` line at each catcher start and at each new day.
+- **Ask 5.** The looks run in ONE long-lived root shell (one Magisk request, not one per look), and the old 1 s su poll
+  while waiting for the game is gone. Behind other apps a look skips both dumpsys calls (`oom_score_adj` is not 0).

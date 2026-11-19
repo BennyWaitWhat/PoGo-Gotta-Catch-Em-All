@@ -21,6 +21,7 @@ import re
 import signal
 import subprocess
 import sys
+import threading
 import time
 from collections import deque
 
@@ -79,6 +80,17 @@ REVEALED_FILE = os.path.join(AN, "apple_revealed.json")
 # Stop attaching for HOLD_S instead of repeating it (21:06 / 21:07 on 2026-09-24). Toggling catching off/on restarts
 # this process and clears the hold.
 QUICK_S, HOLD_S = 20, 1800
+# ONLY WHILE THE GAME IS ON SCREEN (docs/requests/2026-11-15-catcher-attach-loop-crashes.md, ask 6). The game died at 02:52
+# and 10:54 on 2026-11-19 with the gadget's own abort (gdbus, libsoup "could not get remote address: Transport endpoint is not
+# connected") while it sat behind other apps, frozen by Android: our calls hung there, the supervisor took the silence for a
+# hang, killed us and started another catcher, whose connect waited unanswered -- the gadget aborts when it accepts a
+# connection whose client has gone. The cull attaches only on screen since #158. So a watcher thread looks every LOOK_S
+# seconds (one su call: the gadget's LISTEN entry, the game's pid, its game code, what is on screen); OFF_LOOKS looks in a
+# row with the game not on screen detach us while the game still answers, and we attach again only once it is back.
+GAME_PKG = "com.nianticlabs.pokemongo"
+LOOK_S, OFF_LOOKS = 3, 2
+REATTACH_GAP_S = 8   # from our detach to our next attach: a quick re-attach is a crash roll for the gadget (2026-10-23)
+ATTACH_TRIES = 3     # failed attaches to one game process before we stop connecting to it until the game starts again (ask 3)
 
 CFG = {
     "openMs": 300,          # min ms between encounter opens (200/min). 667 was the old cap, set when faster opens
@@ -1707,8 +1719,15 @@ class Log:
         except OSError:
             pass
         self.f = open(path, "a", encoding="utf-8")
+        self.day = None
 
     def __call__(self, s):
+        # The lines carry a time only. A date line at each start and each new day lets a crash be matched to its day
+        # (request 2026-11-15, ask 4); it starts with a time like every other line, so the readers' HH:MM:SS parsing holds.
+        day = time.strftime("%Y-%m-%d")
+        if day != self.day:
+            self.day = day
+            self.f.write(f"{now_s()} ===== date {day} =====\n")
         line = f"{now_s()} {s}"
         self.f.write(line + "\n")
         self.f.flush()
@@ -1765,10 +1784,187 @@ def wait_while_paused(w):
     w("pause cleared -- re-attaching")
 
 
-def gadget_up():
-    """Is the gadget LISTENing on 27047 (0x69A7)? Read /proc/net/tcp, never connect: a connect-and-hang-up probe hits the
-    gadget's server mid-accept, and it aborts the game ('could not get remote address', gdbus SIGSEGV, 10 crashes 10-27/28)."""
-    return ":69A7 00000000:0000 0A" in su("cat /proc/net/tcp")
+# The screen watcher's look, run in ONE long-lived root shell (RootShell; request 2026-11-15, ask 5: a su call is a Magisk
+# request, logged each time, and once a second they spammed its traces and the toast quota). KNOWN = the pid whose game code
+# the last look found loaded (0: none), so its maps are read once, not every 3 s.
+#  - The gadget's LISTEN entry on 27047 (0x69A7) in /proc/net/tcp. Read, never connect: a connect-and-hang-up probe hits the
+#    gadget's server mid-accept, and it aborts the game ('could not get remote address', gdbus SIGSEGV, 10 crashes 10-27/28).
+#  - The game's pid, its oom_score_adj, and whether its game code is loaded (libil2cpp.so in its maps). On 11-14 an attach
+#    before that got "libil2cpp.so not loaded" 3 times, and every later attach to that process timed out (ask 1).
+#  - Only while the game is the top app (adj 0; behind other apps all night this spares two dumpsys calls a look): the two
+#    lines the cull reads (pogo_il2cpp._adb_on_screen), the app Android has resumed on top and the screen's state.
+LOOK_CMD = ("grep -m1 ':69A7 00000000:0000 0A' /proc/net/tcp; p=$(pidof -s " + GAME_PKG + ") || exit 0; echo pid=$p; "
+            "a=$(cat /proc/$p/oom_score_adj 2>/dev/null); echo adj=$a; "
+            "if [ \"$p\" = KNOWN ]; then echo il2cpp=loaded; "
+            "else grep -q -m1 libil2cpp.so /proc/$p/maps 2>/dev/null && echo il2cpp=loaded; fi; "
+            "[ \"$a\" = 0 ] || exit 0; "
+            "dumpsys activity activities 2>/dev/null | grep -m1 -E 'topResumedActivity|ResumedActivity'; "
+            "dumpsys power 2>/dev/null | grep -m1 mWakefulness=")
+
+
+class RootShell:
+    """One su for all of the watcher's looks: a root shell kept open, each command run in a subshell of it (so its `exit`
+    ends only that subshell) and read up to an end mark. Any failure or a command past its timeout drops the shell (''),
+    and the next call starts a new one. Ends with this process: its pipes close, and the shell reads end-of-file."""
+    def __init__(self):
+        self.p, self.n = None, 0
+
+    def run(self, cmd, timeout=10):
+        import select
+        try:
+            if self.p is None or self.p.poll() is not None:
+                self.p = subprocess.Popen(["su"], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+            self.n += 1
+            mark = f"__look_end_{os.getpid()}_{self.n}__".encode()
+            self.p.stdin.write(b"( " + cmd.encode() + b" ) </dev/null 2>/dev/null; echo " + mark + b"\n")
+            self.p.stdin.flush()
+            out, end, fd = b"", time.time() + timeout, self.p.stdout.fileno()
+            while mark not in out:
+                left = end - time.time()
+                if left <= 0 or not select.select([fd], [], [], left)[0]:
+                    raise TimeoutError(cmd[:40])
+                chunk = os.read(fd, 65536)
+                if not chunk:
+                    raise EOFError("the root shell ended")
+                out += chunk
+            return out.split(mark)[0].decode("utf-8", "replace")
+        except Exception:
+            self.close()
+            return ""
+
+    def close(self):
+        try:
+            self.p.kill()
+            self.p.wait(timeout=2)
+        except Exception:
+            pass
+        self.p = None
+WATCH = {"look": None, "at": 0.0, "off": 0}   # the last look, when it was made, how many looks in a row had the game off screen
+
+
+def parse_look(out):
+    """{up, pid, code, screen, what} from LOOK_CMD's lines. screen = the game is the app on screen with the screen on; a
+    read that failed counts as not on screen (pogo_il2cpp._on_screen's rule). what = what is on screen, for the log."""
+    out = out or ""
+    pm = re.search(r"^pid=(\d+)", out, re.M)
+    am = re.search(r"^adj=(-?\d+)", out, re.M)
+    tm = re.search(r"ResumedActivity\S*\s*ActivityRecord\{\S+ \S+ ([\w.]+)/", out)
+    if not pm:
+        what = "Pokemon GO is not running"
+    elif am and am.group(1) != "0":
+        what = "Pokemon GO is in the background"
+    elif not tm:
+        what = "what is on screen could not be read"
+    elif tm.group(1) != GAME_PKG:
+        what = f"{tm.group(1)} is on screen"
+    elif "mWakefulness=Awake" not in out:
+        what = "the screen is off"
+    else:
+        what = "Pokemon GO is on screen"
+    return {"up": ":69A7 00000000:0000 0A" in out, "pid": int(pm.group(1)) if pm else None,
+            "code": "il2cpp=loaded" in out, "screen": what == "Pokemon GO is on screen", "what": what}
+
+
+def watch_loop():
+    """The screen watcher, a daemon thread: one look every LOOK_S seconds for as long as this process lives. It never writes
+    the log: a main thread stuck in a call to the game must stay silent, so that run_catch.sh can still see a hang."""
+    sh, known = RootShell(), 0
+    while True:
+        try:
+            lk = parse_look(sh.run(LOOK_CMD.replace("KNOWN", str(known))))
+            known = lk["pid"] if lk["code"] and lk["pid"] else 0
+            WATCH["off"] = 0 if lk["screen"] else WATCH["off"] + 1
+            WATCH["look"], WATCH["at"] = lk, time.time()
+        except Exception:
+            pass
+        time.sleep(LOOK_S)
+
+
+def look_now():
+    """The watcher's last look while it is fresh; None when the watcher is late (its su calls hang or fail)."""
+    return WATCH["look"] if time.time() - WATCH["at"] <= 4 * LOOK_S + 10 else None
+
+
+def attachable(lk):
+    return bool(lk) and lk["up"] and lk["code"] and lk["screen"]
+
+
+def off_screen_why(lk):
+    """The app's line while the game is up but not on screen."""
+    return (("paused: the screen is off" if lk and lk["what"] == "the screen is off" else "paused: Pokemon GO is not on screen")
+            + " -- the catcher attaches again when you are back in the game")
+
+
+def wait_attachable(w, base):
+    """Return True once the game can take an attach: its gadget listens, its game code is loaded, it is ON SCREEN, and our
+    last detach is REATTACH_GAP_S old. False = a pause was requested meanwhile (the caller returns, and honours it).
+    While it waits: a log line when the reason changes and every 2 min (run_catch.sh restarts a catcher whose log is silent
+    240 s while the game is on screen), and the app's line every 30 s (the app calls a line older than 90 s "not reporting")."""
+    said, t_log, t_state = None, 0.0, 0.0
+    while True:
+        lk, now = look_now(), time.time()
+        if attachable(lk):
+            if now - base.get("detached_at", 0) >= REATTACH_GAP_S:
+                if said:
+                    w(f"{lk['what']} -- attaching")
+                return True
+            why = msg = ""   # back on screen: only the re-attach gap is left, a few seconds
+        elif not lk:
+            why, msg = "starting: checking what is on screen", "waiting: no look at the screen yet (the root call is late)"
+        elif not lk["up"]:
+            why, msg = "PoGo is not open", "waiting for PoGo..."   # (the log readers know this line: ballsave_go, live_watch)
+        elif not lk["code"]:
+            why = "starting: Pokemon GO is still loading its game code"
+            msg = "waiting: Pokemon GO is still loading its game code (no libil2cpp.so in its memory yet)"
+        else:
+            why, msg = off_screen_why(lk), f"waiting: {lk['what']} -- attaching once Pokemon GO is on screen"
+        if paused_until():
+            return False
+        if why and why != said:
+            w(msg)
+            said, t_log, t_state = why, now, now
+            state(why)
+        elif why and now - t_log >= 120:
+            w("still " + msg.replace("...", ""))
+            t_log = now
+        if why and now - t_state >= 30:
+            state(why)
+            t_state = now
+        time.sleep(1)
+
+
+def failed_attach(bad, pid):
+    """Count one more failed attach to game process pid in bad = {"pid", "n"}; the count for that pid (0: no pid known)."""
+    bad["n"] = bad["n"] + 1 if pid and pid == bad["pid"] else 1
+    bad["pid"] = pid
+    return bad["n"] if pid else 0
+
+
+def hold_bad_pid(w, pid, n, err):
+    """Request 2026-11-15, ask 3: ATTACH_TRIES attaches to one game process failed. One that timed out is a connection the
+    gadget may still accept after we hung up -- the abort above -- so stop connecting to this game process until the game
+    is started again (a new pid) or closed. Switching Catch in the app tries again at once. Never restarts the game."""
+    why = (f"cannot attach to this game start ({n} tries failed) -- the catcher tries again when Pokemon GO is started "
+           f"again, or when you switch Catch off and on")
+    w(f"!!! {why}; last error: {str(err).splitlines()[0][:100] if str(err) else type(err).__name__} (game pid {pid})")
+    state(why)
+    t_log = t_state = time.time()
+    mt0 = flag_mtime("catch")
+    while True:
+        time.sleep(1)
+        lk = look_now()
+        if lk and (not lk["up"] or (lk["pid"] and lk["pid"] != pid)):
+            w(f"Pokemon GO was started again (game pid {pid} -> {lk['pid'] or 'none'}) -- attaching again")
+            return
+        if flag_mtime("catch") != mt0:
+            w("Catch was switched in the app -- trying this game start again")
+            return
+        if time.time() - t_log >= 120:
+            w(f"still not attaching to game pid {pid}: it refused {n} attaches")
+            t_log = time.time()
+        if time.time() - t_state >= 30:
+            state(why)
+            t_state = time.time()
 
 
 def su(cmd, timeout=10):
@@ -2972,20 +3168,11 @@ def report(w, stt, t0, base):
 
 
 def session_loop(w, done_ids, base):
-    """One attach. Returns when the link drops or a pause is requested; raises SystemExit when PoGo is closed."""
+    """One attach. Returns when the link drops, a pause is requested or the game leaves the screen."""
     wait_while_paused(w)
-    if not gadget_up():
-        # wait here instead of exiting: the supervisor only looked every 30 s, which made every game restart slow
-        w("waiting for PoGo...")
-        state("PoGo is not open")
-        n = 0
-        while not gadget_up():
-            time.sleep(1)
-            n += 1
-            if n % 60 == 0:
-                w(f"still waiting for PoGo ({n // 60} min)")
-            if paused_until():
-                return
+    # wait here instead of exiting: the supervisor only looked every 30 s, which made every game restart slow
+    if not wait_attachable(w, base):
+        return
     pid, age = game_pid_age()
     if age is None:
         w("could not read PoGo's age -- waiting 20s to be safe")
@@ -2994,6 +3181,8 @@ def session_loop(w, done_ids, base):
         w(f"PoGo started {age:.0f}s ago -- waiting {COLD_AGE_S - age:.0f}s before attaching")
         time.sleep(COLD_AGE_S - age)
     if paused_until():   # a pause may have landed during the waits above -- honour it before attaching
+        return
+    if not attachable(look_now()):   # it left the screen (or closed) during those waits: wait for it again first
         return
     SHINYFIELD["checked"] = False   # STARDUST ONLY leaves nothing alone before THIS attach's shiny check has run (below)
     t_att = time.time()
@@ -3094,13 +3283,23 @@ def session_loop(w, done_ids, base):
             last_frame = stt["frame"]
         for _ in range(5 if idle >= 3 else 1):
             time.sleep(1)
-            if paused_until():
+            if paused_until() or WATCH["off"] >= OFF_LOOKS:
                 break
         if paused_until():
             w("pause requested -- detaching")
             release(sess)
+            base["detached_at"] = time.time()
+            return
+        if WATCH["off"] >= OFF_LOOKS:   # ask 6: detach while the game still answers; behind other apps Android freezes it
+            lk = WATCH["look"]
+            w(f"the game left the screen ({lk['what'] if lk else 'what is on screen could not be read'}) -- detaching; "
+              f"attaching again when it is back on screen")
+            state(off_screen_why(lk))
+            release(sess)
+            base["detached_at"] = time.time()
             return
     up = time.time() - base.get("attached_at", 0)
+    base["detached_at"] = time.time()
     base["quick"] = base.get("quick", 0) + 1 if up < QUICK_S else 0
     w(f"--- link drop after {up:.0f}s attached: {dropped['why']} -- re-attaching ---")
     if base["quick"] >= 2:
@@ -3136,10 +3335,16 @@ def main():
     v = tot_view()
     w(f"counters: {v['caught']} caught, +{v['dust']} stardust since {time.strftime('%m-%d %H:%M', time.localtime(v['since']))}"
       f" ({int(v['up'])} s of catching)")
-    done_ids = deque(maxlen=4000)   # handled encounters survive a re-attach: never re-open or re-throw one
+    done_ids = deque(maxlen=4000)   # handled encounters survive a re-attach (and a detach off screen): never re-open one
     base = {}
-    fails = 0
+    fails, bad = 0, {"pid": None, "n": 0}
+    threading.Thread(target=watch_loop, name="screen-watch", daemon=True).start()
+    for _ in range(50):   # its first look (~0.2 s), so the first wait does not report "no look yet"
+        if WATCH["look"]:
+            break
+        time.sleep(0.1)
     while True:
+        t_call = time.time()
         try:
             session_loop(w, done_ids, base)
             fails = 0
@@ -3151,13 +3356,24 @@ def main():
             # unloaded for 5 min while we attached 21 times ("cannot read property 'asms' of null").
             slow = "libil2cpp.so not loaded" in str(e)
             delay = min(60, 4 * fails) if slow else min(15, 2 * fails)
-            w(f"--- error: {str(e)[:120]} -- retry in {delay}s ---")
-            state(f"can't reach the game ({str(e).splitlines()[0][:60] if str(e) else type(e).__name__}), retrying in {delay}s")
             try:
                 if SESS["s"]:
                     SESS["s"].detach()
             except Exception:
                 pass
+            base["detached_at"] = time.time()
+            if base.get("attached_at", 0) >= t_call:   # it failed after this call had attached: not an attach that failed
+                bad.update(pid=None, n=0)
+            else:
+                n = failed_attach(bad, (look_now() or {}).get("pid"))
+                if n >= ATTACH_TRIES:
+                    w(f"--- error: {str(e)[:120]} ---")
+                    hold_bad_pid(w, bad["pid"], n, e)
+                    bad.update(pid=None, n=0)
+                    fails = 0
+                    continue
+            w(f"--- error: {str(e)[:120]} -- retry in {delay}s ---")
+            state(f"can't reach the game ({str(e).splitlines()[0][:60] if str(e) else type(e).__name__}), retrying in {delay}s")
             time.sleep(delay)
 
 
