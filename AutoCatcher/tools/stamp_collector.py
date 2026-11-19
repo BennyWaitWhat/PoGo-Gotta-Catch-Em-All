@@ -147,8 +147,8 @@ function seen(f,pre){ A.fortAt=pre?Math.min(now(),f.t):now(); A.flat=f.lat; A.fl
    if(A.fd>G.maxOff&&!A.moved){ A.needMove=true; out('move',{lat:f.lat,lng:f.lng,d:Math.round(A.fd)}); } }
 
 /* ---- the six steps: each one starts from the game's own signal that the step before is finished ---- */
-function onOpen(a){ if(A.st==='tap')st('open'); }
-function onClose(a){ if(A.st==='fail'||A.st==='idle'||A.st==='done')out('closed',{}); }
+function onOpen(a){ A.inStop=true; if(A.st==='tap')st('open'); }
+function onClose(a){ A.inStop=false; if(A.st==='fail'||A.st==='idle'||A.st==='done')out('closed',{}); }
 function onPage(a){ out('page',{open:true}); }
 function onPageClose(a){ out('page',{open:false}); }
 function onGame(a){ if(!(A.st==='tap'||A.st==='open'))return; A.gui=a[0]; st('game'); var g=a[0]; later(G.introMax,function(){press(g);}); }
@@ -167,12 +167,12 @@ function press(g){ if(A.st!=='game'||A.pressing)return; A.pressing=true;
 function onSaveCall(a){ A.saveCalled=true; }
 function onHaptic(a){ if(!(A.st==='saving'||A.st==='press'))return; st('stamped'); var g=a[0]; later(G.exitLag,function(){exitNow(g);}); }
 function exitNow(g){ if(A.st!=='stamped'||A.pulse)return; A.exits++; inv0(g,'OnExit'); A.at=now();
-   if(G.noClaim){ A.st='done'; out('done',{caught:null,noclaim:true,save:A.saveResult,marks:A.marks,taps:A.taps,d:Math.round(A.fd||0)}); return; }
+   if(G.noClaim){ A.st='done'; out('done',{caught:null,noclaim:true,inStop:!!A.inStop,save:A.saveResult,marks:A.marks,taps:A.taps,d:Math.round(A.fd||0)}); return; }
    later(G.pulseMax,function(){ if(A.st!=='stamped'||A.pulse)return; claim(g); }); }      /* no pulse seen: press claim anyway (a second OnExit could close the screen) */
 function onPulse(a){ if(A.st!=='stamped'||A.pulse)return; A.pulse=true; var g=a[0]; later(G.claimLag,function(){claim(g);}); }
 function claim(g){ if(A.st!=='stamped')return; A.claims++; if(A.claims>3){ fail('no reward after 3 claim presses'); return; }
    /* no claim button at this stop (11-18 22:29 PokéXciting! Singapore: NullReference): the rally pays on its own page */
-   if(inv0(g,'OnClaimRewardPressed')==='EXC'){ A.st='done'; out('done',{caught:null,noclaim:true,save:A.saveResult,marks:A.marks,taps:A.taps,d:Math.round(A.fd||0)}); return; }
+   if(inv0(g,'OnClaimRewardPressed')==='EXC'){ A.st='done'; out('done',{caught:null,noclaim:true,inStop:!!A.inStop,save:A.saveResult,marks:A.marks,taps:A.taps,d:Math.round(A.fd||0)}); return; }
    st('claim'); A.at=now(); var mine=A.claims;
    later(G.claimMax,function(){ if(A.st!=='claim'||A.claims!==mine)return; A.st='stamped'; out('note',{m:'no reward '+G.claimMax+' ms after the claim -- pressing it again'}); claim(g); }); }
 function onClaimCall(a){ A.claimCalled=true; }
@@ -811,6 +811,23 @@ def close_page(g, wait_s=3.0):
     return False
 
 
+def close_stop(g, wait_s=2.0):
+    """11-18 22:53 he: "you gotta exit the pokestop when you get the stamp for the ones with no rewards. but be careful
+    some have rewards." A no-reward stop leaves the stop's own screen open after the stamp (the next map then took 12-24 s
+    to come, ~6 s after a reward stop). Android BACK closes it -- ONCE, and only when the game says that screen is open
+    (no ExitState since its EnterState): BACK on the map would ask to leave the game. A reward stop never comes here."""
+    g.ch.adb("input keyevent 4")
+    t0 = time.time()
+    while time.time() - t0 < wait_s:
+        try:
+            ev = g.q.get(timeout=0.2)
+        except queue.Empty:
+            continue
+        if ev.get("k") == "closed":
+            return True
+    return False
+
+
 def close_gui(g, detail):
     """After a failed stop a screen may still be open: Android BACK closes it (the stop screen answers with ExitState).
     True when the map is back. An open ENCOUNTER is never backed out of."""
@@ -1029,6 +1046,8 @@ def run(a):
             # stop. Three stops with no page = this rally opens none: wait 0.8 s from then on (the screen check stays).
             r_ = close_page(g, wait_s=3.0 if (pages[1] or pages[0] < 3) else 0.8)
             pages[0 if r_ is None else 1] += 1
+            if detail.get("inStop") and not close_stop(g):
+                log("  the stop's screen did not answer BACK (left open; the next jump goes on)")
         secs = time.time() - t_s
         if ok:
             got += 1
