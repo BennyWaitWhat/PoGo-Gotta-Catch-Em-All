@@ -42,9 +42,9 @@ import java.util.List;
 public class StatusService extends Service {
     static final String TAG = Screen.TAG;
     static final String CH_STATUS = "status", CH_ALERTS = "alerts";
-    static final int ID_STATUS = 1, ID_ALERT0 = 100;
+    static final int ID_STATUS = 1, ID_ALERT0 = 100, ID_CULL = 150;   // the cull's banner: one id, so done replaces running
     static final String PREFS = "autocatcher", K_ALERTS = "alerts", K_ALERT_STATE = "alert_state",
-                        K_ASKED = "asked_notifications";
+                        K_ASKED = "asked_notifications", K_CULL_SEEN = "cull_seen";
     static final long POLL_MS = 5000L, OFF_STOP_MS = 30 * 60000L;
     static final String ACTION_FLIP = "com.benny.autocatcher.FLIP";   // followed by ":<catch|spin|gym>:<1|0>"
     private static final String[] KINDS = {"storage", "balls", "flee", "silent", "version", "safety", "spinlimit",
@@ -55,9 +55,9 @@ public class StatusService extends Service {
 
     /** One reading of the phone's files. */
     private static final class Reading {
-        long now, stateAgeMs, gymAgeMs;
+        long now, stateAgeMs, gymAgeMs, cullAgeMs;
         boolean catchOn, spinOn, perfectOn, tapOn, gymOn, applesOn;
-        String state = "", gym = "";
+        String state = "", gym = "", cull = "";
     }
 
     private NotificationManager nm;
@@ -203,8 +203,8 @@ public class StatusService extends Service {
     private void tick(boolean full) {
         Reading r = read();
         if (full) {
-            // It lives while a switch is on, and 30 minutes longer.
-            if (r.catchOn || r.spinOn || r.perfectOn || r.tapOn || r.gymOn) {
+            // It lives while a switch is on or a cull is in flight (its banners), and 30 minutes longer.
+            if (r.catchOn || r.spinOn || r.perfectOn || r.tapOn || r.gymOn || Logic.cullBusy(r.cull, r.cullAgeMs)) {
                 offSince = 0;
             } else if (offSince == 0) {
                 offSince = r.now;
@@ -241,6 +241,9 @@ public class StatusService extends Service {
         r.gym = Screen.readFile(Screen.GYM_STATUS);
         ms = new File(Screen.GYM_STATUS).lastModified();
         r.gymAgeMs = ms > 0 ? Math.max(0, r.now - ms) : -1;
+        r.cull = Screen.readFile(Screen.CULL_STATUS);
+        ms = new File(Screen.CULL_STATUS).lastModified();
+        r.cullAgeMs = ms > 0 ? Math.max(0, r.now - ms) : -1;
         return r;
     }
 
@@ -350,12 +353,37 @@ public class StatusService extends Service {
                 Log.i(TAG, "alert " + e[1] + ": " + e[3]);
             }
         }
+        cullBanner(r, enabled);
         if (events.size() > 0 || r.now - savedMs > 60000) {   // kept across restarts, so a restart repeats no alert
             synchronized (alerts) {
                 prefs.edit().putString(K_ALERT_STATE, alerts.save()).apply();
             }
             savedMs = r.now;
         }
+    }
+
+    /** App 1.10: the cull's banner, once per new status line (Logic.cullBanner decides; the line is marked seen either
+     *  way, kept across restarts). Running, then done or stopped, under one id: the result replaces "running". */
+    private void cullBanner(Reading r, boolean enabled) {
+        String line = r.cull == null ? "" : r.cull.trim();
+        String seen = prefs.getString(K_CULL_SEEN, "");
+        if (line.length() == 0 || line.equals(seen)) return;
+        String[] cb = Logic.cullBanner(line, seen, r.cullAgeMs);
+        prefs.edit().putString(K_CULL_SEEN, line).apply();
+        if (cb == null || !enabled) return;
+        Notification.Builder b = builder(CH_ALERTS);
+        b.setSmallIcon(R.drawable.ic_stat)
+         .setContentTitle(cb[0])
+         .setContentText(cb[1])
+         .setStyle(new Notification.BigTextStyle().bigText(cb[1]))
+         .setAutoCancel(true)
+         .setColor(Screen.AMBER)
+         .setCategory(Notification.CATEGORY_STATUS)
+         .setVisibility(Notification.VISIBILITY_PUBLIC)
+         .setContentIntent(openApp());
+        if (Build.VERSION.SDK_INT < 26) b.setPriority(Notification.PRIORITY_HIGH).setDefaults(Notification.DEFAULT_ALL);
+        nm.notify(ID_CULL, b.build());
+        Log.i(TAG, "cull banner: " + cb[0] + ": " + cb[1]);
     }
 
     private static int place(String kind) {

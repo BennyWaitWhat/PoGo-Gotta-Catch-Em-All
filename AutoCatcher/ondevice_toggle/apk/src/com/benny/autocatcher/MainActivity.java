@@ -816,6 +816,29 @@ final class Logic {
         return new String[]{text, "" + tone, busy ? "0" : "1"};
     }
 
+    static final long CULL_BANNER_MS = 10 * 60 * 1000L;   // a cull line older than this is history: no banner for it
+
+    /** A cull is queued or running right now: its line says so and is fresh. The notification's service stays up for it. */
+    static boolean cullBusy(String s, long ageMs) {
+        String l = s == null ? "" : s.trim().toLowerCase(Locale.US);
+        return (l.startsWith("queued") || l.startsWith("running")) && ageMs >= 0 && ageMs <= CULL_STALE_MS;
+    }
+
+    /** App 1.10: a banner (the Alerts channel) when the cull's line turns to running, done or STOPPED, so a cull is seen
+     *  without leaving the game. Benny 11-19 "itried it. it did nothing": the pass ran 80 s with nothing to show for it in
+     *  the game, and the game was closed during it. {title, text}, or null = no banner. seen = the last line handled; a
+     *  line older than CULL_BANNER_MS is history (a service start never replays one). */
+    static String[] cullBanner(String s, String seen, long ageMs) {
+        String line = s == null ? "" : s.trim();
+        if (line.length() == 0 || line.equals(seen == null ? "" : seen.trim()) || ageMs < 0 || ageMs > CULL_BANNER_MS) return null;
+        String rest = line.replaceFirst("(?i)^(running since|done|stopped|queued|ready)\\s+\\d{1,2}:\\d{2}(:|\\s+--)?\\s*", "");
+        String l = line.toLowerCase(Locale.US);
+        if (l.startsWith("running")) return new String[]{"Cull running", "Stay in Pokemon GO until it says done (about 3 min)."};
+        if (l.startsWith("done")) return new String[]{"Cull done", cap(rest)};
+        if (l.startsWith("stopped")) return new String[]{"Cull stopped", cap(rest)};
+        return null;
+    }
+
     /** The Catch Rewards line: {text, tone, "1" when the button may be tapped}. One tap is one reward run -- two at
      *  once crashed the game (2026-11-18) -- so the button is off from the tap until the phone's script has answered,
      *  while its line reads queued / running (15 minutes at most: a run that died never says done), and for the few
@@ -1702,6 +1725,7 @@ final class Screen {
     private void onCull() {
         enable(cullBtn, false);
         cullTapMs = System.currentTimeMillis();
+        if (host != null) host.startStatus();   // its banners say when the cull runs and how it ended (app 1.10), switches on or not
         line(cullStatus, "sent -- the phone's cull is starting...", AMBER);
         new Thread(new Runnable() {
             public void run() {
@@ -2158,7 +2182,7 @@ final class Screen {
             {"Berries", "What is fed before the throw. Pinap: a Pinap on every Pokemon. Razz: a Razz on the hard ones only. Both: Razz on the hard ones, Pinap on the rest. Never a Golden Razz or a Silver Pinap."},
             {"Transfer on Catch", "Tags junk the moment you catch it, so less piles up for the cull. It only tags; it never releases anything. Its card shows on this screen once it is set up on the phone."},
             {"Catch Rewards", "Clears stacked Field Research reward encounters that piled up while your box was full. One run at a time: the button stays off until the run is done, and the catcher pauses for it. Switch Gym Battle off first."},
-            {"Cull Now", "Runs one cull right on the phone (the PC can be off): it reads your bag and tags the Transfer pile. It only tags; you release by hand. Go back to Pokemon GO after the tap: it starts once the game is on screen."},
+            {"Cull Now", "Runs one cull right on the phone (the PC can be off): it reads your bag and tags the Transfer pile. It only tags; you release by hand. Go back to Pokemon GO after the tap: it starts once the game is on screen, and a banner says when it runs and when it is done (stay in the game till then, about 3 minutes)."},
             {"In the notification shade", "While a switch is on, a notification shows the catch count and has Catch, Spin and Gym buttons, so you can flip them without leaving the game. It stays for 30 minutes after the last switch went off, so Catch on is still one pull-down away."},
             {"Alerts", "A banner with sound when catching stops (storage full, no balls...), when the Star Piece runs out, or when the gym run stops. Once per change, never again while nothing changes."},
         };
