@@ -106,8 +106,13 @@ pass() {
   fi
   [ "$i" -gt 1 ] && echo "phone back at $(date +%H:%M:%S)"
   # one round trip: the game's pid and age, the gadget's listener, the phone's uptime
-  R=$(adb -s "$T" shell 'P=$(pidof com.nianticlabs.pokemongo); echo "pid=$P"; echo "age=$([ -n "$P" ] && ps -o ELAPSED= -p $P)"; echo "gadget=$(grep -ci :69A7 /proc/net/tcp)"; echo "up=$(cut -d" " -f1 /proc/uptime)"' | tr -d '\r')
+  # + the phone's own Cull Now line (the cull runs ON the phone too since 2026-11-18): never two passes on one game
+  R=$(adb -s "$T" shell 'P=$(pidof com.nianticlabs.pokemongo); echo "pid=$P"; echo "age=$([ -n "$P" ] && ps -o ELAPSED= -p $P)"; echo "gadget=$(grep -ci :69A7 /proc/net/tcp)"; echo "up=$(cut -d" " -f1 /proc/uptime)"; F=/data/local/tmp/pogo_cull_status.txt; echo "cull=$(head -c 300 $F 2>/dev/null)"; echo "cullage=$(( $(date +%s) - $(stat -c %Y $F 2>/dev/null || date +%s) ))"' | tr -d '\r')
   P=$(echo "$R" | sed -n 's/^pid=//p'); L=$(echo "$R" | sed -n 's/^gadget=//p')
+  CS=$(echo "$R" | sed -n 's/^cull=//p'); CA=$(echo "$R" | sed -n 's/^cullage=//p')
+  case "$CS" in queued*|running*)
+    if [ "${CA:-9999}" -lt 900 ] 2>/dev/null; then echo "NOT RUN (a cull is running ON THE PHONE -- its Cull Now line, ${CA} s old: $CS)"; return 4; fi ;;
+  esac
   ST=$(python tools/pogo_data.py status 2>&1 | grep '^inventory '); echo "$ST"
   PV=$(echo "$ST" | grep -oE 'phone v[0-9]+' | grep -oE '[0-9]+'); HV=$(echo "$ST" | grep -oE 'here v[0-9]+' | grep -oE '[0-9]+')
   # the phone holds newer data (another session pushed, or this checkout is fresh: "here v-"): the pass runs on THAT data or

@@ -1,0 +1,39 @@
+#!/data/data/com.termux/files/usr/bin/bash
+# adb, ON THE PHONE (Benny 2026-11-18: "the entire thing needs to run on the phone just like the gym mode."). The cull's code
+# talks to "the phone" through adb -- `adb -s <phone> shell <cmd>`, exec-out, push, pull, forward, connect, devices. On the
+# phone itself there is no adb: tools/cull_phone.sh puts this folder first on PATH, so every such call lands here instead.
+#   devices / connect / get-state     the phone is always there (this is it)
+#   forward tcp:N tcp:N               nothing to forward: the game's gadget listens on this phone's own 127.0.0.1
+#   shell / exec-out CMD...           CMD runs as root in Android's own shell environment -- what `adb shell` gives, plus root
+#                                     (the game's /proc entries, dumpsys and /data/local/tmp need one of the two). Termux's
+#                                     LD_LIBRARY_PATH / PATH are dropped first: Android's tools must not load Termux's libraries.
+#   push LOCAL REMOTE                 a copy, then owned by the shell user, as adb leaves it (the PC's adb must still replace it)
+#   pull REMOTE LOCAL                 a copy owned by this (Termux) user
+# Every other verb stops with rc 1 and says so: nothing is guessed. One `su` per call (each starts Magisk's helper), so the
+# listener reads its request file itself and only a pass calls this -- a few dozen times.
+# Offline check: bash tools/cull_phone.sh --selfcheck (a stand-in `su`, POGO_SU).
+SU=${POGO_SU:-su}
+T=${ADB_TARGET:-phone}
+SYSPATH=${POGO_SYSPATH:-/product/bin:/apex/com.android.runtime/bin:/apex/com.android.art/bin:/system_ext/bin:/system/bin:/system/xbin:/odm/bin:/vendor/bin:/vendor/xbin}
+ENV="unset LD_LIBRARY_PATH LD_PRELOAD PREFIX; export PATH='$SYSPATH' HOME=/ TMPDIR=/data/local/tmp;"
+while [ "${1:-}" = -s ] || [ "${1:-}" = -t ]; do shift 2; done          # the device: there is only this one
+v=${1:-}; [ $# -gt 0 ] && shift
+noquote() { case "$1" in *"'"*) echo "adb (phone): a path with a quote in it is not handled: $1" >&2; exit 1 ;; esac; }
+case "$v" in
+  devices)   printf 'List of devices attached\n%s\tdevice\n\n' "$T" ;;
+  connect)   echo "already connected to ${1:-$T}" ;;
+  get-state) echo device ;;
+  forward)   [ -n "${1:-}" ] && [ "${1:-}" = "${2:-}" ] \
+               || { echo "adb (phone): forward $* -- only the same port on both sides (nothing to forward) is handled" >&2; exit 1; } ;;
+  shell|exec-out)
+    while [ "${1:-}" != "${1#-}" ]; do shift; done                       # -T -t -x -n: no terminal here either way
+    exec "$SU" -c "$ENV $*" ;;
+  push)
+    noquote "$1"; noquote "$2"
+    exec "$SU" -c "$ENV d='$2'; [ -d \"\$d\" ] && d=\"\$d/$(basename "$1")\"; cp '$1' \"\$d\" && chown 2000:2000 \"\$d\" && chmod 644 \"\$d\" && echo '$1: 1 file pushed.'" ;;
+  pull)
+    noquote "$1"; noquote "$2"
+    d=$2; [ -d "$d" ] && d=$d/$(basename "$1")
+    if "$SU" -c "$ENV cat '$1'" > "$d.part"; then mv -f "$d.part" "$d" && echo "$1: 1 file pulled."; else rm -f "$d.part"; exit 1; fi ;;
+  *) echo "adb (phone): '$v' is not handled here (tools/phone/adb)" >&2; exit 1 ;;
+esac

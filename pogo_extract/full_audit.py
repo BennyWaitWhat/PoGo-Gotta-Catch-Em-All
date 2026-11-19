@@ -1141,17 +1141,36 @@ def preflight_finish(p):
 _AUDIT_WARN = re.compile(r'\*\*\* WARN|\bWARNING\b|LOCAL FALLBACK|STALE CACHE')
 
 
+HEAVY_AUDITS = ('audit_rank_tags.py',)   # 1.9 GB on its own (the rank tables; measured 2026-11-18): alone when capped
+
+
 def run_audits():
-    """All of them concurrently -- read-only sqlite, no shared state, no phone contact."""
-    procs = [(nm, sc, need, subprocess.Popen([PY, sc], stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                                             text=True, encoding='utf-8', errors='replace'))
-             for nm, sc, need in AUDITS]
+    """All of them concurrently -- read-only sqlite, no shared state, no phone contact. POGO_AUDIT_JOBS=N runs at most N
+    at once, each of HEAVY_AUDITS alone first (the cull on the phone, 2026-11-18: 2.9 GB free beside the game, and all 11
+    at once peak at 2.7 GB); unset = all at once, as on the PC. The results come back in AUDITS order either way."""
+    try:
+        jobs = max(0, int(os.environ.get('POGO_AUDIT_JOBS') or 0))
+    except ValueError:
+        jobs = 0
+    start = lambda sc: subprocess.Popen([PY, sc], stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                                        text=True, encoding='utf-8', errors='replace')
+    done, queue = {}, [sc for nm, sc, need in AUDITS]
+    for sc in ([s for s in queue if os.path.basename(s) in HEAVY_AUDITS] if jobs else []):
+        p = start(sc)
+        done[sc] = (p.communicate()[0] or '', p.returncode)
+    queue, running = [s for s in queue if s not in done], []
+    while queue or running:
+        while queue and len(running) < (jobs or len(AUDITS)):
+            sc = queue.pop(0)
+            running.append((sc, start(sc)))
+        sc, p = running.pop(0)
+        done[sc] = (p.communicate()[0] or '', p.returncode)
     out = []
-    for nm, sc, need, p in procs:
-        log = p.communicate()[0] or ''
+    for nm, sc, need in AUDITS:
+        log, rc = done[sc]
         # BOTH conditions: exit 0 AND the script's own verdict line. Exit code alone has false-passed
         # before (a crashed subprocess printing nothing is not a pass).
-        ok = (p.returncode == 0) and (need in log)
+        ok = (rc == 0) and (need in log)
         try:        # the full log, pass or fail (2026-11-10: "1 WARN -- see above" had no "above" to read)
             with open(os.path.join('system', 'analysis', 'last_audit_%s.log' % os.path.basename(sc)[:-3].lstrip('_')),
                       'w', encoding='utf-8', errors='replace') as f:

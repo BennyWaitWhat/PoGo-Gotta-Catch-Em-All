@@ -12,7 +12,14 @@ Since 2026-11-18 (Benny: "Does the cull button on the new autocatcher app work c
 the AutoCatcher app, so the game is NOT on screen at the tap and the pass attaches to nothing but a game on screen -- the
 listener waits 3 minutes for the game and says so; and "release N" is said only when the report's own first line says it
 (a failed verify or an unconfirmed tag reads "do NOT release yet"), with the pass's warning-line count beside it.
-Run in the background:  pythonw cull_button.py      Offline self-check:  python cull_button.py --selftest
+ON THE PHONE SINCE 2026-11-18 (Benny: "the entire thing needs to run on the phone just like the gym mode."): this listener
+runs in Termux from the repo clone ~/cull, started by ../tools/cull_phone.sh (Termux:Boot starts that), and the whole pass
+runs on the phone with the PC off. ../tools/phone/adb stands in for adb there (root shell commands, local copies). While it
+waits it reads the request file itself (no root call every 15 s); before a pass it takes main from GitHub (fast-forward
+only; no network = the code it has); it refuses while the battery is under BATTERY_MIN % and not charging (the pass's CPU is
+the phone's now) and while a cull from the PC is attached (the phone busy marker, PokemonInventory). The PC no longer runs a
+listener: two would both see a tap.
+Run on the phone:  bash ~/cull/tools/cull_phone.sh      Offline self-check:  python cull_button.py --selftest
 """
 import datetime as dt
 import json
@@ -28,7 +35,14 @@ ROOT = os.path.dirname(HERE)
 AN = os.path.join(HERE, 'system', 'analysis')
 ADB = os.environ.get('ADB_TARGET') or '100.98.158.56:5555'
 REQ, STATUS = '/data/local/tmp/pogo_cull.req', '/data/local/tmp/pogo_cull_status.txt'
-STATE, LOG = os.path.join(AN, 'cull_button_state.json'), os.path.join(AN, 'cull_button.log')
+# Which side this is: the Termux prefix exists only on the phone; POGO_ON_PHONE=1 / 0 says so outright (cull_phone.sh: 1).
+ON_PHONE = os.environ.get('POGO_ON_PHONE', '1' if os.path.isdir('/data/data/com.termux/files/usr') else '0') == '1'
+BUSY = '/data/local/tmp/pogo_desktop_busy'      # pogo_il2cpp's marker: "<name> <deadline epoch>" while a desktop tool is attached
+BATTERY_MIN = 10            # % -- under it, and not charging, no pass starts on the phone (11-18 20:50: 3%, too hot to charge)
+LOG = os.path.join(AN, 'cull_button.log')
+# The listener's own memory of the last tap it handled. On the phone it sits OUTSIDE the data store (system/analysis/*.json
+# travels with every pull): a pull must never hand it an older epoch, or one tap would run twice.
+STATE = os.path.join(ROOT, '.cull_button_state.json') if ON_PHONE else os.path.join(AN, 'cull_button_state.json')
 CULL_LOG, REPORT = os.path.join(AN, 'last_cull.log'), os.path.join(AN, 'cull_button_report.txt')
 POLL_S, MAX_AGE_S, GAP_S, GAME_UP_S = 15, 15 * 60, 180, 120
 SCREEN_WAIT_S = 180         # a tap is made in the AutoCatcher app: this long for him to be back in the game
@@ -61,18 +75,6 @@ def adb(cmd, timeout=25):
         return None
 
 
-def connected():
-    try:
-        out = _run(['adb', 'devices'], capture_output=True, text=True, timeout=15).stdout
-        if re.search(r'^%s\s+device$' % re.escape(ADB), out.replace('\r', ''), re.M):
-            return True
-        _run(['adb', 'connect', ADB], capture_output=True, text=True, timeout=15)
-        out = _run(['adb', 'devices'], capture_output=True, text=True, timeout=15).stdout
-        return bool(re.search(r'^%s\s+device$' % re.escape(ADB), out.replace('\r', ''), re.M))
-    except (subprocess.TimeoutExpired, OSError):
-        return False
-
-
 def status(msg):
     """One line for the app. The shell user owns /data/local/tmp, so it can (re)create the file; 644 = the app reads it."""
     msg = msg.replace("'", '').replace('\n', ' ')
@@ -82,6 +84,52 @@ def status(msg):
 
 def hhmm(epoch=None):
     return time.strftime('%H:%M', time.localtime(epoch or time.time()))
+
+
+def read_local(path):
+    """A /data/local/tmp file Termux may read without root (the app's request is 666, the busy marker 666), else None."""
+    try:
+        with open(path, encoding='utf-8', errors='replace') as f:
+            return f.read()
+    except OSError:
+        return None
+
+
+def read_req():
+    """The app's request line. On the phone a plain read: no root call every 15 s (each one starts Magisk's helper)."""
+    return (read_local(REQ) if ON_PHONE else None) or adb('cat %s 2>/dev/null' % REQ)
+
+
+def parse_battery(text):
+    """`dumpsys battery` -> (level %, charging?) or (None, None). status 2 = charging, 5 = full."""
+    lv, st = re.search(r'^\s*level:\s*(\d+)', text or '', re.M), re.search(r'^\s*status:\s*(\d+)', text or '', re.M)
+    return (int(lv.group(1)), st is not None and st.group(1) in ('2', '5')) if lv else (None, None)
+
+
+def pc_attached(text, now):
+    """The busy marker names the PC's cull (exactly PokemonInventory; the phone's own pass writes PokemonInventoryPhone) with
+    a deadline still ahead: a cull from the PC is attached right now."""
+    m = re.match(r'\s*(\S+)\s+(\d+)', text or '')
+    return bool(m) and m.group(1) == 'PokemonInventory' and int(m.group(2)) > now
+
+
+def code_update():
+    """The phone runs main as it is on GitHub: fast-forward only, before each pass. -> the commit now, or None (no network,
+    a local change: the code it has runs, and the log says why)."""
+    try:
+        p = _run(['git', '-C', ROOT, 'pull', '--ff-only', '-q'], capture_output=True, text=True, timeout=120)
+        if p.returncode:
+            log('code update failed (rc %s), running the code it has: %s' % (p.returncode, (p.stderr or p.stdout).strip()[-200:]))
+    except (subprocess.TimeoutExpired, OSError) as e:
+        log('code update failed (%r), running the code it has' % e)
+    return _head()
+
+
+def _head():
+    try:
+        return _run(['git', '-C', ROOT, 'rev-parse', '--short', 'HEAD'], capture_output=True, text=True, timeout=30).stdout.strip() or None
+    except (subprocess.TimeoutExpired, OSError):
+        return None
 
 
 def parse_req(text):
@@ -171,11 +219,33 @@ def cull_running():
     return 'full_audit.py' in out
 
 
+def gap_left():
+    """Seconds still to wait for "3 minutes after the last cull": this listener's own last pass (its log), or the last walk
+    from anywhere (bag_count.json -- every data pull brings the PC's) -- a quick re-attach crashed the gadget before."""
+    ts = [os.path.getmtime(p) for p in (CULL_LOG, os.path.join(AN, 'bag_count.json')) if os.path.exists(p)]
+    return GAP_S - (time.time() - max(ts)) if ts else 0
+
+
 def one_pass(req_epoch):
     """Everything one tap does; the last status line it writes is the answer."""
     if cull_running():
         status('STOPPED %s: a cull is already running -- tap again when it is done' % hhmm()); return
-    wait = GAP_S - (time.time() - os.path.getmtime(CULL_LOG)) if os.path.exists(CULL_LOG) else 0
+    if ON_PHONE:
+        lv, charging = parse_battery(adb('dumpsys battery'))
+        if lv is not None and lv < BATTERY_MIN and not charging:
+            status('STOPPED %s: battery %d%% and not charging -- the cull runs on the phone, charge it first, then tap again'
+                   % (hhmm(), lv)); return
+        if pc_attached(read_local(BUSY) or adb('cat %s 2>/dev/null' % BUSY), int(time.time())):
+            status('STOPPED %s: a cull from the PC is attached right now -- tap again in a few minutes' % hhmm()); return
+        log('code: %s' % code_update())
+    pv, hv = data_versions()
+    if pv is None:
+        status('STOPPED %s: could not read the data store versions -- ask Claude' % hhmm()); return
+    if pv > hv and not data(['pull', '--group', 'inventory']):
+        status('STOPPED %s: pulling the newer data failed -- ask Claude' % hhmm()); return
+    if pv < hv and not data(['push', '--group', 'inventory']):
+        status('STOPPED %s: pushing the data first failed -- ask Claude' % hhmm()); return
+    wait = gap_left()
     if wait > 0:
         status('queued %s: starting at %s (3 minutes after the last cull)' % (hhmm(), hhmm(time.time() + wait)))
         time.sleep(wait)
@@ -191,13 +261,6 @@ def one_pass(req_epoch):
     gadget = adb('grep -ci :69A7 /proc/net/tcp')
     if not gadget or not gadget.isdigit() or int(gadget) < 1:
         status('STOPPED %s: the game has no gadget listening -- ask Claude' % hhmm()); return
-    pv, hv = data_versions()
-    if pv is None:
-        status('STOPPED %s: could not read the data store versions -- ask Claude' % hhmm()); return
-    if pv > hv and not data(['pull']):
-        status('STOPPED %s: pulling the newer data failed -- ask Claude' % hhmm()); return
-    if pv < hv and not data(['push', '--group', 'inventory']):
-        status('STOPPED %s: pushing the data first failed -- ask Claude' % hhmm()); return
     until, told = time.time() + SCREEN_WAIT_S, False       # he tapped in the app: wait for him to be back in the game
     while not on_screen(adb(SCREEN_CMD)):
         if time.time() >= until:
@@ -207,7 +270,7 @@ def one_pass(req_epoch):
             status('queued %s: open Pokemon GO and stay in it -- the cull starts when the game is on screen (it waits until %s)'
                    % (hhmm(), hhmm(until)))
             told = True
-        time.sleep(3)
+        time.sleep(5)                                     # each look is one root call on the phone
     start = time.time()
     status('running since %s' % hhmm(start))
     log('cull for the tap at %s (pid %s, game up %ss)' % (hhmm(req_epoch), pid, up))
@@ -223,27 +286,39 @@ def one_pass(req_epoch):
     status('%s %s: %s%s' % (kind, hhmm(), line, '' if pushed else ' (data push failed -- ask Claude)'))
 
 
+def load_state(path=STATE, now=None):
+    """The last tap handled. None yet (the first start on the phone): a tap older than 15 minutes is history, not a request
+    -- the 11-05 tap still in the file must not come back as a STOPPED line."""
+    try:
+        with open(path) as f:
+            return {'last_epoch': int(json.load(f)['last_epoch'])}
+    except (OSError, ValueError, KeyError, TypeError):
+        return {'last_epoch': int(now or time.time()) - MAX_AGE_S}
+
+
 def main():
+    if not ON_PHONE:
+        print('cull_button: the Cull Now listener runs on the phone since 2026-11-18 (tools/cull_phone.sh), not here: '
+              'two listeners would both see one tap'); return 2
     try:
         mutex = socket.socket(); mutex.bind(('127.0.0.1', MUTEX_PORT))
     except OSError:
-        print('cull_button: another listener is already running'); return 1
-    st = json.load(open(STATE)) if os.path.exists(STATE) else {'last_epoch': 0}
-    log('listener up (ADB %s, pid %s)' % (ADB, os.getpid()))
-    if connected():
-        status('ready %s: tap Cull Now, then go back to Pokemon GO -- the PC runs one cull' % hhmm())
+        print('cull_button: another listener is already running'); return 3
+    st, head = load_state(), _head()
+    log('listener up on the phone (pid %s, code %s)' % (os.getpid(), head))
+    status('ready %s: tap Cull Now, then go back to Pokemon GO -- the phone runs one cull' % hhmm())
     while True:
         try:
-            if connected():
-                now = int(adb('date +%s') or 0) or int(time.time())
-                ep = parse_req(adb('cat %s 2>/dev/null' % REQ))
-                if ep and ep > st['last_epoch']:
-                    st['last_epoch'] = ep
-                    json.dump(st, open(STATE, 'w'))             # handled BEFORE the pass: one tap can never run twice
-                    if now - ep > MAX_AGE_S:
-                        status('STOPPED %s: that tap was from %s, too long ago -- tap again' % (hhmm(), hhmm(ep)))
-                    else:
-                        one_pass(ep)
+            ep = parse_req(read_req())
+            if ep and ep > st['last_epoch']:
+                st['last_epoch'] = ep
+                json.dump(st, open(STATE, 'w'))                 # handled BEFORE the pass: one tap can never run twice
+                if time.time() - ep > MAX_AGE_S:
+                    status('STOPPED %s: that tap was from %s, too long ago -- tap again' % (hhmm(), hhmm(ep)))
+                else:
+                    one_pass(ep)
+                    if _head() != head:                         # the pass took a newer main: the listener's own code too
+                        log('the code moved (%s -> %s): the listener restarts' % (head, _head())); return 0
         except Exception as e:                                  # the listener stays up; the tap is already marked done
             log('error: %r' % e)
             try:
@@ -280,6 +355,20 @@ def selftest():
     assert not on_screen(g % GAME + '  mWakefulness=Asleep\n') and not on_screen('') and not on_screen(None)
     assert parse_cull('[ 41.7s] AUDIT GATE FAILED -- SYNC NOT RUN\n', 1) == ('STOPPED', 'an audit failed (nothing was tagged) -- ask Claude')
     assert parse_cull('GAME MASTER REFRESH STOPPED THE PASS (rc 5)\n', 5)[1].startswith('a new game master')
+    # on the phone (2026-11-18): the battery line, the PC's attach, the first start
+    bat = 'Current Battery Service state:\n  AC powered: true\n  status: %s\n  health: 2\n  level: %s\n  scale: 100\n'
+    assert parse_battery(bat % (4, 3)) == (3, False), '11-18 20:50: 3%, plugged in, not charging (too hot)'
+    assert parse_battery(bat % (2, 3)) == (3, True) and parse_battery(bat % (5, 100)) == (100, True)
+    assert parse_battery('') == (None, None) and parse_battery(None) == (None, None)
+    assert pc_attached('PokemonInventory 1793900300\n', 1793900000) and not pc_attached('PokemonInventory 1793900300', 1793900400)
+    assert not pc_attached('PokemonInventoryPhone 1793900300', 1793900000), 'the phone pass\'s own marker never blocks a tap'
+    assert not pc_attached('GymBattle 1793900300', 1793900000) and not pc_attached('', 0) and not pc_attached(None, 0)
+    import tempfile
+    with tempfile.TemporaryDirectory() as d:
+        p = os.path.join(d, 'state.json')
+        assert load_state(p, now=1793900000) == {'last_epoch': 1793900000 - MAX_AGE_S}, 'no state: an old tap is history'
+        json.dump({'last_epoch': 1793859787}, open(p, 'w'))
+        assert load_state(p) == {'last_epoch': 1793859787}
     print('cull_button selftest: OK')
     return 0
 
