@@ -46,10 +46,12 @@ import java.io.FileWriter;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.util.ArrayList;
+import java.util.Calendar;
 import java.util.Locale;
+import java.util.TimeZone;
 
 /**
- * PoGo Auto 1.6 -- the on-phone control page (Benny 2026-11-18: "fix the autocatcher app while youre at it the ui
+ * PoGo Auto 1.7 -- the on-phone control page (Benny 2026-11-18: "fix the autocatcher app while youre at it the ui
  * sucks ass" + "a gym battle toggle ... on my autoctcher app").
  * Since 1.4 the same state is also in the notification shade, with Catch / Spin / Gym buttons and alerts, so it can be
  * used without leaving the game: StatusService.java (the notification) and Alerts.java (when an alert is due).
@@ -57,6 +59,9 @@ import java.util.Locale;
  * own line (Logic.reward); two runs at once crashed the game on 2026-11-18.
  * 1.6: one control for Auto-Catch and Auto-Spin together, right under the status card (he flips the two together:
  * "I'll restart them", 2026-11-18) -- Logic.both; and the Transfer on Catch card is hidden until it is set up.
+ * 1.7: Reset counters in the status card (Benny 2026-11-18: "how to restart/reset the stardust counter etc"). The
+ * catcher now keeps its counters through its own updates and game restarts; they start from 0 only when this is
+ * tapped twice (Logic.reset). Beside it: since when they count (since= of the catcher's line).
  *
  * The page answers "is it working?" first (the header and one status card), then shows every switch as a big tile you
  * tap anywhere, a Berries picker, Transfer on Catch, and the two one-off actions. Three classes live in this file:
@@ -290,7 +295,8 @@ public class MainActivity extends Activity implements Screen.Host {
             } else if (kind == 1) {
                 s.flags = new String[]{"1", "1", "1", "1", "1", "1", "700"};   // catch, spin, perfect, tap, gym, berries, dust
                 s.state = "caught=1234 fled=56 spins=789 xp=1234567 items=4321 ready=0 cooling=3 rate=0.0 up=7200 "
-                        + "dust=1250000 balls=12/3/4 pinap=0 razz=0 sp=1 only=700 dustchk=100 why=out of balls: 12 Poke, "
+                        + "dust=1250000 balls=12/3/4 pinap=0 razz=0 sp=1 only=700 dustchk=100 since=" + (now / 1000 - 7380)
+                        + " why=out of balls: 12 Poke, "
                         + "3 Great, 4 Ultra left (it saves the last 15/5/5 for you)";
                 s.levels = LEVELS;
                 s.stateMs = now - 3000;
@@ -446,6 +452,54 @@ final class Logic {
         long up = longOf(val(c, "up"), -1);
         if (up >= 30 && d > 0) s += " - " + compact(d / (up / 60.0)) + "/min";
         return s;
+    }
+
+    static final long RESET_ARM_MS = 4000L;     // Reset counters: the second tap must come within this of the first
+    static final long RESET_LATE_MS = 30000L;   // ... and the catcher's line must show the reset within this of it
+
+    /** since= of the catcher's line: when its counters began at 0 (the last Reset counters tap), epoch seconds. -1 when
+     *  it is not there (a catcher older than app 1.7 sends none: its counters start at 0 with every attach). */
+    static long since(String state) {
+        long v = longOf(val(counters(state), "since"), -1);
+        return v > 0 ? v : -1;
+    }
+
+    /** "since 19:52" (today), "since yesterday 23:10", "since Nov 16, 23:10": the counters' start in the phone's own
+     *  time zone. "" when there is none. */
+    static String sinceWords(long sinceSec, long nowMs, TimeZone tz) {
+        if (sinceSec <= 0) return "";
+        Calendar a = Calendar.getInstance(tz, Locale.US), b = Calendar.getInstance(tz, Locale.US);
+        a.setTimeInMillis(sinceSec * 1000L);
+        b.setTimeInMillis(nowMs);
+        String hm = String.format(Locale.US, "%02d:%02d", a.get(Calendar.HOUR_OF_DAY), a.get(Calendar.MINUTE));
+        if (sameDay(a, b)) return "since " + hm;
+        b.add(Calendar.DAY_OF_YEAR, -1);
+        if (sameDay(a, b)) return "since yesterday " + hm;
+        String[] mon = {"Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"};
+        return "since " + mon[a.get(Calendar.MONTH)] + " " + a.get(Calendar.DAY_OF_MONTH) + ", " + hm;
+    }
+
+    private static boolean sameDay(Calendar a, Calendar b) {
+        return a.get(Calendar.YEAR) == b.get(Calendar.YEAR) && a.get(Calendar.DAY_OF_YEAR) == b.get(Calendar.DAY_OF_YEAR);
+    }
+
+    /** The Reset counters button: {label, "1" when it looks armed / busy (amber), "1" when it may be tapped, the line
+     *  under it, that line's tone}. The first tap only arms it ("Tap again to reset", RESET_ARM_MS); the second sends
+     *  catcher_ctl.sh counters-reset. armedMs = the first tap (0: none); tapMs = when the reset was sent (0: none);
+     *  since = Logic.since of the catcher's line; reporting = that line is fresh; reqSec = the time in the request file
+     *  (-1: none). Done = the catcher's line counts from the tap (since= at it or later, 2 s of slack). An arm counts
+     *  only when it came after the last reset sent (onReset sets armedMs = 0 when it sends). */
+    static String[] reset(long now, long armedMs, long tapMs, long since, boolean reporting, long reqSec) {
+        String[] plain = {"Reset counters", "0", "1", "", "" + DIM};
+        if (armedMs > tapMs && now - armedMs < RESET_ARM_MS) return new String[]{"Tap again to reset", "1", "1", "", "" + DIM};
+        if (tapMs <= 0) return plain;
+        long t = tapMs / 1000 - 2;
+        boolean recent = now - tapMs <= RESET_LATE_MS;
+        if (since >= t) return recent ? new String[]{"Reset counters", "0", "1", "Counters reset: they count from 0 again", "" + GOOD} : plain;
+        if (reqSec >= t && !reporting)
+            return new String[]{"Reset counters", "0", "1", "Reset asked: the catcher is not running, they start from 0 when it does", "" + WAIT};
+        if (recent) return new String[]{"Resetting...", "1", "0", "", "" + DIM};
+        return new String[]{"Reset counters", "0", "1", "did not take -- tap again", "" + BAD};
     }
 
     /** {"Balls 2,280 / 6 / 6" (Poke / Great / Ultra), tone}: amber at LOW_BALLS or fewer in all. null when the catcher
@@ -822,7 +876,7 @@ final class Logic {
 /** The whole screen. Builds the views, reads the phone's files every 4 s, sends the taps. */
 final class Screen {
     static final String TAG = "AutoCatcher";
-    static final String VERSION = "1.6";
+    static final String VERSION = "1.7";
 
     /** What the screen needs from the window it lives in (RenderProbe, which draws it off screen, passes a stand-in
      *  that only answers the question). */
@@ -859,6 +913,8 @@ final class Screen {
     // Berries: 1 = Pinap + Razz, pinap, razz, anything else = none. The catcher reads it every second.
     static final String BERRYFLAG = T + "pogo_berries.on";
     static final String STATE = T + "pogo_state.txt";
+    // Reset counters (1.7): catcher_ctl.sh counters-reset writes the tap's time here; the catcher reads it every second.
+    static final String COUNTERS_REQ = T + "pogo_counters.req";
     static final String STATUS_REWARD = T + "pogo_rewards.txt";
     // Transfer-on-Catch config. A JSON file rather than a flag because it holds several values. This app can WRITE an
     // existing world-writable file but cannot CREATE one in /data/local/tmp, so the card is live only when root has
@@ -940,7 +996,7 @@ final class Screen {
     static final class Snap {
         long now;
         String[] flags;
-        String state = "", gym = "", reward = "", cull = "", toc = "", apples = "", levels = "";
+        String state = "", gym = "", reward = "", cull = "", toc = "", apples = "", levels = "", counterReq = "";
         long stateMs, gymMs, cullMs, rewardMs;
         boolean tocExists;
     }
@@ -975,6 +1031,10 @@ final class Screen {
     private TextView headWords, bigNum, bigWords, sFled, sSpins, sXp, sItems, dustText, spChip, ballsText, whyLine;
     private LinearLayout numbers, extraRow;
     private int spPainted = -2;
+    private LinearLayout resetRow;          // Reset counters (1.7): since when they count, and the button
+    private TextView sinceText, resetBtn, resetNote;
+    private long resetArmedMs = 0, resetTapMs = 0;
+    private int resetPainted = -1;
     private Bar berryBar, dustBar;
     private TextView berryStock, dustHint, dustWarn;
     private LinearLayout tocRow1, tocRow2;
@@ -1138,6 +1198,7 @@ final class Screen {
         s.levels = readText(DUST_LEVELS);
         s.state = readFile(STATE);
         s.stateMs = new File(STATE).lastModified();          // 0 when missing
+        s.counterReq = readFile(COUNTERS_REQ);
         s.gym = readFile(GYM_STATUS);
         s.gymMs = new File(GYM_STATUS).lastModified();
         s.reward = readFile(STATUS_REWARD);
@@ -1165,6 +1226,7 @@ final class Screen {
                 f.shown = f.want != null ? f.want : f.file;
             }
             paintStatus(s);
+            paintReset(s);
             for (int i = 0; i < tiles.size(); i++) paintTile(tiles.get(i), s);
             paintBoth();
             paintDust(s);
@@ -1244,6 +1306,84 @@ final class Screen {
             ballsText.setTextColor(low ? AMBER : TEXT);
             ballsText.setTypeface(low ? Typeface.DEFAULT_BOLD : Typeface.DEFAULT);
         }
+    }
+
+    /** Logic.reset for the last reading (the clock is now: a tap must show at once, before the next read). */
+    private String[] resetState(Snap s) {
+        long age = s.stateMs > 0 ? s.now - s.stateMs : -1;
+        boolean reporting = s.state.length() > 0 && age >= 0 && age <= Logic.STATE_STALE_MS;
+        return Logic.reset(System.currentTimeMillis(), resetArmedMs, resetTapMs, Logic.since(s.state), reporting,
+                           Logic.longOf(s.counterReq, -1));
+    }
+
+    /** The Reset counters row: hidden while the catcher sends no since= (and no reset of this screen is waiting). */
+    private void paintReset(Snap s) {
+        long since = Logic.since(s.state);
+        if (since <= 0 && resetTapMs == 0) {
+            resetRow.setVisibility(View.GONE);
+            resetNote.setVisibility(View.GONE);
+            return;
+        }
+        resetRow.setVisibility(View.VISIBLE);
+        sinceText.setText(since > 0 ? "Counting " + Logic.sinceWords(since, System.currentTimeMillis(), TimeZone.getDefault()) : "");
+        String[] r = resetState(s);
+        resetBtn.setText(r[0]);
+        int look = r[1].equals("1") ? 1 : 0;
+        if (resetPainted != look) {
+            resetPainted = look;
+            resetBtn.setBackground(look == 1 ? tappable(AMBER_FILL, AMBER, 10, 1f) : tappable(CARD, LINE, 10, 1f));
+            resetBtn.setTextColor(look == 1 ? AMBER : TEXT);
+        }
+        enable(resetBtn, r[2].equals("1"));
+        if (r[3].length() > 0) {
+            resetNote.setText(r[3]);
+            resetNote.setTextColor(color(Integer.parseInt(r[4])));
+            resetNote.setVisibility(View.VISIBLE);
+        } else {
+            resetNote.setVisibility(View.GONE);
+        }
+    }
+
+    /** Reset counters. The first tap only arms the button ("Tap again to reset", 4 s), so a stray tap never wipes the
+     *  evening's count; the second sends catcher_ctl.sh counters-reset. That verb only writes the tap's time into the
+     *  request file -- it starts, stops and switches nothing -- and the catcher, which reads that file every second,
+     *  zeroes the counters and rewrites its line (since= = the tap). The screen looks again at 1.5 / 3 / 4.5 s. */
+    private void onReset() {
+        if (last == null) return;
+        String[] r = resetState(last);
+        if (!r[2].equals("1")) return;   // one in flight: wait for its answer
+        long now = System.currentTimeMillis();
+        if (!r[1].equals("1")) {         // not armed: this tap arms it
+            resetArmedMs = now;
+            repaint();
+            main.postDelayed(new Runnable() {
+                public void run() {
+                    repaint();
+                }
+            }, Logic.RESET_ARM_MS + 100);
+            return;
+        }
+        resetArmedMs = 0;
+        resetTapMs = now;
+        repaint();
+        new Thread(new Runnable() {
+            public void run() {
+                shell(intent("counters-reset"));
+                Log.i(TAG, "counters-reset sent");
+                for (int i = 1; i <= 3; i++) {
+                    main.postDelayed(new Runnable() {
+                        public void run() {
+                            refresh();
+                        }
+                    }, i * 1500L);
+                }
+                main.postDelayed(new Runnable() {   // after the wait: "did not take" when it did not
+                    public void run() {
+                        refresh();
+                    }
+                }, Logic.RESET_LATE_MS + 500);
+            }
+        }, "ac-reset").start();
     }
 
     private void paintTile(Tile t, Snap s) {
@@ -1641,6 +1781,30 @@ final class Screen {
         numbers.addView(ballsText, lp(MATCH, WRAP, 6, 0));
 
         card.addView(numbers);
+
+        // Reset counters (1.7): outside `numbers`, so it is never greyed with the counters of a silent catcher
+        resetRow = row();
+        sinceText = text("", 12.5f, DIMC, false);
+        sinceText.setSingleLine(true);
+        sinceText.setEllipsize(TextUtils.TruncateAt.END);
+        resetRow.addView(sinceText, new LinearLayout.LayoutParams(0, WRAP, 1f));
+        resetBtn = centred(text("Reset counters", 12.5f, TEXT, true));
+        resetBtn.setPadding(dp(14), 0, dp(14), 0);
+        resetBtn.setClickable(true);
+        resetBtn.setOnClickListener(new View.OnClickListener() {
+            public void onClick(View v) {
+                tick(v);
+                onReset();
+            }
+        });
+        LinearLayout.LayoutParams rb = new LinearLayout.LayoutParams(WRAP, dp(40));
+        rb.setMargins(dp(8), 0, 0, 0);
+        resetRow.addView(resetBtn, rb);
+        resetRow.setVisibility(View.GONE);
+        card.addView(resetRow, lp(MATCH, WRAP, 12, 0));
+        resetNote = text("", 12, DIMC, false);
+        resetNote.setVisibility(View.GONE);
+        card.addView(resetNote, lp(MATCH, WRAP, 6, 0));
         return card;
     }
 
@@ -1951,6 +2115,7 @@ final class Screen {
         col.addView(bar);
 
         final String[][] items = {
+            {"Reset counters", "The counters at the top keep counting through catcher updates and game restarts. Tap Reset counters twice to start them from 0; the time beside it says since when they count."},
             {"Start / Stop Catch + Spin", "One tap for both: switches Auto-Catch and Auto-Spin on, or both off. The two tiles below still work one by one."},
             {"Auto-Catch", "Throws at Pokemon in range on its own."},
             {"Auto-Spin", "Spins stops as you pass them. Skips ones already spun or cooling down."},
