@@ -792,7 +792,7 @@ def close_page(g, wait_s=3.0):
             opened = True
             break
     if not opened and not g.page_on_screen():
-        return False
+        return None                                        # no page came: nothing to close
     time.sleep(0.6)
     w, h = g.screen()
     for _ in range(3):
@@ -927,7 +927,7 @@ def run(a):
     log("log: %s   to end it: create %s" % (jpath, os.path.join(inbox, "stop")))
     mw, results, ended, t_run, got, stalls = MapWatch((f[0], f[1]) if f else None), [], None, time.time(), 0, 0
     queue_ = [(s, 1) for s in order]
-    i, pre, streak = 0, False, set()
+    i, pre, streak, pages = 0, False, set(), [0, 0]       # pages: [no-reward stops with no page, with a page]
     while queue_:
         s, attempt = queue_.pop(0)
         if os.path.exists(os.path.join(inbox, "stop")):
@@ -1025,7 +1025,10 @@ def run(a):
             pre = False
             continue
         if detail.get("noclaim"):
-            close_page(g)
+            # 11-18 22:51: no Poke Lid stop opened a page, and the 3 s wait for one was 3 s lost on every no-reward
+            # stop. Three stops with no page = this rally opens none: wait 0.8 s from then on (the screen check stays).
+            r_ = close_page(g, wait_s=3.0 if (pages[1] or pages[0] < 3) else 0.8)
+            pages[0 if r_ is None else 1] += 1
         secs = time.time() - t_s
         if ok:
             got += 1
