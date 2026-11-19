@@ -2181,6 +2181,10 @@ def dust_skip(now):
                                        f"{WX_NEED} of each needed)",
                                        f"it is still proving its weather-boost read on live catches: {min(WX['b'], WX_NEED)} of {WX_NEED} boosted, "
                                        f"{min(WX['u'], WX_NEED)} of {WX_NEED} normal"))
+            if wxv == "proving" and WX["b"] >= WX_NEED and WX["u"] >= WX_NEED:   # enough agree: what holds it back is the catches against the flag
+                against, judged = WX["hi"] + WX["lo"], WX["b"] + WX["u"] + WX["hi"] + WX["lo"]
+                long = f"the weather-boost read is not proven: {against} of {judged} catches paid against their flag"
+                short = f"its weather-boost read disagrees with the server's pay on {against} of {judged} catches"
             note = (f"{lvl}NOT applied: {long.split(' (')[0] if wxv == 'proving' else long} -- a weather-boosted spawn of a left-alone species could "
                     f"not be told, so every species is caught")
             why = f"{name} is switched on but NOT applied yet: {short} -- until then it catches everything"

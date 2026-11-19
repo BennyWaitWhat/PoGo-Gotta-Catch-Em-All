@@ -496,6 +496,15 @@ for wxs, text in (("nofield", "it cannot read the weather boost in this game ver
           (c["skipSp"], "skipWx" in c, same(), ns["dust_only"](), ns["_DUST"]["state"]), ([], False, True, 0, "nowx"))
     check(f"weather read {wxs}: the app is told why", ns["dust_why"]("out of balls: 5 Poke, 5 Great, 5 Ultra left", [], True),
           f"out of balls: 5 Poke, 5 Great, 5 Ultra left; stardust only is switched on but NOT applied yet: {text} -- until then it catches everything")
+# enough catches agree and it is still not proven: the catches AGAINST the flag hold it back, and the app says that
+# (the real hour of 11-18 with every lure catch's flag taken away: 223 + 748 agree, 68 one way, 11 the other)
+fresh(table=T_text, switch="1", wx="proving")
+ns["WX"].update(b=223, u=748, hi=68, lo=11)
+ns["dust_skip"](1000.0)
+check("weather read held back by catches against it: everything is caught, and the app names them (not '12 of 12')",
+      (ns["wx_verdict"](), ns["_DUST"]["state"], ns["dust_why"]("", [], True), ns["_DUST"]["note"]),
+      ("proving", "nowx", "stardust only is switched on but NOT applied yet: its weather-boost read disagrees with the server's pay on 79 of 1050 catches -- until then it catches everything",
+       "NOT applied: the weather-boost read is not proven: 79 of 1050 catches paid against their flag -- a weather-boosted spawn of a left-alone species could not be told, so every species is caught"))
 for wxs in ("proving", "nofield", "wrong"):
     c, skip, swx = on(1000, wx=wxs)
     check(f"weather read {wxs} at 1000: the level applies at once -- the two a boost could lift to 1,000 (800, 950) are caught whatever "
