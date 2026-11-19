@@ -71,6 +71,9 @@ DEFAULTS = {
         "gl_floor": 1400,     # vestigial CP floor (the viability gate supersedes it)
         "ul_floor": 2400,
         "action_rank": 5,     # dust advice (Power Up to 1500/2500, Unlock 2nd Move) only on an own-stage rank <= this (user 2026-09-29: "only Rank 1-5")
+        "power_up_rank": 0,   # the two Power Up tags' OWN rank line (read it via power_up_rank()); 0 = action_rank's line. User 2026-11-18:
+        #                       "ok and now for power up gl and ul, only tag ranked #1 pokemon for now. i wanna power those up first before i power up 2-5."
+        #                       -> 1 in oyebenny's keep_config.json; Unlock 2nd Move stays at action_rank
         "power_up_meta_top": 100,   # ...and Power Up only when the species is in pvpoke's top-N META ranking for that league (user 2026-09-29: "top 100 of pvpoke"); 0 = no meta gate
         "unlock_meta_top": 0,       # the same META gate for Unlock 2nd Move; 0 = off. LIVE VALUES are in keep_config.json (200 / 200 since 2026-09-29 02:10: "top 200")
         "best_meta_top": 0,         # rule 15d -- a Best GL/UL copy whose own spread rank is past ready_rank is kept only when its stage is in pvpoke's
@@ -259,6 +262,13 @@ def cap(name):
 def pvp(name):
     d = DEFAULTS["pvp"][name]
     return _int(CFG.get("pvp", {}).get(name, d), d)
+
+
+def power_up_rank():
+    """The rank line of the Power Up to 1500 / 2500 tags: pvp.power_up_rank, or pvp.action_rank while that is 0 (user
+    2026-11-18: "only tag ranked #1 pokemon for now. i wanna power those up first before i power up 2-5."). The builder
+    (granular_tags) and the three audits that judge those tags (labels, tag truth, tag membership) all read THIS."""
+    return pvp("power_up_rank") or pvp("action_rank")
 
 
 def legacy_caps():
@@ -716,7 +726,7 @@ _CAP_BOUNDS = {  # (min, max) sanity bounds the dashboard enforces -- a fat-fing
     "plain_line": (0, 50), "plain_line_preevo": (0, 50), "plain_line_gender": (1, 50), "cosmetic_middle": (1, 50), "cosmetic": (0, 50), "dynamax": (0, 50), "gigantamax": (0, 50),
     "shiny": (0, 200), "shiny_plain": (0, 200), "rarity": (0, 200), "rarity_shadow": (0, 200), "xxl": (0, 50), "xxl_per_type": (0, 50), "xxs": (0, 50), "shadow": (0, 50), "nundo": (1, 50),
 }   # xxs entry REQUIRED: every merged config carries caps.xxs, so a missing bound KeyError'd validate() and killed all dashboard saves (workflow verifier 2026-06-09)
-_PVP_BOUNDS = {"ready_rank": (1, 100), "viability_margin": (-500, 1000), "action_rank": (1, 100), "power_up_meta_top": (0, 5000), "unlock_meta_top": (0, 5000), "best_meta_top": (0, 5000), "shadow_rank_floor": (1, 4096), "best_rank_floor": (1, 4096),
+_PVP_BOUNDS = {"ready_rank": (1, 100), "viability_margin": (-500, 1000), "action_rank": (1, 100), "power_up_rank": (0, 100), "power_up_meta_top": (0, 5000), "unlock_meta_top": (0, 5000), "best_meta_top": (0, 5000), "shadow_rank_floor": (1, 4096), "best_rank_floor": (1, 4096),
                "gl_floor": (0, 5000), "ul_floor": (0, 5000)}
 
 
