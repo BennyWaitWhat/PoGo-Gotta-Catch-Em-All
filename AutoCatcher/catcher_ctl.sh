@@ -40,6 +40,11 @@ BERRYFLAG=/data/local/tmp/pogo_berries.on
 # Every shiny is always caught. Only the catcher reads it: like the berries flag it keeps no process alive, and
 # run_catch.sh's on() does not count it.
 DUSTFLAG=/data/local/tmp/pogo_dust.on
+# Reset counters (the app's button, app 1.7; Benny 2026-11-18: "how to restart/reset the stardust counter etc"). The
+# catcher keeps the app's counters (caught, stardust, ...) across its re-attaches and restarts, and starts them from 0
+# when this file holds a time it has not carried out yet (catch_loop_fast.counters_tick, read every second). The verb
+# writes the tap's time (epoch seconds) and NOTHING else: it starts, stops and switches nothing, catcher running or not.
+COUNTREQ=/data/local/tmp/pogo_counters.req
 
 # [c]/[r] trick: the patterns never match this grep's own cmdline (avoids the pgrep self-match false positive).
 # The supervisor (run_catch.sh) counts as running: it is alive while it waits for the game.
@@ -277,6 +282,7 @@ case "$1" in
                 ''|*[!0-9]*|????????*) echo "usage: catcher_ctl.sh dust-off | dust-on | dust-<whole number>" ;;
                 *) setflag "$DUSTFLAG" "$((10#$n))" "dust-$n" ;;
               esac ;;
+  counters-reset) setflag "$COUNTREQ" "$(date +%s)" "counters-reset" ;;   # the file only: the catcher reads it every second
   restart)    held "$LATER" || { stop_proc; sleep 1; start_proc; } ;;
   reconcile)  held "$LATER" || settle ;;   # boot hook: starts each supervisor only if its toggle was left on
   rewards)
@@ -315,5 +321,5 @@ case "$1" in
     ;;
   toggle)     if flag_on "$CATCHFLAG"; then echo 0 > "$CATCHFLAG"; else echo 1 > "$CATCHFLAG"; fi; held "$LATER" || reconcile ;;
   status)     echo "proc=$(running && echo up || echo down) catch=$(flag_on "$CATCHFLAG" && echo 1 || echo 0) spin=$(flag_on "$SPINFLAG" && echo 1 || echo 0) perfect=$(flag_on "$PERFFLAG" && echo 1 || echo 0) tap=$(flag_on "$TAPFLAG" && echo 1 || echo 0) apples=$(flag_on "$APPLEFLAG" && echo 1 || echo 0) gym=$(flag_on "$GYMFLAG" && echo 1 || echo 0) berries=$(berry_mode) dust=$(dust_mode)" ;;
-  *) echo "usage: catcher_ctl.sh start|stop|restart|reconcile|catch-on|catch-off|spin-on|spin-off|perfect-on|perfect-off|tap-on|tap-off|apples-on|apples-off|gym-on|gym-off|berries-off|berries-pinap|berries-razz|berries-on|dust-off|dust-on|dust-<N>|rewards|toggle|status" ;;
+  *) echo "usage: catcher_ctl.sh start|stop|restart|reconcile|catch-on|catch-off|spin-on|spin-off|perfect-on|perfect-off|tap-on|tap-off|apples-on|apples-off|gym-on|gym-off|berries-off|berries-pinap|berries-razz|berries-on|dust-off|dust-on|dust-<N>|counters-reset|rewards|toggle|status" ;;
 esac

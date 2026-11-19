@@ -166,6 +166,20 @@ done
 quiet status; is "L status says dust=700" "$out" "proc=up catch=1 spin=1 perfect=0 tap=0 apples=1 gym=0 berries=pinap dust=700"
 echo junk > "$SB/tmp/pogo_dust.on"; quiet status; is "L a file that is not a number reads as 0" "${out##* }" "dust=0"
 clean; flags 0 0 0 0 0 0 0; ps_is; echo 0 > "$SB/tmp/pogo_dust.on"; quiet dust-500; total "L dust-500 with everything off: no call (a dust verb starts nothing)" 0
+# R. Reset counters (app 1.7): the tap's time goes into the request file, and nothing else happens
+REQ="$SB/tmp/pogo_counters.req"
+clean; flags 1 1 0 0 1 0 pinap; ps_is "$CATCHER_PS"; rm -f "$REQ"; t1=$(date +%s); quiet counters-reset; t2=$(date +%s)
+r=$(tr -d '[:space:]' < "$REQ" 2>/dev/null)
+case "$r" in ''|*[!0-9]*) bad "R counters-reset: wanted the time in the request file, got [$r]" ;;
+  *) if [ "$r" -ge "$t1" ] && [ "$r" -le "$t2" ]; then ok "R counters-reset: the tap's time in the request file"; else bad "R counters-reset: time $r not in $t1..$t2"; fi ;; esac
+total "R counters-reset: no call at all (it starts, stops and switches nothing)" 0
+is "R exit, and Catch / Spin / Gym / berries as they were" "$rc|$(flag catch)$(flag spin)$(flag gym)|$(flag berries)" "0|110|pinap"
+logged "R flags.log names the verb" "counters-reset: pogo_counters\.req  -> [0-9]+ \(verb=counters-reset "
+echo 1700000000 > "$REQ"; quiet counters-reset; r=$(tr -d '[:space:]' < "$REQ")
+is "R a second tap writes a newer time (the catcher carries out each new time once)" "$([ "$r" -gt 1700000000 ] && echo newer)|$(count "$CALLS")" "newer|0"
+logged "R ... logged old -> new" "counters-reset: pogo_counters.req 1700000000 -> $r "
+clean; flags 0 0 0 0 0 0 0; ps_is; quiet counters-reset; total "R counters-reset with every switch off and no catcher: no call (it starts nothing)" 0
+quiet bogus-verb; is "R the usage line lists it" "$(echo "$out" | grep -c '|counters-reset|')" 1
 
 echo "== N: no reward run in flight, each verb does its process work"
 for v in catch-on spin-on perfect-on tap-on apples-on start restart; do

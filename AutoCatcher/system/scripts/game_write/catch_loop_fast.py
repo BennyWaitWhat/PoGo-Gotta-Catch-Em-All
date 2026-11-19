@@ -14,6 +14,7 @@ Why it is built this way (each rule is a crash we had):
   3. No raw game pointer outlives the tick that read it: Pokemon are tracked by encounter id, and every action
      uses the pointer from a walk of the live list made in that same tick.
 """
+import atexit
 import json
 import os
 import re
@@ -33,6 +34,14 @@ AN = os.path.join(ROOT, "system", "analysis", "pokemod")
 LOG = os.path.join(AN, "catch_loop.log")
 LEDGER = os.path.join(AN, "spawn_ledger.jsonl")   # one line per spawn (k=spawn) and per avatar fix (k=pos): tools/yield_report.py
 STATE_FILE = "/data/local/tmp/pogo_state.txt"      # read by the AutoCatcher app
+# The app's counters (caught, fled, spins, XP, items, stardust) are SESSION totals since 2026-11-18. They were the numbers
+# of one attach, so every update of the catcher and every game restart put them back to 0 (Benny 11-18, after two
+# updates in ten minutes: "how to restart/reset the stardust counter etc"). Now they run until HE resets them.
+SESSION_FILE = os.path.join(AN, "session_counters.json")   # the totals, kept across re-attaches and restarts of this program
+COUNTERS_REQ = "/data/local/tmp/pogo_counters.req"         # Reset counters in the app: catcher_ctl.sh counters-reset writes the tap's time
+TOT_KEYS = ("caught", "fled", "spins", "xp", "items", "dust")   # the order of drain()'s tot; the game's frame count follows them
+TOT_GAP_S = 15    # two looks at the game further apart than this: the time between them is not counted as catching time
+TOT_SAVE_S = 10   # the totals go to their file at most this often (at once on a reset and on a new attach, and when the program ends)
 FLAGS = {k: f"/data/local/tmp/pogo_{k}.on" for k in ("catch", "spin", "tap", "perfect", "apples", "berries")}
 # berries: what pogo_berries.on holds says what is fed in encounters (berry_mode): "1" = Pinap and Razz as configured,
 # "pinap" = Pinap only, "razz" = Razz only, anything else or no file = none. Benny 2026-11-16 22:14: "i also want you to
@@ -1565,7 +1574,14 @@ rpc.exports = {
             limit: limitState(Date.now()), srv: SRV, via: VIA, order: CFG.order, openMs: CFG.openMs, mightyOn: mightyAround(),
             apples: AP.inst ? {on: !!CFG.apples, st: AP.st, cand: Object.keys(AP.cand).length, ids: APPLE_IDS, range: AP.maxDist, okD: AP.okD, failD: AP.failD < 9999 ? AP.failD : null} : null};
   },
-  drain: function () { var o = OUT; OUT = {log: [], done: [], tap: [], revealed: [], led: [], pos: []}; return o; }
+  drain: function () {
+    var o = OUT; OUT = {log: [], done: [], tap: [], revealed: [], led: [], pos: []};
+    // The app's session totals follow these every second (tot_note): TOT_KEYS' order, then the frame count (-1 = unread).
+    var fr = -1;
+    try { fr = GATE ? GATE.readS64().toNumber() : 0; } catch (e) { }
+    o.tot = [ST.caught, ST.fled, SPIN.ok, SPIN.xp, SPIN.items, ST.dust, fr];
+    return o;
+  }
 };
 """
 
@@ -2560,7 +2576,8 @@ def apple_part(stt, it):
             + f" bag S/T/Sy={bag} ({gain} this run)")
 
 
-_STATE = {"counters": "caught=0 fled=0 spins=0 xp=0 items=0 ready=0 cooling=0"}
+_STATE = {"counters": "caught=0 fled=0 spins=0 xp=0 items=0 ready=0 cooling=0", "why": "",
+          "rest": (0, 0, {}, None, 0, None)}   # rest = what the last report saw besides the totals (counters_line's arguments)
 
 
 def state(why="", counters=None):
@@ -2569,6 +2586,7 @@ def state(why="", counters=None):
     2026-10-30: "i turned it on and its still not catching" was an empty ball bag, and the app could not say so."""
     if counters:
         _STATE["counters"] = counters
+    _STATE["why"] = why
     try:   # root pre-creates the file (catcher_ctl.sh): Termux can write in /data/local/tmp but not create files there
         with open(STATE_FILE, "w") as fh:
             fh.write(_STATE["counters"] + (f" why={why}" if why else "") + "\n")
@@ -2638,12 +2656,13 @@ def starpiece_why(why, now):
     return why
 
 
-def state_extra(c, st, it, up, sp_last, only=0, dustchk=None):
+def state_extra(c, st, it, up, sp_last, only=0, dustchk=None, since=0):
     """The optional keys of the app's status card (app 1.3; Benny 11-18 asked "status?" and "how long til 1mil" by hand
-    all day): catches per minute and the seconds of this run, the stardust it gained, the three ball counts, the berries
-    left, whether the newest catch paid with a Star Piece, and only=N while STARDUST ONLY is applied (1 = every species
-    above a normal catch, 500 / 700 / 1000 = a level) followed by dustchk=H, the whole hours since its species table was
-    last checked against upstream (the app warns past 72). A number the game has not reported yet is left out, never
+    all day): catches per minute and the seconds of catching time, the stardust gained, the three ball counts, the
+    berries left, whether the newest catch paid with a Star Piece, and only=N while STARDUST ONLY is applied (1 = every
+    species above a normal catch, 500 / 700 / 1000 = a level) followed by dustchk=H, the whole hours since its species
+    table was last checked against upstream (the app warns past 72). since=E comes last: the time (epoch seconds) the
+    counters began at 0, which is the last Reset counters tap. A number the game has not reported yet is left out, never
     guessed -- the app shows a part only when its key is there. They sit after the old counters and before why=."""
     out = []
     if up >= 1:
@@ -2662,7 +2681,136 @@ def state_extra(c, st, it, up, sp_last, only=0, dustchk=None):
         out.append(f"only={only}")
         if dustchk is not None:
             out.append(f"dustchk={dustchk}")
+    if since:
+        out.append(f"since={int(since)}")
     return " ".join(out)
+
+
+# ---- the app's counters: session totals ------------------------------------------------------------------------------
+# One attach counts from 0 (the JS's ST / SPIN). The totals = a base (everything the attaches before this one counted
+# since the last reset) + what the running attach has counted. They are saved, so a restart of this program carries on.
+_TOT = {"loaded": False, "since": 0, "base": {}, "up": 0.0, "att": None, "last": {}, "lastup": 0.0, "req": "",
+        "frame": None, "seen": 0.0, "dirty": False, "saved": 0.0}
+
+
+def tot_zero():
+    return {k: 0 for k in TOT_KEYS}
+
+
+def counters_req():
+    """What the Reset counters request file holds ('' = no file, or empty): the time of the newest tap, the way
+    catcher_ctl.sh counters-reset wrote it."""
+    try:
+        with open(COUNTERS_REQ) as fh:
+            return fh.read().strip()[:40]
+    except OSError:
+        return ""
+
+
+def tot_load(now):
+    """The totals as the last run of this program left them, read once. What that run's last attach had counted goes
+    into the base: the attach ended with the program. No file (the very first run, or a cleanup took it) = everything
+    from 0 as of now, and a Reset request already lying there counts as carried out: there is nothing to reset."""
+    if _TOT["loaded"]:
+        return
+    try:
+        with open(SESSION_FILE, encoding="utf-8") as fh:
+            doc = json.load(fh)
+    except (OSError, ValueError):
+        doc = None
+    num = lambda v: v if isinstance(v, (int, float)) and not isinstance(v, bool) else 0
+    if not isinstance(doc, dict):
+        _TOT.update(loaded=True, since=int(now), base=tot_zero(), up=0.0, att=None, last=tot_zero(), lastup=0.0,
+                    req=counters_req(), frame=None, seen=0.0, dirty=True, saved=0.0)
+        return
+    base, last = (doc.get(k) if isinstance(doc.get(k), dict) else {} for k in ("base", "last"))
+    _TOT.update(loaded=True, since=int(num(doc.get("since"))) or int(now),
+                base={k: int(num(base.get(k))) + int(num(last.get(k))) for k in TOT_KEYS},
+                up=float(num(doc.get("up"))) + float(num(doc.get("lastup"))), att=None, last=tot_zero(), lastup=0.0,
+                req=str(doc.get("req") or ""), frame=None, seen=0.0, dirty=True, saved=0.0)
+
+
+def tot_note(cur, t0, now, frame=None, catching=True, clock=True):
+    """The newest counters of THIS attach (t0 = when it began). An attach counts from 0, so when t0 changes, what the
+    attach before had counted moves into the base. A counter never runs backwards inside one attach: a lower number is
+    a bad read and is ignored. Catching time (up) is the time the game was on the screen (its frame count moved since
+    the last look) with Catch switched on, so the app's rate is catches per minute of catching: an hour with the phone
+    in a pocket does not thin it out. clock=False (the report's own numbers) leaves that clock alone."""
+    tot_load(now)
+    T = _TOT
+    if T["att"] != t0:
+        for k in TOT_KEYS:
+            T["base"][k] += T["last"][k]
+        T["up"] += T["lastup"]
+        T.update(att=t0, last=tot_zero(), lastup=0.0, frame=None, seen=now, dirty=True, saved=0.0)
+    if clock:
+        dt = now - T["seen"]
+        if catching and frame is not None and T["frame"] is not None and frame != T["frame"] and 0 < dt <= TOT_GAP_S:
+            T["lastup"] += dt
+            T["dirty"] = True
+        T["frame"], T["seen"] = frame, now
+    new = {k: max(int(cur.get(k) or 0), T["last"][k]) for k in TOT_KEYS}
+    if new != T["last"]:
+        T["last"] = new
+        T["dirty"] = True
+
+
+def tot_reset(token, now):
+    """Reset counters (the app's button). token = the tap's time as catcher_ctl.sh wrote it. Everything counted so far
+    is dropped; what the running attach counts from here on stays -- and all of it when that attach began after the
+    tap (the request waited while the catcher was not attached to the game)."""
+    T = _TOT
+    at = int(token) if token.isdigit() and 0 < int(token) <= now + 60 else int(now)
+    whole = T["att"] is not None and at < T["att"]
+    T.update(base={k: 0 if whole else -T["last"][k] for k in TOT_KEYS}, up=0.0 if whole else -T["lastup"],
+             since=at, req=token, dirty=True, saved=0.0)
+
+
+def tot_view():
+    """The totals the app shows: the six counters, up (seconds of catching time) and since (when they began at 0)."""
+    T = _TOT
+    out = {k: max(0, T["base"].get(k, 0) + T["last"].get(k, 0)) for k in TOT_KEYS}
+    out["up"] = max(0.0, T["up"] + T["lastup"])
+    out["since"] = T["since"]
+    return out
+
+
+def tot_save(now, force=False):
+    """The totals to their file, whole or not at all (a kill in the middle of the write leaves the old file). Only when
+    something changed, and at most every TOT_SAVE_S seconds; force = now (the program is ending)."""
+    T = _TOT
+    if not T["loaded"] or not T["dirty"] or (not force and now - T["saved"] < TOT_SAVE_S):
+        return False
+    try:
+        with open(SESSION_FILE + ".tmp", "w", encoding="utf-8") as fh:
+            json.dump({"since": T["since"], "base": T["base"], "up": round(T["up"], 1), "last": T["last"],
+                       "lastup": round(T["lastup"], 1), "req": T["req"], "at": int(now)}, fh)
+        os.replace(SESSION_FILE + ".tmp", SESSION_FILE)
+    except OSError:
+        return False
+    T.update(dirty=False, saved=now)
+    return True
+
+
+def counters_line(tot, ready, cooling, it, sp_last, only=0, dustchk=None):
+    """The counters of the app's line: the session totals (tot_view) plus what the last report saw of the game."""
+    return (f"caught={tot['caught']} fled={tot['fled']} spins={tot['spins']} xp={tot['xp']} items={tot['items']} "
+            f"ready={ready} cooling={cooling} "
+            + state_extra(tot["caught"], {"dust": tot["dust"]}, it, tot["up"], sp_last, only, dustchk, tot["since"])).rstrip()
+
+
+def counters_tick(tot, t0, now, catching, w):
+    """Every second of an attach: the JS's newest counters (drain's tot) into the session totals, and a Reset counters
+    request carried out the moment it is seen -- the app's line is rewritten at once, not at the next report."""
+    n = len(TOT_KEYS)
+    if isinstance(tot, (list, tuple)) and len(tot) > n and all(isinstance(v, (int, float)) and not isinstance(v, bool) for v in tot):
+        tot_note({k: int(v) for k, v in zip(TOT_KEYS, tot)}, t0, now, int(tot[n]) if tot[n] >= 0 else None, catching)
+    tok = counters_req()
+    if tok and _TOT["loaded"] and tok != _TOT["req"]:
+        tot_reset(tok, now)
+        w(f"COUNTERS RESET (request {tok}): the app's counters start again from 0")
+        state(_STATE["why"], counters_line(tot_view(), *_STATE["rest"]))
+    tot_save(now)
 
 
 def report(w, stt, t0, base):
@@ -2734,9 +2882,13 @@ def report(w, stt, t0, base):
     else:
         base["whykind"] = ""
     why = dust_why(starpiece_why(why, time.time()), list(hist), flag("catch"))
-    state(why, (f"caught={c} fled={st['fled']} spins={sp['ok']} xp={sp['xp']} items={sp['items']} "
-                f"ready={max(0, sp['inRange'] - sp['cooling'])} cooling={sp['cooling']} "
-                + state_extra(c, st, it, time.time() - t0, SP.get("last"), dust_only(), dust_checked(time.time()))).rstrip())
+    # The app's counters are the session totals (the log line above stays this attach's own numbers: its readers count
+    # on that). The loop feeds the totals every second; this report's numbers go in too, so the line is never behind it.
+    tot_note({"caught": c, "fled": st["fled"], "spins": sp["ok"], "xp": sp["xp"], "items": sp["items"], "dust": st["dust"]},
+             t0, time.time(), clock=False)
+    _STATE["rest"] = (max(0, sp["inRange"] - sp["cooling"]), sp["cooling"], dict(it), SP.get("last"), dust_only(),
+                      dust_checked(time.time()))
+    state(why, counters_line(tot_view(), *_STATE["rest"]))
 
 
 def session_loop(w, done_ids, base):
@@ -2828,6 +2980,7 @@ def session_loop(w, done_ids, base):
         dust_update(time.time(), w)
         dust_log(w)
         d = sc.exports_sync.drain()
+        counters_tick(d.get("tot"), t0, time.time(), cfg.get("catch"), w)
         for line in d["log"]:
             w(dust_boost_note(line))
             starpiece_seen(line, w)
@@ -2897,6 +3050,12 @@ def main():
     w(f"===== catcher start (rebuilt) openMs={CFG['openMs']} =====")
     dust_table(time.time())   # the stardust table: loaded now, PoGo open or not, so the app's levels file is there
     dust_news(w)
+    tot_load(time.time())     # the app's counters carry on from where the last run of this program left them
+    _STATE["counters"] = counters_line(tot_view(), *_STATE["rest"])   # ... from the first line on, not from the first report
+    atexit.register(lambda: tot_save(time.time(), force=True))        # and this run's end (a deploy, a stop) loses nothing
+    v = tot_view()
+    w(f"counters: {v['caught']} caught, +{v['dust']} stardust since {time.strftime('%m-%d %H:%M', time.localtime(v['since']))}"
+      f" ({int(v['up'])} s of catching)")
     done_ids = deque(maxlen=4000)   # handled encounters survive a re-attach: never re-open or re-throw one
     base = {}
     fails = 0

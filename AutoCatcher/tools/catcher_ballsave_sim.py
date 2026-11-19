@@ -237,8 +237,9 @@ check("status keys: the run's first second, an empty bag reading, the last catch
       sx(0, {}, {}, 0.4, False), "sp=0")
 check("status keys: no '=' with a space in it, no 'why=' (the app splits on spaces; why= must stay last)",
       all("=" in t and not t.startswith("why=") for t in sx(5, {"dust": 9}, {"1": 1, "2": 2, "3": 3}, 61, False).split()), True)
-check("the status line carries them, before why=",
-      'cooling={sp[\'cooling\']} "\n                + state_extra(c, st, it, time.time() - t0, SP.get("last"), dust_only(), dust_checked(time.time()))).rstrip())' in src, True)
+check("the status line carries them, before why= (since 11-18 through counters_line: the session totals)",
+      ('f"ready={ready} cooling={cooling} "\n            + state_extra(tot["caught"], {"dust": tot["dust"]}, it, tot["up"], sp_last, only, dustchk, tot["since"])).rstrip()' in src,
+       '    state(why, counters_line(tot_view(), *_STATE["rest"]))\n\n\ndef session_loop(' in src), (True, True))
 sp0 = dict(ns["SP"])
 ns["SP"].update(on=False, off=False, since=None, bare=0, last=None)
 ns["starpiece_seen"]("CATCH Wild #1 ball=1 p=0.5 att=1 berry=0 0.5s dust=50 candy=3", lambda s: None)
@@ -1192,6 +1193,154 @@ check("the session starts the updater at its attach (after that attach's config 
        "        wx_tick(time.time(), w)\n        dust_update(time.time(), w)\n        dust_log(w)\n" in src, src.count("dust_update(time.time(), w")), (True, True, 2))
 shutil.rmtree(dd, ignore_errors=True)
 
+# ---- the app's counters are SESSION totals (Benny 11-18, after two updates in ten minutes put them back to 0: "how to
+# restart/reset the stardust counter etc"): they survive a re-attach and a restart of the program, and only a Reset
+# counters request (catcher_ctl.sh counters-reset writes the tap's time into a file) starts them from 0.
+cd = tempfile.mkdtemp()
+sessf, reqf, statef = (os.path.join(cd, n) for n in ("session_counters.json", "pogo_counters.req", "pogo_state.txt"))
+ns.update(SESSION_FILE=sessf, COUNTERS_REQ=reqf, STATE_FILE=statef)
+for pat in (r"^TOT_KEYS = .*$", r"^TOT_GAP_S = \d+", r"^TOT_SAVE_S = \d+"):
+    exec(re.search(pat, src, re.M).group(0), ns)
+exec(re.search(r"^_TOT = \{.*?\}\n", src, re.S | re.M).group(0), ns)
+exec(re.search(r"^_STATE = \{.*?\)\}", src, re.S | re.M).group(0), ns)
+for name in ("tot_zero", "counters_req", "tot_load", "tot_note", "tot_reset", "tot_view", "tot_save", "counters_line", "counters_tick", "state"):
+    exec(re.search(rf"^def {name}\(.*?(?=^\n\ndef )", src, re.S | re.M).group(0), ns)
+TOT0, STATE0 = dict(ns["_TOT"]), dict(ns["_STATE"])
+K6 = ns["TOT_KEYS"]
+
+
+def boot():
+    """A new run of the program: nothing in memory, the files as they are."""
+    ns["_TOT"].clear()
+    ns["_TOT"].update(TOT0, base={}, last={})
+    ns["_STATE"].clear()
+    ns["_STATE"].update(STATE0)
+
+
+def put(path, text):
+    with open(path, "w", encoding="utf-8") as fh:
+        fh.write(text)
+
+
+def six(caught=0, fled=0, spins=0, xp=0, items=0, dust=0):
+    return {"caught": caught, "fled": fled, "spins": spins, "xp": xp, "items": items, "dust": dust}
+
+
+def view():
+    v = ns["tot_view"]()
+    return tuple(v[k] for k in K6) + (v["up"], v["since"])
+
+
+T = 1_800_000_000.0
+note, tick = ns["tot_note"], ns["counters_tick"]
+check("counters: the order of the JS's tot = TOT_KEYS (caught, fled, spins, xp, items, dust), then the frame count",
+      (K6, "o.tot = [ST.caught, ST.fled, SPIN.ok, SPIN.xp, SPIN.items, ST.dust, fr];" in src),
+      (("caught", "fled", "spins", "xp", "items", "dust"), True))
+put(reqf, "1799990000\n")   # an old Reset request is lying there, and there is no totals file yet
+boot()
+ns["tot_load"](T)
+check("counters: the very first run starts everything at 0 as of now; a request already lying there is not a new reset",
+      (view(), ns["_TOT"]["req"]), ((0, 0, 0, 0, 0, 0, 0.0, 1800000000), "1799990000"))
+t0 = T + 5
+note(six(), t0, T + 6, 100)
+note(six(1, dust=125), t0, T + 7, 160)
+note(six(2, 1, dust=250), t0, T + 8, 220)
+check("counters: one attach counts up; a second with the game on the screen and Catch on is a second of catching time",
+      view(), (2, 1, 0, 0, 0, 250, 2.0, 1800000000))
+note(six(2, 1, dust=250), t0, T + 9, 220)            # the frame count did not move: the game is not on the screen
+note(six(2, 1, dust=250), t0, T + 10, 280, False)    # Catch is switched off
+note(six(2, 1, dust=250), t0, T + 30, 400)           # 20 s since the last look: more than TOT_GAP_S
+check("counters: no catching time while the frame count stands still, while Catch is off, or across a gap of more than 15 s",
+      view()[6], 2.0)
+note(six(3, 1, 2, 100, 6, 375), t0, T + 31, 460)
+note(six(1, 0, 0, 0, 0, 5), t0, T + 32, 520)         # a bad read: lower than before
+check("counters: a number that runs backwards inside an attach is ignored (the clock still runs)",
+      view(), (3, 1, 2, 100, 6, 375, 4.0, 1800000000))
+t0b = T + 100                                        # a re-attach: the JS counts from 0 again
+note(six(), t0b, T + 101, 5)
+note(six(2, dust=1100), t0b, T + 102, 65)
+check("counters: a re-attach does NOT start them over (what the attach before counted is kept)",
+      view(), (5, 1, 2, 100, 6, 1475, 5.0, 1800000000))
+note(six(2, dust=1100), t0b, T + 102.5, clock=False)   # the report's own numbers: the same, and the clock is left alone
+note(six(2, dust=1100), t0b, T + 103, 125)
+check("counters: the report's numbers leave the catching-time clock alone (the next second counts whole)", view()[6], 6.0)
+saved = [ns["tot_save"](T + 103), ns["tot_save"](T + 104)]
+note(six(3, dust=1225), t0b, T + 104, 185)
+saved += [ns["tot_save"](T + 105), ns["tot_save"](T + 105, force=True), os.path.exists(sessf + ".tmp")]
+doc = json.load(open(sessf, encoding="utf-8"))
+check("counters: saved when something changed, at most every 10 s, at once when forced (the program ends); no half file left",
+      (saved, doc), ([True, False, False, True, False],
+                     {"since": 1800000000, "base": six(3, 1, 2, 100, 6, 375), "up": 4.0, "last": six(3, dust=1225), "lastup": 3.0,
+                      "req": "1799990000", "at": 1800000105}))
+boot()                                               # the program is restarted (a deploy)
+ns["tot_load"](T + 200)
+check("counters: a restart of the program carries on from the file (the same since)", view(), (6, 1, 2, 100, 6, 1600, 7.0, 1800000000))
+check("counters: ... and the first line it writes already shows them (main() builds it before any attach)",
+      (ns["counters_line"](ns["tot_view"](), *ns["_STATE"]["rest"]),
+       '    tot_load(time.time())' in src and '    _STATE["counters"] = counters_line(tot_view(), *_STATE["rest"])' in src,
+       "atexit.register(lambda: tot_save(time.time(), force=True))" in src),
+      ("caught=6 fled=1 spins=2 xp=100 items=6 ready=0 cooling=0 rate=51.4 up=7 dust=1600 since=1800000000", True, True))
+t0c, said = T + 210, []
+tick([0, 0, 0, 0, 0, 0, 9], t0c, T + 211, True, said.append)
+tick([1, 0, 0, 0, 0, 125, 69], t0c, T + 212, True, said.append)
+check("counters: the loop's tick feeds them from drain()'s tot", (view(), said), ((7, 1, 2, 100, 6, 1725, 8.0, 1800000000), []))
+for bad in (None, [], [1, 2, 3], ["1", 0, 0, 0, 0, 0, 5], [True, 0, 0, 0, 0, 0, 5], "1234567", {"caught": 1}):
+    tick(bad, t0c, T + 212.5, True, said.append)
+check("counters: a tot that is missing or malformed changes nothing", (view(), said), ((7, 1, 2, 100, 6, 1725, 8.0, 1800000000), []))
+# Reset counters while attached: the line in the app is rewritten at once, with the why it had
+ns["_STATE"]["rest"] = (3, 1, {"1": 50, "2": 6, "3": 7}, True, 0, None)
+ns["state"]("the bag is full", "caught=7 (the line before)")
+put(reqf, "1800000213\n")
+tick([2, 0, 0, 0, 0, 250, 129], t0c, T + 213, True, said.append)
+check("counters: Reset counters -> everything 0, since = the tap's time, said once in the log",
+      (view(), said, ns["_TOT"]["req"]),
+      ((0, 0, 0, 0, 0, 0, 0.0, 1800000213), ["COUNTERS RESET (request 1800000213): the app's counters start again from 0"], "1800000213"))
+check("counters: ... the app's line is rewritten at that moment (zeros, the same why, no rate before a second of catching)",
+      open(statef, encoding="utf-8").read(), "caught=0 fled=0 spins=0 xp=0 items=0 ready=3 cooling=1 dust=0 balls=50/6/7 sp=1 since=1800000213 why=the bag is full\n")
+check("counters: ... and saved at once", json.load(open(sessf, encoding="utf-8"))["req"], "1800000213")
+tick([4, 1, 1, 50, 3, 600, 189], t0c, T + 214, True, said.append)
+check("counters: after a reset they count what comes next; the same request is not carried out twice",
+      (view(), len(said)), ((2, 1, 1, 50, 3, 350, 1.0, 1800000213), 1))
+t0d = T + 300
+tick([0, 0, 0, 0, 0, 0, 7], t0d, T + 301, True, said.append)
+check("counters: a re-attach after a reset keeps exactly what was counted since the reset", view(), (2, 1, 1, 50, 3, 350, 1.0, 1800000213))
+ns["tot_save"](T + 301, force=True)
+boot()
+ns["tot_load"](T + 350)
+check("counters: ... and so does a restart of the program", (view(), ns["_TOT"]["req"]), ((2, 1, 1, 50, 3, 350, 1.0, 1800000213), "1800000213"))
+# a tap while the catcher is not attached: it is carried out at the next attach, and all of that attach counts
+put(reqf, "1800000400")
+t0e = T + 500
+tick([3, 0, 0, 0, 0, 375, 50], t0e, T + 501, True, said.append)
+check("counters: a reset tapped BEFORE the running attach began drops the old totals and keeps all of this attach",
+      (view(), len(said)), ((3, 0, 0, 0, 0, 375, 0.0, 1800000400), 2))
+put(reqf, "abc")
+tick([4, 0, 0, 0, 0, 500, 110], t0e, T + 502, True, said.append)
+put(reqf, "9999999999")
+tick([5, 0, 0, 0, 0, 625, 170], t0e, T + 503, True, said.append)
+check("counters: a request without a sane time still resets, as of now", (view(), len(said)), ((0, 0, 0, 0, 0, 0, 0.0, 1800000503), 4))
+put(reqf, "")
+tick([6, 0, 0, 0, 0, 750, 230], t0e, T + 504, True, said.append)
+os.remove(reqf)
+tick([7, 0, 0, 0, 0, 875, 290], t0e, T + 505, True, said.append)
+check("counters: an empty request file, or none, resets nothing", (view(), len(said)), ((2, 0, 0, 0, 0, 250, 2.0, 1800000503), 4))
+for text in ("{not json", '{"since": "x", "base": {"caught": "9", "dust": true}, "up": null, "last": [1, 2]}', "[1, 2]"):
+    put(sessf, text)
+    boot()
+    ns["tot_load"](T + 600)
+    check("counters: a totals file that does not read (%s...) = from 0 as of now, never a crash" % text[:12], view(), (0, 0, 0, 0, 0, 0, 0.0, 1800000600))
+cl = ns["counters_line"]
+tv = dict(six(600, 44, 163, 9150, 510, 292775), up=1872.4, since=1800000000)
+check("counters: the line -- the totals, what the report saw, the rate per minute of catching time, since= last",
+      (cl(tv, 3, 1, {"1": 2753, "2": 8, "3": 7, "705": 0, "701": 10}, False),
+       cl(tv, 3, 1, {"1": 2753, "2": 8, "3": 7, "705": 0, "701": 10}, False, 700, 3)),
+      ("caught=600 fled=44 spins=163 xp=9150 items=510 ready=3 cooling=1 rate=19.2 up=1872 dust=292775 balls=2753/8/7 pinap=0 razz=10 sp=0 since=1800000000",
+       "caught=600 fled=44 spins=163 xp=9150 items=510 ready=3 cooling=1 rate=19.2 up=1872 dust=292775 balls=2753/8/7 pinap=0 razz=10 sp=0 only=700 dustchk=3 since=1800000000"))
+check("counters: the loop ticks right after drain(); the log's own 'run' line stays this attach's numbers (its readers count on it)",
+      ('        d = sc.exports_sync.drain()\n        counters_tick(d.get("tot"), t0, time.time(), cfg.get("catch"), w)\n' in src,
+       '    w(f"run {int(time.time() - t0)}s | caught={c} esc=' in src, src.count("tot_note("), src.count("clock=False)")), (True, True, 3, 1))
+shutil.rmtree(cd, ignore_errors=True)
+
 # ---- JS (node): applyCfg + ballsave()
 i = src.index('JS = r"""') + 9
 d = tempfile.mkdtemp()
@@ -1660,6 +1809,16 @@ res.pf = [
   pfq({skipSp: [10], peek: true}, {q1: ent(774), q2: ent(774), q3: ent(10), q4: ent(10)}),                           // already in order: the queue is not rewritten
   pfq({skipSp: [10], peek: true}, {r1: ent(10), r2: Object.assign(ent(774), {retryAt: NOW + 4000}), r3: ent(774)})[0],   // a payer that must wait does not block the rest
 ];
+// drain() carries the newest counters for the app's session totals: TOT_KEYS' order, then the frame count
+api = mk();
+api.set('ST.caught', 7); api.set('ST.fled', 2); api.set('ST.dust', 4321); api.set('SPIN.ok', 5); api.set('SPIN.xp', 250); api.set('SPIN.items', 15);
+api.call('log', 'hello');
+const dr0 = api.call('rpc.exports.drain');
+api.set('GATE', {readS64: () => ({toNumber: () => 912})});
+const dr1 = api.call('rpc.exports.drain');
+api.set('GATE', {readS64: () => { throw new Error('gone'); }});
+const dr2 = api.call('rpc.exports.drain');
+res.tot = [dr0.tot, dr1.tot, dr2.tot[6], Object.keys(dr1).sort().join(','), dr0.log.length, dr1.log.length];
 console.log(JSON.stringify(res));
 """)
 import random
@@ -1772,6 +1931,8 @@ check("JS dust: walk(): never looked at -> tracked; left for its boost under ano
 check("JS dust: the weather flag read (3, 0, out of range, negative, null pointers, field not found, no display)",
       got2.get("wxOf"), [3, 0, -1, -1, -1, -1, -1, -1, -1])
 check("JS dust: the encounter reply carries it, read off the shiny byte's own object (wild x2, a lure reply)", got2.get("wxRead"), [4, 0, 0, 1, 2])
+check("JS: drain() carries the six counters and the frame count (0 before the pump exists, -1 when its read fails), and still hands the log over once",
+      got2.get("tot"), [[7, 2, 5, 250, 15, 4321, 0], [7, 2, 5, 250, 15, 4321, 912], -1, "done,led,log,pos,revealed,tap,tot", 1, 0])
 if r2.returncode or r2.stderr.strip():
     print(r2.stderr[-1500:])
     failed += 1
