@@ -8,6 +8,10 @@ Rules it keeps (CLAUDE.md hard rules): it only TAGS; one tap = one pass, never a
 up 2+ minutes with the gadget listening; it never pauses the catcher or restarts the game; it pushes the data after every
 phone pass. The pass's === REPORT === is kept in system/analysis/cull_button_report.txt for Claude to relay; full_audit
 regenerates Bag Pulse, but only a Claude session publishes it.
+Since 2026-11-18 (Benny: "Does the cull button on the new autocatcher app work correcly and completly?"): a tap is made in
+the AutoCatcher app, so the game is NOT on screen at the tap and the pass attaches to nothing but a game on screen -- the
+listener waits 3 minutes for the game and says so; and "release N" is said only when the report's own first line says it
+(a failed verify or an unconfirmed tag reads "do NOT release yet"), with the pass's warning-line count beside it.
 Run in the background:  pythonw cull_button.py      Offline self-check:  python cull_button.py --selftest
 """
 import datetime as dt
@@ -27,6 +31,10 @@ REQ, STATUS = '/data/local/tmp/pogo_cull.req', '/data/local/tmp/pogo_cull_status
 STATE, LOG = os.path.join(AN, 'cull_button_state.json'), os.path.join(AN, 'cull_button.log')
 CULL_LOG, REPORT = os.path.join(AN, 'last_cull.log'), os.path.join(AN, 'cull_button_report.txt')
 POLL_S, MAX_AGE_S, GAP_S, GAME_UP_S = 15, 15 * 60, 180, 120
+SCREEN_WAIT_S = 180         # a tap is made in the AutoCatcher app: this long for him to be back in the game
+GAME = 'com.nianticlabs.pokemongo'
+SCREEN_CMD = ('dumpsys activity activities | grep -m1 -E "topResumedActivity|ResumedActivity"; '
+              'dumpsys power | grep -m1 mWakefulness=')
 MUTEX_PORT = 48766          # one listener at a time: the second one cannot bind and exits
 # Children run under python.exe even when this listener runs under pythonw.exe: under pythonw the audits' process pools
 # die (BrokenProcessPool), and the 11-05 01:23 tap stopped at "promises (no verdict line)". CREATE_NO_WINDOW keeps every
@@ -91,22 +99,43 @@ def parse_elapsed(s):
     return ((d * 24 + h) * 60 + mi) * 60 + se
 
 
+def on_screen(out):
+    """Is Pokemon GO the app on screen, with the screen on? The two lines pogo_il2cpp._on_screen reads (that module needs
+    frida; this listener does not). The pass attaches to nothing else: an attach to a game behind another app hung and the
+    game died 37 s later (2026-11-16). A read that failed = not on screen."""
+    m = re.search(r'ResumedActivity\S*\s*ActivityRecord\{\S+ \S+ ([\w.]+)/', out or '')
+    return bool(m) and m.group(1) == GAME and 'mWakefulness=Awake' in out
+
+
 def parse_cull(text, rc):
-    """What one full_audit pass said -> ('done', line) or ('STOPPED', why)."""
+    """What one full_audit pass said -> ('done', line) or ('STOPPED', why). "Release" only when the REPORT's own first
+    line says it (2026-11-18): that line knows a failed verify, an unconfirmed tag and a frozen walk, the DONE line does
+    not -- and the release is the one thing he does by hand that cannot be undone."""
     for pat, why in ((r'GAME MASTER REFRESH STOPPED', 'a new game master moved a keep verdict -- ask Claude'),
                      (r'AUDIT GATE FAILED', 'an audit failed (nothing was tagged) -- ask Claude'),
                      (r'\[frozen\]|session is gone', 'the game session froze or went away -- ask Claude'),
-                     (r'PoGo is not on screen', 'the game was not on screen (nothing ran) -- open it, then tap again'),
+                     (r'PoGo is not on screen', 'the game left the screen during the cull -- open it, stay in it, then tap again'),
                      (r'STOPPED', 'the walk stopped itself -- ask Claude')):
         if re.search(pat, text):
             return 'STOPPED', why
     done = re.search(r'DONE -- (\d+) tagged for Transfer', text)
     if rc != 0 or not done:
         return 'STOPPED', 'the cull ended with rc %s -- ask Claude' % rc
+    rep = text.split('=== REPORT ===', 1)
+    lead = next((l.strip() for l in rep[1].splitlines() if l.strip() and not l.startswith('[')), '') if len(rep) > 1 else ''
+    rel = re.match(r'\*\*Release the (\d+) in the Transfer tag\.\*\*', lead)
+    if rel:
+        line = 'release %s in the Transfer tag' % rel.group(1)
+    elif lead.startswith('**Nothing to release**'):
+        line = 'nothing to release'
+    else:
+        return 'STOPPED', 'the cull ran, but its report does not say release -- do NOT release yet, ask Claude'
     bag = re.search(r'bag (\d+) \(\d+ Pokemon \+ \d+ eggs? in incubators\)/(\d+) \(free (\d+)\)', text)
-    line = 'release %s in the Transfer tag' % done.group(1)
     if bag:
         line += ' | bag %s/%s (%s free)' % bag.groups()
+    warn = re.search(r'WARNING LINES THIS PASS: (\d+)', text)
+    if warn and int(warn.group(1)):
+        line += ' | %s warning line(s): read the report with Claude before you release' % warn.group(1)
     return 'done', line
 
 
@@ -169,6 +198,16 @@ def one_pass(req_epoch):
         status('STOPPED %s: pulling the newer data failed -- ask Claude' % hhmm()); return
     if pv < hv and not data(['push', '--group', 'inventory']):
         status('STOPPED %s: pushing the data first failed -- ask Claude' % hhmm()); return
+    until, told = time.time() + SCREEN_WAIT_S, False       # he tapped in the app: wait for him to be back in the game
+    while not on_screen(adb(SCREEN_CMD)):
+        if time.time() >= until:
+            status('STOPPED %s: Pokemon GO was not on screen for 3 minutes (nothing ran) -- tap again, then open the game' % hhmm())
+            return
+        if not told:
+            status('queued %s: open Pokemon GO and stay in it -- the cull starts when the game is on screen (it waits until %s)'
+                   % (hhmm(), hhmm(until)))
+            told = True
+        time.sleep(3)
     start = time.time()
     status('running since %s' % hhmm(start))
     log('cull for the tap at %s (pid %s, game up %ss)' % (hhmm(req_epoch), pid, up))
@@ -192,7 +231,7 @@ def main():
     st = json.load(open(STATE)) if os.path.exists(STATE) else {'last_epoch': 0}
     log('listener up (ADB %s, pid %s)' % (ADB, os.getpid()))
     if connected():
-        status('ready %s: tap CULL NOW to run one cull on the PC' % hhmm())
+        status('ready %s: tap Cull Now, then go back to Pokemon GO -- the PC runs one cull' % hhmm())
     while True:
         try:
             if connected():
@@ -218,10 +257,27 @@ def selftest():
     assert parse_req('requested 1793857282 00:41:22\n') == 1793857282 and parse_req('') is None and parse_req('x') is None
     assert parse_elapsed('07:55') == 475 and parse_elapsed('01:02:03') == 3723 and parse_elapsed('2-00:00:01') == 172801
     assert parse_elapsed('') is None
-    ok = ('[ 94.1s] bag 5850 (5849 Pokemon + 1 eggs in incubators)/5850 (free 0) | PILE 182\n'
-          '[121.4s] DONE -- 182 tagged for Transfer\n=== REPORT ===\n**Release the 182**\n')
+    head = ('[ 94.1s] bag 5850 (5849 Pokemon + 1 eggs in incubators)/5850 (free 0) | PILE 182\n'
+            '[121.4s] DONE -- 182 tagged for Transfer\n[122.0s] WARNING LINES THIS PASS: %d\n=== REPORT ===\n')
+    ok = head % 0 + '**Release the 182 in the Transfer tag.** (the game read back 182 in the tag in the sync that started at 17:20)\n'
     assert parse_cull(ok, 0) == ('done', 'release 182 in the Transfer tag | bag 5850/5850 (0 free)')
     assert parse_cull(ok, 1)[0] == 'STOPPED'
+    # "release" comes from the report's first line, never from the DONE line alone (2026-11-18)
+    for lead in ('**Do not release yet -- the verify after the 17:20 sync FAILED.** 182 in the pile file; ...',
+                 '**Do not release yet -- the Transfer tag was not confirmed for this walk.** 182 in the pile file, ...',
+                 '**Do not release yet if you caught, hatched, evolved, released or powered up anything since 17:01** -- ...',
+                 '', '[123.0s] a timing line is not the report'):
+        got = parse_cull(head % 0 + lead + '\n', 0)
+        assert got[0] == 'STOPPED' and 'do NOT release yet' in got[1], (lead, got)
+    assert parse_cull(head % 0 + '[123.0s] late line\n**Release the 181 in the Transfer tag.** (the game ...)\n', 0)[1].startswith('release 181 ')
+    assert parse_cull(head % 0 + '**Nothing to release** -- the pile is empty.\n', 0) == ('done', 'nothing to release | bag 5850/5850 (0 free)')
+    assert parse_cull(head % 2 + ok.split('=== REPORT ===\n')[1], 0)[1].endswith('| 2 warning line(s): read the report with Claude before you release')
+    assert parse_cull('STOPPED: PoGo is not on screen (com.x is on screen, PoGo is behind it) -- nothing was attached.\n', 2)[1].startswith('the game left the screen')
+    # the game on screen: the two lines the pass itself reads; anything else, or a failed read, is not on screen
+    g = '    topResumedActivity=ActivityRecord{197450920 u0 %s/com.nianticproject.holoholo.libholoholo.unity.UnityMainActivity t75}\n'
+    assert on_screen(g % GAME + '  mWakefulness=Awake\n') and on_screen((g % GAME).replace('topResumedActivity=', 'ResumedActivity: ') + '  mWakefulness=Awake\n')
+    assert not on_screen(g % 'com.benny.autocatcher' + '  mWakefulness=Awake\n'), 'a tap is made in the app: the game is behind it'
+    assert not on_screen(g % GAME + '  mWakefulness=Asleep\n') and not on_screen('') and not on_screen(None)
     assert parse_cull('[ 41.7s] AUDIT GATE FAILED -- SYNC NOT RUN\n', 1) == ('STOPPED', 'an audit failed (nothing was tagged) -- ask Claude')
     assert parse_cull('GAME MASTER REFRESH STOPPED THE PASS (rc 5)\n', 5)[1].startswith('a new game master')
     print('cull_button selftest: OK')
