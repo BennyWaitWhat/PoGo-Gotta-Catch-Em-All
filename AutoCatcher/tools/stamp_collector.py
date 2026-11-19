@@ -79,7 +79,7 @@ def hold_ms(ink):
 # after the throw with no catch answer, and that reward was lost (0 of 21 at 1.15 s).
 FAST = {"settle": 500, "posSettle": 300, "moveSettle": 1500, "retap": 1600, "introMax": 250, "pressLag": 60, "hold": 1900,
         "exitLag": 80, "pulseMax": 200, "claimLag": 150, "saveMax": 3000, "claimMax": 2500, "throwLag": 1150, "rethrow": 900,
-        "replyMax": 2200, "endMax": 4000, "maxThrows": 12, "stepLimit": 9000, "encLimit": 13000, "maxOff": 30, "ball": 1, "saveGo": -1,
+        "replyMax": 2200, "endMax": 4000, "lateMax": 1500, "maxThrows": 12, "stepLimit": 9000, "encLimit": 13000, "maxOff": 30, "ball": 1, "saveGo": -1,
         "prejump": False, "preMs": 20000}  # prejump: jump to the next stop when the reward encounter opens (asked 11-18
                                            # 21:36 "preload maps ... during the bottle necks"). OFF: 21:46 "you cant catch
                                            # the pikachu if you early jump before catching it" (the server's answers had
@@ -190,8 +190,15 @@ function throwIt(){ if(!A.enc||A.st!=='enc')return; if(A.throws>=G.maxThrows){ f
    later(G.replyMax,function(){ if(A.enc&&A.st==='enc'&&A.lastThrow<=since&&!A.replyAt)throwIt(); }); }     /* no answer at all: the game dropped that throw */
 /* caught = ANY catch answer said 1: 11-18 22:18 Edinburgh answered [2, 1, 3] -- caught on throw 2, then a second answer
    "fled" 9 ms later (a second throw in flight); the last answer alone called a caught reward "fled" */
-function onEncExit(a){ if(!A.enc||A.st!=='enc')return; A.enc=false; var caught=A.catches.indexOf(1)>=0; var last=caught?1:(A.catches.length?A.catches[A.catches.length-1]:-1); A.marks.over=now()-A.t0; A.st='done';
-   out('done',{caught:caught,catch:last,catches:A.catches,throws:A.throws,save:A.saveResult,claim:A.claimResult,marks:A.marks,taps:A.taps,d:Math.round(A.fd||0)}); }
+function encDone(){ var caught=A.catches.indexOf(1)>=0; var last=caught?1:(A.catches.length?A.catches[A.catches.length-1]:-1); A.late=false; A.st='done';
+   out('done',{caught:caught,catch:last,catches:A.catches,throws:A.throws,save:A.saveResult,claim:A.claimResult,marks:A.marks,taps:A.taps,d:Math.round(A.fd||0),lateMs:A.lateMs||0}); }
+/* 11-19 16:35 (game 0.437): the encounter closed 0.1 s after throw 2 before any answer to that throw came; the verdict said
+   "broke out" while the catcher's MINUTE line counted the catch on the server. So when the last throw has no answer yet,
+   the verdict waits up to G.lateMax ms for it. */
+function onEncExit(a){ if(!A.enc||A.st!=='enc')return; A.enc=false; A.marks.over=now()-A.t0;
+   if(A.catches.indexOf(1)<0&&A.throws&&A.replyAt<A.lastThrow){ A.late=true; A.st='late'; var t0=now();
+     later(G.lateMax||1500,function(){ if(A.st==='late'){ A.lateMs=now()-t0; encDone(); } }); return; }
+   encDone(); }
 
 /* ---- the server's answers (parsed on a network thread: memory reads only, never a game call) ---- */
 function onSaveReply(s){ var r=s.add(O.saveResult).readS32(); if(!live())return; A.saveResult=r; out('save',{r:r}); if(r!==1&&r!==2){ fail('the server refused the stamp ('+r+')'); return; }
@@ -199,7 +206,8 @@ function onSaveReply(s){ var r=s.add(O.saveResult).readS32(); if(!live())return;
       (11-18 21:58 "for all i care, you can skip the scenes and animations") */
    if(G.saveGo>=0&&A.gui&&(A.st==='saving'||A.st==='press')){ var g=A.gui; later(G.saveGo,function(){ if(A.st!=='saving'&&A.st!=='press')return; st('stamped'); later(G.exitLag,function(){exitNow(g);}); }); } }
 function onClaimReply(s){ var r=s.add(O.claimResult).readS32(); if(!live())return; if(A.claimResult!==1)A.claimResult=r; out('claim',{r:r}); if(r!==1&&r!==2)fail('the server refused the reward ('+r+')'); }
-function onCatchReply(s){ if(!A.enc||!A.throws)return; var r=s.add(O.catchStatus).readS32(); A.catches.push(r); A.replyAt=now(); A.at=now(); out('catch',{s:r});
+function onCatchReply(s){ if(!(A.enc||A.late)||!A.throws)return; var r=s.add(O.catchStatus).readS32(); A.catches.push(r); A.replyAt=now(); A.at=now(); out('catch',{s:r});
+   if(A.late){ if(A.st==='late'){ A.lateMs=now()-A.lastThrow; encDone(); } return; }
    again((r===2||r===4||r===0)?G.rethrow:G.endMax,A.lastThrow); }      /* caught / fled: the encounter closes by itself; still open after endMax = that answer was another catch's */
 function onAsk(s){ var n=now(); if(n-LASTASK<200)return; LASTASK=n; var lat=s.add(O.rlat).readDouble(), lng=s.add(O.rlng).readDouble(); LASTPOS={t:n,lat:lat,lng:lng};
    if(A.st==='wait'&&!A.posOk&&dist(lat,lng,A.tlat,A.tlng)<80){ A.posOk=true; A.posAt=n; A.marks.pos=n-A.t0; }
