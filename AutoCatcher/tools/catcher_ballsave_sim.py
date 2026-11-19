@@ -1299,8 +1299,9 @@ const other = (sp) => { api.set('E', {a: {pid: 10, st: 'open'}}); api.set('NWQ',
 res.other = [other(774), other(10), other(0)];
 // REPLY SPECIES PROBE (11-18): it counts, and the reply is handed to the head of the queue exactly as before
 api = mk();
-const rep = (st, dex, cid, bad) => ({add: (o) => ({readS32: () => { if (bad && o === 3) throw new Error('unreadable'); return o === 1 ? st : (o === 3 ? dex : 0); },
-                                                   readU64: () => ({toString: () => String(cid)}), readPointer: () => NUL})});
+const rep = (st, dex, cid, bad, disp) => ({add: (o) => ({readS32: () => { if (bad && o === 3) throw new Error('unreadable'); return o === 1 ? st : (o === 3 ? dex : 0); },
+                                                         readU64: () => ({toString: () => String(cid)}),
+                                                         readPointer: () => (o === 4 && disp ? {isNull: () => false} : NUL)})});
 const air = () => { api.set('E', {a: {pid: 774, st: 'thrown'}, b: {pid: 16, st: 'thrown'}, c: {pid: 16, st: 'thrown'}});
                     api.set('REQQ', [{enc: 'a', t: NOW}, {enc: 'b', t: NOW}, {enc: 'c', t: NOW}]); api.set('RES', {}); };
 const counts = () => [api.get('RDEX.head'), api.get('RDEX.other'), api.get('RDEX.none'), api.get('RDEX.unset'), api.get('RDEX.err')];
@@ -1320,7 +1321,8 @@ api.call('onCatchOut', rep(1, 16, 107, true));   // the read itself fails: count
 res.rdex.push(Object.keys(api.get('RES')).join(''), counts());
 api.set('E', {}); api.set('REQQ', [{enc: 'm', t: NOW}]);
 api.call('onCatchOut', rep(1, 16, 108));    // a manual throw (not one of ours): not counted
-res.rdex.push(counts(), api.get('OUT.log').filter((l) => l.indexOf('REPLYDEX') === 0).length);
+res.rdex.push(counts(), api.get('OUT.log').filter((l) => l.indexOf('REPLYDEX head=') === 0).length,
+              api.get('OUT.log').filter((l) => l.indexOf('REPLYDEX set:') === 0));
 air(); api.set('RDEX.next', NOW - 1); api.set('OUT.log', []);
 api.call('onCatchOut', rep(1, 774, 109));   // the report is due
 api.call('onCatchOut', rep(1, 16, 110));    // ...and not due again for 5 minutes
@@ -1330,6 +1332,20 @@ api.set('OFF.cStatus', 1); api.set('OFF.cCaptured', 2); api.set('OFF.cAward', -1
 air();
 api.call('onCatchOut', rep(1, 16, 111)); api.call('onCatchOut', rep(1, 16, 112));
 res.rdexOff = [api.get('OUT.log'), counts(), Object.keys(api.get('RES')).join('')];
+// ...its second part: does the reply carry a display object, and are our requests written in the queue's order?
+api = mk();
+api.set('OFF.cStatus', 1); api.set('OFF.cCaptured', 2); api.set('OFF.cAward', -1); api.set('OFF.cDex', 3); api.set('OFF.cDisp', 4);
+air();
+api.call('onCatchOut', rep(1, 0, 201, false, true)); api.call('onCatchOut', rep(1, 0, 202)); api.call('onCatchOut', rep(1, 0, 203));
+res.rdisp = [api.get('RDEX.disp'), api.get('RDEX.nodisp')];
+const reqOf = (enc) => ({add: () => ({readU64: () => ({toString: () => enc}), writeDouble: () => {}, writeU8: () => {}})});
+air(); api.set('E.d', {pid: 16, st: 'ready'}); api.set('LASTREQ', {enc: '', t: 0});
+api.call('onCatchReq', reqOf('b'));   // written ahead of a, the older entry
+api.call('onCatchReq', reqOf('a'));   // now the oldest one not yet written
+api.call('onCatchReq', reqOf('c'));
+api.call('onCatchReq', reqOf('d'));   // written inside TryCapture: its queue entry does not exist yet
+api.call('onCatchReq', reqOf('m'));   // a manual throw: queued as before, not counted
+res.rreq = [api.get('RDEX.reqIn'), api.get('RDEX.reqOut'), api.get('RDEX.reqNone'), api.get('REQQ').map((q) => q.enc).join(''), api.get('RDEX.err')];
 // walk(): a left-alone species is tracked for a look while a plan runs; one already looked at is left at sight + ledgered
 api = mk();
 api.set('call', (m, o, args) => m === 'ALL' ? api.get('COLL') : (m === 'VM' ? 1 : (m === 'PID' ? o.pid : null)));
@@ -1678,10 +1694,17 @@ check("JS reply probe: a crossed pair counts twice as 'other', the third names i
       got2.get("rdex", [None, None])[:2], ["abc", [1, 2, 0, 0, 0]])
 check("JS reply probe: an empty field = unset, a species nothing in the air has = none, a reply that is not a catch is not counted",
       got2.get("rdex", [None] * 3)[2], [1, 2, 1, 1, 0])
-check("JS reply probe: a read that fails is counted and the throw still gets its reply; a manual throw is not counted; no line before it is due",
-      got2.get("rdex", [None] * 6)[3:], ["a", [1, 2, 1, 1, 1], [1, 2, 1, 1, 1], 0])
-check("JS reply probe: one REPLYDEX line when due, the next one 5 minutes later",
-      got2.get("rdexLog"), [["REPLYDEX head=2 other=2 none=1 unset=1 err=1"], 300000])
+check("JS reply probe: a read that fails is counted and the throw still gets its reply; a manual throw is not counted; no report before it is due",
+      got2.get("rdex", [None] * 7)[3:6], ["a", [1, 2, 1, 1, 1], [1, 2, 1, 1, 1], 0][:3])
+check("JS reply probe: no report line before it is due; each reply that DOES name a species says which (the first 5)",
+      got2.get("rdex", [None] * 8)[6:], [0, ["REPLYDEX set: the reply names #16, it was handed to a throw at #774", "REPLYDEX set: the reply names #774, it was handed to a throw at #16",
+                                           "REPLYDEX set: the reply names #16, it was handed to a throw at #16", "REPLYDEX set: the reply names #132, it was handed to a throw at #16"]])
+check("JS reply probe: one REPLYDEX report when due (after the fifth and last sample line), the next one 5 minutes later",
+      got2.get("rdexLog"), [["REPLYDEX set: the reply names #774, it was handed to a throw at #774",
+                             "REPLYDEX head=2 other=2 none=1 unset=1 disp=0/0 req in=0 out=0 none=0 err=1"], 300000])
+check("JS reply probe: a reply with a display object and two without", got2.get("rdisp"), [1, 2])
+check("JS reply probe: our requests written in the queue's order (2), ahead of an older one (1), before their entry exists (1); the queue itself is untouched, a manual throw still joins it",
+      got2.get("rreq"), [2, 1, 1, "abcm", 0])
 check("JS reply probe: the field not found in this game version -> said once, nothing counted, replies handed out as before",
       got2.get("rdexOff"), [["REPLYDEX off: CatchPokemonOutProto.DisplayPokedexId was not found in this game version"], [0, 0, 0, 0, 0], "ab"])
 check("JS reply probe: resolved at attach by its name, called after the reply is handed out",
