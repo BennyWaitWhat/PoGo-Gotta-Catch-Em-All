@@ -387,7 +387,8 @@ def main():
                 bad.append(nm + ': a fused component (held inside a Kyurem)')
             if u in worn:
                 bad.append(nm + ': also wears %s -- it would ride along onto a stage where it is false' % ', '.join(sorted(worn[u])))
-            _ar = keep_config.pvp('action_rank')          # rank 1-N since 2026-09-29 (user: "only Rank 1-5"), was #1
+            # rank 1-N since 2026-09-29 (user: "only Rank 1-5"), was #1; the Power Up tags have their own N since 2026-11-18
+            _ar = keep_config.pvp('action_rank') if tag == granular_tags.SECOND_MOVE else keep_config.power_up_rank()
             if not any(r[lg + '_stage'] == own and (r[lg + '_rank'] or 9999) <= _ar and viable(own, CAP[lg]) for lg in lgs):
                 bad.append(nm + ': not rank 1-%d at its OWN stage in %s (a stage that can reach the cap)' % (_ar, '/'.join(x.upper() for x in lgs)))
             if tag == granular_tags.SECOND_MOVE:

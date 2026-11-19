@@ -82,7 +82,7 @@ EVOLVE_ITEM, EVOLVE_TASK = 'Evolve Needs Item', 'Evolve Needs Task'
 ITEM_GATES = frozenset({'evolutionItemRequirement', 'lureItemRequirement'})   # evolvable_forms._GATE_KEYS that are items
 # POWER UP / 2ND MOVE -- dust advice, never a keep reason. Rule since 2026-09-29 (user: "I only want Rank 1-5 PVP pokemon to have
 # their 2nd moves unlocked" / "only want to power pokemon who are ranked in the top 100 of pvpoke" -> 200):
-#   'Power Up to 1500' / 'Power Up to 2500': own-stage rank <= pvp.action_rank in that league, the stage reaches the league, CP
+#   'Power Up to 1500' / 'Power Up to 2500': own-stage rank <= keep_config.power_up_rank() in that league, the stage reaches the league, CP
 #     under the cap and below the best level that stays under it, the species in pvpoke's top-N META list for the league
 #     (pvp.power_up_meta_top; a shadow by its '_shadow' entry); ONE per (league, stage) -- best rank, then highest level; none
 #     when a copy of the stage is already at its best level; never 'Power Up to 2500' on a Great League keeper.
@@ -719,10 +719,10 @@ def power_ups(kept, reasons):
     from cpm_table import MAX_LEVEL_IDX
     BS = _basestats()
     # USER 2026-09-29: "I also only want to power pokemon who are ranked in the top 100 of pvpoke" -- an own-stage rank 1-N
-    # (keep_config pvp.action_rank) copy of a species inside pvpoke's top-N META ranking for that league (power_up_meta_top),
+    # (keep_config.power_up_rank(): pvp.power_up_rank since 2026-11-18, else pvp.action_rank) copy of a species inside pvpoke's top-N META ranking for that league (power_up_meta_top),
     # under the cap and below the best level that stays under it; ONE per (league, stage): the best rank, then the highest
     # level (five Azumarills do not need five power-ups). A twin already at its best level satisfies the stage.
-    _AR = keep_config.pvp('action_rank')
+    _AR = keep_config.power_up_rank()           # the Power Up tags' own line (2026-11-18: "only tag ranked #1 pokemon for now")
     cand = collections.defaultdict(list)        # (league, stage) -> [(rank, level now, best level, uid)]
     for r in kept:
         if keep_config.is_fused_component(r):
@@ -1227,6 +1227,29 @@ if __name__ == '__main__':
         import inspect                                   # the hundo comb-up: a built copy gives last, it is not kept back
         _hs = inspect.getsource(hundo_advice)
         assert 'last=at_cap)' in _hs and 'if at_cap(r)' not in _hs, 'hundo_advice: pass last=at_cap, never block on it (2026-11-18)'
+        # the Power Up tags' OWN rank line (2026-11-18: "only tag ranked #1 pokemon for now"): the builder and the three
+        # audits that judge those two tags read keep_config.power_up_rank(), never action_rank (Unlock 2nd Move's line)
+        _cfg0 = keep_config.CFG
+        try:
+            keep_config.CFG = {'pvp': {'action_rank': 2}}
+            assert keep_config.power_up_rank() == 2, 'power_up_rank unset / 0 = the action_rank line'
+            keep_config.CFG = {'pvp': {'action_rank': 2, 'power_up_rank': 0}}
+            assert keep_config.power_up_rank() == 2, 'power_up_rank unset / 0 = the action_rank line'
+            keep_config.CFG = {'pvp': {'action_rank': 2, 'power_up_rank': 1}}
+            assert (keep_config.power_up_rank(), keep_config.pvp('action_rank')) == (1, 2), 'the Power Up line is its own'
+            assert not keep_config.validate(keep_config.CFG), keep_config.validate(keep_config.CFG)
+            assert keep_config.validate({'pvp': {'power_up_rank': 101}}), 'power_up_rank has a bound'
+        finally:
+            keep_config.CFG = _cfg0
+        _ps = inspect.getsource(power_ups)
+        assert 'keep_config.power_up_rank()' in _ps and "pvp('action_rank')" not in _ps, 'power_ups reads power_up_rank()'
+        assert "keep_config.pvp('action_rank')" in inspect.getsource(second_move_ones), 'Unlock 2nd Move keeps action_rank'
+        for _fn, _need in (('audit_labels.py', ("if tag == granular_tags.SECOND_MOVE else keep_config.power_up_rank()",)),
+                           ('audit_tag_truth.py', ('_PR = keep_config.power_up_rank()', '_rk > _PR or not meta_in(_r, _lg, _PUN)')),
+                           ('audit_tags_membership.py', ('_PR3 = keep_config.power_up_rank()', '_own3(r, lg, _PR3)',
+                                                         '_own3(rows[u], lg, _PR3)'))):
+            _as = open(os.path.join(HERE, _fn), encoding='utf-8').read()
+            assert all(_n in _as for _n in _need), _fn + ': the Power Up tags are judged at keep_config.power_up_rank()'
         print('granular_tags self-test OK')
         sys.exit(0)
     if '--audit' in sys.argv:

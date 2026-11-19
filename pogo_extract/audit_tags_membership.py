@@ -534,7 +534,7 @@ if _adv is not None:
 
 print('\nWHAT-TO-DO TAGS (2026-09-26) -- advice on kept mons, re-derived both directions')
 # POWER UP TO 1500 / 2500 (user 2026-09-29: "I also only want to power pokemon who are ranked in the top 100 of pvpoke"):
-# own-stage rank <= keep_config pvp.action_rank in that league, the stage reaches the cap, CP inside it now, the species in
+# own-stage rank <= keep_config.power_up_rank() in that league, the stage reaches the cap, CP inside it now, the species in
 # pvpoke's top-N META for that league (pvp.power_up_meta_top; rankings-<cap>.json read HERE, by score; a shadow counts as
 # '<id>_shadow' or '<id>'; N=0 = no gate), TRUE level (pvp_iv_rule.true_level, the ONE level) below the highest half-level
 # <= L50 still inside the cap -- that level computed here from cpm_table. ONE per (league, stage) (2026-09-29): none when a
@@ -552,6 +552,7 @@ try:
     _cp3 = lambda b, r, i: max(10, int((b.get('atk', 0) + r['iv_atk']) * (b.get('def', 0) + r['iv_def']) ** 0.5
                                        * (b.get('hp', 0) + r['iv_sta']) ** 0.5 * _CPM3[i] ** 2 / 10))
     _AR3, _PMN, _SMN = keep_config.pvp('action_rank'), keep_config.pvp('power_up_meta_top'), keep_config.pvp('unlock_meta_top')
+    _PR3 = keep_config.power_up_rank()               # the Power Up tags' own rank line (2026-11-18); Unlock keeps _AR3
     _ML3 = {}                                        # (2026-09-29) league -> pvpoke speciesIds, best score first; None = no list
     for lg, cap in (('gl', _GC3), ('ul', _UC3)):
         try:
@@ -572,10 +573,10 @@ try:
         top = set(_ML3[lg][:n])
         return own in top or ((r.get('fresh_alignment') or 0) == 1 and own + '_shadow' in top)
 
-    def _own3(r, lg):
-        """Own-stage rank in lg when it is <= action_rank (2026-09-29), else None."""
+    def _own3(r, lg, top=None):
+        """Own-stage rank in lg when it is <= top (action_rank, 2026-09-29; the Power Up tags pass _PR3), else None."""
         own, rk = _pv3(r['species_name'], r.get('form') or 0), r.get(lg + '_rank')
-        return rk if r.get(lg + '_stage') == own and rk is not None and rk <= _AR3 else None
+        return rk if r.get(lg + '_stage') == own and rk is not None and rk <= (_AR3 if top is None else top) else None
     _EVL = _evolve_labelled()                        # advice never beside an evolve label (the five files, 2026-09-29)
     _pc, _sm = collections.defaultdict(list), set()
     for u, r in _vis.items():
@@ -590,7 +591,9 @@ try:
             _sm.add(u)
         if r.get('iv_atk') is None:
             continue
-        for lg, cap, rk in _ok:
+        _okp = [(lg, cap, _own3(r, lg, _PR3)) for lg, cap in (('gl', _GC3), ('ul', _UC3))      # the Power Up line
+                if _own3(r, lg, _PR3) is not None and _mcp3(own, _BS3) > cap + _VM3 and (r.get('cp') or 0) <= cap]
+        for lg, cap, rk in _okp:
             if not _meta3(r, own, lg, _PMN):
                 continue
             if lg == 'ul' and ('pvp_best_gl' in (_pol3.get(u) or ())
@@ -607,7 +610,7 @@ try:
         t = load(_tn.replace(' ', '_'))
         _pu[lg] -= _EVL
         verdict(_tn, t - _pu[lg], _pu[lg] - t, '(own-stage rank 1-%d, pvpoke top-%s, under the cap and below its best level; '
-                'one per stage)' % (_AR3, _PMN or 'all'))
+                'one per stage)' % (_PR3, _PMN or 'all'))
     # LAW: the two instructions must not contradict on screen -- no 'Power Up to 2500' on a copy wearing a GL chip
     _burn = load('Power_Up_to_2500') & (load('My_Best_GL') | load('GL_Rank_1-5'))
     print('  %-16s on a Best GL / GL Rank 1-5 copy=%d %s' % ('  -> 2500 law', len(_burn), 'OK' if not _burn else '*** FAIL ***'))
@@ -616,11 +619,11 @@ try:
     # Move outside own-stage rank 1-N (+ its top-N when unlock_meta_top is on) in both leagues
     _pvr = lambda u: _pv3(rows[u]['species_name'], rows[u].get('form') or 0)
     _out = {u for lg, _tn in (('gl', 'Power_Up_to_1500'), ('ul', 'Power_Up_to_2500')) for u in load(_tn)
-            if u not in rows or _own3(rows[u], lg) is None or not _meta3(rows[u], _pvr(u), lg, _PMN)}
+            if u not in rows or _own3(rows[u], lg, _PR3) is None or not _meta3(rows[u], _pvr(u), lg, _PMN)}
     _out |= {u for u in load('Unlock_2nd_Move') if u not in rows
              or not any(_own3(rows[u], lg) is not None and _meta3(rows[u], _pvr(u), lg, _SMN) for lg in ('gl', 'ul'))}
-    print('  %-16s outside own-stage rank 1-%d or the pvpoke top-N (Power Up %s, 2nd Move %s)=%d %s' % (
-          '  -> rank law', _AR3, _PMN or 'no gate', _SMN or 'no gate', len(_out), 'OK' if not _out else '*** FAIL ***'))
+    print('  %-16s outside own-stage rank 1-%d (Power Up: 1-%d) or the pvpoke top-N (Power Up %s, 2nd Move %s)=%d %s' % (
+          '  -> rank law', _AR3, _PR3, _PMN or 'no gate', _SMN or 'no gate', len(_out), 'OK' if not _out else '*** FAIL ***'))
     if _out: FAILS.append('dust advice outside rank 1-%d / the pvpoke meta' % _AR3)
     t = load('Unlock_2nd_Move')
     _sm -= _EVL

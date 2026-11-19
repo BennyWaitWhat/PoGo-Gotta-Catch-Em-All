@@ -294,7 +294,7 @@ for _n in _RET:
     check(_n, 'RETIRED (%s) -- no mon may carry it' % _gt.RETIRED_TAGS[_n], lambda r: False)
 print('  %-18s %d retired names, %d with a tagset file on disk' % ('(retired tags)', len(_gt.RETIRED_TAGS), len(_RET)))
 # POWER UP TO 1500 / 2500 (2026-09-29, user: "I only want to power pokemon who are ranked in the top 100 of pvpoke"):
-# rank 1-N (pvp.action_rank) at its OWN stage in that league, the own stage being its best stage there (usable_best), the
+# rank 1-N (keep_config.power_up_rank()) at its OWN stage in that league, the own stage being its best stage there (usable_best), the
 # stage reaches the cap, its species in pvpoke's top-M META for that league (pvp.power_up_meta_top, read here from the
 # rankings files), CP inside the cap now and below the highest half-level (<= L50) that stays inside it; ONE copy per
 # stage (the best rank, then the highest level, then uid), none when a copy already sits there; 'to 2500' never on a
@@ -307,6 +307,7 @@ except Exception:
     _RSN = {}
 _own_rk = lambda r, lg: dict(chain_stage_ranks(r, lg)).get(own(r))
 _AR, _PUN, _UMN = keep_config.pvp('action_rank'), keep_config.pvp('power_up_meta_top'), keep_config.pvp('unlock_meta_top')
+_PR = keep_config.power_up_rank()             # the Power Up tags' own rank line (2026-11-18); Unlock 2nd Move keeps _AR
 
 
 def _lg_rank(r, lg, cap):
@@ -349,7 +350,7 @@ for _u, _r in rows.items():
         continue
     for _lg, _cap in (('gl', GL_CAP), ('ul', UL_CAP)):
         _rk = _lg_rank(_r, _lg, _cap)
-        if _rk is None or _rk > _AR or not meta_in(_r, _lg, _PUN):
+        if _rk is None or _rk > _PR or not meta_in(_r, _lg, _PUN):
             continue
         if _lg == 'ul' and ('pvp_best_gl' in (_RSN.get(_u) or ())
                             or ((_own_rk(_r, 'gl') or 9999) <= keep_config.pvp('ready_rank') and (_r['cp'] or 0) <= GL_CAP)):
@@ -370,7 +371,7 @@ for (_lg, _st), _l in _puc.items():
 for _n, _lg, _nm in (('Power Up to 1500', 'gl', 'Great'), ('Power Up to 2500', 'ul', 'Ultra')):
     check(_n, 'rank 1-%d %s League spread at its OWN (= best) stage, %s, CP inside the cap now and below the best level '
               'that stays inside it (ONE per stage: the best rank, then the highest level; none when a copy is already '
-              'there%s)' % (_AR, _nm, _meta_txt(_lg, _PUN), '; never a Great League keeper' if _lg == 'ul' else ''),
+              'there%s)' % (_PR, _nm, _meta_txt(_lg, _PUN), '; never a Great League keeper' if _lg == 'ul' else ''),
           lambda r, lg=_lg: r['uid_hex'] in _PU[lg], every=lambda r, lg=_lg: r['uid_hex'] in _PU[lg] and r['uid_hex'] not in _EVL)
 
 
