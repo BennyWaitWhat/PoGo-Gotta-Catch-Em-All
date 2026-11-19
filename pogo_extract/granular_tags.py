@@ -1246,8 +1246,10 @@ if __name__ == '__main__':
         assert "keep_config.pvp('action_rank')" in inspect.getsource(second_move_ones), 'Unlock 2nd Move keeps action_rank'
         for _fn, _need in (('audit_labels.py', ("if tag == granular_tags.SECOND_MOVE else keep_config.power_up_rank()",)),
                            ('audit_tag_truth.py', ('_PR = keep_config.power_up_rank()', '_rk > _PR or not meta_in(_r, _lg, _PUN)')),
-                           ('audit_tags_membership.py', ('_PR3 = keep_config.power_up_rank()', '_own3(r, lg, _PR3)',
-                                                         '_own3(rows[u], lg, _PR3)'))):
+                           ('audit_tags_membership.py', ('_PR3 = keep_config.power_up_rank()',
+                                                         '_okp = [(lg, cap, _own3(r, lg, _PR3))',
+                                                         'if _own3(r, lg, _PR3) is not None and _mcp3',
+                                                         'for lg, cap, rk in _okp:', '_own3(rows[u], lg, _PR3)'))):
             _as = open(os.path.join(HERE, _fn), encoding='utf-8').read()
             assert all(_n in _as for _n in _need), _fn + ': the Power Up tags are judged at keep_config.power_up_rank()'
         print('granular_tags self-test OK')
