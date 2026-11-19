@@ -149,18 +149,18 @@ check("watcher: the maps are read until the code is found loaded, then skipped f
 
 # ---- the root shell itself (a fake su that is a plain sh; POSIX only: Windows has no select() on pipes -- CI runs it) ----------
 if os.name == "posix":
-    ns = load()
-    ns["time"] = __import__("time")
+    rns = load()   # (its own namespace: the checks after this block use ns)
+    rns["time"] = __import__("time")
     d = tempfile.mkdtemp()
     old_path = os.environ.get("PATH", "")
     try:
         open(os.path.join(d, "su"), "w").write("#!/bin/sh\necho started >> \"$(dirname \"$0\")/starts\"\nexec sh\n")
         os.chmod(os.path.join(d, "su"), 0o755)
         os.environ["PATH"] = d + os.pathsep + old_path
-        rs = ns["RootShell"]()
+        rs = rns["RootShell"]()
         a = rs.run("echo hi; exit 0")
         p1 = rs.p
-        b = rs.run(ns["LOOK_CMD"].replace("KNOWN", "0"))   # no game here: it prints nothing, and its exit ends only its subshell
+        b = rs.run(rns["LOOK_CMD"].replace("KNOWN", "0"))   # no game here: it prints nothing, and its exit ends only its subshell
         c = rs.run("echo two")
         check("root shell: output up to its end mark; `exit` in a command keeps the shell", (a, b, c, rs.p is p1), ("hi\n", "", "two\n", True))
         t = __import__("time").time()
