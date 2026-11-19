@@ -42,6 +42,7 @@ jobs:
           python pogo_extract/test_pokemod_rank.py
           node pogo_extract/test_exc_text.js
           python pogo_extract/cull_report.py --selftest
+          python pogo_extract/cull_button.py --selftest
           python -c "import sys; sys.path.insert(0, 'pogo_extract'); import full_audit as f; s = f.phase_line([(1.1, 'dashboard started'), (37.6, 'recrawl ok'), (70.0, 'sync: no warnings in its log'), (200.0, 'retire: all clear')]); assert s == 'PHASES: dashboard 1.1 s, walk 36.5 s, sync 32.4 s, post-push 130.0 s | whole pass 200.0 s | SLOW: sync 32.4 s > 25 s; post-push 130.0 s > 30 s; whole pass 200.0 s > 120 s', s"
           python -c "import sys; sys.path.insert(0, 'pogo_extract'); import full_audit as f; log = '  Transfer         server=2 want=3  [OK]\n      deferred: 1 hatchling(s) still flagged isEgg (tag write ignored by the game until it clears): 0b\n'; assert f.pile_on_phone_uids(['0a', '000000000000000b', 'c'], log) == ['0a', 'c'], 'a member the game did not tag is not on the phone'; assert f.pile_on_phone_uids(['0a'], '  Transfer         server=1 want=1  [OK]\n') == ['0a']; assert f.pile_on_phone_uids(['0a'], 'no read-back here') is None, 'no clean read-back = nothing recorded'"
           python pogo_extract/bag_art.py --selftest
