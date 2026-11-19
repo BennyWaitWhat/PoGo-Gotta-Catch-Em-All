@@ -1093,7 +1093,9 @@ def run(a):
     log("stamps: %d before, %s now (the game's own list); this run: %d done, %d not done, %.1f min; map answers: %d good, %d refused"
         % (have, stamped_after if stamped_after is not None else "?", got, len(bad), run_["minutes"], mw.total["ok"], mw.total["bad"]))
     if bag is not None and bag_after is not None:
-        log("bag: %d -> %d of %s (+%d; the %d rewards caught are in it, with whatever the catcher caught meanwhile)" % (bag, bag_after, cap or "?", bag_after - bag, got))
+        caught_n = sum(1 for r in results if (r.get("detail") or {}).get("caught"))
+        log("bag: %d -> %d of %s (+%d; the %d reward Pokemon caught are in it, with whatever the catcher caught meanwhile)"
+            % (bag, bag_after, cap or "?", bag_after - bag, caught_n))      # Poke Lid: a reward every 2nd stamp, not every one
     for r in bad:
         log("  not done: %s -- %s" % (r["name"], r["text"]))
     log("page: %s" % hpath)
