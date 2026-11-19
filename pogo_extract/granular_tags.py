@@ -477,9 +477,14 @@ def hundo_collectible(r):
 def hundo_advice(kept_by, reasons, taken=(), why_not=None):
     """{uid: (target stage, why it stops there or None)}: game_opportunities.hundo_combup over the kept 15/15/15s, each judged by
     the label law first. taken: copies another producer already advises. why_not: a dict to fill with {uid: why it stays}.
-    A hundo already BUILT as the stage it is -- its CP within one power-up of 500 / 1500 / 2500, or level 50 -- stays too:
-    evolving it would undo the build. So does a collectible look (hundo_collectible). A stage is the SPECIES
-    (game_opportunities.hundo_stages, 2026-11-18): a hundo of any form, size or gender there already holds it."""
+    A collectible look (hundo_collectible) stays too. A hundo already BUILT as the stage it is -- its CP within one power-up
+    of 500 / 1500 / 2500, or level 50 -- is NOT kept back for that (user 2026-11-18 19:16: "lets revisit the hundos 500cp thing again. if all stages are filled and
+    there are extra hundos then they can stay below. for example, 4 hundo charmanders. fill final form first, then middle, then
+    1st stage, and the 4th keep as whatever.";
+    until then it stayed, which left a later stage empty behind his 500-CP Squirtle): filling the stages comes first, so it
+    gives LAST (hundo_combup's last=) -- it goes only when no other free hundo can fill the empty stage.
+    A stage is the SPECIES (game_opportunities.hundo_stages, 2026-11-18): a hundo of any form, size or gender there already
+    holds it."""
     import contextlib, io
     for _p in (HERE, os.path.join(HERE, 'system', 'scripts')):
         if _p not in sys.path:
@@ -576,12 +581,11 @@ def hundo_advice(kept_by, reasons, taken=(), why_not=None):
              'an own-stage PvP asset' if any(
                  r.get(lg + '_stage') == sid and r.get(lg + '_rank') is not None and r[lg + '_rank'] <= READY_RANK and sid in BS
                  and maxcp(sid, BS) > cap + VIABILITY_MARGIN and (r[lg + '_rank'] == 1 or competitive(lg, sid, sh))
-                 for lg, cap in (('gl', GL_CAP), ('ul', UL_CAP))) else
-             'built to a league cap as the stage it is' if at_cap(r) else None)
+                 for lg, cap in (('gl', GL_CAP), ('ul', UL_CAP))) else None)
         if w and why_not is not None:
             why_not[u] = w
         return w
-    got = go.hundo_combup(hund, own, later, depth, blocked, lambda k: _HUNDO_GRAPH['nm'].get(int(k)) or k)
+    got = go.hundo_combup(hund, own, later, depth, blocked, lambda k: _HUNDO_GRAPH['nm'].get(int(k)) or k, last=at_cap)
     out = {}
     for u, (t, why) in got.items():                       # the stage id the graph names (a gendered branch: its own id)
         real = sorted((x for x in raw[u] if fold(x) == st[u][1].get(t)), key=lambda x: (x not in graph[2], x))
@@ -1220,6 +1224,9 @@ if __name__ == '__main__':
         assert _f() == {}
         _lb = list(VARIANT_LABELS) + [VARIANT_OVERFLOW]
         assert [_lb[min(n, len(_lb)) - 1] for n in (1, 3, 4, 9)] == ['Variant #1', 'Variant #3', 'Variant #4+', 'Variant #4+']
+        import inspect                                   # the hundo comb-up: a built copy gives last, it is not kept back
+        _hs = inspect.getsource(hundo_advice)
+        assert 'last=at_cap)' in _hs and 'if at_cap(r)' not in _hs, 'hundo_advice: pass last=at_cap, never block on it (2026-11-18)'
         print('granular_tags self-test OK')
         sys.exit(0)
     if '--audit' in sys.argv:
