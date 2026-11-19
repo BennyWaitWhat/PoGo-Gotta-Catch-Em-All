@@ -2514,8 +2514,14 @@ def _run(a, g, mv, done, t_start, enemy, goal, sess, pid, sc):
         under attack! Try again later."). 11-16 22:35, the Ellis Island ferry gym: refused twice 23 s apart, then Deploy was
         opened by hand and blue placed Walrein at 22:36:09 (Benny: "thats a common situation id like you to figure out").
         Wait for BOTH map lockouts ([8] finisher, [9] same team), try again, and keep at it for up to 3 min while the gym
-        stays empty. The moment another team places, return False: the caller battles it NOW (1 defender)."""
+        stays empty. The moment another team places, return False: the caller battles it NOW (1 defender).
+        ErrorFortIsFull ("This Gym has no room") on the gym it JUST emptied is the same kind of wait: the server has not
+        counted the gym as empty yet. 11-18 23:28:25, Liberty Island Flagpole (the first on-phone Gym Battle takeover): the
+        shiny Gyarados went out 4 s after the win, the server said no room, the runner opened Deploy for him, and his own
+        placement 11 s later went through (Benny: "i had to place it myself"). So it is asked again too -- on the game's
+        own map refresh (GMO, 5 s, a client value; never a made-up timer), not every 2 s."""
         t_stop, tries = time.time() + 180, 0
+        last = str(g.deploy_refused[1]) if g.deploy_refused else ""
         while time.time() < t_stop:
             if let_go():
                 return False
@@ -2526,9 +2532,11 @@ def _run(a, g, mv, done, t_start, enemy, goal, sess, pid, sc):
             fin = lv[8] / 1000.0 if len(lv) > 8 and lv[8] else 0.0
             own = lv[9] / 1000.0 if len(lv) > 9 and lv[9] and LAST_TEAM.get(fid) == a.team else 0.0   # the SAME-team lockout binds
             # only the team that held it -- 11-17 00:39 it waited 60 s on blue's lockout at 9c126dbd and Benny placed by hand 25 s in
-            wait = min(60.0, max(fin, own, 2.0 if tries else 0.0) + 0.3)
-            why = "your team is locked out of it after losing it" if own >= fin and own > 0 else "the finisher's window"
-            say(f"  deploy lockout ({why}) -- try {tries + 2} in {wait:.1f} s (at once if a team places)")
+            full = "FortIsFull" in last and fin <= 0 and own <= 0   # no room on a gym that reads empty: the server lags the win
+            wait = 5.0 if full else min(60.0, max(fin, own, 2.0 if tries else 0.0) + 0.3)
+            why = ("no room: the server has not counted the gym as empty yet -- asked again on the game's next map refresh"
+                   if full else "your team is locked out of it after losing it" if own >= fin and own > 0 else "the finisher's window")
+            say(f"  deploy {'refused' if full else 'lockout'} ({why}) -- try {tries + 2} in {wait:.1f} s (at once if a team places)")
             t_end = time.time() + wait
             while time.time() < t_end:                       # Benny 11-16: the moment ANOTHER team places, battle it (it has 1 defender)
                 try:
@@ -2552,10 +2560,11 @@ def _run(a, g, mv, done, t_start, enemy, goal, sess, pid, sc):
                 return False
             if g.placed[fid].get("ok"):
                 return True
-            if "Lockout" not in str(g.placed[fid].get("res", "")):
+            last = str(g.placed[fid].get("res", ""))
+            if not re.search(r"Lockout|FortIsFull", last):
                 return False                                 # refused for another reason: no use waiting
             tries += 1
-        say("  still locked out after 3 min -- moving on (it is judged again at once)")
+        say("  still refused after 3 min -- moving on (it is judged again at once)")
         return False
 
     def retry_join(fid, why):                                # a red gym WITH ROOM refused the join: the server's cooldown
@@ -3683,12 +3692,13 @@ def _run(a, g, mv, done, t_start, enemy, goal, sess, pid, sc):
                         STATS["placed"] += 1
                         say(f"  you placed {g.names.get(g.placed[fid]['id'], 'a Pokemon') if hasattr(g, 'names') else 'a Pokemon'} "
                             f"({dep['n']}/{a.max_deployed} in gyms now) -- next gym")
-                    elif g.deploy_refused and "Lockout" in g.deploy_refused[1] and not friendly and retry_lockout(fid):
+                    elif g.deploy_refused and re.search(r"Lockout|FortIsFull", str(g.deploy_refused[1])) and not friendly \
+                            and retry_lockout(fid):          # (FortIsFull on the gym it just emptied: the server lags the win)
                         placed_ok = True
                         dep["n"] = (n or 0) + 1
                         STATS["placed"] += 1
                         say(f"  you placed {g.names.get(g.placed[fid]['id'], 'a Pokemon') if hasattr(g, 'names') else 'a Pokemon'} "
-                            f"right after the lockout ({dep['n']}/{a.max_deployed} in gyms now) -- next gym")
+                            f"on a retry after the server's refusal ({dep['n']}/{a.max_deployed} in gyms now) -- next gym")
                     elif friendly and retry_join(fid, (g.placed.get(fid) or {}).get("res", "no answer")):
                         placed_ok = True
                         dep["n"] = (n or 0) + 1

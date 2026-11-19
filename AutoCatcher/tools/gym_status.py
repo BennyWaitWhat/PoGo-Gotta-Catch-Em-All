@@ -54,7 +54,7 @@ WHY = ((r'you told the runner to skip', 'you told it to skip this gym'), (r'you 
        (r'it is under attack', 'under attack -- it goes in when the attack is over'), (r'auto-place is off', 'auto-place is off'),
        (r'the gym screen has not said|the game.s map (has no record|does not show)', 'reading the gym'))
 RESULTS = ((r'you placed a Pokemon \((\d+)/(\d+) in gyms now', 'your Pokemon placed at {g} ({0}/{1} in gyms)'),
-           (r'you placed (.+?) (?:right after the lockout )?\((\d+)/(\d+) in gyms now', '{0} placed at {g} ({1}/{2} in gyms)'),
+           (r'you placed (.+?) (?:right after the lockout |on a retry after the server.s refusal )?\((\d+)/(\d+) in gyms now', '{0} placed at {g} ({1}/{2} in gyms)'),
            (r'you joined [0-9a-f]{8}.*? with (.+?) (?:on a retry )?\((\d+)/(\d+) in gyms now', '{0} joined {g} ({1}/{2} in gyms)'),
            (r'SLIPPED IN: (.+?) is in ', '{0} slipped into {g}'),
            (r'EMPTY -- you already have (\d+) Pokemon in gyms \(cap (\d+)\)', '{g} emptied -- nothing placed: {0}/{1} gym slots in use'),
@@ -292,6 +292,8 @@ def selftest():
     E = L + ['12:07:00   ON-OPEN: you have 95ea321a open (team 0) -- taking it over: it is EMPTY, a shiny Gyarados goes in now']
     assert status_from_log(E) == 'placing a Gyarados at the gym you opened'
     assert status_from_log(E + ['12:07:02   you placed Gyarados 3640 (16/20 in gyms now) -- next gym']) == 'Gyarados 3640 placed at the gym you opened (16/20 in gyms)'
+    assert status_from_log(E + ["12:07:02   you placed Gyarados 3757 on a retry after the server's refusal (2/20 in gyms now) -- next gym"]) == \
+        'Gyarados 3757 placed at the gym you opened (2/20 in gyms)', 'a placement on a retry (FortIsFull right after the win) is a placement'
     assert status_from_log(L + ['12:08:00 lost the game connection (Detached: game connection lost) -- re-attaching in 3 s']).startswith('lost the game connection')
     assert status_from_log(L + ['12:08:00 session failed (RuntimeError: PoGo never became attach-safe in 300s (no pid yet)) -- retrying in 10 s']).startswith('lost the game connection')
     assert status_from_log(L + ['12:08:00 lost the game connection (x) -- re-attaching in 3 s', '12:09:10     state: MapExploreState']).startswith('watching')
