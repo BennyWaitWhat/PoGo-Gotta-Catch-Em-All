@@ -354,7 +354,7 @@ def plan(stamps, official=None, skip=()):
             out.append({"fort": fid, "name": s.get("name") or fid, "why": "no point known"})
             continue
         alt = listed if (off and listed and meters(off, listed) > ALT_MIN_M) else None
-        todo.append({"fort": fid, "name": s.get("name") or fid, "at": at, "alt": alt})
+        todo.append({"fort": fid, "name": s.get("name") or fid, "at": at, "alt": alt, "cat": s.get("cat"), "sub": s.get("sub")})
     return todo, out
 
 
@@ -414,7 +414,7 @@ class MapWatch:
 def verdict(ev):
     """One line for a finished stop from the tapper's `done` / `fail` message."""
     if ev["k"] == "done" and ev.get("noclaim"):
-        return True, "stamped (this rally pays on its own page, not at the stop)"
+        return True, "stamped (no reward at this stop)"
     if ev["k"] == "done":
         c = ev.get("catch")
         if ev.get("caught"):
@@ -475,8 +475,9 @@ def log(msg):
 
 def read_rally(pg, ps, dl, sess, cid):
     """The rally from the game's memory: {fort: {name, lat, lng, state}} and the bag's size limit. Heap reads: only ever
-    called while he stands still (before the first jump, after the last)."""
-    sc = sess.create_script(dl.JS.split("rpc.exports = {")[0] + ps.JS_HELPERS + ps.JS_EXPORTS)
+    called while he stands still (before the first jump, after the last). The reader cuts every list at 300 (power_spots
+    RLIM): the Poke Lid rally has 490 stamps (11-18 22:50), so the cap is raised for this read."""
+    sc = sess.create_script(dl.JS.split("rpc.exports = {")[0] + ps.JS_HELPERS + ";RLIM = 5000;" + ps.JS_EXPORTS)
     sc.load()
     try:
         ex, nxt = sc.exports_sync, 0
@@ -495,7 +496,8 @@ def read_rally(pg, ps, dl, sess, cid):
                     m = s.get("StampMetadata") or {}
                     k = m.get("FortId")
                     if k and (k not in best or s.get("State") == 2):
-                        best[k] = {"fort": k, "lat": m.get("Latitude"), "lng": m.get("Longitude"), "name": m.get("FortTitleKey") or k, "state": s.get("State")}
+                        best[k] = {"fort": k, "lat": m.get("Latitude"), "lng": m.get("Longitude"), "name": m.get("FortTitleKey") or k, "state": s.get("State"),
+                               "cat": m.get("CategoryKey"), "sub": m.get("SubcategoryKey")}
         cap = None
         try:
             r = ps.call(ex.scan_keep, PROTOS, PLAYER, 40)
@@ -830,8 +832,24 @@ def close_gui(g, detail):
     return False
 
 
+def only_filter(todo, only):
+    """(kept, others): the stops whose rally list (CategoryKey, e.g. region_hokkaido_tohoku) or prefecture
+    (SubcategoryKey, e.g. prefecture_iwate) is named in `only` (comma separated; the region_/prefecture_ prefix may be
+    left out). 11-18 22:45 "complete all the ones in the hokkaido list" (the Poke Lid page's Hokkaido - Tohoku list)."""
+    keys = set()
+    for k in (only or "").split(","):
+        k = k.strip().lower()
+        if k:
+            keys |= {k, "region_" + k, "prefecture_" + k}
+
+    def hit(s):
+        return (s.get("cat") or "").lower() in keys or (s.get("sub") or "").lower() in keys
+    return [s for s in todo if hit(s)], [s for s in todo if not hit(s)]
+
+
 def run(a):
     pg, ps, dl, ch = _imports()
+    region_m = int(a.region_km * 1000)
     official = None
     off_path = a.official or os.path.join(DATA_DIR, a.collection + ".json")
     if os.path.exists(off_path):
@@ -860,6 +878,9 @@ def run(a):
         far = [s for s in todo if not in_north_america(s["at"])]
         todo = [s for s in todo if in_north_america(s["at"])]
         log("North America only: %d stops; %d elsewhere wait for another run" % (len(todo), len(far)))
+    if a.only:
+        todo, far = only_filter(todo, a.only)
+        log("only %s: %d stops; %d others wait for another run" % (a.only, len(todo), len(far)))
     if a.east_west:
         order = sorted(todo, key=lambda s: -s["at"][1])        # east coast first, west coast last
     else:
@@ -884,7 +905,7 @@ def run(a):
         log("the bag has room for %d now (%d stops to do): it is read again after every stop" % (room, len(order)))
     bad = load_bad(state)
     recent = [v for v in bad.values() if time.time() - v[0] < BAD_FOR_S]
-    late = [s for s in order if any(meters(s["at"], (v[1], v[2])) < REGION_M for v in recent if v[1] is not None)
+    late = [s for s in order if any(meters(s["at"], (v[1], v[2])) < region_m for v in recent if v[1] is not None)
             or any(k == s["fort"] for k, v in bad.items() if time.time() - v[0] < BAD_FOR_S)]
     if late:
         order = [s for s in order if s not in late] + late
@@ -955,11 +976,11 @@ def run(a):
                 queue_.append((s, attempt + 1))
             # 11-18 21:44-21:50: whole areas answered Error together (University Place, Fashion Place, Station Park:
             # Utah; Mission Viejo + Ontario Mills) while far places loaded at once. The stops near a bad place go last.
-            near = [q for q in queue_ if meters(q[0]["at"], s["at"]) < REGION_M]
+            near = [q for q in queue_ if meters(q[0]["at"], s["at"]) < region_m]
             if len(near) > 1:
                 queue_ = [q for q in queue_ if q not in near] + near
-                log("  %d stops within %d km of it go to the end too (the map of a whole area answers Error at once)"
-                    % (len(near) - 1, REGION_M // 1000))
+                log("  %d stops within %g km of it go to the end too (the map of a whole area answers Error at once)"
+                    % (len(near) - 1, region_m / 1000.0))
             log("  MAP NOT LOADING at %s (%s) -- %s" % (s["name"], e, "it goes to the end of the list" if more_ else
                                                         "3 tries tonight: left for the next run"))
             if not more_:
@@ -1070,6 +1091,11 @@ def selftest():
     t = tour(ny, pts)
     check("tour visits every stop once", sorted(x["fort"] for x in t) == ["a", "b", "c", "d"])
     check("tour starts with the nearest", t[0]["fort"] == "b")
+    lids = [{"fort": "a", "cat": "region_kanto", "sub": "prefecture_tokyo"},
+            {"fort": "b", "cat": "region_hokkaido_tohoku", "sub": "prefecture_iwate"}]
+    k_, f_ = only_filter(lids, "region_hokkaido_tohoku")
+    check("--only keeps one list's stops", [s["fort"] for s in k_] == ["b"] and [s["fort"] for s in f_] == ["a"])
+    check("--only takes prefectures without the prefix", len(only_filter(lids, "tokyo, iwate")[0]) == 2)
     check("tour keeps the two LA stops together", abs([x["fort"] for x in t].index("a") - [x["fort"] for x in t].index("d")) == 1)
     stamps = {"s1": {"state": 2, "lat": 1.0, "lng": 1.0, "name": "one"}, "s2": {"state": 1, "lat": 2.0, "lng": 2.0, "name": "two"},
               "s3": {"state": 1, "lat": 3.0, "lng": 3.0, "name": "three"}, "s4": {"state": 1, "lat": None, "lng": None, "name": "four"},
@@ -1136,6 +1162,10 @@ def main(argv=None):
     ap.add_argument("--safe", action="store_true")
     ap.add_argument("--ink", type=float, default=0.54, help="stamp ink strength 0.1 .. 1.0 (the press length); 0.54 = the 1.9 s press of 11-18")
     ap.add_argument("--no-claim", action="store_true", help="rallies that pay on their own page: stamp, close the page, next")
+    ap.add_argument("--only", help="only these rally lists / prefectures, e.g. region_hokkaido_tohoku or iwate,miyagi")
+    ap.add_argument("--region-km", type=float, default=REGION_M / 1000,
+                    help="a place whose map never loads sends the stops within this many km to the end (200 for the LEGO "
+                         "world tour; 1 for one town's Poke Lids)")
     ap.add_argument("--north-america", action="store_true", help="only the stops in North America (Canada, the US, Mexico)")
     ap.add_argument("--east-west", action="store_true", help="the order: east to west (by longitude), not the shortest route")
     ap.add_argument("--selftest", action="store_true")
