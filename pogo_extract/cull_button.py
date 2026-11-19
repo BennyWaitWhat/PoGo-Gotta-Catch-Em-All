@@ -196,6 +196,10 @@ def parse_cull(text, rc):
                      (r'AUDIT GATE FAILED', 'an audit failed (nothing was tagged) -- ask Claude'),
                      (r'\[frozen\]|session is gone', 'the game session froze or went away -- ask Claude'),
                      (r'PoGo is not on screen', 'the game left the screen during the cull -- open it, stay in it, then tap again'),
+                     # 11-19 16:52: the game was closed (removed from recents) during the audits; the sync then met a
+                     # 2-second-old game and refused it (rc 3), and the line said "ask Claude"
+                     (r'NotReadyToAttach: pid \d+ is only \d+s old', 'Pokemon GO was closed or restarted during the cull '
+                      '(nothing was tagged) -- tap again, and stay in the game until this says done'),
                      (r'STOPPED', 'the walk stopped itself -- ask Claude')):
         if re.search(pat, text):
             return 'STOPPED', why
@@ -252,6 +256,12 @@ def cull_running():
     return 'full_audit.py' in out
 
 
+def pass_cmd(on_phone=None):
+    """The pass. On the phone at the lowest CPU priority (nice 19, its audits too): the game keeps the CPU it needs, and
+    stays playable during the pass. 11-19 16:52 the game was closed mid-pass during the audits, on a phone at 41 C."""
+    return (['nice', '-n', '19'] if (ON_PHONE if on_phone is None else on_phone) else []) + [PY, 'full_audit.py']
+
+
 def gap_left():
     """Seconds still to wait for "3 minutes after the last cull": this listener's own last pass (its log), or the last walk
     from anywhere (bag_count.json -- every data pull brings the PC's) -- a quick re-attach crashed the gadget before."""
@@ -302,10 +312,10 @@ def one_pass(req_epoch):
             told = True
         time.sleep(5)                                     # each look is one root call on the phone
     start = time.time()
-    status('running since %s%s' % (hhmm(start), bat))
+    status('running since %s -- stay in Pokemon GO until this says done (about 3 min)%s' % (hhmm(start), bat))
     log('cull for the tap at %s (pid %s, game up %ss%s)' % (hhmm(req_epoch), pid, up, bat))
     with open(CULL_LOG, 'w', encoding='utf-8', errors='replace') as f:
-        rc = _run([PY, 'full_audit.py'], cwd=HERE, stdout=f, stderr=subprocess.STDOUT).returncode
+        rc = _run(pass_cmd(), cwd=HERE, stdout=f, stderr=subprocess.STDOUT).returncode
     text = open(CULL_LOG, encoding='utf-8', errors='replace').read()
     kind, line = parse_cull(text, rc)
     rep = text.split('=== REPORT ===', 1)
@@ -404,6 +414,13 @@ def selftest():
     assert parse_power((full % ('false', 2, 4)).replace('USB powered: false', 'USB powered: true')) == (4, True)
     assert parse_power((full % ('false', 2, 4)).replace('Wireless powered: false', 'Wireless powered: true')) == (4, True)
     assert parse_power(full % ('false', 2, 4)) == (4, False), 'status 2 alone is not a charger (it said 2 at 3 % and falling)'
+    young = ('[ 81.3s] sync: no warnings in its log\n  File "prune_tags.py", line 603, in main\n'
+             'pogo_il2cpp.NotReadyToAttach: pid 32595 is only 2s old (< 45s) -- init storm, unsafe to attach -- wait\n'
+             '[ 81.4s] SYNC FAILED rc=1\n')
+    assert parse_cull(young, 3) == ('STOPPED', 'Pokemon GO was closed or restarted during the cull (nothing was tagged) '
+                                    '-- tap again, and stay in the game until this says done'), '11-19 16:52, rc 3'
+    assert pass_cmd(True)[:3] == ['nice', '-n', '19'] and pass_cmd(True)[3:] == [PY, 'full_audit.py']
+    assert pass_cmd(False) == [PY, 'full_audit.py'], 'the PC runs no pass (main refuses), but the command stays plain there'
     assert battery_note(8, True) == ' (battery 8% on the charger)' and battery_note(4, False) == ' (battery 4%, not on a charger)'
     assert battery_note(10, False) == '' and battery_note(55, True) == '' and battery_note(None, None) == ''
     assert 'wait_battery' not in globals() and 'battery_wait' not in globals(), 'the battery never holds a tap (2026-07-26)'
