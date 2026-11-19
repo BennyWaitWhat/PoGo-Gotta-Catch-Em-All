@@ -34,6 +34,7 @@ import argparse
 import collections
 import html
 import json
+import subprocess
 import math
 import os
 import queue
@@ -557,6 +558,23 @@ class Game:
         arrived (run_stop sends the jump once more when none came in 8 s)."""
         self.ch.api("TELEPORT", "--ef lat %.6f --ef lng %.6f" % (at[0], at[1]))
 
+    def page_on_screen(self):
+        """True when the rally page's close button is on screen: dark teal at the bottom centre (11-18 22:29 screenshot:
+        (28, 134, 148) at 92.7 % and 95 % of the height; the map's menu button there is red-orange (255, 76, 0))."""
+        try:
+            import io
+            from PIL import Image
+            raw = subprocess.run(["adb", "-s", self.ch.DEV, "exec-out", "screencap", "-p"], capture_output=True, timeout=8).stdout
+            im = Image.open(io.BytesIO(raw)).convert("RGB")
+            w, h = im.size
+            for fy in (0.927, 0.95):
+                r, gg, b = im.getpixel((w // 2, int(h * fy)))
+                if r < 70 and 100 <= gg <= 170 and 120 <= b <= 180:
+                    return True
+        except Exception:  # noqa: BLE001
+            pass
+        return False
+
     def screen(self):
         if not getattr(self, "_wh", None):
             try:
@@ -771,11 +789,13 @@ def close_page(g, wait_s=3.0):
         if ev.get("k") == "page" and ev.get("open"):
             opened = True
             break
-    if not opened:
+    if not opened and not g.page_on_screen():
         return False
     time.sleep(0.6)
     w, h = g.screen()
     for _ in range(3):
+        if not g.page_on_screen():
+            return True
         g.ch.adb("input tap %d %d" % (w // 2, int(h * 0.9395)))
         t0 = time.time()
         while time.time() - t0 < 2.0:
@@ -1000,9 +1020,10 @@ def run(a):
                 break
             if detail.get("k") != "done" and attempt == 1:
                 queue_.append((s, 2))                      # one more try at the end (a stamped stop whose reward got away has none)
-        if cap:
+        if cap and (room is None or room - got < 25 or got % 5 == 0):
             # the on-phone catcher keeps catching during the tour (~1 a minute on 11-18): the room read at the start is
-            # not enough. A full bag would let the stamp and the claim through and lose the reward Pokemon.
+            # not enough. A full bag would let the stamp and the claim through and lose the reward Pokemon. With room
+            # for 25+ it is read every 5th stop only (11-18 22:35: the read right after a stop hung a run 3 minutes).
             b = g.bag_count()
             if b is not None and cap - b <= 1:
                 ended = "the bag is full (%d of %d) -- free some slots, then run it again (nothing was skipped)" % (b, cap)
