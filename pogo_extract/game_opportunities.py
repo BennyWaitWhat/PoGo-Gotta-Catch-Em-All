@@ -561,20 +561,27 @@ def hundo_buckets(held=None, evolving=None):
     return out, unread
 
 
-def hundo_combup(hundos, own, later, depth, blocked=None, nice=None):
+def hundo_combup(hundos, own, later, depth, blocked=None, nice=None, last=None):
     """THE HUNDO COMB-UP (Benny 2026-11-18: "i just want my hundos comb'd up to ya know? like if i have 3 hundo charmamander,
     then id like one for each stage filling in the final evo first"; a lone hundo under a later stage that has none goes too:
     "yes, thats how the logic works"). -> {uid: (target stage, why it stops there or None)}.
     hundos: the kept 15/15/15 rows (dicts: uid_hex, cp, fresh_alignment, fresh_shiny). own(r) -> the stage it is;
     later(r) -> the later stages THIS copy can become (form, costume and gender locked; empty = it cannot evolve);
     depth(stage) -> evolutions left after that stage (0 = final); blocked(r) -> why the label law keeps this copy what it is,
-    or None; nice(stage) -> its name for the words.
+    or None; nice(stage) -> its name for the words; last(r) -> True for a copy BUILT as the stage it is (powered up to a
+    league cap, or maxed).
     Per line, shadow hundos apart (a shadow evolves only into a shadow): the stages are filled FINAL FIRST. A stage that
     holds no hundo takes ONE from the nearest earlier stage that has a free one -- of several there the highest CP, a shiny
     last -- and the stage that copy leaves is filled in its turn. A copy whose line branches (two stages equally far from
-    the end: Poliwhirl, Eevee, a male Kirlia) is never moved: that is a pick, not a rule. A blocked copy still holds its stage."""
+    the end: Poliwhirl, Eevee, a male Kirlia) is never moved: that is a pick, not a rule. A blocked copy still holds its stage.
+    A BUILT COPY GIVES LAST (Benny 2026-11-18 19:16: "lets revisit the hundos 500cp thing again. if all stages are filled and
+    there are extra hundos then they can stay below. for example, 4 hundo charmanders. fill final form first, then middle, then
+    1st stage, and the 4th keep as whatever."): a build never keeps a later stage empty -- it goes
+    when it is the only free hundo that can fill it -- and it stays whenever another free hundo, of its stage or an earlier
+    one, can go instead (the extra that stays below)."""
     blocked = blocked or (lambda r: None)
     nice = nice or (lambda s: s.replace('_', ' ').title())
+    last = last or (lambda r: False)
     out = {}
     for sh in (False, True):
         hs = [r for r in hundos if ((r.get('fresh_alignment') or 0) == 1) == sh]
@@ -594,7 +601,8 @@ def hundo_combup(hundos, own, later, depth, blocked=None, nice=None):
             c = [u for u, st in chain.items() if u not in goes and t in st and depth(own(row[u])) > depth(t)]
             if not c:
                 continue
-            u = min(c, key=lambda u: (depth(own(row[u])), bool(row[u].get('fresh_shiny')), -(row[u].get('cp') or 0), u))
+            u = min(c, key=lambda u: (bool(last(row[u])), depth(own(row[u])), bool(row[u].get('fresh_shiny')),
+                                      -(row[u].get('cp') or 0), u))
             goes[u] = t
             at[own(row[u])].discard(u)
             at.setdefault(t, set()).add(u)
@@ -886,13 +894,27 @@ def _selftest():
        'hundo comb-up: a lone hundo goes to the furthest stage with none; every stage held = nothing; no way back')
     ck(hc([H('c1'), H('m1')]) == {'m1': 'charizard', 'c1': 'charmeleon'},
        'hundo comb-up: the nearest earlier stage gives its hundo, and the stage it leaves is filled in its turn')
-    ck(hc([H('c1', 300), H('c2', 500)], lambda r: 'built' if r['uid_hex'] == 'c2' else None) == {'c1': 'charizard'}
+    ck(hc([H('c1', 300), H('c2', 500)], lambda r: 'kept' if r['uid_hex'] == 'c2' else None) == {'c1': 'charizard'}
        and hc([H('c1'), H('m1')], lambda r: 'x' if r['uid_hex'] == 'm1' else None) == {'c1': 'charizard'},
        'hundo comb-up: a copy the label law keeps stays and still holds its stage; the next one goes')
     ck(hc([H('p1'), H('p2')]) == {} and hc([H('c1'), H('z1', a=1)]) == {'c1': 'charizard'}
        and hc([H('c1', a=1), H('c2', a=2), H('z1')]) == {'c1': 'charizard', 'c2': 'charmeleon'},
        'hundo comb-up: a line that branches is left alone; shadow hundos are a line of their own, purified count as regular')
     ck(hc([H('c1', 500, sh=1), H('c2', 300)]) == {'c2': 'charizard', 'c1': 'charmeleon'}, 'hundo comb-up: a shiny goes last')
+    # a copy BUILT as the stage it is gives LAST (2026-11-18 19:16: "if all stages are filled and there are extra hundos then
+    # they can stay below ... 4 hundo charmanders. fill final form first, then middle, then 1st stage, and the 4th keep as whatever.")
+    hl = lambda hs, *built: {u: v[0] for u, v in hundo_combup(hs, own_, lambda r: LATER.get(own_(r), ()), lambda s: DEPTH.get(s, 0),
+                                                              last=lambda r: r['uid_hex'] in built).items()}
+    ck(hl([H('c1', 500), H('z1')], 'c1') == {'c1': 'charmeleon'} and hl([H('c1', 500)], 'c1') == {'c1': 'charizard'},
+       'hundo comb-up: a build never keeps a later stage empty -- the only hundo that can fill it goes')
+    ck(hl([H('c1', 500), H('c2', 300), H('z1')], 'c1') == {'c2': 'charmeleon'}
+       and hl([H('c1', 500), H('c2', 300), H('c3', 200), H('c4', 100)], 'c1') == {'c2': 'charizard', 'c3': 'charmeleon'},
+       'hundo comb-up: his four Charmanders -- final, middle, first stage; with extras the built copy is the one that stays')
+    ck(hl([H('c1', 300), H('m1', 1500)], 'm1') == {'c1': 'charizard'}
+       and hc([H('c1', 300), H('m1', 1500)]) == {'m1': 'charizard', 'c1': 'charmeleon'},
+       'hundo comb-up: a built copy stays when a free hundo further back can fill the stage (nothing built: the nearest gives)')
+    ck(hl([H('c1', 500), H('c2', 490)], 'c1', 'c2') == {'c1': 'charizard', 'c2': 'charmeleon'},
+       'hundo comb-up: two builds and two empty stages -- both go, the highest CP furthest')
     _w = hundo_combup([H('s1'), H('t1')], own_, lambda r: LATER.get(own_(r), ()), lambda s: DEPTH.get(s, 0))
     ck(_w == {'s1': ('quilava', 'you have a hundo Typhlosion')}, 'hundo comb-up: the lone Cyndaquil case, with its reason')
     _w = hundo_combup([H('c1', 300), H('c2', 500)], own_, lambda r: LATER.get(own_(r), ()), lambda s: DEPTH.get(s, 0))
