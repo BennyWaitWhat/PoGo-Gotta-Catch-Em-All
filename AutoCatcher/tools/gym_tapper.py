@@ -107,6 +107,8 @@ var MISSING = [];
 var ROOT = null, GLS = null, GLS_CANDS = [], DIR = null;
 var CHAIN = '', LEAF = '', GAS = null, GBS = null, IN_BATTLE = false, ROUND = false;
 var ONEBYONE = false, RN = 0, OBO_AT = 0, OBO_RN = 0, MDLG = null, MDF_TOLD = false;   /* MDLG: the open ModalDialog (one-by-one OK) */
+var OBO_OURS = false;                         /* the battle in progress follows a Battle press of OURS (10 s): one by one runs away in
+                                                 our battles only -- one HE started stays a normal battle (app 1.8 Gym mode, --on-open) */
 var FLEEHOLD = false, HELD = null, HIS_GIVEUP_AT = 0, OUR_RUN_AT = 0, BATTLE_ON_AT = 0, OUTCOME_AT = 0;   /* --on-open (the runner
    turns FLEEHOLD on): HIS run-away = hands off that gym until he closes it. 11-18 23:23:37-40 his give-up prompt, then the battle
    over with no result screen; 23:23:41 a Battle press of ours on the same gym; 23:23:47 he killed the game ("it was pissing me
@@ -874,7 +876,8 @@ function walkChain() {                        /* the game's own state machine, r
   if (HELD && (!gst || !gst.equals(HELD))) HELD = null;                         /* a hold of his ends with its gym screen */
   GAS = gas; GSTATE = gst;
   var wasBattle = IN_BATTLE; IN_BATTLE = !!gbs; GBS = gbs;
-  if (IN_BATTLE && !wasBattle) { RN = 0; OBO_RN = 0; OBO_SKIP = false; BATTLE_ON_AT = Date.now(); send({k: 'battle', on: true}); }
+  if (IN_BATTLE && !wasBattle) { RN = 0; OBO_RN = 0; OBO_SKIP = false; BATTLE_ON_AT = Date.now();
+    OBO_OURS = OUR_BATTLE_AT > 0 && BATTLE_ON_AT - OUR_BATTLE_AT < 10000; send({k: 'battle', on: true, ours: OBO_OURS}); }
   if (!IN_BATTLE && wasBattle) { ROUND = false; FAINT_DUE = Date.now() + 1500; send({k: 'end', fast: ST.fast, charged: ST.charged});
     fledCheck(gst);                            /* his run-away: disarmed HERE, before gymScreen() can press Battle this frame */
     if (AUTODEP && leaf === 'MapExploreState' && Date.now() >= E29_HOLD) { PENDING = AUTODEP.fid; PENDING_AT = Date.now(); } }
@@ -898,7 +901,7 @@ function fledCheck(gst) {                     /* at the battle's end, in the fra
 }
 function markGiveUp(now) {                    /* a ModalDialog just came up: in a battle, with no run-away of ours in the 8 s before it,
                                                  it is HIS give-up prompt (the only dialog a gym battle shows; one-by-one runs its own) */
-  if (FLEEHOLD && IN_BATTLE && !ONEBYONE && now - OUR_RUN_AT > 8000) HIS_GIVEUP_AT = now;
+  if (FLEEHOLD && IN_BATTLE && !(ONEBYONE && OBO_OURS) && now - OUR_RUN_AT > 8000) HIS_GIVEUP_AT = now;
 }
 function topScreen(now) {                     /* the live top screen (GuiLayerService.TopGui) and what it means */
   if (!GLS) {
@@ -1436,7 +1439,7 @@ function frameTick() {
       else send({k: 'err', e: 'unhang: not in a battle'}); }
     /* one-by-one: the 2nd defender's round is up -- ONE run-away per round, never while any dialog is on top (the runner
        answers the give-up prompt with ONE tap on OK) */
-    if (ONEBYONE && ROUND && RN >= 2 && IN_BATTLE && OBO_RN !== RN && TOP !== 'ModalDialog') {
+    if (ONEBYONE && OBO_OURS && ROUND && RN >= 2 && IN_BATTLE && OBO_RN !== RN && TOP !== 'ModalDialog') {
       /* only once the round is LIVE (the battle service says active): at the round's first frame the server is not in the
          battle yet and OK on the give-up prompt is ignored (00:03:10, 00:03:31 -- the 2nd defender got fought behind it) */
       var oblive = false; try { var obsv = GBS ? GBS.add(O.gbsSvc).readPointer() : NULL; oblive = isA(obsv, K.svc) && M.active && callB(M.active, obsv, 'battleActive?') === true; } catch (e) {}

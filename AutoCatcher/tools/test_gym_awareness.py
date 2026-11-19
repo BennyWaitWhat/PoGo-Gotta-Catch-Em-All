@@ -1202,13 +1202,13 @@ function send(m) { SENT.push(m); }
 function Ptr(a) { this.a = a; }
 Ptr.prototype.equals = function (o) { return !!o && this.a === o.a; };
 var FLEEHOLD = false, HELD = null, HIS_GIVEUP_AT = 0, OUR_RUN_AT = 0, BATTLE_ON_AT = 0, OUTCOME_AT = 0;
-var IN_BATTLE = false, ONEBYONE = false, AUTODEP = null, PENDING = null, EXPECT_PREP = 0;
+var IN_BATTLE = false, ONEBYONE = false, OBO_OURS = false, AUTODEP = null, PENDING = null, EXPECT_PREP = 0;
 """
 FLEE_RUN = r"""
 var out = {}, T = 1000000, GS = new Ptr(7), realNow = Date.now;
 Date.now = function () { return T; };
 function reset() { SENT = []; FLEEHOLD = true; HELD = null; HIS_GIVEUP_AT = 0; OUR_RUN_AT = 0; BATTLE_ON_AT = T - 60000; OUTCOME_AT = 0;
-  IN_BATTLE = true; ONEBYONE = false; AUTODEP = {fid: 'gymA'}; PENDING = 'gymA'; EXPECT_PREP = 5; }
+  IN_BATTLE = true; ONEBYONE = false; OBO_OURS = false; AUTODEP = {fid: 'gymA'}; PENDING = 'gymA'; EXPECT_PREP = 5; }
 reset(); markGiveUp(T - 1000); out.marked = HIS_GIVEUP_AT === T - 1000;
 out.flee = fledCheck(GS) === true && SENT.length === 1 && SENT[0].k === 'fled' && SENT[0].fid === 'gymA' && SENT[0].held === true && SENT[0].ago === 1000;
 out.disarmed = AUTODEP === null && PENDING === null && EXPECT_PREP === 0 && HELD === GS && HIS_GIVEUP_AT === 0;
@@ -1219,7 +1219,8 @@ reset(); markGiveUp(T - 5000); OUTCOME_AT = T - 2000; out.outcome = fledCheck(GS
 reset(); markGiveUp(T - 20000); out.old = fledCheck(GS) === false && AUTODEP !== null;
 reset(); HIS_GIVEUP_AT = T - 61000; out.lastBattle = fledCheck(GS) === false;
 reset(); FLEEHOLD = false; markGiveUp(T - 1000); out.off = HIS_GIVEUP_AT === 0 && fledCheck(GS) === false && AUTODEP !== null;
-reset(); ONEBYONE = true; markGiveUp(T - 1000); out.obo = HIS_GIVEUP_AT === 0;
+reset(); ONEBYONE = true; OBO_OURS = true; markGiveUp(T - 1000); out.obo = HIS_GIVEUP_AT === 0;
+reset(); ONEBYONE = true; OBO_OURS = false; markGiveUp(T - 1000); out.oboHis = HIS_GIVEUP_AT === T - 1000;
 reset(); IN_BATTLE = false; markGiveUp(T - 1000); out.noBattle = HIS_GIVEUP_AT === 0;
 reset(); markGiveUp(T - 1000); out.mapFlee = fledCheck(null) === true && HELD === null && AUTODEP === null && SENT[0].held === false;
 reset(); AUTODEP = null; markGiveUp(T - 1000); out.hisOwn = fledCheck(GS) === true && SENT[0].fid === null && HELD === GS;
@@ -1251,7 +1252,8 @@ def flee_block(js):
                         ("old", "a prompt 20 s before the end (cancelled): not a run-away"),
                         ("lastBattle", "a prompt from the battle before this one: not a run-away"),
                         ("off", "the switch off (every run but --on-open): nothing is marked, nothing disarmed"),
-                        ("obo", "one-by-one runs its own run-aways: nothing is marked"),
+                        ("obo", "one-by-one runs its own run-aways in OUR battles: nothing is marked"),
+                        ("oboHis", "one-by-one, a battle HE started (no Battle press of ours): his give-up prompt is still his"),
                         ("noBattle", "a dialog outside a battle is no give-up prompt"),
                         ("mapFlee", "a battle that ended on the map: disarmed, no gym screen to hold"),
                         ("hisOwn", "his own battle (nothing armed): still held")):
@@ -1259,6 +1261,10 @@ def flee_block(js):
     wc = js_fn(js, "walkChain")
     check(wc.index("send({k: 'end'") < wc.index("fledCheck(gst);") < wc.index("PENDING = AUTODEP.fid;"),
           "walkChain: the run-away check comes right after 'end' and before the re-open of a battle that ended on the map")
+    check("OBO_OURS = OUR_BATTLE_AT > 0 && BATTLE_ON_AT - OUR_BATTLE_AT < 10000;" in wc
+          and "if (ONEBYONE && OBO_OURS && ROUND && RN >= 2 && IN_BATTLE && OBO_RN !== RN" in js and "\nvar OBO_OURS = false;" in js,
+          "Gym mode (app 1.8): a battle's start stamps whether OUR Battle press began it; one by one runs away in OUR battles only "
+          "-- one he started stays a normal battle")
     check("BATTLE_ON_AT = Date.now();" in wc and wc.index("if (HELD && (!gst || !gst.equals(HELD))) HELD = null;") < wc.index("GAS = gas; GSTATE = gst;"),
           "walkChain: a battle's start is stamped; a hold ends with its gym screen")
     ft = js_fn(js, "frameTick")
@@ -1291,6 +1297,43 @@ class FleeSc:
             self.calls.append((n,) + a)
             return {"held": True} if n == "hold" else {}
         return f
+
+
+def gym_mode_checks():
+    """The app's Gym mode (app 1.8; Benny 11-19: "an option to gym mode in order vs one by one"): the file next to the switch,
+    read as one by one only for "1"; tick() takes a CHANGE of it between battles only, and never undoes the runner's own
+    one-by-one OFF (the give-up prompt that stayed up) until he picks again."""
+    n0 = len(FAILS)
+    check(gym_run.gym_mode_file("/data/local/tmp/pogo_gym.on").replace("\\", "/") == "/data/local/tmp/pogo_gym_obo.on"
+          and gym_run.gym_mode_file(None) is None, "Gym mode: the file sits next to the Gym Battle switch")
+    with tempfile.TemporaryDirectory() as td:
+        f = os.path.join(td, "pogo_gym_obo.on")
+        got = []
+        for body in ("1\n", "0\n", "junk", "", " 1 "):
+            with open(f, "w", encoding="utf-8") as h:
+                h.write(body)
+            got.append(gym_run.gym_mode_read(f))
+        got.append(gym_run.gym_mode_read(os.path.join(td, "none.on")))
+        got.append(gym_run.gym_mode_read(None))
+    check(got == [True, False, False, False, True, None, None], f"Gym mode: 1 = one by one, anything else = in order, no file = None -- {got}")
+    with open(gym_run.__file__, encoding="utf-8") as f:
+        src = f.read()
+    tk = src[src.index("    def tick():"):]
+    tk = tk[:tk.index("\n    def ", 10)] if "\n    def " in tk[10:] else tk
+    sy = src[src.index("    def gym_mode_sync():"):]
+    sy = sy[:sy.index("\n\n")]
+    check(src.index("    def gym_mode_sync():") < src.index("    def tick():")
+          and tk.split("\n")[1:5] == ["        quick_cmds()", "        feed_record()", "        gym_mode_sync()",
+                                      '        _oran = getattr(g, "obo_ran", 0.0)'],
+          "tick() reads the app's Gym mode (every loop: the wait, the drill, a battle) and goes on with its own body")
+    check("if _gm is None or _gm == GM[\"seen\"] or g.in_battle() or g.prep:" in sy and "sc.exports_sync.onebyone(_gm)" in sy
+          and 'GM["seen"] = a.one_by_one = _gm' in sy and 'CT["cur"] = None' in sy,
+          "gym_mode_sync(): a change only, never mid-battle or on a party screen; the tapper and the counters follow it")
+    st = src[src.index('    GM = {"path": gym_mode_file(a.switch) if a.on_open else None'):]
+    check(st.index('a.one_by_one = GM["seen"]') < st.index("    if a.one_by_one:"),
+          "a start reads the app's Gym mode BEFORE the one-by-one switch-on (a runner started in one by one starts in it)")
+    if len(FAILS) == n0:
+        print("ok: Gym mode (app 1.8) -- in order / one by one from the app's file, taken between battles, our battles only")
 
 
 def flee_checks():
@@ -1401,6 +1444,7 @@ def main():
         misc_checks()
         stall_checks()
         onopen_checks()
+        gym_mode_checks()
         flee_checks()
     finally:
         gym_run.time = real_time

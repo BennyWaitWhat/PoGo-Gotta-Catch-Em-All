@@ -62,6 +62,9 @@ import java.util.TimeZone;
  * 1.7: Reset counters in the status card (Benny 2026-11-18: "how to restart/reset the stardust counter etc"). The
  * catcher now keeps its counters through its own updates and game restarts; they start from 0 only when this is
  * tapped twice (Logic.reset). Beside it: since when they count (since= of the catcher's line).
+ * 1.8: Gym mode under Gym Battle (Benny 2026-11-19: "make an option to gym mode in order vs one by one"): In order
+ * fights every defender, One by one beats the first defender, runs at the 2nd defender's round and battles again. The
+ * runner takes a change between battles; a battle he starts himself always stays a normal one (Logic.gymModeHint).
  *
  * The page answers "is it working?" first (the header and one status card), then shows every switch as a big tile you
  * tap anywhere, a Berries picker, Transfer on Catch, and the two one-off actions. Three classes live in this file:
@@ -293,7 +296,7 @@ public class MainActivity extends Activity implements Screen.Host {
                 s.flags[6] = "250";
                 s.levels = LEVELS;
             } else if (kind == 1) {
-                s.flags = new String[]{"1", "1", "1", "1", "1", "1", "700"};   // catch, spin, perfect, tap, gym, berries, dust
+                s.flags = new String[]{"1", "1", "1", "1", "1", "1", "700", "1"};   // catch, spin, perfect, tap, gym, berries, dust, gym mode
                 s.state = "caught=1234 fled=56 spins=789 xp=1234567 items=4321 ready=0 cooling=3 rate=0.0 up=7200 "
                         + "dust=1250000 balls=12/3/4 pinap=0 razz=0 sp=1 only=700 dustchk=100 since=" + (now / 1000 - 7380)
                         + " why=out of balls: 12 Poke, "
@@ -309,7 +312,7 @@ public class MainActivity extends Activity implements Screen.Host {
                 s.tocExists = true;
                 s.toc = Logic.tocJson(1, 1, 85);
             } else {
-                s.flags = new String[]{"1", "0", "0", "0", "1", "razz", "1000"};
+                s.flags = new String[]{"1", "0", "0", "0", "1", "razz", "1000", "0"};
                 s.levels = "";
                 s.apples = "0";
                 s.state = "caught=57 fled=3 spins=12 xp=8400 items=40 ready=2 cooling=1";   // an older catcher: no extra keys
@@ -357,6 +360,13 @@ final class Logic {
     /** A switch file: "1" is on, anything else is off (the catcher's flag()). */
     static String flagNorm(String text) {
         return "1".equals(text == null ? "" : text.trim()) ? "1" : "0";
+    }
+
+    /** The line under Gym mode (1.8) for what the file holds ("1" = one by one, anything else = in order). */
+    static String gymModeHint(String shown) {
+        return "1".equals(shown)
+                ? "beats the first defender, runs at the 2nd and battles again -- a battle you start stays normal"
+                : "every defender, in order";
     }
 
     /** The berries file the way catch_loop_fast.berry_mode reads it: 1 / pinap / razz, anything else = none ("0"). */
@@ -904,6 +914,9 @@ final class Screen {
     // (run_gym.sh); gym-off only writes the flag and the supervisor stops by itself. The gym runner writes ONE status
     // line, which the tile shows.
     static final String GYMFLAG = T + "pogo_gym.on", GYM_STATUS = T + "pogo_gym_status.txt";
+    // Gym mode (1.8): 1 = one by one, anything else = in order. The gym runner reads it between battles; catcher_ctl.sh
+    // gym-order / gym-onebyone write it.
+    static final String GYMOBOFLAG = T + "pogo_gym_obo.on";
     // High stardust only: a whole number. 0 (or no file) = everything; 1 = everything that pays more than a normal
     // catch (weather-boosted counts); N = only catches worth N+ stardust. Every shiny is always caught. The catcher
     // reads it; catcher_ctl.sh dust-off / dust-on / dust-<N> write it. What each step means today (how many species,
@@ -1022,8 +1035,8 @@ final class Screen {
     private final Flag catchF = new Flag(CATCHFLAG, Flag.SWITCH), spinF = new Flag(SPINFLAG, Flag.SWITCH),
                        perfectF = new Flag(PERFECTFLAG, Flag.SWITCH), tapF = new Flag(TAPFLAG, Flag.SWITCH),
                        gymF = new Flag(GYMFLAG, Flag.SWITCH), berryF = new Flag(BERRYFLAG, Flag.BERRIES),
-                       dustF = new Flag(DUSTFLAG, Flag.NUMBER);
-    private final Flag[] flags = {catchF, spinF, perfectF, tapF, gymF, berryF, dustF};
+                       dustF = new Flag(DUSTFLAG, Flag.NUMBER), gymModeF = new Flag(GYMOBOFLAG, Flag.SWITCH);
+    private final Flag[] flags = {catchF, spinF, perfectF, tapF, gymF, berryF, dustF, gymModeF};
     private final ArrayList<Tile> tiles = new ArrayList<Tile>();
     private Tile catchTile, gymTile, alertsTile;
 
@@ -1035,8 +1048,8 @@ final class Screen {
     private TextView sinceText, resetBtn, resetNote;
     private long resetArmedMs = 0, resetTapMs = 0;
     private int resetPainted = -1;
-    private Bar berryBar, dustBar;
-    private TextView berryStock, dustHint, dustWarn;
+    private Bar berryBar, dustBar, gymModeBar;
+    private TextView berryStock, dustHint, dustWarn, gymModeHint;
     private LinearLayout tocRow1, tocRow2;
     private View tocSection, tocCardView;   // the section label and the card: hidden until the file exists
     private TextView bothBtn;               // Start / Stop Catch + Spin (Logic.both)
@@ -1092,6 +1105,13 @@ final class Screen {
         content.addView(tileRow(tPerfect, tTap), lp(MATCH, WRAP, 10, 0));
         gymTile = tile("Gym Battle", gymF, "gym-on", "gym-off", "", "", 3);
         content.addView(gymTile.box, lp(MATCH, WRAP, 10, 0));
+        // Gym mode (1.8; Benny 2026-11-19: "make an option to gym mode in order vs one by one")
+        content.addView(section("GYM MODE", null), sectionLp());
+        gymModeBar = new Bar(gymModeF, new String[][]{{"In order", "0", "gym-order"}, {"One by one", "1", "gym-onebyone"}});
+        content.addView(gymModeBar.view, lp(MATCH, WRAP, 0, 0));
+        content.addView(gymModeBar.note, noteLp());
+        gymModeHint = text("", 12, DIMC, false);     // what the lit choice does
+        content.addView(gymModeHint, noteLp());
 
         // High stardust only (Benny 2026-11-18: "a catch mode that only catches high stardust pokemon (+ shinies)",
         // "inclusive of EVERY higher than avg stardust pokemon for that mode")
@@ -1231,6 +1251,8 @@ final class Screen {
             paintBoth();
             paintDust(s);
             paintBerries(s);
+            gymModeBar.paint();
+            gymModeHint.setText(Logic.gymModeHint(gymModeF.shown));
             paintToc(s);
             paintReward(s);
             paintCull(s);

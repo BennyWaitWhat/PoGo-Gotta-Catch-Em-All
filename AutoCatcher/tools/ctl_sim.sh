@@ -157,13 +157,13 @@ for v in berries-off:0 berries-pinap:pinap berries-razz:razz berries-on:1; do
 done
 # S. status: read only
 clean; flags 1 1 0 0 1 0 pinap; rm -f "$SB/tmp/pogo_dust.on"; ps_is "$CATCHER_PS"; quiet status; total "S status: no call at all" 0
-is "S line (no dust file = 0)" "$out" "proc=up catch=1 spin=1 perfect=0 tap=0 apples=1 gym=0 berries=pinap dust=0"
+is "S line (no dust file = 0)" "$out" "proc=up catch=1 spin=1 perfect=0 tap=0 apples=1 gym=0 gymmode=order berries=pinap dust=0"
 # L. Stardust-only verbs: the flag only, a whole number only
 clean; flags 1 1 0 0 1 0 pinap; ps_is "$CATCHER_PS"; echo 0 > "$SB/tmp/pogo_dust.on"
 for v in dust-500:500 dust-off:0 dust-on:1 dust-1000:1000 dust-abc:1000 dust-:1000 dust-99999999:1000 dust-5x:1000 dust-007:7 dust-700:700; do
   quiet "${v%%:*}"; is "L ${v%%:*}: the file, no call" "$(flag dust)|$(count "$CALLS")|$rc" "${v##*:}|0|0"
 done
-quiet status; is "L status says dust=700" "$out" "proc=up catch=1 spin=1 perfect=0 tap=0 apples=1 gym=0 berries=pinap dust=700"
+quiet status; is "L status says dust=700" "$out" "proc=up catch=1 spin=1 perfect=0 tap=0 apples=1 gym=0 gymmode=order berries=pinap dust=700"
 echo junk > "$SB/tmp/pogo_dust.on"; quiet status; is "L a file that is not a number reads as 0" "${out##* }" "dust=0"
 clean; flags 0 0 0 0 0 0 0; ps_is; echo 0 > "$SB/tmp/pogo_dust.on"; quiet dust-500; total "L dust-500 with everything off: no call (a dust verb starts nothing)" 0
 # R. Reset counters (app 1.7): the tap's time goes into the request file, and nothing else happens
@@ -180,6 +180,20 @@ is "R a second tap writes a newer time (the catcher carries out each new time on
 logged "R ... logged old -> new" "counters-reset: pogo_counters.req 1700000000 -> $r "
 clean; flags 0 0 0 0 0 0 0; ps_is; quiet counters-reset; total "R counters-reset with every switch off and no catcher: no call (it starts nothing)" 0
 quiet bogus-verb; is "R the usage line lists it" "$(echo "$out" | grep -c '|counters-reset|')" 1
+# O. Gym mode (app 1.8): in order / one by one -- the flag only; the gym runner reads it between battles, nothing starts or stops
+OBO="$SB/tmp/pogo_gym_obo.on"
+clean; flags 1 1 0 0 1 1 pinap; ps_is "$CATCHER_PS" "$GYM_PS"; rm -f "$OBO"
+quiet status; is "O no mode file reads as in order" "$(echo "$out" | grep -o 'gymmode=[a-z]*')" "gymmode=order"
+for v in gym-onebyone:1 gym-order:0 gym-onebyone:1; do
+  quiet "${v%%:*}"; is "O ${v%%:*}: the file, no call, Gym Battle as it was" "$(flag gym_obo)|$(count "$CALLS")|$rc|$(flag gym)" "${v##*:}|0|0|1"
+done
+quiet status; is "O status says gymmode=onebyone" "$(echo "$out" | grep -o 'gymmode=[a-z]*')" "gymmode=onebyone"
+logged "O flags.log names the verb" "gym-onebyone: pogo_gym_obo\.on 0 -> 1 \(verb=gym-onebyone "
+echo junk > "$OBO"; quiet status; is "O a file that is not 1 reads as in order" "$(echo "$out" | grep -o 'gymmode=[a-z]*')" "gymmode=order"
+clean; flags 0 0 0 0 0 0 0; ps_is; quiet gym-onebyone; total "O gym-onebyone with everything off: no call (it starts nothing)" 0
+is "O ... and Gym Battle stays off" "$(flag gym)|$(flag gym_obo)" "0|1"
+quiet bogus-verb; is "O the usage line lists both" "$(echo "$out" | grep -c '|gym-order|gym-onebyone|')" 1
+rm -f "$OBO"
 
 echo "== N: no reward run in flight, each verb does its process work"
 for v in catch-on spin-on perfect-on tap-on apples-on start restart; do
@@ -260,7 +274,7 @@ for v in gym-off:gym:0 berries-razz:berries:razz dust-700:dust:700; do
   if [ "$(flag "$f")" = "$want" ] && [ "$(count "$CALLS")" = 0 ] && [ "$(count "$SB/sleeps.log")" = 0 ] && ! grep -q "in flight" "$FLOG"; then ok "R2 $verb: its flag as always, and no wait for the lock"; else bad "R2 $verb: flag=$(flag "$f")"; fi
 done
 clean; flags 1 1 0 0 1 0 pinap; echo 0 > "$SB/tmp/pogo_dust.on"; ps_is "$CATCHER_PS"; mark 5; mkdir "$LOCKD"; quiet status
-is "R2 status during a run: its line, at once" "$out|$(count "$SB/sleeps.log")" "proc=up catch=1 spin=1 perfect=0 tap=0 apples=1 gym=0 berries=pinap dust=0|0"
+is "R2 status during a run: its line, at once" "$out|$(count "$SB/sleeps.log")" "proc=up catch=1 spin=1 perfect=0 tap=0 apples=1 gym=0 gymmode=order berries=pinap dust=0|0"
 if [ -d "$LOCKD" ]; then ok "R2 status leaves the run's lock alone"; else bad "R2 status removed the lock"; fi
 
 echo "== R3-R5: when a marker counts"
@@ -335,7 +349,7 @@ if [ -d "$MARK" ]; then ok "R10 a marker that another run makes while this one e
 
 echo "== R11-R18: the lock, and the moments around a run's start and end"
 clean; flags 1 1 0 0 1 0 pinap; echo 0 > "$SB/tmp/pogo_dust.on"; ps_is "$CATCHER_PS"; mkdir "$LOCKD"; quiet status
-is "R11 the lock is held by another verb: 39 half-second waits, then it answers anyway" "$(grep -c '^sleep 0.5$' "$SB/sleeps.log")|$out" "39|proc=up catch=1 spin=1 perfect=0 tap=0 apples=1 gym=0 berries=pinap dust=0"
+is "R11 the lock is held by another verb: 39 half-second waits, then it answers anyway" "$(grep -c '^sleep 0.5$' "$SB/sleeps.log")|$out" "39|proc=up catch=1 spin=1 perfect=0 tap=0 apples=1 gym=0 gymmode=order berries=pinap dust=0"
 if [ -d "$LOCKD" ]; then ok "R11 ... and the other verb's lock is still there"; else bad "R11 it removed a lock it did not hold"; fi
 clean; flags 0 1 0 0 1 0 pinap; ps_is "$CATCHER_PS"; mkdir "$LOCKD"; : > "$SB/marker_on_sleep"; quiet catch-on
 if [ "$(count "$CALLS")" = 0 ] && [ "$(flag catch)" = 1 ] && [ -d "$LOCKD" ] && grep -q "catch-on: reward run in flight: flag only" "$FLOG"; then ok "R12 a run starts while catch-on waits for the lock: it looks again and is flag only"; else bad "R12 catch-on"; fi
