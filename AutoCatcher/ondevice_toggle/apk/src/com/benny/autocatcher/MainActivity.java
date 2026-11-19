@@ -796,18 +796,20 @@ final class Logic {
         return new String[]{"the gym runner is not answering", "" + BAD};
     }
 
-    /** The PC's cull status line: {text, tone, "1" when the button may be tapped}. A tap the PC has not answered yet
-     *  says so; the button stays off while a cull is queued or running, so one tap is one cull (the rules of app 1.2).
-     *  statusMs = the status file's last-modified time (0: none); tapMs = when Cull Now was tapped (0: not here). */
+    /** The cull's status line, written by the phone's own cull (Termux, ~/cull): {text, tone, "1" when the button may be
+     *  tapped}. A tap it has not answered yet says so; the button stays off while a cull is queued or running, so one tap is
+     *  one cull (the rules of app 1.2). The whole cull runs on the phone since 2026-11-18; until app 1.9 these lines still
+     *  said "waiting for the PC" (Benny 11-19: "both times it said it was waiting on PC too"). statusMs = the status file's
+     *  last-modified time (0: none); tapMs = when Cull Now was tapped (0: not here). */
     static String[] cull(String s, long statusMs, long tapMs, long now) {
-        if (tapMs > 0 && statusMs < tapMs - 2000) {   // the PC has not written since the tap
+        if (tapMs > 0 && statusMs < tapMs - 2000) {   // the phone's cull has not written since the tap
             boolean late = now - tapMs > CULL_LATE_MS;
-            return new String[]{late ? "the PC has not picked it up -- is it on and is the listener running?"
-                                     : "sent -- waiting for the PC...", "" + (late ? BAD : WAIT), late ? "1" : "0"};
+            return new String[]{late ? "no answer from the phone's cull -- tap again" : "sent -- the phone's cull is starting...",
+                                "" + (late ? BAD : WAIT), late ? "1" : "0"};
         }
         String l = s == null ? "" : s.toLowerCase(Locale.US);
         boolean inFlight = l.startsWith("queued") || l.startsWith("running");
-        boolean stale = statusMs > 0 && now - statusMs > CULL_STALE_MS;   // a PC that died mid-pass never says done
+        boolean stale = statusMs > 0 && now - statusMs > CULL_STALE_MS;   // a cull that died mid-pass never says done
         boolean busy = inFlight && !stale;
         String text = (s == null || s.length() == 0) ? "" : (inFlight && stale ? s + " (no update for 15+ min)" : s);
         int tone = l.startsWith("done") ? GOOD : l.startsWith("stopped") ? BAD : busy ? WAIT : DIM;
@@ -934,9 +936,16 @@ final class Screen {
     // made the file; without it the whole card is hidden (app 1.6; until 1.5 it sat there greyed out, saying "Not set
     // up on this phone") and comes back by itself when the file exists.
     static final String TOCFILE = T + "pogo_toc.json";
-    // CULL NOW (Benny 2026-11-05): the cull runs on the PC (pogo_extract/cull_button.py). A tap writes one request line
-    // as root; the PC picks it up within ~15 s and writes its progress to CULL_STATUS (queued / running / done / STOPPED).
+    // CULL NOW (Benny 2026-11-05; on the phone since 2026-11-18): the cull runs ON THE PHONE, in Termux, from the repo clone
+    // ~/cull (tools/cull_phone.sh runs pogo_extract/cull_button.py). A tap writes one request line as root; the listener
+    // picks it up within ~15 s and writes its progress to CULL_STATUS (ready / queued / running / done / STOPPED). The PC can
+    // be off. A tap first starts the listener if it is not running (CULL_START), so a dead one never swallows a tap.
     static final String CULL_REQ = T + "pogo_cull.req", CULL_STATUS = T + "pogo_cull_status.txt";
+    static final String CULL_START = "pgrep -f '[c]ull_button[.]py' >/dev/null || am startservice --user 0 "
+            + "-n com.termux/com.termux.app.RunCommandService -a com.termux.RUN_COMMAND "
+            + "--es com.termux.RUN_COMMAND_PATH /data/data/com.termux/files/usr/bin/bash "
+            + "--esa com.termux.RUN_COMMAND_ARGUMENTS /data/data/com.termux/files/home/cull/tools/cull_phone.sh "
+            + "--ez com.termux.RUN_COMMAND_BACKGROUND true";
 
     private static final int MATCH = LinearLayout.LayoutParams.MATCH_PARENT, WRAP = LinearLayout.LayoutParams.WRAP_CONTENT;
 
@@ -1693,9 +1702,10 @@ final class Screen {
     private void onCull() {
         enable(cullBtn, false);
         cullTapMs = System.currentTimeMillis();
-        line(cullStatus, "sent -- waiting for the PC...", AMBER);
+        line(cullStatus, "sent -- the phone's cull is starting...", AMBER);
         new Thread(new Runnable() {
             public void run() {
+                shell(CULL_START);   // (a running listener: nothing; a second one would exit on its own mutex anyway)
                 shell("echo \"requested $(date +%s) $(date +%H:%M:%S)\" > " + CULL_REQ
                         + " && chmod 666 " + CULL_REQ + " && chcon u:object_r:shell_data_file:s0 " + CULL_REQ);
                 main.post(new Runnable() {
@@ -2148,7 +2158,7 @@ final class Screen {
             {"Berries", "What is fed before the throw. Pinap: a Pinap on every Pokemon. Razz: a Razz on the hard ones only. Both: Razz on the hard ones, Pinap on the rest. Never a Golden Razz or a Silver Pinap."},
             {"Transfer on Catch", "Tags junk the moment you catch it, so less piles up for the cull. It only tags; it never releases anything. Its card shows on this screen once it is set up on the phone."},
             {"Catch Rewards", "Clears stacked Field Research reward encounters that piled up while your box was full. One run at a time: the button stays off until the run is done, and the catcher pauses for it. Switch Gym Battle off first."},
-            {"Cull Now", "Asks the PC to run one cull. It only tags the Transfer pile; you release by hand. The PC must be on."},
+            {"Cull Now", "Runs one cull right on the phone (the PC can be off): it reads your bag and tags the Transfer pile. It only tags; you release by hand. Go back to Pokemon GO after the tap: it starts once the game is on screen."},
             {"In the notification shade", "While a switch is on, a notification shows the catch count and has Catch, Spin and Gym buttons, so you can flip them without leaving the game. It stays for 30 minutes after the last switch went off, so Catch on is still one pull-down away."},
             {"Alerts", "A banner with sound when catching stops (storage full, no balls...), when the Star Piece runs out, or when the gym run stops. Once per change, never again while nothing changes."},
         };

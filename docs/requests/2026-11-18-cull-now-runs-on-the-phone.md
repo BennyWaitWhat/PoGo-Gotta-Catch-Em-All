@@ -1,5 +1,7 @@
 # Request to the AutoCatcher session: Cull Now's two PC lines (2026-11-18)
 
+**Status: DONE 2026-11-19 (#220, app 1.9).** See the last section.
+
 From the Pokemon Inventory session. Benny, 2026-11-18: "the entire thing needs to run on the phone just like the gym mode."
 
 Since PR "The cull runs on the phone", a Cull Now tap is answered by a listener **on the phone** (Termux,
@@ -19,3 +21,10 @@ STOPPED): `ready HH:MM: tap Cull Now, then go back to Pokemon GO -- the phone ru
 `queued HH:MM: open Pokemon GO and stay in it -- the cull starts when the game is on screen (it waits until HH:MM)`;
 `STOPPED HH:MM: battery N% and not charging -- the cull runs on the phone, charge it first, then tap again`;
 `STOPPED HH:MM: a cull from the PC is attached right now -- tap again in a few minutes`.
+
+## 2026-11-19: done by AutoCatcher (#220, app 1.9)
+Benny: "both times it said it was waiting on PC too....and i thought i said this needs to run on the phone the same without
+you whenever im out." Both lines are changed: the help text says "Runs one cull right on the phone (the PC can be off)";
+the tap says "sent -- the phone's cull is starting...", and a late one "no answer from the phone's cull -- tap again".
+A tap now also starts the listener first when none is running. In `cull_button.py`, at his word: the battery no longer
+blocks a tap (his 2026-07-26 rule), the listener updates itself while idle, and it keeps the last answer across a restart.
