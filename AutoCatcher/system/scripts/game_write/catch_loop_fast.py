@@ -1660,7 +1660,7 @@ _DUST = {"n": 0, "state": "off", "skip": [], "skipwx": [], "kept": 0, "note": ""
          "twhy": "", "tcheck": 0, "log": []}
 # WEATHER BOOST read (wxOf in the JS): found = its field resolved at this attach; b / u / bad = the track record of this game
 # version -- boosted catches that paid the +25%, unboosted ones that did not, catches that paid against their flag
-WX = {"found": False, "key": "", "b": 0, "u": 0, "bad": 0, "min": None, "rows": {}, "said": None, "saved": None, "savet": 0, "ver": {}}
+WX = {"found": False, "key": "", "b": 0, "u": 0, "hi": 0, "lo": 0, "min": None, "rows": {}, "said": None, "saved": None, "savet": 0, "ver": {}}
 WX_NEED = 12   # boosted AND unboosted catches that must agree with the server's pay before the flag may decide anything
 DUST_UPD = {"proc": None, "fh": None, "t": 0.0, "st": None, "stt": 0.0}   # the table's updater: its child process, when it was
 # last started, and its record (catch_dust.state.json) as last read; later also what it last said (miss, misst, err)
@@ -1956,11 +1956,22 @@ def dust_table(now):
 
 def wx_judge(rows):
     """One minute's catches of normal-level species in one Star Piece state, rows = [(award, flag says boosted)] ->
-    (boosted ones that agree, unboosted ones that agree, catches that paid AGAINST their flag). The server pays a boosted
-    catch +25% on the stardust (150 against 125, 275 against 225, 412 against 337: 1.20-1.22x with the flat 25).
+    (boosted ones that agree, unboosted ones that agree, hi, lo). hi and lo are the catches that paid AGAINST their
+    flag, kept apart by direction: hi = no flag, paid the boosted amount; lo = flagged, paid the normal amount.
+    The server pays a boosted catch +25% on the stardust (150 against 125, 275 against 225, 412 against 337: 1.20-1.22x
+    with the flat 25).
     Both kinds in the minute: each is held against its own kind's usual pay. One kind only: nothing can be proven, but
     two pay levels a step apart under ONE flag value means the flag missed some. Awards far off both levels (another
-    catch's award swapped in by the result queue, a first-catch bonus) are not judged."""
+    catch's award swapped in by the result queue, a first-catch bonus) are not judged.
+    WHY TWO DIRECTIONS (2026-11-18, the first live hour): two throws in the air at once get each other's awards (the
+    result queue matches replies in send order), so a boosted and an unboosted catch that cross show up as ONE hi and
+    ONE lo. 32 of 818 judged catches did, 24 of them inside ten minutes, and the verdict fell from "proven" back to
+    "proving" for 13 minutes on a flag that was right. A flag that is really wrong fails ONE way (never set: hi only;
+    always set: lo only) or on most catches; wx_verdict tells those from crossed awards.
+    For a crossed pair to cancel it has to be counted as one hi and one lo in EVERY minute, also one with one or two
+    flagged catches whose usual pay the crossing itself moved. So where the two kinds' usual pays do not show a working
+    flag (upside down, or the same), nothing agrees, and hi / lo are counted by pay level: an unflagged catch at the
+    boosted level, a flagged one at the normal level."""
     u, b = sorted(a for a, f in rows if not f), sorted(a for a, f in rows if f)
     mid = lambda v: v[(len(v) - 1) // 2]
     near = lambda a, m: abs(a / float(m) - 1) <= 0.03
@@ -1968,38 +1979,55 @@ def wx_judge(rows):
     if u and b:
         mu, mb = mid(u), mid(b)
         if step(mb, mu):
-            return sum(near(a, mb) for a in b), sum(near(a, mu) for a in u), sum(step(a, mu) for a in u) + sum(near(a, mu) for a in b)
-        if step(mu, mb):   # upside down: the unflagged ones paid the boost, the flagged ones did not
-            return 0, 0, len(u) + len(b)
-        return (0, 0, len(b)) if near(mb, mu) else (0, 0, 0)   # flagged and unflagged paid the same: the flag says nothing
+            return sum(near(a, mb) for a in b), sum(near(a, mu) for a in u), sum(step(a, mu) for a in u), sum(near(a, mu) for a in b)
+        if step(mu, mb):   # upside down: the unflagged ones' usual pay is the boosted one, the flagged ones' the normal one
+            return 0, 0, sum(near(a, mu) for a in u), sum(near(a, mb) for a in b)
+        if near(mb, mu):   # flagged and unflagged usually paid the same: the flag says nothing. Which pay is that?
+            if any(step(mu, a) for a in u + b):   # some paid a step LESS: it is the boosted pay
+                return 0, 0, sum(near(a, mu) for a in u), sum(step(mu, a) for a in b)
+            return 0, 0, sum(step(a, mu) for a in u), sum(near(a, mu) for a in b)   # the normal pay (nothing below it)
+        return 0, 0, 0, 0
     one = u or b
     if len(one) < 2 or not any(step(a, one[0]) for a in one):
-        return 0, 0, 0
-    return 0, 0, sum(step(a, one[0]) for a in one) if u else sum(near(a, one[0]) for a in one)
+        return 0, 0, 0, 0
+    return (0, 0, sum(step(a, one[0]) for a in one), 0) if u else (0, 0, 0, sum(near(a, one[0]) for a in one))
 
 
 def wx_verdict():
-    """nofield (not found at this attach) / proving / proven / wrong -- only 'proven' lets the flag decide anything."""
+    """nofield (not found at this attach) / proving / proven / wrong -- only 'proven' lets the flag decide anything.
+    judged = the catches that agree + the ones against (hi + lo). Crossed awards come in pairs, one hi and one lo, so
+    what counts against the flag is the ONE-WAY remainder, abs(hi - lo):
+      proven  12 boosted + 12 unboosted agree, the one-way remainder is at most 1 in 20 of the judged catches, and all
+              the catches against are at most 1 in 5 (a flag that reads at random is balanced too: this keeps it out)
+      wrong   the one-way remainder is 10 or more and over a quarter of the judged catches (a flag that never sets, or
+              always), or 10 or more are against and they are the majority (upside down, at random)
+      proving anything else."""
     if not WX["found"]:
         return "nofield"
-    n = WX["b"] + WX["u"] + WX["bad"]
-    if WX["bad"] >= 10 and 4 * WX["bad"] > n:
+    bad, oneway = WX["hi"] + WX["lo"], abs(WX["hi"] - WX["lo"])
+    n = WX["b"] + WX["u"] + bad
+    if (oneway >= 10 and 4 * oneway > n) or (bad >= 10 and 2 * bad > n):
         return "wrong"
-    return "proven" if WX["b"] >= WX_NEED and WX["u"] >= WX_NEED and 20 * WX["bad"] <= n else "proving"
+    return "proven" if WX["b"] >= WX_NEED and WX["u"] >= WX_NEED and 20 * oneway <= n and 5 * bad <= n else "proving"
 
 
 def wx_load(key, found):
     """This attach's weather read: found or not, and the track record kept for this game version + these offsets (they
-    move on a game update: a new key starts from nothing)."""
-    WX.update(found=bool(found), key=key, b=0, u=0, bad=0, min=None, rows={})
+    move on a game update: a new key starts from nothing). A record from before 2026-11-18 has no hi / lo, only their
+    sum ("bad"): it is read the strict way, all of it one-way."""
+    WX.update(found=bool(found), key=key, b=0, u=0, hi=0, lo=0, min=None, rows={})
     try:
         with open(WX_PROOF, encoding="utf-8") as fh:
             rec = json.load(fh)
         if rec.get("key") == key:
-            WX.update(b=int(rec["b"]), u=int(rec["u"]), bad=int(rec["bad"]))
+            b, u = int(rec["b"]), int(rec["u"])
+            hi, lo = (int(rec["hi"]), int(rec["lo"])) if "hi" in rec and "lo" in rec else (int(rec["bad"]), 0)
+            if min(b, u, hi, lo) < 0:
+                raise ValueError("a count below 0")
+            WX.update(b=b, u=u, hi=hi, lo=lo)
     except (OSError, ValueError, KeyError, TypeError, AttributeError):
         pass
-    WX["saved"] = (key, WX["b"], WX["u"], WX["bad"])
+    WX["saved"] = (key, WX["b"], WX["u"], WX["hi"], WX["lo"])
 
 
 WX_CATCH = re.compile(r"(?:^|\s)CATCH \S+ #(\d+) (.*?)dust=(\d+) candy=-?\d+ wx=(\d+)")
@@ -2024,34 +2052,42 @@ def wx_seen(line, now):
 
 def wx_close():
     for rows in WX["rows"].values():
-        b, u, bad = wx_judge(rows)
-        WX.update(b=WX["b"] + b, u=WX["u"] + u, bad=WX["bad"] + bad)
+        b, u, hi, lo = wx_judge(rows)
+        WX.update(b=WX["b"] + b, u=WX["u"] + u, hi=WX["hi"] + hi, lo=WX["lo"] + lo)
     WX["rows"] = {}
 
 
 def wx_tick(now, w):
     """Judge a minute nobody caught in after it, say a change of verdict once, keep the record on disk (about once a
-    minute while it moves)."""
+    minute while it moves). The catches against the flag are said as their sum and, when there are any, split once by
+    direction; the record keeps hi and lo, and their sum as "bad" (what it held before 2026-11-18)."""
     if WX["min"] is not None and int(now // 60) > WX["min"]:
         wx_close()
         WX["min"] = None
-    v, n = wx_verdict(), WX["b"] + WX["u"] + WX["bad"]
+    v, bad = wx_verdict(), WX["hi"] + WX["lo"]
+    n = WX["b"] + WX["u"] + bad
     if (WX["key"], v) != WX["said"]:
         WX["said"] = (WX["key"], v)
+        split = f"{WX['hi']} paid the boost without the flag, {WX['lo']} had the flag and paid the normal amount"
+        short = WX["b"] < WX_NEED or WX["u"] < WX_NEED
         w("WEATHER BOOST read " + {
             "nofield": "off: PokemonDisplayProto.WeatherBoostedCondition was not found in this game version -- a boosted spawn cannot be told",
             "proving": f"being proven on the catches made anyway: {WX['b']} boosted and {WX['u']} unboosted ones agree with the server's pay so far, "
-                       f"{WX['bad']} do not -- it decides nothing before {WX_NEED} of each agree",
-            "proven": f"PROVEN for {WX['key']}: {WX['b']} boosted catches paid the +25% and {WX['u']} unboosted ones did not ({WX['bad']} of {n} paid against their flag)",
-            "wrong": f"WRONG for {WX['key']}: {WX['bad']} of {n} catches paid against their flag -- it decides nothing",
+                       f"{bad} do not" + (f" ({split})" if bad else "")
+                       + (f" -- it decides nothing before {WX_NEED} of each agree" if short else
+                          " -- it decides nothing while more than 1 in 20 are against it one way, or more than 1 in 5 in all"),
+            "proven": f"PROVEN for {WX['key']}: {WX['b']} boosted catches paid the +25% and {WX['u']} unboosted ones did not ({bad} of {n} paid against their flag"
+                      + (f": {split} -- two throws in the air get each other's awards, so a pair of those cancels" if bad else "") + ")",
+            "wrong": f"WRONG for {WX['key']}: {bad} of {n} catches paid against their flag" + (f" ({split})" if bad else "") + " -- it decides nothing",
         }[v])
         WX["savet"] = 0
-    snap = (WX["key"], WX["b"], WX["u"], WX["bad"])
+    snap = (WX["key"], WX["b"], WX["u"], WX["hi"], WX["lo"])
     if snap != WX["saved"] and now - WX["savet"] >= 60:
         WX.update(saved=snap, savet=now)
         try:
             with open(WX_PROOF + ".tmp", "w", encoding="utf-8") as fh:
-                json.dump({"key": WX["key"], "b": WX["b"], "u": WX["u"], "bad": WX["bad"], "verdict": v, "at": time.strftime("%Y-%m-%d %H:%M:%S")}, fh)
+                json.dump({"key": WX["key"], "b": WX["b"], "u": WX["u"], "bad": bad, "hi": WX["hi"], "lo": WX["lo"], "verdict": v,
+                           "at": time.strftime("%Y-%m-%d %H:%M:%S")}, fh)
             os.replace(WX_PROOF + ".tmp", WX_PROOF)
         except OSError:
             pass
@@ -2105,7 +2141,7 @@ def dust_skip(now):
     look = bool(SHINYFIELD["ok"] and SHINYFIELD.get("checked"))
     wxv = wx_verdict()
     key = (n, _DUST["mtime"], look, bool(SHINYFIELD.get("suspended")), bool(SHINYFIELD.get("checked")), tuple(CFG.get("priority") or ()),
-           wxv, (WX["b"], WX["u"], WX["bad"]) if wxv == "proving" else None)
+           wxv, (WX["b"], WX["u"], WX["hi"] + WX["lo"]) if wxv == "proving" else None)
     if key == _DUST["key"]:
         return _DUST["skip"]
     name = "stardust only" if n == 1 else f"stardust only {n}+"
@@ -2139,12 +2175,16 @@ def dust_skip(now):
         if unsure and not skip:   # that was every left-alone species (the plain switch): nothing is left alone, and the app is told why
             st, skip, kept = "nowx", [], 0
             long, short = {"nofield": ("the weather-boost field was not found in this game version", "it cannot read the weather boost in this game version"),
-                           "wrong": (f"the weather-boost read was proven WRONG on live catches ({WX['bad']} paid against their flag)",
+                           "wrong": (f"the weather-boost read was proven WRONG on live catches ({WX['hi'] + WX['lo']} paid against their flag)",
                                      "its weather-boost read did not match what the server paid"),
                            }.get(wxv, (f"the weather-boost read is not proven yet ({WX['b']} boosted and {WX['u']} unboosted catches agree with the server's pay, "
                                        f"{WX_NEED} of each needed)",
                                        f"it is still proving its weather-boost read on live catches: {min(WX['b'], WX_NEED)} of {WX_NEED} boosted, "
                                        f"{min(WX['u'], WX_NEED)} of {WX_NEED} normal"))
+            if wxv == "proving" and WX["b"] >= WX_NEED and WX["u"] >= WX_NEED:   # enough agree: what holds it back is the catches against the flag
+                against, judged = WX["hi"] + WX["lo"], WX["b"] + WX["u"] + WX["hi"] + WX["lo"]
+                long = f"the weather-boost read is not proven: {against} of {judged} catches paid against their flag"
+                short = f"its weather-boost read disagrees with the server's pay on {against} of {judged} catches"
             note = (f"{lvl}NOT applied: {long.split(' (')[0] if wxv == 'proving' else long} -- a weather-boosted spawn of a left-alone species could "
                     f"not be told, so every species is caught")
             why = f"{name} is switched on but NOT applied yet: {short} -- until then it catches everything"

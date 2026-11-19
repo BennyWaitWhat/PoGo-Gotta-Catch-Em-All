@@ -332,7 +332,7 @@ def fresh(table=None, switch=None, look="ok", wx="proven"):
                              "suspended": dict(ok=False, suspended=True, checked=True), "unchecked": dict(ok=True, suspended=False, checked=False)}[look])
     b, u, bad = {"proven": (40, 160, 1), "proving": (3, 20, 0), "wrong": (10, 10, 12), "nofield": (0, 0, 0), "none": (0, 0, 0)}[wx]
     ns["WX"].clear()
-    ns["WX"].update(dict(WX0, found=wx != "nofield", key="0.435.2 offsets 56/216/32", b=b, u=u, bad=bad, rows={}, ver={}))
+    ns["WX"].update(dict(WX0, found=wx != "nofield", key="0.435.2 offsets 56/216/32", b=b, u=u, hi=bad, lo=0, rows={}, ver={}))   # against it: all one way
 
 
 # the switch's text -- read the way the APP reads it: its readFile() joins the file's lines (every line end dropped) and
@@ -496,6 +496,15 @@ for wxs, text in (("nofield", "it cannot read the weather boost in this game ver
           (c["skipSp"], "skipWx" in c, same(), ns["dust_only"](), ns["_DUST"]["state"]), ([], False, True, 0, "nowx"))
     check(f"weather read {wxs}: the app is told why", ns["dust_why"]("out of balls: 5 Poke, 5 Great, 5 Ultra left", [], True),
           f"out of balls: 5 Poke, 5 Great, 5 Ultra left; stardust only is switched on but NOT applied yet: {text} -- until then it catches everything")
+# enough catches agree and it is still not proven: the catches AGAINST the flag hold it back, and the app says that
+# (the real hour of 11-18 with every lure catch's flag taken away: 223 + 748 agree, 68 one way, 11 the other)
+fresh(table=T_text, switch="1", wx="proving")
+ns["WX"].update(b=223, u=748, hi=68, lo=11)
+ns["dust_skip"](1000.0)
+check("weather read held back by catches against it: everything is caught, and the app names them (not '12 of 12')",
+      (ns["wx_verdict"](), ns["_DUST"]["state"], ns["dust_why"]("", [], True), ns["_DUST"]["note"]),
+      ("proving", "nowx", "stardust only is switched on but NOT applied yet: its weather-boost read disagrees with the server's pay on 79 of 1050 catches -- until then it catches everything",
+       "NOT applied: the weather-boost read is not proven: 79 of 1050 catches paid against their flag -- a weather-boosted spawn of a left-alone species could not be told, so every species is caught"))
 for wxs in ("proving", "nofield", "wrong"):
     c, skip, swx = on(1000, wx=wxs)
     check(f"weather read {wxs} at 1000: the level applies at once -- the two a boost could lift to 1,000 (800, 950) are caught whatever "
@@ -652,17 +661,25 @@ check("...and says nothing when the switch is off and no plan runs", ns["starpie
 ns["SP"].update(on=False, off=False, since=None, bare=0)
 
 # ---- WEATHER BOOST read: the track record on catches made anyway, before the flag may decide anything
+#      wx_judge -> (boosted that agree, unboosted that agree, hi, lo): the catches AGAINST their flag by direction, hi = no
+#      flag but paid the boost, lo = flagged but paid the normal amount (until 2026-11-18 one number, their sum)
 wj = ns["wx_judge"]
-check("weather: boosted paid the step (275 / 225), unboosted did not -> all agree", wj([(225, False)] * 12 + [(275, True)] * 4), (4, 12, 0))
+check("weather: boosted paid the step (275 / 225), unboosted did not -> all agree", wj([(225, False)] * 12 + [(275, True)] * 4), (4, 12, 0, 0))
 check("weather: no event (150 / 125), a Star Piece minute (412 / 337, 224 / 187)", (wj([(125, False)] * 3 + [(150, True)] * 2), wj([(337, False), (412, True)]),
-                                                                              wj([(187, False), (224, True)])), ((2, 3, 0), (1, 1, 0), (1, 1, 0)))
-check("weather: an unflagged catch that paid the boost, a flagged one that paid normal -> against the flag", wj([(225, False)] * 5 + [(275, False), (275, True), (275, True), (225, True)]), (2, 5, 2))
-check("weather: the flag upside down -> every catch against it", wj([(275, False)] * 5 + [(225, True)] * 4), (0, 0, 9))
-check("weather: flagged and unflagged paid the same -> the flag says nothing", wj([(225, False)] * 5 + [(225, True)] * 4), (0, 0, 4))
-check("weather: a flag that never sets while two pay levels show -> the higher ones are against it", wj([(225, False)] * 10 + [(275, False)] * 3), (0, 0, 3))
-check("weather: a flag that always sets while two pay levels show -> the lower ones are against it", wj([(225, True)] * 10 + [(275, True)] * 3), (0, 0, 10))
-check("weather: one kind, one pay level -> nothing proven, nothing against", (wj([(225, False)] * 9), wj([(275, True)] * 9), wj([(225, False)]), wj([])), ((0, 0, 0),) * 4)
-check("weather: another catch's award swapped in (2025) or a first-catch bonus (2025 / 9125) is not judged", wj([(225, False)] * 6 + [(275, True)] * 3 + [(2025, False), (9125, True)]), (3, 6, 0))
+                                                                              wj([(187, False), (224, True)])), ((2, 3, 0, 0), (1, 1, 0, 0), (1, 1, 0, 0)))
+check("weather: an unflagged catch that paid the boost, a flagged one that paid normal -> against the flag", wj([(225, False)] * 5 + [(275, False), (275, True), (275, True), (225, True)]), (2, 5, 1, 1))
+check("weather: the flag upside down -> every catch against it", wj([(275, False)] * 5 + [(225, True)] * 4), (0, 0, 5, 4))
+check("weather: flagged and unflagged paid the same -> the flag says nothing", wj([(225, False)] * 5 + [(225, True)] * 4), (0, 0, 0, 4))
+check("weather: a flag that never sets while two pay levels show -> the higher ones are against it", wj([(225, False)] * 10 + [(275, False)] * 3), (0, 0, 3, 0))
+check("weather: a flag that always sets while two pay levels show -> the lower ones are against it", wj([(225, True)] * 10 + [(275, True)] * 3), (0, 0, 0, 10))
+check("weather: one kind, one pay level -> nothing proven, nothing against", (wj([(225, False)] * 9), wj([(275, True)] * 9), wj([(225, False)]), wj([])), ((0, 0, 0, 0),) * 4)
+check("weather: another catch's award swapped in (2025) or a first-catch bonus (2025 / 9125) is not judged", wj([(225, False)] * 6 + [(275, True)] * 3 + [(2025, False), (9125, True)]), (3, 6, 0, 0))
+# two awards that crossed are ONE hi and ONE lo in every minute, also where the crossing itself moved a kind's usual pay
+check("weather: crossed awards in a small minute: the only flagged catch crossed; one of two; one unflagged against two flagged",
+      (wj([(225, False)] * 8 + [(275, False), (225, True)]), wj([(225, False)] * 8 + [(275, False), (225, True), (275, True)]), wj([(275, False), (225, True), (275, True)])),
+      ((0, 0, 1, 1),) * 3)
+check("weather: both kinds usually paid the BOOSTED amount (some paid a step less): unflagged at it are hi, flagged below it lo",
+      (wj([(225, False), (275, False), (275, False), (225, True), (275, True), (275, True)]), wj([(275, False)] * 4 + [(275, True)] * 3 + [(225, True)])), ((0, 0, 2, 1), (0, 0, 4, 1)))
 fresh(table=T_text, switch="1", wx="none")
 ns["dust_skip"](1000.0)
 said = []
@@ -681,7 +698,7 @@ feed(6023, 16, 50, 0)                   # not a catch award
 ns["wx_tick"](6030.0, said.append)
 check("weather: nothing is judged before its minute ends", (ns["WX"]["b"], ns["WX"]["u"]), (0, 0))
 ns["wx_tick"](6061.0, said.append)
-check("weather: the minute's normal-level catches judged (other species, Mighty, flagless lines left out)", (ns["WX"]["b"], ns["WX"]["u"], ns["WX"]["bad"], len(said)), (3, 6, 0, 1))
+check("weather: the minute's normal-level catches judged (other species, Mighty, flagless lines left out)", (ns["WX"]["b"], ns["WX"]["u"], ns["WX"]["hi"] + ns["WX"]["lo"], len(said)), (3, 6, 0, 1))
 for mnt in range(102, 105):
     for i in range(6):
         feed(mnt * 60 + i, 21, 337, 0)
@@ -692,8 +709,8 @@ check("weather: 12 boosted + 12 unboosted that agree = PROVEN, said once", (ns["
       (12, 24, "proven", 2, "WEATHER BOOST read PROVEN for 0.435.2 offsets 56/216/32: 12 boosted catches paid the +25% and 24 unboosted ones did not (0 of 36 paid against their flag)"))
 check("weather: once proven the mode applies", (ns["cfg_now"]()["skipWx"], ns["_DUST"]["state"], ns["dust_only"]()), ([], "on", 1))
 rec = json.load(open(ns["WX_PROOF"]))
-check("weather: the record is kept in a file, per game version + offsets", (rec["key"], rec["b"], rec["u"], rec["bad"], rec["verdict"]),
-      ("0.435.2 offsets 56/216/32", 12, 24, 0, "proven"))
+check("weather: the record is kept in a file, per game version + offsets", (rec["key"], rec["b"], rec["u"], rec["bad"], rec["verdict"], rec["hi"], rec["lo"]),
+      ("0.435.2 offsets 56/216/32", 12, 24, 0, "proven", 0, 0))
 ns["wx_load"]("0.435.2 offsets 56/216/32", True)
 check("weather: a re-attach on the same game version keeps the proof", (ns["WX"]["b"], ns["WX"]["u"], ns["wx_verdict"]()), (12, 24, "proven"))
 ns["wx_load"]("0.437.0 offsets 56/216/36", True)
@@ -702,12 +719,141 @@ ns["wx_load"]("0.437.0 offsets 56/216/None", False)
 said = []
 ns["wx_tick"](7000.0, said.append)
 check("weather: field not found at attach -> said, decides nothing", (ns["wx_verdict"](), said[0][:60]), ("nofield", "WEATHER BOOST read off: PokemonDisplayProto.WeatherBoostedCo"))
-ns["WX"].update(found=True, b=12, u=12, bad=2)
+ns["WX"].update(found=True, b=12, u=12, hi=2, lo=0)
 v1 = ns["wx_verdict"]()
-ns["WX"].update(bad=1)
+ns["WX"].update(hi=1)
 v2 = ns["wx_verdict"]()
-ns["WX"].update(b=30, u=30, bad=25)
+ns["WX"].update(b=30, u=30, hi=25)
 check("weather: proven needs at most 1 in 20 against the flag; 10+ and over a quarter against = WRONG", (v1, v2, ns["wx_verdict"]()), ("proving", "proven", "wrong"))
+
+# ---- ...AND CROSSED AWARDS (2026-11-18, the first live hour). Two throws in the air get each other's awards (the result
+#      queue matches replies in send order), so a boosted and an unboosted catch that cross read as ONE unflagged catch
+#      that paid the boost (hi) and ONE flagged catch that paid the normal amount (lo). 32 of 818 judged catches did, 24
+#      of them inside ten minutes, and "at most 1 in 20 against the flag" took the proof away for 13 minutes (18:51 to
+#      19:04) from a flag that was right. Now a pair cancels: what counts is the ONE-WAY remainder abs(hi - lo), at most
+#      1 in 20 -- and all the catches against, at most 1 in 5 (a flag that reads at random is balanced as well).
+import random
+
+
+def verdict_of(b, u, hi, lo):
+    ns["WX"].update(found=True, b=b, u=u, hi=hi, lo=lo)
+    return ns["wx_verdict"]()
+
+
+def rule_before(b, u, bad):
+    n = b + u + bad
+    return "wrong" if bad >= 10 and 4 * bad > n else "proven" if b >= 12 and u >= 12 and 20 * bad <= n else "proving"
+
+
+check("crossed awards: 18:51 that day (70 + 198 agree, 22 against = 11 one way + 11 the other) stays proven; the rule before said proving",
+      (verdict_of(70, 198, 11, 11), rule_before(70, 198, 22)), ("proven", "proving"))
+check("crossed awards: the hour's totals as measured (183 + 533 agree, 17 hi + 15 lo) are proven", verdict_of(183, 533, 17, 15), "proven")
+check("crossed awards: a pair cancels, a one-way remainder does not -- 1 in 20 of the judged catches is the line",
+      (verdict_of(100, 300, 32, 10), verdict_of(100, 300, 33, 10), verdict_of(100, 300, 10, 33), verdict_of(100, 300, 0, 21), verdict_of(100, 300, 22, 0)),
+      ("proven", "proving", "proving", "proven", "proving"))
+check("crossed awards: all the catches against, pairs or not, are at most 1 in 5 (a flag that reads at random stays out)",
+      (verdict_of(100, 300, 50, 50), verdict_of(100, 300, 51, 50), verdict_of(30, 30, 25, 25)), ("proven", "proving", "proving"))
+check("crossed awards: a class flagged wrong ONE way (1 in 10) is not proven; 10+ one-way and over a quarter = WRONG; 9 are not yet",
+      (verdict_of(200, 700, 100, 0), verdict_of(50, 200, 90, 0), verdict_of(30, 30, 20, 0), verdict_of(30, 30, 0, 21), verdict_of(10, 10, 9, 0)),
+      ("proving", "wrong", "proving", "wrong", "proving"))
+check("crossed awards: most catches against the flag, both ways (upside down, at random) = WRONG; half of them is not most",
+      (verdict_of(5, 20, 30, 30), verdict_of(0, 0, 150, 160), verdict_of(30, 30, 30, 30), verdict_of(0, 0, 5, 4)), ("wrong", "wrong", "proving", "proving"))
+
+
+def wx_hour(seed, minutes, flag, p=0.22, k=18, cross=lambda m: 0.0, other=0.2):
+    """A made-up hour through wx_seen / wx_close / wx_verdict: about k catches a minute, a share p of them weather-boosted
+    (they pay 275, the others 225), a share `other` of another pay level (never judged). flag(boosted, rng) = what the
+    flag says. cross(minute) = the chance that a catch and the next one get each other's awards.
+    -> per minute (the verdict, the verdict by the rule before)."""
+    rng = random.Random(seed)
+    fresh(table=T_text, switch="1", wx="none")
+    ns["dust_skip"](1000.0)
+    out = []
+    for m in range(minutes):
+        cs = []
+        for _ in range(k - 4 + int(rng.random() * 9)):
+            if rng.random() < other:
+                cs.append([52, 1525, 0])
+            else:
+                boosted = rng.random() < p
+                cs.append([16, 275 if boosted else 225, 3 if flag(boosted, rng) else 0])
+        i, c = 0, cross(m)
+        while i < len(cs) - 1:
+            if rng.random() < c:
+                cs[i][1], cs[i + 1][1] = cs[i + 1][1], cs[i][1]
+                i += 1
+            i += 1
+        for j, (dex, award, wxf) in enumerate(cs):
+            feed(60000 + 60 * m + j, dex, award, wxf)
+        ns["wx_close"]()
+        w = ns["WX"]
+        out.append((ns["wx_verdict"](), rule_before(w["b"], w["u"], w["hi"] + w["lo"])))
+    return out
+
+
+def lost(vs):
+    """Was the proof lost again after it was first reached?"""
+    return "proven" in vs and any(v != "proven" for v in vs[vs.index("proven"):])
+
+
+right = lambda boosted, rng: boosted
+that_day = lambda m: 0.28 if 15 <= m < 25 else 0.04   # 4% of the catches crossed, ten minutes at 28% (12-17% of them show)
+hours = [wx_hour(s, 60, right, cross=that_day) for s in range(12)]
+check("crossed awards: 12 made-up hours like that day (a right flag, ten minutes of crossing): proven in each, never lost; lost under the rule before",
+      (sum("proven" in [v for v, _o in h] for h in hours), sum(lost([v for v, _o in h]) for h in hours), sum(lost([o for _v, o in h]) for h in hours) >= 8),
+      (12, 0, True))
+hours = [wx_hour(s, 60, right, p=0.5, cross=that_day) for s in range(6)] + [wx_hour(s, 90, right, k=6, cross=that_day) for s in range(6)]
+check("crossed awards: the same with half the spawns boosted, and at 6 catches a minute: proven at the end of each",
+      [h[-1][0] for h in hours], ["proven"] * 12)
+never = {"never sets": lambda boosted, rng: False, "always sets": lambda boosted, rng: True, "reads upside down": lambda boosted, rng: not boosted,
+         "reads at random (a quarter of the spawns boosted)": lambda boosted, rng: rng.random() < 0.25,
+         "reads at random (half of the spawns boosted)": lambda boosted, rng: rng.random() < 0.5}
+for name, fl in never.items():
+    hours = [wx_hour(s, 60, fl, p=0.5 if "half" in name else 0.25, cross=that_day) for s in range(4)]
+    check("crossed awards: a flag that " + name + " is never proven, with the same crossing -- WRONG at the end",
+          (sum(v == "proven" for h in hours for v, _o in h), [h[-1][0] for h in hours]), (0, ["wrong"] * 4))
+hours = [wx_hour(s, 120, lambda boosted, rng: boosted and rng.random() >= 0.3) for s in range(6)]
+check("crossed awards: a flag that misses 3 in 10 boosted spawns (one way) is not proven at the end, as before",
+      ([h[-1][0] for h in hours], [h[-1][1] for h in hours]), (["proving"] * 6, ["proving"] * 6))
+# the record: hi and lo are kept (their sum too, as "bad"); a record from before the split is read the strict way
+K = "0.435.2 offsets 56/216/32"
+with open(ns["WX_PROOF"], "w", encoding="utf-8") as fh:
+    json.dump({"key": K, "b": 70, "u": 198, "bad": 22, "verdict": "proving", "at": "2026-11-18 18:51:00"}, fh)
+ns["wx_load"](K, True)
+check("crossed awards: a record from before the split (b, u, bad) is read the strict way -- all of it one-way",
+      (ns["WX"]["b"], ns["WX"]["u"], ns["WX"]["hi"], ns["WX"]["lo"], ns["wx_verdict"]()), (70, 198, 22, 0, "proving"))
+ns["WX"].update(hi=11, lo=11, said=None)
+said = []
+ns["wx_tick"](9000.0, said.append)
+rec = json.load(open(ns["WX_PROOF"]))
+check("crossed awards: the record keeps both directions and their sum", (rec["b"], rec["u"], rec["hi"], rec["lo"], rec["bad"], rec["verdict"]), (70, 198, 11, 11, 22, "proven"))
+check("crossed awards: PROVEN says the split once",
+      said, ["WEATHER BOOST read PROVEN for 0.435.2 offsets 56/216/32: 70 boosted catches paid the +25% and 198 unboosted ones did not (22 of 290 paid against their flag: "
+             "11 paid the boost without the flag, 11 had the flag and paid the normal amount -- two throws in the air get each other's awards, so a pair of those cancels)"])
+ns["wx_load"](K, True)
+check("crossed awards: a re-attach reads both directions back", (ns["WX"]["hi"], ns["WX"]["lo"], ns["wx_verdict"]()), (11, 11, "proven"))
+ns["WX"].update(hi=30, lo=0, said=None)
+said = []
+ns["wx_tick"](9100.0, said.append)
+ns["WX"].update(b=5, u=20, hi=30, lo=30)
+ns["wx_tick"](9200.0, said.append)
+check("crossed awards: 12 of each agree but too many are against it one way -> 'being proven' says why; WRONG says the split too",
+      said, ["WEATHER BOOST read being proven on the catches made anyway: 70 boosted and 198 unboosted ones agree with the server's pay so far, 30 do not "
+             "(30 paid the boost without the flag, 0 had the flag and paid the normal amount) -- it decides nothing while more than 1 in 20 are against it one way, "
+             "or more than 1 in 5 in all",
+             "WEATHER BOOST read WRONG for 0.435.2 offsets 56/216/32: 60 of 85 catches paid against their flag (30 paid the boost without the flag, 30 had the flag "
+             "and paid the normal amount) -- it decides nothing"])
+bad_recs = ({"key": K, "b": 5, "u": 5, "hi": -1, "lo": 0}, {"key": K, "b": 5, "u": 5, "bad": "many"}, {"key": K, "b": 5, "u": 5, "hi": 2}, [1, 2], {"key": K, "b": 5, "u": 5})
+got = []
+for r in bad_recs:
+    with open(ns["WX_PROOF"], "w", encoding="utf-8") as fh:
+        json.dump(r, fh)
+    ns["wx_load"](K, True)
+    got.append((ns["WX"]["b"], ns["WX"]["u"], ns["WX"]["hi"], ns["WX"]["lo"]))
+check("crossed awards: a record that does not read (a count below 0, text, hi without lo and no sum, not a record) starts from nothing",
+      got, [(0, 0, 0, 0)] * 5)
+os.remove(ns["WX_PROOF"])
+ns["wx_load"](K, True)
 asked = []
 ns["su"] = lambda cmd, timeout=10: asked.append(cmd) or "    versionName=0.435.2-G\n"
 gv = ns["game_version"]
