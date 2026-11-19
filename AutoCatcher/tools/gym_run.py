@@ -3603,6 +3603,30 @@ def _run(a, g, mv, done, t_start, enemy, goal, sess, pid, sc):
         g.placed.pop(fid, None)
         friendly = team == a.team
         g.armed = False
+        if not friendly:                                     # the counter team for THIS gym goes in BEFORE the arm: an armed
+            # enemy gym whose screen is already up gets its Battle press from the tapper in the very same frame, and the
+            # party screen takes whatever six the roster holds then. 11-18 23:52:39, Liberty Island Flagpole (--on-open: he
+            # had it open): armed first, Battle pressed at once, the six were the LAST gym's (Lucario, Zacian, Zamazenta,
+            # Keldeo -- Bartholdi's Snorlax counters) against a Cinderace; its own counters landed 0.5 s later. 7 of the 9
+            # first battles the runner started that night went out before their counters. Statue of Liberty 23:33: the
+            # first battle with Bartholdi's Kyogre / Rhyperior six took 134 s for 7 rounds, the next with its own 68 s for 6.
+            try:                                             # the counter team for THIS gym before its first Battle press:
+                _cv = sc.exports_sync.scanned().get(fid)     # no fresh reading yet (a start right next to it, 11-16 22:29: the
+                _lt = (live.get(fid) or [team])[0]           # (the map's team NOW: a retake target can still read 0 in `team`)
+                if (team in enemy or _lt in enemy) and not (_cv and _cv[1] < 8000 and len(_cv) > 8 and _cv[8]):   # picks landed 1 s after the
+                    sc.exports_sync.scan([fid])              # team) -> ask, <= 2.5 s. Never for an EMPTY gym: that is a race
+                    _t = time.time()
+                    while time.time() - _t < 2.5:
+                        g.wait_for(lambda: False, 0.25, tick)
+                        _cv = sc.exports_sync.scanned().get(fid)
+                        if _cv and _cv[1] < 3000 and len(_cv) > 8 and (_cv[8] or not _cv[3]):
+                            break
+                _ok = bool(_cv and _cv[1] < 30000) and counter_push(fid, _cv, sc, dep, a, g)
+                if not _ok and CT["cur"] and CT["cur"]["fid"] != fid:   # no counters for this gym: never another gym's
+                    CT["cur"] = None
+                    sc.exports_sync.roster(roster_ids(dep), a.heal_top, [], [x[0] for x in dep["gy"]])
+            except Exception as e:
+                say(f"  (counter team: {e})")
         if dep["n"] is None or dep["n"] < a.max_deployed:   # arm: the instant it reports empty, place (or open Deploy)
             r_ad = sc.exports_sync.autodeploy(fid, place_ids(dep) if a.autoplace else [], friendly, a.team)
             g.armed = bool(r_ad.get("armed"))
@@ -3622,23 +3646,6 @@ def _run(a, g, mv, done, t_start, enemy, goal, sess, pid, sc):
                               if f != cur and f not in skip and v[1] < 60000 and not v[4] and not (len(v) > 6 and v[6])
                               and slot(f, v) and ch.meters(q[:2], (v[2], v[3])) <= engage)
                 return near[0][1] if near else None
-            try:                                             # the counter team for THIS gym before its first Battle press:
-                _cv = sc.exports_sync.scanned().get(fid)     # no fresh reading yet (a start right next to it, 11-16 22:29: the
-                _lt = (live.get(fid) or [team])[0]           # (the map's team NOW: a retake target can still read 0 in `team`)
-                if (team in enemy or _lt in enemy) and not (_cv and _cv[1] < 8000 and len(_cv) > 8 and _cv[8]):   # picks landed 1 s after the
-                    sc.exports_sync.scan([fid])              # team) -> ask, <= 2.5 s. Never for an EMPTY gym: that is a race
-                    _t = time.time()
-                    while time.time() - _t < 2.5:
-                        g.wait_for(lambda: False, 0.25, tick)
-                        _cv = sc.exports_sync.scanned().get(fid)
-                        if _cv and _cv[1] < 3000 and len(_cv) > 8 and (_cv[8] or not _cv[3]):
-                            break
-                _ok = bool(_cv and _cv[1] < 30000) and counter_push(fid, _cv, sc, dep, a, g)
-                if not _ok and CT["cur"] and CT["cur"]["fid"] != fid:   # no counters for this gym: never another gym's
-                    CT["cur"] = None
-                    sc.exports_sync.roster(roster_ids(dep), a.heal_top, [], [x[0] for x in dep["gy"]])
-            except Exception as e:
-                say(f"  (counter team: {e})")
             final = drill(fid, enemy, g, sc, a, tick, time.time() + a.gym_minutes * 60, refresh=batch_check, join_near=None,
                           cmd_waiting=urgent_cmd,            # join_near=None: Benny 11-15 "drill and finish" -- a red gym with room
                           counters=lambda sv, _f=fid: counter_push(_f, sv, sc, dep, a, g))
