@@ -406,7 +406,7 @@ class MapWatch:
 
     def stalled(self, now):
         """None, or why the map is not loading: no good answer for STALL_S since the jump."""
-        if self.ok or now - self.t0 < STALL_S:
+        if self.ok or now - self.t0 < getattr(self, "stall_s", STALL_S):
             return None
         secs = now - self.t0
         if not self.asks:
@@ -720,9 +720,10 @@ def run_stop(g, s, opt, mw, inbox, jl, pre=False, nxt=None):
             elif mw.ok >= 3 and (tried_alt or not s.get("alt")) and not inmap:
                 ex.disarm()
                 return False, "not on the game's map (%d good map answers, up to %d stops in them)" % (mw.ok, mw.stops), {"at": "wait", "map_ok": mw.ok, "secs": now - t0}
-        if now - t0 > STOP_CAP_S:
+        cap_s = max(STOP_CAP_S, getattr(mw, "stall_s", STALL_S) + 60)
+        if now - t0 > cap_s:
             ex.disarm()
-            return False, "no result after %d s (last step: %s)" % (STOP_CAP_S, last_st), {"at": last_st, "secs": now - t0, "timeout": True}
+            return False, "no result after %d s (last step: %s)" % (cap_s, last_st), {"at": last_st, "secs": now - t0, "timeout": True}
 
 
 class MapStall(RuntimeError):
@@ -951,6 +952,7 @@ def run(a):
 
     log("log: %s   to end it: create %s" % (jpath, os.path.join(inbox, "stop")))
     mw, results, ended, t_run, got, stalls = MapWatch((f[0], f[1]) if f else None), [], None, time.time(), 0, 0
+    mw.stall_s = a.skip_s or a.hold_s
     queue_ = [(s, 1) for s in order]
     i, pre, streak, pages = 0, False, set(), [0, 0]       # pages: [no-reward stops with no page, with a page]
     while queue_:
@@ -1011,13 +1013,18 @@ def run(a):
             if not more_:
                 results.append({"i": i, "fort": s["fort"], "name": s["name"], "ok": False, "secs": 0, "detail": {},
                                 "text": "the map never loaded at this place (3 tries)"})
-            if len(streak) >= 5:
+            if len(streak) >= (20 if a.skip_s else 5):
                 # 11-18 21:44-21:51: 8 NEW places in a row answered Error while the one loaded before answered at once:
                 # the game session no longer gets new places (the same at 18:10: only a game restart brought it back).
                 # 5 DIFFERENT places: at 22:10 two places tried in turns ended a session that may still have been fine.
                 ended = ("THE MAP IS NOT LOADING: %d different new places in a row answered Error, only places loaded before "
                          "answer -- restart the game, then run it again. Nothing was skipped." % len(streak))
                 break
+            if a.skip_s:
+                # 11-19 16:53 he: "skip already then": a held place waits at the end of the list; the next stop at once
+                # (no jump back to the last place that loaded first)
+                i -= 1
+                continue
             if not (recover(g, mw, jl) or recover(g, mw, jl, wait_s=45)):
                 ended = ("THE MAP IS NOT LOADING: %s answered Error, and the last place that loaded did not answer for a "
                          "minute either -- restart the game, then run it again. Nothing was skipped." % s["name"])
@@ -1194,6 +1201,12 @@ def main(argv=None):
     ap.add_argument("--safe", action="store_true")
     ap.add_argument("--ink", type=float, default=0.54, help="stamp ink strength 0.1 .. 1.0 (the press length); 0.54 = the 1.9 s press of 11-18")
     ap.add_argument("--no-claim", action="store_true", help="rallies that pay on their own page: stamp, close the page, next")
+    ap.add_argument("--hold-s", type=float, default=STALL_S,
+                    help="wait this long at a place the server holds before moving on (11-19 16:42: after 26 places in 7 min "
+                         "the server held the next ones 5+ min; moving on only adds new places)")
+    ap.add_argument("--skip-s", type=float, default=0,
+                    help="skip a place the server holds after this many seconds: straight to the next stop, the held one "
+                         "goes to the end (3 tries); the run ends after 20 different held places in a row")
     ap.add_argument("--only", help="only these rally lists / prefectures, e.g. region_hokkaido_tohoku or iwate,miyagi")
     ap.add_argument("--region-km", type=float, default=REGION_M / 1000,
                     help="a place whose map never loads sends the stops within this many km to the end (200 for the LEGO "
