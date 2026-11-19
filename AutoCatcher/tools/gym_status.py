@@ -78,7 +78,7 @@ def scan(lines):
     """The runner's log lines, oldest first -> the state they add up to (phase: boot / idle / take / hands / lost / nofix /
     stopping / ended)."""
     st = {'phase': 'boot', 'gym': None, 'kind': None, 'n0': None, 'n': None, 'note': None, 'res': None, 'res_t': None,
-          'why': None, 'in': None, 'end': None, 'noroot': False}
+          'why': None, 'in': None, 'end': None, 'noroot': False, 'obo': False}
     names = {}
 
     def label(gid, name=None):
@@ -108,7 +108,13 @@ def scan(lines):
         if msg.startswith('attached pid'):
             st['noroot'] = False
         if msg.startswith('ON-OPEN mode ('):                 # the process just started: the attach comes next
-            st.update(phase='boot', res=None, note=None)
+            st.update(phase='boot', res=None, note=None, obo=False)
+            continue
+        if msg.startswith(('ONE-BY-ONE mode ON', 'GYM MODE (the app): one by one')):   # the app's Gym mode (app 1.8)
+            st['obo'] = True
+            continue
+        if msg.startswith(('GYM MODE (the app): in order', '!! one-by-one OFF')):
+            st['obo'] = False
             continue
         if re.search(r'COMMAND stop|stopped cleanly', msg):   # (first: a stop that came in while the game was away says both)
             st['phase'] = 'stopping'
@@ -247,10 +253,11 @@ def status_from_log(lines, now_s=None):
             return 'placing a Gyarados at %s' % gym
         if st['kind'] == 'join':
             return 'joining %s' % gym
-        return 'battling %s' % gym + (': %d of %d left' % (st['n'], st['n0']) if st['n'] and st['n0'] else '')
+        return 'battling %s' % gym + (' one by one' if st['obo'] else '') + (
+            ': %d of %d left' % (st['n'], st['n0']) if st['n'] and st['n0'] else '')
     if st['res'] and st['res_t'] is not None and (now_s is None or (now_s - st['res_t']) % 86400 < 90):
         return st['res']
-    return 'watching for a gym you open' + (' | %s in gyms' % st['in'] if st['in'] else '')
+    return 'watching for a gym you open' + (' (one by one)' if st['obo'] else '') + (' | %s in gyms' % st['in'] if st['in'] else '')
 
 
 def counted_since(path=SESSION):
@@ -466,6 +473,8 @@ def selftest():
         w = with_tally('watching for a gym you open | 6/20 in gyms', b, since, now)
         assert w == 'watching for a gym you open | 6/20 in gyms | 4 beaten, 4 placed' and clean(w) == w and len(w) <= TEXT_MAX, w
         assert with_tally('battling Bartholdi: 2 of 6 left', b, since, now) == 'battling Bartholdi: 2 of 6 left'
+        assert with_tally('watching for a gym you open (one by one) | 6/20 in gyms', b, since, now) == \
+            'watching for a gym you open (one by one) | 6/20 in gyms | 4 beaten, 4 placed', 'Gym mode (app 1.8) keeps the tally'
         assert with_tally('watching for a gym you open', b, time.mktime((2026, 11, 19, 0, 25, 0, 0, 0, -1)), now) == \
             'watching for a gym you open', 'nothing since the counters started: no tally'
         assert log_start('onopen_1118_233915.log', now) == time.mktime((2026, 11, 18, 23, 39, 15, 0, 0, -1))
@@ -473,6 +482,21 @@ def selftest():
             time.mktime((2026, 12, 31, 23, 59, 0, 0, 0, -1)) and log_start('gym_1118.log') is None
         assert len('watching for a gym you open | 20/20 in gyms | 999 beaten, 999 placed') <= TEXT_MAX
     assert counted_since(os.path.join(HERE, 'no such file.json')) is None
+    # --- the app's Gym mode (app 1.8): one by one shows in the wait line and the battling line; in order / a new run clears it
+    O = L + ['12:00:20   GYM MODE (the app): one by one from the next battle -- beat the first defender, run at the 2nd ...']
+    assert status_from_log(O) == 'watching for a gym you open (one by one) | 14/20 in gyms', status_from_log(O)
+    assert status_from_log(O + ['12:00:30   GYM MODE (the app): in order from the next battle -- every defender, in order']) \
+        == 'watching for a gym you open | 14/20 in gyms'
+    assert status_from_log(O + ['12:00:30   !! one-by-one OFF: the give-up prompt stayed up after 3 taps -- normal battles']) \
+        == 'watching for a gym you open | 14/20 in gyms', 'the runner switched it off itself'
+    assert status_from_log(O + ['12:00:40   ON-OPEN mode (the AutoCatcher app...'] + L[1:]) == 'watching for a gym you open | 14/20 in gyms', \
+        'a new run is in order until it says otherwise'
+    assert status_from_log(L[:1] + ['12:00:02   ONE-BY-ONE mode ON: beat the first defender, run away at the 2nd ...'] + L[1:]) \
+        == 'watching for a gym you open (one by one) | 14/20 in gyms', 'a run started in one by one'
+    B = O + ['12:01:00   ON-OPEN: you have abcd1234 (Big Ben) open (team 1) -- taking it over: drilling it until it is empty, then a shiny Gyarados in',
+             '12:01:01     WATCH abcd1234 (Big Ben): 4 defender(s), 6000 CP, server says NOT in battle [client: battle]']
+    assert status_from_log(B) == 'battling Big Ben one by one: 4 of 4 left', status_from_log(B)
+    assert len('watching for a gym you open (one by one) | 20/20 in gyms | 999 beaten, 999 placed') <= TEXT_MAX
     # --- real runner logs, when this machine has some: every prefix of every tail gives one clean line (never a throw)
     n_real = 0
     if os.path.isdir(LOGS):

@@ -809,6 +809,23 @@ def his_jump(m, dt, min_m=150.0, min_ms=15.0):
     return m >= min_m and dt > 0 and m / dt >= min_ms
 
 
+def gym_mode_file(switch):
+    """--on-open: the app's Gym mode file (app 1.8), next to the Gym Battle switch: /data/local/tmp/pogo_gym_obo.on."""
+    return os.path.join(os.path.dirname(switch), "pogo_gym_obo.on") if switch else None
+
+
+def gym_mode_read(path):
+    """The app's Gym mode (Benny 11-19: "an option to gym mode in order vs one by one"): True = one by one (the file holds
+    1), False = in order (anything else), None = no file to read (the run's own --one-by-one stands)."""
+    if not path:
+        return None
+    try:
+        with open(path, encoding="utf-8", errors="replace") as f:
+            return f.read().strip() == "1"
+    except OSError:
+        return None
+
+
 def on_open_args(a):
     """--on-open: the roaming options mean nothing in this mode. Every one of them is switched off before anything reads
     it, so no line of the run can pick a gym, walk a route, hop, watch an area or jump home, whatever else was typed."""
@@ -2415,6 +2432,12 @@ def _run(a, g, mv, done, t_start, enemy, goal, sess, pid, sc):
     say("  direct deploy " + (f"allowed (parts found: {_ddr.get('parts')}): the tapper builds its request sender on the plain map -- "
                               f"READY / NOT available follows" if _ddr.get("on") else
                               f"OFF ({_ddwhy or '--no-autoplace'}): the gym screen places"))
+    GM = {"path": gym_mode_file(a.switch) if a.on_open else None, "seen": None, "at": 0.0}   # the app's Gym mode (app 1.8)
+    if GM["path"]:                                           # (read again every second in tick(), taken between battles only)
+        GM["seen"] = gym_mode_read(GM["path"])
+        if GM["seen"] is not None:
+            a.one_by_one = GM["seen"]
+            say(f"  GYM MODE (the app): {'one by one' if a.one_by_one else 'in order'}")
     if a.one_by_one:                                         # Benny 11-16 23:58: "drill at the first one over and over"
         say(f"  ONE-BY-ONE mode {'ON' if sc.exports_sync.onebyone(True) else 'NOT SET'}: beat the first defender, run away at the "
             f"2nd defender's round, Battle again -- the counters are picked against the first defender only")
@@ -2925,9 +2948,24 @@ def _run(a, g, mv, done, t_start, enemy, goal, sess, pid, sc):
         _urgent = {"stop", "skip"} if a.on_open else {"go", "hunt", "stop", "spin", "lap", "skip"}   # (--on-open has no picker:
         return g.graph_stale or any(set(c) & _urgent for c in cmdq)                                   # a go / hunt / lap ends no drill)
 
+    def gym_mode_sync():                                     # the app's Gym mode, live: a CHANGE of the file is taken the
+        if not GM["path"] or time.time() - GM["at"] < 1.0:  # moment no battle and no party screen is up (never mid-battle).
+            return                                           # Only a change: a one-by-one switched off by the runner itself
+        GM["at"] = time.time()                               # (the give-up prompt stayed up) stays off until he picks again
+        _gm = gym_mode_read(GM["path"])
+        if _gm is None or _gm == GM["seen"] or g.in_battle() or g.prep:
+            return
+        GM["seen"] = a.one_by_one = _gm
+        sc.exports_sync.onebyone(_gm)
+        CT["cur"] = None                                     # the counters are picked again (one by one: the first defender)
+        say(f"  GYM MODE (the app): {'one by one' if _gm else 'in order'} from the next battle -- "
+            + ("beat the first defender, run at the 2nd defender's round, Battle again (your own battles stay normal)"
+               if _gm else "every defender, in order"))
+
     def tick():                                              # keep circling the current gym while waiting on it
         quick_cmds()
         feed_record()
+        gym_mode_sync()
         _oran = getattr(g, "obo_ran", 0.0)
         if a.one_by_one and g.top == "ModalDialog" and 1.0 < time.time() - _oran < 8 and getattr(g, "obo_ok", 0.0) < _oran:
             g.obo_ok = g.obo_last_tap = time.time()          # our run-away's prompt is up and no Open signal came: tap now

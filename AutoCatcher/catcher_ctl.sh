@@ -30,6 +30,11 @@ APPLEFLAG=/data/local/tmp/pogo_apples.on
 # the gym verbs never start, keep alive or stop the catcher, and run_catch.sh's on() does not count this flag.
 GYMFLAG=/data/local/tmp/pogo_gym.on
 GYMRUN="$HOME/pogo/run_gym.sh"
+# Gym mode (app 1.8; Benny 2026-11-19: "make an option to gym mode in order vs one by one"): 1 = one by one (the runner's
+# own battles beat the FIRST defender, run at the 2nd defender's round and Battle again), anything else (or no file) =
+# in order (every defender, in order). Only the gym runner reads it -- live, between battles (gym_run.py gym_mode_sync):
+# like the berries flag it starts, stops and switches nothing else.
+GYMOBOFLAG=/data/local/tmp/pogo_gym_obo.on
 # Berries (catch_loop_fast.berry_mode, read every second): 1 = Pinap and Razz, pinap = Pinap only, razz = Razz only,
 # anything else = none. Only the catcher reads it; it keeps no process alive either.
 BERRYFLAG=/data/local/tmp/pogo_berries.on
@@ -271,6 +276,8 @@ case "$1" in
   apples-off) setflag "$APPLEFLAG" 0 "apples-off"; held "$LATER" || reconcile ;;
   gym-on)     setflag "$GYMFLAG" 1 "gym-on"; held "the gym runner starts when it ends" || start_gym ;;
   gym-off)    setflag "$GYMFLAG" 0 "gym-off" ;;   # the flag ONLY: run_gym.sh sees it and stops by itself (see GYMFLAG)
+  gym-order)    setflag "$GYMOBOFLAG" 0 "gym-order" ;;      # the flag only: the gym runner reads it between battles
+  gym-onebyone) setflag "$GYMOBOFLAG" 1 "gym-onebyone" ;;
   berries-off)   setflag "$BERRYFLAG" 0 "berries-off" ;;        # the flag only: the catcher reads it every second
   berries-pinap) setflag "$BERRYFLAG" pinap "berries-pinap" ;;
   berries-razz)  setflag "$BERRYFLAG" razz "berries-razz" ;;
@@ -320,6 +327,6 @@ case "$1" in
     settle
     ;;
   toggle)     if flag_on "$CATCHFLAG"; then echo 0 > "$CATCHFLAG"; else echo 1 > "$CATCHFLAG"; fi; held "$LATER" || reconcile ;;
-  status)     echo "proc=$(running && echo up || echo down) catch=$(flag_on "$CATCHFLAG" && echo 1 || echo 0) spin=$(flag_on "$SPINFLAG" && echo 1 || echo 0) perfect=$(flag_on "$PERFFLAG" && echo 1 || echo 0) tap=$(flag_on "$TAPFLAG" && echo 1 || echo 0) apples=$(flag_on "$APPLEFLAG" && echo 1 || echo 0) gym=$(flag_on "$GYMFLAG" && echo 1 || echo 0) berries=$(berry_mode) dust=$(dust_mode)" ;;
-  *) echo "usage: catcher_ctl.sh start|stop|restart|reconcile|catch-on|catch-off|spin-on|spin-off|perfect-on|perfect-off|tap-on|tap-off|apples-on|apples-off|gym-on|gym-off|berries-off|berries-pinap|berries-razz|berries-on|dust-off|dust-on|dust-<N>|counters-reset|rewards|toggle|status" ;;
+  status)     echo "proc=$(running && echo up || echo down) catch=$(flag_on "$CATCHFLAG" && echo 1 || echo 0) spin=$(flag_on "$SPINFLAG" && echo 1 || echo 0) perfect=$(flag_on "$PERFFLAG" && echo 1 || echo 0) tap=$(flag_on "$TAPFLAG" && echo 1 || echo 0) apples=$(flag_on "$APPLEFLAG" && echo 1 || echo 0) gym=$(flag_on "$GYMFLAG" && echo 1 || echo 0) gymmode=$(flag_on "$GYMOBOFLAG" && echo onebyone || echo order) berries=$(berry_mode) dust=$(dust_mode)" ;;
+  *) echo "usage: catcher_ctl.sh start|stop|restart|reconcile|catch-on|catch-off|spin-on|spin-off|perfect-on|perfect-off|tap-on|tap-off|apples-on|apples-off|gym-on|gym-off|gym-order|gym-onebyone|berries-off|berries-pinap|berries-razz|berries-on|dust-off|dust-on|dust-<N>|counters-reset|rewards|toggle|status" ;;
 esac
