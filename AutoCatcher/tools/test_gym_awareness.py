@@ -801,6 +801,13 @@ def misc_checks():
     check(g.prep and not g.prep_his, "Game: the party screen right after OUR Battle press is ours")
     check("if g.prep and g.prep_his:" in src and src.index("if g.prep and g.prep_his:") < src.index('sc.exports_sync.act("go")'),
           "drill: HIS party screen is left alone BEFORE the orphan-GO / Android-back path can touch it")
+    _pre_line = "_ok = bool(_cv and _cv[1] < 30000) and counter_push(fid, _cv, sc, dep, a, g)"
+    _arm_line = "r_ad = sc.exports_sync.autodeploy(fid, place_ids(dep) if a.autoplace else [], friendly, a.team)"
+    _pre = src.find(_pre_line)
+    check(src.count(_pre_line) == 1 and src.count(_arm_line) == 1 and 0 < _pre < src.index(_arm_line)
+          and src.rfind("if not friendly:", 0, _pre) > src.rfind("friendly = team == a.team", 0, _pre) > 0,
+          "takeover: this gym's counters go in BEFORE the drill is armed (armed + its screen up = the tapper's Battle press in "
+          "the same frame with whatever six the roster holds -- 11-18 23:52:39: the last gym's six against a Cinderace)")
     with open(gym_run.gt.__file__, encoding="utf-8") as f:
         tsrc = f.read()
     check("if (ourParty(now)) { EXPECT_PREP = now;" in tsrc and tsrc.count("OUR_BATTLE_AT = now") == 2,
