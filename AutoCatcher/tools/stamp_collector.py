@@ -56,9 +56,11 @@ SAVE = {1: "saved", 2: "already stamped", 3: "no such collection", 4: "no such s
         6: "rally expired"}
 CLAIM = {1: "claimed", 2: "already claimed", 3: "no such reward", 4: "not enough stamps", 5: "not in range",
          6: "no such collection"}
-STALL_S = 13               # no good map answer this long after a jump = the map is not loading here (the first good
-                           # answer came within 9 s on 70 of 70 stops on 11-18: the server answers at most once per 5 s)
-STOP_CAP_S = 75            # one stop never holds the tour longer than this
+STALL_S = 150              # no good map answer this long after a jump = the map is not loading here. 11-18 22:13-22:17:
+                           # after many jumps the server holds EVERY new place 30-70 s after the jump (Woodfield 31 s,
+                           # farmland 71 s, while the game kept asking from there); earlier that evening 2-9 s. Giving
+                           # up at 13 s and jumping back and on only added jumps and made the hold longer: wait here.
+STOP_CAP_S = 210           # one stop never holds the tour longer than this
 ALT_MIN_M = 30             # the other known point of a stop is tried only when it is this far from the first
 INK_MIN_MS, INK_FULL_MS = 420, 2750   # the stamp's ink (PlayerStampProto.Pressure, 0.1 faint .. 1.0 full) grows with the press:
                                        # read back from 51 stamps on 11-18 -- a tap 0.10, 1.9 s 0.54, his 2.5 s 0.77, his longest 1.0
@@ -180,8 +182,10 @@ function again(ms,since){ later(ms,function(){ if(A.enc&&A.st==='enc'&&A.lastThr
 function throwIt(){ if(!A.enc||A.st!=='enc')return; if(A.throws>=G.maxThrows){ fail('not caught after '+A.throws+' throws'); return; }
    A.throws++; A.lastThrow=now(); A.replyAt=0; A.at=now(); var since=A.lastThrow; out('throw',{n:A.throws,r:capture(A.mon,G.ball)});
    later(G.replyMax,function(){ if(A.enc&&A.st==='enc'&&A.lastThrow<=since&&!A.replyAt)throwIt(); }); }     /* no answer at all: the game dropped that throw */
-function onEncExit(a){ if(!A.enc||A.st!=='enc')return; A.enc=false; var last=A.catches.length?A.catches[A.catches.length-1]:-1; A.marks.over=now()-A.t0; A.st='done';
-   out('done',{caught:last===1,catch:last,catches:A.catches,throws:A.throws,save:A.saveResult,claim:A.claimResult,marks:A.marks,taps:A.taps,d:Math.round(A.fd||0)}); }
+/* caught = ANY catch answer said 1: 11-18 22:18 Edinburgh answered [2, 1, 3] -- caught on throw 2, then a second answer
+   "fled" 9 ms later (a second throw in flight); the last answer alone called a caught reward "fled" */
+function onEncExit(a){ if(!A.enc||A.st!=='enc')return; A.enc=false; var caught=A.catches.indexOf(1)>=0; var last=caught?1:(A.catches.length?A.catches[A.catches.length-1]:-1); A.marks.over=now()-A.t0; A.st='done';
+   out('done',{caught:caught,catch:last,catches:A.catches,throws:A.throws,save:A.saveResult,claim:A.claimResult,marks:A.marks,taps:A.taps,d:Math.round(A.fd||0)}); }
 
 /* ---- the server's answers (parsed on a network thread: memory reads only, never a game call) ---- */
 function onSaveReply(s){ var r=s.add(O.saveResult).readS32(); if(!live())return; A.saveResult=r; out('save',{r:r}); if(r!==1&&r!==2){ fail('the server refused the stamp ('+r+')'); return; }
@@ -579,7 +583,7 @@ def run_stop(g, s, opt, mw, inbox, jl, pre=False, nxt=None):
         g.teleport(s["at"])
         mw.reset(time.time(), s["at"])
     target, tried_alt, fort, moved, last_st, last_ev, resent, inmap = s["at"], False, None, False, "wait", time.time(), False, None
-    jumped = False
+    jumped, told = False, -30.0
     while True:
         now = time.time()
         if g.gone:
@@ -646,6 +650,10 @@ def run_stop(g, s, opt, mw, inbox, jl, pre=False, nxt=None):
                 return ok, text, ev
             continue
         if fort is None:
+            held = now - mw.t0
+            if not mw.ok and held > 15 and held - told >= 30:
+                told = held
+                log("  the server holds this new place (it does after many jumps): %d s so far -- waiting here, no jumps" % held)
             if not mw.asks_here and not resent and now - mw.t0 > 8:
                 resent = True
                 log("  no map request for this place after 8 s -- sending the jump once more")
@@ -829,7 +837,7 @@ def run(a):
     log("log: %s   to end it: create %s" % (jpath, os.path.join(inbox, "stop")))
     mw, results, ended, t_run, got, stalls = MapWatch((f[0], f[1]) if f else None), [], None, time.time(), 0, 0
     queue_ = [(s, 1) for s in order]
-    i, pre = 0, False
+    i, pre, streak = 0, False, set()
     while queue_:
         s, attempt = queue_.pop(0)
         if os.path.exists(os.path.join(inbox, "stop")):
@@ -869,6 +877,7 @@ def run(a):
             # is the place, not the map: back to the last good place, then the next stop. The tour ends only when the
             # last good place stops answering too (60 s).
             stalls += 1
+            streak.add(s["fort"])
             bad[s["fort"]] = [time.time(), s["at"][0], s["at"][1]]
             save_bad(state, bad)
             jl({"k": "stall", "why": str(e), "stop": s["name"], "row": stalls})
@@ -887,11 +896,12 @@ def run(a):
             if not more_:
                 results.append({"i": i, "fort": s["fort"], "name": s["name"], "ok": False, "secs": 0, "detail": {},
                                 "text": "the map never loaded at this place (3 tries)"})
-            if stalls >= 5:
+            if len(streak) >= 5:
                 # 11-18 21:44-21:51: 8 NEW places in a row answered Error while the one loaded before answered at once:
-                # the game session no longer gets new places (the same at 18:10: only a game restart brought it back)
-                ended = ("THE MAP IS NOT LOADING: %d new places in a row answered Error, only places loaded before answer -- "
-                         "restart the game, then run it again. Nothing was skipped." % stalls)
+                # the game session no longer gets new places (the same at 18:10: only a game restart brought it back).
+                # 5 DIFFERENT places: at 22:10 two places tried in turns ended a session that may still have been fine.
+                ended = ("THE MAP IS NOT LOADING: %d different new places in a row answered Error, only places loaded before "
+                         "answer -- restart the game, then run it again. Nothing was skipped." % len(streak))
                 break
             if not (recover(g, mw, jl) or recover(g, mw, jl, wait_s=45)):
                 ended = ("THE MAP IS NOT LOADING: %s answered Error, and the last place that loaded did not answer for a "
@@ -915,7 +925,7 @@ def run(a):
             queue_.insert(0, (s, attempt))
             i -= 1
             continue
-        stalls = 0
+        stalls, streak = 0, set()
         if detail.get("stopped"):
             ended = "you asked it to stop"
             break
