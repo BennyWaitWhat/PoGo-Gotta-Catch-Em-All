@@ -1297,6 +1297,39 @@ const sOf = (sp) => ({add: (o) => ({readS32: () => 1, readPointer: () => (o === 
 const other = (sp) => { api.set('E', {a: {pid: 10, st: 'open'}}); api.set('NWQ', [{enc: 'a', t: NOW}]); api.set('RESP', {}); api.set('LASTNW', {t: 0, sig: ''});
   api.call('onOtherEncounterOut', sOf(sp), 'X'); const r = api.get('RESP.a'); return r ? r.sp : null; };
 res.other = [other(774), other(10), other(0)];
+// REPLY SPECIES PROBE (11-18): it counts, and the reply is handed to the head of the queue exactly as before
+api = mk();
+const rep = (st, dex, cid, bad) => ({add: (o) => ({readS32: () => { if (bad && o === 3) throw new Error('unreadable'); return o === 1 ? st : (o === 3 ? dex : 0); },
+                                                   readU64: () => ({toString: () => String(cid)}), readPointer: () => NUL})});
+const air = () => { api.set('E', {a: {pid: 774, st: 'thrown'}, b: {pid: 16, st: 'thrown'}, c: {pid: 16, st: 'thrown'}});
+                    api.set('REQQ', [{enc: 'a', t: NOW}, {enc: 'b', t: NOW}, {enc: 'c', t: NOW}]); api.set('RES', {}); };
+const counts = () => [api.get('RDEX.head'), api.get('RDEX.other'), api.get('RDEX.none'), api.get('RDEX.unset'), api.get('RDEX.err')];
+api.set('OFF.cStatus', 1); api.set('OFF.cCaptured', 2); api.set('OFF.cAward', -1); api.set('OFF.cDex', 3);
+air();
+api.call('onCatchOut', rep(1, 16, 101));    // it names b's species and is handed to a, the head: one half of a crossing
+api.call('onCatchOut', rep(1, 774, 102));   // it names a's species and is handed to b: the other half
+api.call('onCatchOut', rep(1, 16, 103));    // handed to c, and it names c's species
+res.rdex = [Object.keys(api.get('RES')).join(''), counts()];
+air();
+api.call('onCatchOut', rep(1, 0, 104));     // the field is empty
+api.call('onCatchOut', rep(1, 132, 105));   // a species no throw in the air has
+api.call('onCatchOut', rep(3, 16, 106));    // not a catch: not counted
+res.rdex.push(counts());
+air();
+api.call('onCatchOut', rep(1, 16, 107, true));   // the read itself fails: counted, and the throw still gets its reply
+res.rdex.push(Object.keys(api.get('RES')).join(''), counts());
+api.set('E', {}); api.set('REQQ', [{enc: 'm', t: NOW}]);
+api.call('onCatchOut', rep(1, 16, 108));    // a manual throw (not one of ours): not counted
+res.rdex.push(counts(), api.get('OUT.log').filter((l) => l.indexOf('REPLYDEX') === 0).length);
+air(); api.set('RDEX.next', NOW - 1); api.set('OUT.log', []);
+api.call('onCatchOut', rep(1, 774, 109));   // the report is due
+api.call('onCatchOut', rep(1, 16, 110));    // ...and not due again for 5 minutes
+res.rdexLog = [api.get('OUT.log'), api.get('RDEX.next') - NOW];
+api = mk();
+api.set('OFF.cStatus', 1); api.set('OFF.cCaptured', 2); api.set('OFF.cAward', -1); api.set('OFF.cDex', -1);
+air();
+api.call('onCatchOut', rep(1, 16, 111)); api.call('onCatchOut', rep(1, 16, 112));
+res.rdexOff = [api.get('OUT.log'), counts(), Object.keys(api.get('RES')).join('')];
 // walk(): a left-alone species is tracked for a look while a plan runs; one already looked at is left at sight + ledgered
 api = mk();
 api.set('call', (m, o, args) => m === 'ALL' ? api.get('COLL') : (m === 'VM' ? 1 : (m === 'PID' ? o.pid : null)));
@@ -1638,6 +1671,22 @@ check("JS: Pinap only: hard throw, shiny, easy throw get the Pinap, never a Razz
 check("JS: in-flight poll lowers, never raises", got2.get("poll"), [40, 39, 45, 41])
 check("JS: shiny Mighty -> Safari, then Ultra", got2.get("mighty"), [7, 3])
 check("JS: another species' reply is not ours", got2.get("other"), [None, 10, -1])
+# REPLY SPECIES PROBE (11-18: at ~22 catches a minute 32 of 818 catches carried another catch's award): does the catch
+# reply name its own species? It only counts -- [head, other, none, unset, err] -- and every reply still goes to the
+# head of the queue.
+check("JS reply probe: a crossed pair counts twice as 'other', the third names its own throw; all three handed out in send order",
+      got2.get("rdex", [None, None])[:2], ["abc", [1, 2, 0, 0, 0]])
+check("JS reply probe: an empty field = unset, a species nothing in the air has = none, a reply that is not a catch is not counted",
+      got2.get("rdex", [None] * 3)[2], [1, 2, 1, 1, 0])
+check("JS reply probe: a read that fails is counted and the throw still gets its reply; a manual throw is not counted; no line before it is due",
+      got2.get("rdex", [None] * 6)[3:], ["a", [1, 2, 1, 1, 1], [1, 2, 1, 1, 1], 0])
+check("JS reply probe: one REPLYDEX line when due, the next one 5 minutes later",
+      got2.get("rdexLog"), [["REPLYDEX head=2 other=2 none=1 unset=1 err=1"], 300000])
+check("JS reply probe: the field not found in this game version -> said once, nothing counted, replies handed out as before",
+      got2.get("rdexOff"), [["REPLYDEX off: CatchPokemonOutProto.DisplayPokedexId was not found in this game version"], [0, 0, 0, 0, 0], "ab"])
+check("JS reply probe: resolved at attach by its name, called after the reply is handed out",
+      ("OFF.cDex = off1(K.CatchPokemonOutProto, ['DisplayPokedexId', 'displayPokedexId_']);" in src,
+       src.count("replyDex(s, st, q.enc, now);"), src.find("replyDex(s, st, q.enc, now);") > src.find("if (E[q.enc] && E[q.enc].st === 'thrown') RES[q.enc] = r;") > 0), (True, 1, True))
 check("JS: a Mighty found by the look stays", got2.get("mightyPeek"), [True, 0, 1, 0])
 check("JS: floorOf = Python reserve_floors (600 bags)", got2.get("floorOf"), [])
 check("JS: keep from live counts (new process, shiny dip)", got2.get("keepLive"), [0, False, True, True, False])

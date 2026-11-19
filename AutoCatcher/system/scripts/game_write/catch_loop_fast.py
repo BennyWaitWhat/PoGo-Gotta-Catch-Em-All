@@ -1004,7 +1004,39 @@ function onCatchOut(s) {
   var q = REQQ.shift(); if (!q) return;
   if (E[q.enc] && E[q.enc].st === 'thrown') RES[q.enc] = r;
   else { ST.manual++; if (st === 1) { ST.dust += r.dust; ST.candy += r.candy; ST.xp += r.xp; } }
+  replyDex(s, st, q.enc, now);
   return true;
+}
+/* REPLY SPECIES PROBE (2026-11-18) -- it MEASURES and changes nothing. A catch reply is handed to the throw at the head
+   of REQQ (send order). In the first live hour at ~22 catches a minute, 32 of 818 normal-level catches carried another
+   catch's award, 24 of them inside ten minutes: with two or three throws in the air the replies do not come back in
+   that order. Could the reply itself say whose it is? CatchPokemonOutProto.DisplayPokedexId, counted per CAUGHT reply
+   of one of our own throws:
+     head   it names the species of the throw it was handed to
+     other  it names another species, and a throw of THAT species is in the air: a crossing the field would undo
+     none   it names a species no throw in the air has (a Ditto, or a field that does not mean what its name says)
+     unset  the field is empty
+   One REPLYDEX line a minute after the first counted reply, then one every 5 minutes. A failure in here is counted
+   (err) and never reaches the catch. */
+var RDEX = {head: 0, other: 0, none: 0, unset: 0, err: 0, next: 0, nofield: false};
+function replyDex(s, st, enc, now) {
+  try {
+    var e = E[enc], rd, k, hit = 0;
+    if (st !== 1 || !e) return;
+    if (!(OFF.cDex >= 0)) {
+      if (!RDEX.nofield) { RDEX.nofield = true; log('REPLYDEX off: CatchPokemonOutProto.DisplayPokedexId was not found in this game version'); }
+      return;
+    }
+    rd = s.add(OFF.cDex).readS32();
+    if (!(rd > 0 && rd < 100000)) RDEX.unset++;
+    else if (e.pid === rd) RDEX.head++;
+    else { for (k in E) if (k !== enc && E[k].st === 'thrown' && E[k].pid === rd) hit++; if (hit) RDEX.other++; else RDEX.none++; }
+    if (!RDEX.next) RDEX.next = now + 60000;
+    if (now >= RDEX.next) {
+      RDEX.next = now + 300000;
+      log('REPLYDEX head=' + RDEX.head + ' other=' + RDEX.other + ' none=' + RDEX.none + ' unset=' + RDEX.unset + ' err=' + RDEX.err);
+    }
+  } catch (x) { RDEX.err++; }
 }
 function onSpinOut(s) {
   var res = s.add(0x10).readS32(), xp = s.add(0x30).readS32(), now = Date.now();
@@ -1414,6 +1446,7 @@ rpc.exports = {
     OFF.cStatus = off1(K.CatchPokemonOutProto, ['Status', 'status_']); if (OFF.cStatus < 0) OFF.cStatus = 0x10;
     OFF.cCaptured = off1(K.CatchPokemonOutProto, ['CapturedPokemonId', 'capturedPokemonId_']); if (OFF.cCaptured < 0) OFF.cCaptured = 0x20;
     OFF.cAward = off1(K.CatchPokemonOutProto, ['Scores', 'CaptureAward', 'captureAward_']);
+    OFF.cDex = off1(K.CatchPokemonOutProto, ['DisplayPokedexId', 'displayPokedexId_']);   /* replyDex(): a probe, read only */
     var AW = K.CaptureScoreProto || K.CaptureAwardProto;
     OFF.aDust = AW ? off1(AW, ['Stardust', 'stardust_']) : -1;
     OFF.aCandy = AW ? off1(AW, ['Candy', 'candy_']) : -1;
