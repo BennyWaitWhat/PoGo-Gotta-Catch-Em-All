@@ -428,16 +428,22 @@ POKEMOD_LINE = (('tinkatink', ((rc.LL_CAP, 2500, 91.25), (GL_CAP, 13, 98.00), (U
 
 
 def check_pokemod_anchor(gm_bytes, pokemon_db, pkl_dir):
-    """A 13/15/15 Tinkatink under the ranker's 'pokemod' numbering prints what Pokemod printed for it."""
+    """A 13/15/15 Tinkatink: the 'pokemod' tables give the number Pokemod printed for it (pokemod_rank.rank), and the
+    ranker's own number is that one or, inside a tie, the first of the tie group (ties are inclusive, 2026-11-18)."""
     cache = rc.RankTableCache(pokemon_db, rc._content_hash(gm_bytes, 'pokemod'),
                               pkl_path=os.path.join(pkl_dir, 'regress_rank_tables_pokemod.pkl'), numbering='pokemod')
-    out = []
+    out, idx = [], (13 << 8) | (15 << 4) | 15
     for stage, lines in POKEMOD_LINE:
         for cap, want_rank, want_pct in lines:
             r = rc.compute_rank_for_iv(cache, stage, 13, 15, 15, cap, False)
-            got = (r['rank'], r['pct']) if r else (None, None)
-            out.append(('Pokemod numbering: %s 13/15/15 @%d' % (stage, cap), got == (want_rank, want_pct),
-                        '#%s %s%%' % got, '#%d %.2f%%' % (want_rank, want_pct)))
+            t = cache.get(stage, cap, False)
+            screen = rc.pokemod_rank.rank(t[0], t[1], idx) if t else None
+            first = 1 + sum(1 for v in t[0] if v > t[0][idx]) if t else None
+            got = (screen, r['pct']) if r else (None, None)
+            out.append(('Pokemod numbering: %s 13/15/15 @%d' % (stage, cap),
+                        got == (want_rank, want_pct) and r['rank'] == first <= want_rank,
+                        '#%s %s%% (ties inclusive: #%s)' % (got + (r['rank'] if r else None,)),
+                        '#%d %.2f%%' % (want_rank, want_pct)))
     return out
 
 

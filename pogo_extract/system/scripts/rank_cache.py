@@ -94,8 +94,10 @@ CPM = cpm_list()
 RANK_TABLES_PKL = os.path.join(_SCRIPT_DIR, 'rank_tables.pkl')
 
 # WHOSE NUMBERS (2026-11-18, Benny: "i need you to align with pokemods numbers"). 'native' = this file's own math, as
-# always. 'pokemod' = the Little / Great / Ultra League ranks are numbered exactly as Pokemod prints them (pokemod_rank.py:
-# its level table, its product, tied spreads numbered one after another). Master League stays native: Pokemod prints no
+# always. 'pokemod' = the Little / Great / Ultra League ranks are Pokemod's numbers (pokemod_rank.py: its level table, its
+# product) with TIES INCLUSIVE: spreads with the same product share the first number of their tie group (2026-11-18 20:07:
+# "keep the pokemod numbers but be inclusive of ties." -- Pokemod itself numbers them one after another, the lower IV
+# index first, which put a 15/15/14 above the hundo it only ties). Master League stays native: Pokemod prints no
 # Master League number. The switch is rules.pokemod_rank_numbering in keep_config; OFF = native, and nothing changes: not
 # a rank, not a table, not the pickle's hash.
 POKEMOD_CAPS = (LL_CAP, GL_CAP, UL_CAP)
@@ -287,8 +289,8 @@ def compute_rank_for_iv(cache, species_id, ia, idf, ista, cap, shadow):
     if target_sp == 0:
         return None
     if getattr(cache, 'numbering', 'native') == 'pokemod' and cap in POKEMOD_CAPS:
-        # Pokemod's number: a tied spread comes after the tied spreads with a lower IV index (pokemod_rank.rank)
-        return {'rank': pokemod_rank.rank(sps, sorted_sp, iv_idx), 'pct': pokemod_rank.pct(target_sp, sorted_sp[0]),
+        # Pokemod's number, ties inclusive: every spread of a tie group has the group's first number (pokemod_rank.rank_ties)
+        return {'rank': pokemod_rank.rank_ties(sps, sorted_sp, iv_idx), 'pct': pokemod_rank.pct(target_sp, sorted_sp[0]),
                 'sp': target_sp}
     # Original: rank = sorted_sp.index(target_sp) + 1  (leftmost match, O(n))
     # Behavior-preserving O(log n): sorted_sp is descending, so under key=neg it is ascending and bisect_left finds the
@@ -444,7 +446,8 @@ def compute_ranks(conn, gm=None, verbose=True):
     if verbose:
         print(f'Computing ranks for {len(rows)} pokemon...')
         if cache.numbering == 'pokemod':
-            print("  rank numbers: Pokemod's (rules.pokemod_rank_numbering) for Little / Great / Ultra League")
+            print("  rank numbers: Pokemod's, ties share the better number (rules.pokemod_rank_numbering) for "
+                  "Little / Great / Ultra League")
 
     unknown_species = set()
     done = 0
