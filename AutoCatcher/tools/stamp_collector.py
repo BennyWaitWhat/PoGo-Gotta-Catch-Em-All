@@ -70,11 +70,12 @@ def hold_ms(ink):
 
 
 # step timings (ms). "fast" = the same calls in the same order as 11-18, with my own waits cut; "safe" = the 11-18 values.
-# 11-18 21:57-21:59, 9 stops live: tap 0.5 s after the stop's object, press 0.25 s after the stamp screen opens (not at
-# the end of the finger intro), claim 0.3 s after the stamp, first throw 0.85 s into the encounter -- every stop stamped
-# and caught, ~2 s a stop less than the waits before (1000/1700/150/400/1150)
+# 11-18 21:57-22:01 live: tap 0.5 s after the stop's object, press 0.25 s after the stamp screen opens (not at the end
+# of the finger intro), claim 0.3 s after the stamp -- every stop stamped, ~1.5 s a stop less (was 1000/1700/150/400).
+# The first throw stays 1.15 s into the encounter: at 0.85 s, 1 of 8 encounters (Fashion Place 22:00:36) closed right
+# after the throw with no catch answer, and that reward was lost (0 of 21 at 1.15 s).
 FAST = {"settle": 500, "posSettle": 300, "moveSettle": 1500, "retap": 1600, "introMax": 250, "pressLag": 60, "hold": 1900,
-        "exitLag": 80, "pulseMax": 200, "claimLag": 150, "saveMax": 3000, "claimMax": 2500, "throwLag": 850, "rethrow": 900,
+        "exitLag": 80, "pulseMax": 200, "claimLag": 150, "saveMax": 3000, "claimMax": 2500, "throwLag": 1150, "rethrow": 900,
         "replyMax": 2200, "endMax": 4000, "maxThrows": 12, "stepLimit": 9000, "encLimit": 13000, "maxOff": 30, "ball": 1, "saveGo": -1,
         "prejump": False, "preMs": 20000}  # prejump: jump to the next stop when the reward encounter opens (asked 11-18
                                            # 21:36 "preload maps ... during the bottle necks"). OFF: 21:46 "you cant catch
