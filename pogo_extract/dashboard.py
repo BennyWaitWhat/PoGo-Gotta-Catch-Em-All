@@ -1505,4 +1505,5 @@ if __name__ == '__main__':
     print('PoGo Keep Dashboard -> http://127.0.0.1:%d   (Ctrl-C to stop)' % PORT)
     # bind all interfaces so the PHONE can reach it over Tailscale; _tailnet_guard below still
     # rejects anything that is not loopback or a 100.64.0.0/10 tailnet peer, so the LAN cannot touch it.
-    app.run(host='0.0.0.0', port=PORT, threaded=True, debug=False)
+    # DASH_HOST=127.0.0.1 on the phone (tools/cull_phone.sh, 2026-11-18): its API writes tags, and the phone sits on any network
+    app.run(host=os.environ.get('DASH_HOST') or '0.0.0.0', port=PORT, threaded=True, debug=False)
