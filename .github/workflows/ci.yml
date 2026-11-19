@@ -69,6 +69,7 @@ jobs:
           python AutoCatcher/tools/catcher_apple_sim.py
           python AutoCatcher/tools/catcher_why_sim.py
           python AutoCatcher/tools/catcher_ballsave_sim.py
+          python AutoCatcher/tools/catcher_screen_sim.py
           python AutoCatcher/tools/deploy_sim.py
           bash AutoCatcher/tools/ctl_sim.sh
           python AutoCatcher/tools/ballsave_plan.py --selftest
