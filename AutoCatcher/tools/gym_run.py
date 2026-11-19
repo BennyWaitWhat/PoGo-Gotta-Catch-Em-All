@@ -43,6 +43,11 @@ if op.ON_PHONE:                                          # Termux: the phone's p
 BATTLE_STATES = ("GymBattleLauncherStateShim", "GymBattleState", "GymBattleIntroState", "GymBattleResultsState")
 ABORT = "abort"
 STALL, DETOUR = "stall", "detour"                # drill exits: no progress (skip it a while) / a red gym with room first (come back)
+HELD = "held"                                    # drill exit, --on-open: the gym is HIS from here (he ran from the battle, or the party
+                                                 # screen stuck over it -- 11-18 23:22-23:23): no placement step, no Back, no Battle
+HELD_WHY = {"fled": "you ran from the battle here -- it stays yours until you close it (open it again and the runner takes it over)",
+            "stuck": "the party screen stuck over a battle here -- it stays yours until you close it (open it again and the runner "
+                     "takes it over)"}
 OBO_OK_TAP = "input tap 640 1432"                # one-by-one: OK on "Are you sure you want to give up?" (1280x2856 screen, 11-17 00:00)
 
 
@@ -239,6 +244,8 @@ class Game:
         self.progress_at, self.opened_at, self.user_gym = time.time(), 0.0, False
         self.his_gym = None                                  # (fid, when, why): the gym YOUR own deploy was refused at -- ours to get
         self.battle_at, self.prep_his = 0.0, False           # OUR last Battle press; the party screen that is up is HIS (he pressed)
+        self.hold, self.fled, self.held_why = None, None, None   # --on-open: the gym screen that is up is HIS ("fled" / "stuck", fid,
+                                                             # when) until it closes; his last run-away (fid, when); why a drill held
 
     def on_msg(self, m, _d):
         if m.get("type") != "send":
@@ -263,6 +270,7 @@ class Game:
             if "GymState" not in self.chain.split(" > "):
                 self.gym_team = self.open_fid = None          # a gym report never outlives its gym screen
                 self.prep = False
+                self.hold = None                              # (nor a hold of his: it ends with its gym screen)
             say(f"    state: {self.chain.replace('RootState > MapRootState > WorldMapState > ', '')}")
         elif k == "top":
             self.top = p["gui"]
@@ -476,6 +484,14 @@ class Game:
         elif k == "mdfields":
             say(f"    (give-up prompt OK button, for a native press: {p.get('pbN')} x {p.get('pbCls')} {p.get('pb')} | "
                 f"container {p.get('bc')} | {p.get('err')})")
+        elif k == "fled":                                    # HE ran from the battle: his give-up prompt, then the battle over with
+            self.armed = False                               # no result screen. The tapper took its own Battle press, the re-open
+            self.fled = (p.get("fid") or self.open_fid, time.time())   # and the placement off this gym in that same frame (11-18
+            if p.get("held") and self.has("GymState"):       # 23:23:41: a Battle 1 s after his run-away, the game killed at
+                self.hold = ("fled", self.fled[0], time.time())   # 23:23:47); the gym screen that is up is his until it closes
+                self.user_gym = True
+            say(f"    you ran from the battle{' at ' + self.fled[0][:8] if self.fled[0] else ''}: your give-up prompt "
+                f"{(p.get('ago') or 0) / 1000:.1f} s before its end, no result screen -- hands off this gym until you close it")
         elif k == "items":
             self.items = dict(p["c"])
             say(f"    healing items in the bag: {p['c']}")
@@ -719,7 +735,7 @@ def free_slot(v, f, mine, n, cap, team, autoplace=True):
 
 
 def open_plan(fid, lv, screen_team, enemy, team, mine, n, cap, skipped=(), dist=None, reach=70.0, his_battle=False,
-              rest_s=0.0, last_team=None, autoplace=True):
+              rest_s=0.0, last_team=None, autoplace=True, held=None):
     """--on-open (the AutoCatcher app's Gym Battle switch; Benny 11-18: "any gym i visit and enter it will automatically go
     drill and finish and place shiny gyrados"): what to do with the gym YOU have open. Pure -- every reading is handed in:
     fid / screen_team = what the gym screen itself reports (None: not yet); lv = the gym's map record ([0] team, [4] raid ms
@@ -727,6 +743,8 @@ def open_plan(fid, lv, screen_team, enemy, team, mine, n, cap, skipped=(), dist=
     one of yours; n / cap = your Pokemon in gyms / the gym cap; skipped = USER_SKIP; dist / reach = how far the gym is / how
     far a battle reaches; his_battle = a battle or a party screen is up while no takeover runs (so it is YOURS); rest_s =
     seconds left of the rest after the game refused a Pokemon of yours there; last_team = who held the gym last.
+    held = "fled" / "stuck": the gym screen that is up is HIS until it closes -- he ran from a battle on it / the party screen
+    stuck over a battle there (11-18 23:22-23:23); every gym, whatever its team, is left to him then.
     Returns (what, why):
       "drill"  an enemy gym: the takeover -- counters, drill until it is empty, a shiny Gyarados in (at the gym cap it is
                emptied only: why says so);
@@ -735,6 +753,8 @@ def open_plan(fid, lv, screen_team, enemy, team, mine, n, cap, skipped=(), dist=
       "leave"  hands off -- why is the one line that says it;
       "wait"   no reading to decide on yet."""
     capped = n is not None and n >= cap
+    if held:                                         # (first: whatever the gym is, he has it back -- not even a "wait")
+        return "leave", HELD_WHY.get(held, HELD_WHY["fled"])
     if not fid:
         return "wait", "the gym screen has not said which gym it is yet"
     if fid[:8] in skipped:
@@ -1654,6 +1674,7 @@ def drill(fid, enemy, g, sc, a, tick, until, refresh=None, join_near=None, cmd_w
     gym's latest defenders before the next session."""
     opens = misses = backs = go_misses = hangs = 0
     noreport, live_at, lv, odd_since, his_said = None, 0.0, None, None, 0.0
+    d_t0, stuck = time.time(), False                     # (--on-open: his run-away / a stuck party screen since THIS drill began)
     sess_t0 = None                                       # when the session in progress started (the session record)
     last_end, cps = g.ends.get(fid, 0), []               # the gym's total CP at each session end: is it moving?
     leaving = None                                       # STALL / DETOUR: finish the battle in progress, then leave
@@ -1662,8 +1683,21 @@ def drill(fid, enemy, g, sc, a, tick, until, refresh=None, join_near=None, cmd_w
         if g.detached:
             raise Detached("game connection lost")
         tick()
-        if g.prepstuck:
-            return ABORT
+        if g.prepstuck and not stuck:
+            if not a.on_open:
+                return ABORT                                 # (every other run: stop everything, as before)
+            stuck, g.prepstuck = True, False                 # --on-open: no stop for it. 11-18 23:22:41: that stop made run_gym.sh
+            sc.exports_sync.hold(True)                       # attach a new runner MID-battle 11 s later -- and the battle under
+            g.armed, g.user_gym = False, True                # the stuck party screen was REAL (Conkeldurr 2084 -> 1198, Aggron
+            g.hold = ("stuck", fid, time.time())             # 2398 -> 1539 by 23:23:42): the tapper fights it to its end
+            say(f"  !! the party screen stayed over the battle (a game glitch) -- the battle in progress runs on under it; "
+                f"after it {fid[:8]} is yours until you close it")
+        if stuck or (g.fled and g.fled[1] >= d_t0):          # his from here: nothing more from the drill but the battle in
+            if g.in_battle():                                # progress (the tapper fights it to its end)
+                time.sleep(0.2)
+                continue
+            g.held_why = "stuck" if stuck else "fled"
+            return HELD
         e29_seen(g, sc, fid)                                 # an error 29 is read HERE, whatever screen is up (never minutes later)
         if g.autoplaced == fid and fid in g.placed:          # a direct deploy went out and was answered: nothing left to beat
             return 0
@@ -1999,7 +2033,8 @@ def main():
         say("  ON-OPEN mode (the AutoCatcher app's Gym Battle switch): the runner picks no gym, scans none and sends your "
             "joystick nothing while it waits. A gym YOU open is taken over: an enemy gym is drilled until it is empty and "
             "gets a shiny Gyarados, an empty gym gets the Gyarados at once, your team's gym with a free slot is joined. "
-            "While it works on a gym it holds you there (a 25 m circle); after the gym the joystick gets nothing more")
+            "While it works on a gym it holds you there (a 25 m circle); after the gym the joystick gets nothing more. "
+            "Run from a battle yourself (or the party screen sticks over one) and that gym is yours until you close it")
     mv, done, t_start = Mover(a.speed, a.travel_speed), {}, time.time()
     fails = 0                                                # sessions in a row that FAILED (not: lost the game) inside 60 s
     while time.time() - t_start < a.minutes * 60:            # re-attach and carry on if the game connection drops
@@ -2383,6 +2418,9 @@ def _run(a, g, mv, done, t_start, enemy, goal, sess, pid, sc):
     if a.one_by_one:                                         # Benny 11-16 23:58: "drill at the first one over and over"
         say(f"  ONE-BY-ONE mode {'ON' if sc.exports_sync.onebyone(True) else 'NOT SET'}: beat the first defender, run away at the "
             f"2nd defender's round, Battle again -- the counters are picked against the first defender only")
+    if a.on_open:                                            # --on-open: HIS run-away = hands off that gym until he closes it -- the
+        sc.exports_sync.fleehold(True)                       # tapper sees it in the frame the battle ends (fledCheck), before its
+                                                             # own Battle press could come (11-18 23:23:41)
     if a.topup:
         _tu = sc.exports_sync.topup(True, a.topup_reserve)
         say(f"  Berry Master top-ups ON: regular berries only, quiet gaps only, keeping {a.topup_reserve} of each -- in the bag: {_tu.get('berries')}")
@@ -2958,8 +2996,16 @@ def _run(a, g, mv, done, t_start, enemy, goal, sess, pid, sc):
         if g.detached:
             raise Detached("game connection lost")
         if g.prepstuck:
-            say("STOP: a party screen stayed open over a battle -- not continuing (joystick keeps circling)")
-            return
+            if not a.on_open:
+                say("STOP: a party screen stayed open over a battle -- not continuing (joystick keeps circling)")
+                return
+            g.prepstuck = False                              # --on-open, no takeover running: no stop -- the gym screen is HIS
+            sc.exports_sync.hold(True)                       # (a stop only made run_gym.sh attach again mid-battle, 11-18 23:22)
+            g.armed = False
+            if g.has("GymState"):
+                g.user_gym, g.hold = True, ("stuck", g.open_fid, time.time())
+            say("  !! the party screen stayed over a battle (a game glitch) -- the battle runs on under it; the gym is yours until "
+                "you close it")
         pull()                                               # commands are read on EVERY pass: with no GPS fix, or your gym open, the
         if not g.in_battle() and not g.prep and any(_c.get("stop") for _c in cmdq):   # loop below never got to them (11-15: a stop sat 6 min)
             if g.has("GymState") and not g.user_gym:
@@ -3023,7 +3069,7 @@ def _run(a, g, mv, done, t_start, enemy, goal, sess, pid, sc):
                     _of, _lv, g.gym_team, enemy, a.team, {x[5] for x in dep["dp"] if len(x) > 5}, dep["n"], a.max_deployed,
                     skipped=USER_SKIP, dist=ch.meters(here, (_lv[2], _lv[3])) if _lv else None, reach=engage,
                     his_battle=g.in_battle() or g.prep, rest_s=(done.get(_of, 0) - time.time()) if _of else 0.0,
-                    last_team=LAST_TEAM.get(_of), autoplace=a.autoplace)
+                    last_team=LAST_TEAM.get(_of), autoplace=a.autoplace, held=g.hold[0] if g.hold else None)
                 _dok = getattr(g, "deploy_ok_at", 0.0)        # a Pokemon of yours went in by hand since the last bag walk:
                 if _what in ("place", "join") and _dok > dep["at"] and _dok != oo["dok"]:   # read the bag first (once per
                     oo["dok"] = _dok                         # deploy), so a gym you just filled yourself is never asked again
@@ -3654,6 +3700,17 @@ def _run(a, g, mv, done, t_start, enemy, goal, sess, pid, sc):
             g.autoplaced = None
             if final == STALL:
                 done[fid] = time.time()                      # skipped for 10 min, then tried again
+            gpos_now[0], target, said = None, None, None
+            continue
+        if final == HELD:                                    # --on-open: the gym is HIS from here (he ran from the battle, or the
+            sc.exports_sync.autodeploy(None)                 # party screen stuck over it): no placement step, no Back, no Battle;
+            g.armed, g.autoplaced, g.deploy_refused = False, None, None   # the joystick keeps circling it until he moves it
+            if g.has("GymState"):
+                g.user_gym = True                            # his screen: the wait for a gym never backs out of it
+            _nm = NAMES.get(fid[:8])
+            say(f"  ON-OPEN: {'the party screen stuck over the battle' if g.held_why == 'stuck' else 'you ran from the battle'} at "
+                f"{fid[:8]}{' (' + _nm + ')' if _nm else ''} -- the drill stops; the gym is yours until you close it (open it again "
+                f"and the runner takes it over)")
             gpos_now[0], target, said = None, None, None
             continue
         if final == ABORT:

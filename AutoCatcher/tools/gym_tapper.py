@@ -107,6 +107,13 @@ var MISSING = [];
 var ROOT = null, GLS = null, GLS_CANDS = [], DIR = null;
 var CHAIN = '', LEAF = '', GAS = null, GBS = null, IN_BATTLE = false, ROUND = false;
 var ONEBYONE = false, RN = 0, OBO_AT = 0, OBO_RN = 0, MDLG = null, MDF_TOLD = false;   /* MDLG: the open ModalDialog (one-by-one OK) */
+var FLEEHOLD = false, HELD = null, HIS_GIVEUP_AT = 0, OUR_RUN_AT = 0, BATTLE_ON_AT = 0, OUTCOME_AT = 0;   /* --on-open (the runner
+   turns FLEEHOLD on): HIS run-away = hands off that gym until he closes it. 11-18 23:23:37-40 his give-up prompt, then the battle
+   over with no result screen; 23:23:41 a Battle press of ours on the same gym; 23:23:47 he killed the game ("it was pissing me
+   off"). HELD = the GymState of the gym Benny has taken back (he ran from a battle on it, or the party screen stuck over a battle
+   there): no Battle press of ours on it, automatic or asked, and no GO, until that gym screen closes. HIS_GIVEUP_AT = a give-up
+   prompt that came up in a battle with no run-away of ours (OUR_RUN_AT) in the 8 s before it; BATTLE_ON_AT / OUTCOME_AT = when
+   the battle began / when a result screen (victory, defeat) came */
 var OBO_FALL = 0;                              /* the round a direct give-up went out in (prompt + OK fallback if it is still on) */
 var OBO_SKIP = false;                          /* the runner saw the first defender KNOCKED OUT: the next round's defender is the new
                                                  first -- stay in and fight it, no exit (Benny 11-17 00:08: "no need to exit") */   /* one-by-one mode (Benny 11-16 23:58): drill the FIRST defender over and
@@ -161,7 +168,7 @@ function earlyScreens(now) {                  /* catch the countdown / NEXT UP /
                : k.equals(K.GymBattleVictoryGuiController) ? 'GymBattleVictoryGuiController' : k.equals(K.GymBattleDefeatGuiController) ? 'GymBattleDefeatGuiController' : null;
         if (!nm) return;
         if ((nm === 'GymBattleVictoryGuiController' || nm === 'GymBattleDefeatGuiController') && !OUTCOME_SEEN[g]) {
-          OUTCOME_SEEN[g] = now; send({k: 'outcome', v: nm === 'GymBattleVictoryGuiController' ? 'victory' : 'defeat'});
+          OUTCOME_SEEN[g] = now; OUTCOME_AT = now; send({k: 'outcome', v: nm === 'GymBattleVictoryGuiController' ? 'victory' : 'defeat'});
           if (nm === 'GymBattleVictoryGuiController' && DD_OK && AUTODEP && !PLACED) { DDW = {fid: AUTODEP.fid, t0: now, until: now + 8000, next: 0};
             if (DD_ON && DD_SEND) send({k: 'ddarmed', fid: AUTODEP.fid}); } }   /* said BEFORE the call: the runner's crash guard reads it */
         if (!SKIP_OFF[nm] && !SKIP_DONE[g] && (!SKIPQ[nm] || !SKIPQ[nm].gui.equals(g))) SKIPQ[nm] = {gui: g, k: k, at: now};
@@ -864,14 +871,34 @@ function walkChain() {                        /* the game's own state machine, r
   if (chain !== CHAIN) { CHAIN = chain; send({k: 'state', chain: chain}); }
   if (GAS && (!gas || !gas.equals(GAS)) && ACT && ACT !== 'runaway') ACT = null;   /* a gym-screen action never outlives its screen */
   if (GAS && !gas) EXPECT_PREP = 0;                                              /* left the gym screen: no Battle is pending */
+  if (HELD && (!gst || !gst.equals(HELD))) HELD = null;                         /* a hold of his ends with its gym screen */
   GAS = gas; GSTATE = gst;
   var wasBattle = IN_BATTLE; IN_BATTLE = !!gbs; GBS = gbs;
-  if (IN_BATTLE && !wasBattle) { RN = 0; OBO_RN = 0; OBO_SKIP = false; send({k: 'battle', on: true}); }
+  if (IN_BATTLE && !wasBattle) { RN = 0; OBO_RN = 0; OBO_SKIP = false; BATTLE_ON_AT = Date.now(); send({k: 'battle', on: true}); }
   if (!IN_BATTLE && wasBattle) { ROUND = false; FAINT_DUE = Date.now() + 1500; send({k: 'end', fast: ST.fast, charged: ST.charged});
+    fledCheck(gst);                            /* his run-away: disarmed HERE, before gymScreen() can press Battle this frame */
     if (AUTODEP && leaf === 'MapExploreState' && Date.now() >= E29_HOLD) { PENDING = AUTODEP.fid; PENDING_AT = Date.now(); } }
   var round = leaf === 'GymBattleState';
   if (round && !ROUND) { RN++; send({k: 'start', n: RN}); }
   ROUND = round; LEAF = leaf;
+}
+function hisFlee(now) {                       /* the battle just ended: did HE run from it? His give-up prompt came up in THIS battle
+                                                 less than 15 s before its end, and no result screen came (a run-away has none) */
+  return FLEEHOLD && HIS_GIVEUP_AT > 0 && HIS_GIVEUP_AT >= BATTLE_ON_AT && now - HIS_GIVEUP_AT < 15000 && OUTCOME_AT < BATTLE_ON_AT;
+}
+function fledCheck(gst) {                     /* at the battle's end, in the frame the state says so (walkChain runs before gymScreen):
+                                                 his run-away = no Battle, no re-open and no placement from here on this gym; the gym
+                                                 screen that is up (gst) is his until it closes */
+  var now = Date.now();
+  if (!hisFlee(now)) return false;
+  var fid = AUTODEP ? AUTODEP.fid : null, ago = now - HIS_GIVEUP_AT;
+  AUTODEP = null; PENDING = null; EXPECT_PREP = 0; HIS_GIVEUP_AT = 0; HELD = gst || null;
+  send({k: 'fled', fid: fid, ago: ago, held: !!HELD});
+  return true;
+}
+function markGiveUp(now) {                    /* a ModalDialog just came up: in a battle, with no run-away of ours in the 8 s before it,
+                                                 it is HIS give-up prompt (the only dialog a gym battle shows; one-by-one runs its own) */
+  if (FLEEHOLD && IN_BATTLE && !ONEBYONE && now - OUR_RUN_AT > 8000) HIS_GIVEUP_AT = now;
 }
 function topScreen(now) {                     /* the live top screen (GuiLayerService.TopGui) and what it means */
   if (!GLS) {
@@ -887,8 +914,9 @@ function topScreen(now) {                     /* the live top screen (GuiLayerSe
   /* screens are tracked by OBJECT (a new instance of the same class is a new screen), and closed by their own state */
   if (tn === 'GymBattlePrepUIController' && !tg.isNull() && (!PREP || !PREP.equals(tg))) { PREP = tg; PREP_AT = now; send({k: 'gui', open: 'GymBattlePrepUIController'}); }
   if (tn === 'GymBattleContinueGuiController' && !CONT_DONE[tg] && (!CONT || !CONT.gui.equals(tg))) CONT = {gui: tg, k: klassOf(tg), at: now};
-  if (tn === 'ModalDialog' && !tg.isNull() && (TOP !== 'ModalDialog' || !MDLG || !MDLG.gui.equals(tg)))   /* every time it comes up: */
+  if (tn === 'ModalDialog' && !tg.isNull() && (TOP !== 'ModalDialog' || !MDLG || !MDLG.gui.equals(tg))) {   /* every time it comes up: */
     MDLG = {gui: tg, k: klassOf(tg), at: now, told: false};   /* the game REUSES the prompt object (00:11:48: no OK for 30 s) */
+    markGiveUp(now); }
   if (SKIP.indexOf(tn) >= 0 && !SKIP_OFF[tn] && !SKIP_DONE[tg] && (!SKIPQ[tn] || !SKIPQ[tn].gui.equals(tg))
       && (SKIP_BASE[tn] !== undefined ? SKIP_BASE[tn] : (SKIP_BASE[tn] = derivesGui(klassOf(tg))))) SKIPQ[tn] = {gui: tg, k: klassOf(tg), at: now};
   if (tn === TOP) return;
@@ -956,7 +984,7 @@ function gymScreen(now) {                     /* the gym screen: its gym's own t
         }
         /* drilling and the gym screen is back while the gym is still theirs: Battle THIS frame. Nobody can deploy into a gym that
            is in battle, so the gap between our sessions is the only window the other team gets -- keep it as short as possible */
-        if (AUTODEP && fid === AUTODEP.fid && !n && t !== MYTEAM && !IN_BATTLE && LEAF === 'GymApproachState' && !prepOpen() && !NOAUTOBATTLE
+        if (AUTODEP && fid === AUTODEP.fid && !n && t !== MYTEAM && !IN_BATTLE && LEAF === 'GymApproachState' && !prepOpen() && !NOAUTOBATTLE && !HELD
             && now >= E29_HOLD && !ACT && !ST.modal && now - GO_AT > 3000 && now - (ST.autoBattleAt || 0) > 8000 && !EXPECT_PREP && alive(gui)
             && gui.add(O.guiState).readS32() === LIT.open.Open && !prepRegistered()) {
           ST.autoBattleAt = now; EXPECT_PREP = now; OUR_BATTLE_AT = now;
@@ -974,7 +1002,7 @@ function gymScreen(now) {                     /* the gym screen: its gym's own t
   if (now - ACT_AT > 3000) { send({k: 'err', e: 'dropped stale action ' + ACT}); ACT = null; return; }
   if (alive(gui) && !isA(gui, K.GymApproachGuiController) && !ST.guiWarned) { ST.guiWarned = true; send({k: 'err', e: 'gym screen class is ' + nameOf(klassOf(gui)) + ' -- actions held'}); }
   if (!alive(gui) || !isA(gui, K.GymApproachGuiController)) return;   /* the gym screen's GUI is not up yet: keep it queued (≤3 s) */
-  if (ACT === 'battle' && (prepOpen() || (GO_AT && now - GO_AT < 8000 && !IN_BATTLE) || (EXPECT_PREP && now - EXPECT_PREP < 8000)
+  if (ACT === 'battle' && (HELD || prepOpen() || (GO_AT && now - GO_AT < 8000 && !IN_BATTLE) || (EXPECT_PREP && now - EXPECT_PREP < 8000)
       || now - (ST.autoBattleAt || 0) < 8000 || prepRegistered())) { ACT = null; return; }   /* one Battle per party screen, ever */
   if ((ACT === 'deploy' || ACT === 'back' || ACT === 'battle' || ACT === 'pokestop') && gui.add(O.guiState).readS32() !== LIT.open.Open) return;   /* only on a fully open gym screen */
   if (ACT === 'deploy' && PLACED) { ACT = null; return; }   /* a placement request is in flight */
@@ -1294,6 +1322,7 @@ function attack(now) {
 /* <<< STAB */
 function runAway(now) {                       /* the battle's own run-away button (SurrenderButton.TrySurrender; now = its give-up
                                                  action directly, no prompt) */
+  OUR_RUN_AT = Date.now();                    /* ours: the give-up prompt behind it is never read as HIS run-away */
   if (!GBS) return false;
   var ui = GBS.add(O.gbsUi).readPointer(); if (ui.isNull()) return false;
   var sb = ui.add(O.uiSurrender).readPointer(); if (!alive(sb) || !isA(sb, K.SurrenderButton)) return false;
@@ -1397,7 +1426,7 @@ function frameTick() {
     if (ACT === 'runaway') { if (IN_BATTLE) { ACT = null; send({k: 'pressed', what: 'RunAway', ok: runAway()}); } else if (now - ACT_AT > 3000) ACT = null; }
     if (ACT === 'go') { ACT = null;             /* a party screen OUR Battle press opened and nobody pressed GO on: GO now. One that no
          press of ours opened is HIS (he pressed Battle and is picking his team): never GO on it -- 11-17 03:10:19 */
-      if (prepOpen() && now - GO_AT > 5000 && !EXPECT_PREP) {
+      if (prepOpen() && now - GO_AT > 5000 && !EXPECT_PREP && !HELD) {
         if (ourParty(now)) { EXPECT_PREP = now; send({k: 'err', e: 'orphaned party screen -- pressing GO'}); }
         else send({k: 'info', what: 'party screen', layout: 'not opened by a Battle press of ours: it is yours -- no GO'}); } }
     if (ACT === 'unhang') { ACT = null;         /* a hung battle: the game's own recovery path back to the gym screen */
@@ -1802,6 +1831,11 @@ rpc.exports = {
     return {on: TOPUP_ON, reserve: TOPUP_RESERVE, berries: c}; },
   scan: function (fids) { (fids || []).forEach(function (f) { if (SCANQ.indexOf(f) < 0 && !SCANREQ[f]) SCANQ.push(f); }); return SCANQ.length; },
   autobattle: function (on) { NOAUTOBATTLE = !on; return !NOAUTOBATTLE; },
+  fleehold: function (on) { FLEEHOLD = !!on; return FLEEHOLD; },   /* --on-open: his run-away = hands off that gym (fledCheck) */
+  hold: function (on) {                       /* the runner: the gym screen that is up is HIS until it closes (a party screen stuck
+                                                 over a battle there) -- no Battle, no GO, no re-open, no placement from us on it */
+    if (on) { HELD = GSTATE || null; AUTODEP = null; PENDING = null; EXPECT_PREP = 0; } else HELD = null;
+    return {held: !!HELD}; },
   ban: function (ids) { (ids || []).forEach(function (x) { BANNED[String(x)] = 1; }); return Object.keys(BANNED).length; },   /* out of every team */
   directdeploy: function (on) { DD_ON = !!on; return {on: DD_ON, parts: DD_OK, ready: !!DD_SEND}; },   /* the runner's switch (default OFF) */
   onebyone: function (on) { ONEBYONE = !!on; return ONEBYONE; },

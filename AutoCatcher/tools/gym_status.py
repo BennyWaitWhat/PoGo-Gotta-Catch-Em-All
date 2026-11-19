@@ -52,7 +52,9 @@ def tail(path, n=2000, size=256 * 1024):
 TS = re.compile(r'^(\d\d):(\d\d):(\d\d) ?(.*)$')
 GID = r'([0-9a-f]{8})(?: \((.+?)\))?'
 ANY = 'the gym you opened'      # a gym whose name the log has not said yet
-WHY = ((r'you told the runner to skip', 'you told it to skip this gym'), (r'you started a battle', 'your own battle stays yours'),
+FLED, STUCK = 'you fled -- close it to hand it back', 'party screen stuck -- close the gym'
+WHY = ((r'you ran from the battle', FLED), (r'the party screen stuck', STUCK),
+       (r'you told the runner to skip', 'you told it to skip this gym'), (r'you started a battle', 'your own battle stays yours'),
        (r'a raid', 'a raid is on it'), (r'it is out of reach', 'too far away -- come closer'),
        (r'one of yours is already in', 'one of yours is already in it'), (r'all (\d+) of your gym slots', r'all \1 of your gym slots are in use'),
        (r'the game refused your Pokemon', 'it refused your Pokemon within the hour'),
@@ -151,6 +153,18 @@ def scan(lines):
             if st['phase'] == 'take' and not st['res']:
                 result('done with %s' % g(), t)
             st.update(phase='idle', note=None)
+            continue
+        x = re.match(r'(?:ON-OPEN: )?(you ran from the battle|the party screen stuck over the battle)(?: at ' + GID + ')?', msg)
+        if x:                                                # the gym is HIS now (he ran from the battle / the party screen stuck
+            if x.group(2):                                   # over it): hands off until he closes it
+                st['gym'] = label(x.group(2), x.group(3)) or st['gym']
+            st.update(phase='hands', why=FLED if x.group(1).startswith('you') else STUCK, res=None, note=None)
+            continue
+        if 'party screen stayed over' in msg:                # stuck over a battle: the battle runs on under it, then it is his
+            if st['phase'] == 'take':
+                st['note'] = 'party screen stuck -- the battle runs under it'
+            else:
+                st.update(phase='hands', why=STUCK, res=None, note=None)
             continue
         x = re.search(r'ON-OPEN: team (\d) got into|team (\d) took it first', msg)
         if x:
@@ -370,6 +384,36 @@ def selftest():
     assert status_from_log(E + ['12:07:02   you placed Gyarados 3640 (16/20 in gyms now) -- next gym']) == 'Gyarados 3640 placed at the gym you opened (16/20 in gyms)'
     assert status_from_log(E + ["12:07:02   you placed Gyarados 3757 on a retry after the server's refusal (2/20 in gyms now) -- next gym"]) == \
         'Gyarados 3757 placed at the gym you opened (2/20 in gyms)', 'a placement on a retry (FortIsFull right after the win) is a placement'
+    # his run-away / a party screen stuck over a battle (11-18 23:22-23:23): the gym is HIS until he closes it
+    S = L + ['12:10:00   ON-OPEN: you have 2ace7536 (Liberty Island Flagpole) open (team 3) -- taking it over: drilling it until it is empty, then a shiny Gyarados in',
+             '12:10:00 engaging 2ace7536 (team 3) at 25 m', '12:10:05     round start 1']
+    assert status_from_log(S) == 'battling Liberty Island Flagpole'
+    S1 = S + ['12:10:09   !! the party screen stayed over the battle (a game glitch) -- the battle in progress runs on under it; after it 2ace7536 is yours until you close it']
+    assert status_from_log(S1) == 'Liberty Island Flagpole: party screen stuck -- the battle runs under it'
+    S1 += ['12:10:40     battle over (fast 300, charged 4 in total)',
+           '12:10:40   ON-OPEN: the party screen stuck over the battle at 2ace7536 (Liberty Island Flagpole) -- the drill stops; the gym is yours until you close it (open it again and the runner takes it over)']
+    assert status_from_log(S1) == 'hands off Liberty Island Flagpole: party screen stuck -- close the gym'
+    S1 += ['12:10:41   ON-OPEN: you have 2ace7536 (Liberty Island Flagpole) open -- hands off: the party screen stuck over a battle here -- it stays yours until you close it (open it again and the runner takes it over)']
+    assert status_from_log(S1) == 'hands off Liberty Island Flagpole: party screen stuck -- close the gym'
+    assert status_from_log(S1 + ['12:11:00   ON-OPEN: watching for a gym you open']) == 'watching for a gym you open | 14/20 in gyms'
+    S2 = S + ['12:10:30     battle over (fast 120, charged 1 in total)',
+              '12:10:30     you ran from the battle at 2ace7536: your give-up prompt 1.2 s before its end, no result screen -- hands off this gym until you close it',
+              '12:10:30   ON-OPEN: you ran from the battle at 2ace7536 (Liberty Island Flagpole) -- the drill stops; the gym is yours until you close it (open it again and the runner takes it over)']
+    assert status_from_log(S2) == 'hands off Liberty Island Flagpole: you fled -- close it to hand it back'
+    assert status_from_log(S2[:-1]) == 'hands off Liberty Island Flagpole: you fled -- close it to hand it back', 'the run-away line alone says it'
+    S3 = L + ['12:12:00     you ran from the battle: your give-up prompt 0.8 s before its end, no result screen -- hands off this gym until you close it',
+              '12:12:00   ON-OPEN: you have 2ace7536 open -- hands off: you ran from the battle here -- it stays yours until you close it (open it again and the runner takes it over)']
+    assert status_from_log(S3) == 'hands off the gym you opened: you fled -- close it to hand it back'
+    S4 = L + ['12:13:00   !! the party screen stayed over a battle (a game glitch) -- the battle runs on under it; the gym is yours until you close it']
+    assert status_from_log(S4) == 'hands off the gym you opened: party screen stuck -- close the gym' and end_reason(S4) == ''
+    assert status_from_log(S4 + ['12:14:00   ON-OPEN: watching for a gym you open']) == 'watching for a gym you open | 14/20 in gyms'
+    for txt in (status_from_log(S1), status_from_log(S2), status_from_log(S4)):
+        assert txt == clean(txt) and len(txt) <= TEXT_MAX, txt
+    for nm in ('x' * 30, 'Ellis Island Immigration Hospital Mural'):   # the longest name the label keeps (30) still fits whole
+        lg = L + ['12:15:00   ON-OPEN: you ran from the battle at 4c0a5889 (%s) -- the drill stops; the gym is yours until you close it' % nm]
+        assert len('hands off %s: %s' % (clean(nm, 30), FLED)) <= TEXT_MAX and status_from_log(lg).endswith(FLED), status_from_log(lg)
+        lg[-1] = lg[-1].replace('you ran from the battle', 'the party screen stuck over the battle')
+        assert len('hands off %s: %s' % (clean(nm, 30), STUCK)) <= TEXT_MAX and status_from_log(lg).endswith(STUCK), status_from_log(lg)
     assert status_from_log(L + ['12:08:00 lost the game connection (Detached: game connection lost) -- re-attaching in 3 s']).startswith('lost the game connection')
     assert status_from_log(L + ['12:08:00 session failed (RuntimeError: PoGo never became attach-safe in 300s (no pid yet)) -- retrying in 10 s']).startswith('lost the game connection')
     assert status_from_log(L + ['12:08:00 lost the game connection (x) -- re-attaching in 3 s', '12:09:10     state: MapExploreState']).startswith('watching')
