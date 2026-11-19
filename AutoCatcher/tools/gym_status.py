@@ -11,7 +11,11 @@ phone, run_gym.sh (the switch's supervisor) writes it; while a runner is alive t
 
 It reads the last 2,000 lines of the log (gym_run.py's say() lines: "HH:MM:SS text"). A result (placed, joined, emptied)
 stays up for 90 s, then the wait shows again. Only the standard library: the supervisor starts it with `python -S`.
+The wait line ends with the tally since the app's counters started (his Reset counters tap; the catcher keeps that time):
+"watching for a gym you open | 6/20 in gyms | 10 beaten, 10 placed" -- every --on-open run's log since then is counted, so
+a restart of the runner (the switch, a game restart) loses nothing.
 """
+import json
 import os
 import re
 import sys
@@ -20,6 +24,8 @@ import unicodedata
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 LOGS = os.path.join(HERE, 'gym_state', 'logs')
+SESSION = os.path.join(HERE, '..', 'system', 'analysis', 'pokemod', 'session_counters.json')   # catch_loop_fast.py's counters
+LOGNAME = re.compile(r'^onopen_(\d\d)(\d\d)_(\d\d)(\d\d)(\d\d)\.log$')                            # gym_run.py --on-open's logs
 TEXT_MAX = 81               # the status text; with "HH:MM:SS " in front the line stays at 90 characters
 
 
@@ -233,6 +239,76 @@ def status_from_log(lines, now_s=None):
     return 'watching for a gym you open' + (' | %s in gyms' % st['in'] if st['in'] else '')
 
 
+def counted_since(path=SESSION):
+    """When the app's counters started counting (epoch): his last Reset counters tap, or the catcher's first start. None
+    when the file is not there or not readable."""
+    try:
+        with open(path, encoding='utf-8') as f:
+            v = json.load(f).get('since')
+        return float(v) if v and float(v) > 0 else None
+    except (OSError, ValueError, TypeError, AttributeError):
+        return None
+
+
+def log_start(name, now=None):
+    """onopen_MMDD_HHMMSS.log -> its start (epoch, local time), or None. A December log read in January is last year's."""
+    m = LOGNAME.match(name)
+    if not m:
+        return None
+    lt = time.localtime(now if now is not None else time.time())
+    mo, d, H, M, S = (int(x) for x in m.groups())
+    try:
+        return time.mktime((lt.tm_year - (1 if (mo, d) > (lt.tm_mon, lt.tm_mday) else 0), mo, d, H, M, S, 0, 0, -1))
+    except (OverflowError, ValueError):
+        return None
+
+
+def tally(log_dir, since, now=None):
+    """Gyms beaten ("session result: VICTORY") and Pokemon put in ("you placed" / "you joined") by every --on-open run
+    since `since` (epoch) -> (beaten, placed). A line has only HH:MM:SS: its day comes from the file name's start, and a
+    clock that goes back over an hour means midnight passed."""
+    beaten = placed = 0
+    try:
+        names = sorted(n for n in os.listdir(log_dir) if LOGNAME.match(n))
+    except OSError:
+        return 0, 0
+    for name in names:
+        path, t0 = os.path.join(log_dir, name), log_start(name, now)
+        try:
+            if t0 is None or os.path.getmtime(path) < since:
+                continue                                     # written to last before the counting started
+        except OSError:
+            continue
+        lt = time.localtime(t0)
+        day0, last = t0 - (lt.tm_hour * 3600 + lt.tm_min * 60 + lt.tm_sec), lt.tm_hour * 3600 + lt.tm_min * 60 + lt.tm_sec
+        for ln in tail(path, n=10 ** 6, size=16 * 1024 * 1024):
+            m = TS.match(ln)
+            if not m:
+                continue
+            s = int(m.group(1)) * 3600 + int(m.group(2)) * 60 + int(m.group(3))
+            if s < last - 3600:
+                day0 += 86400
+            last = s
+            msg = m.group(4).lstrip()
+            won = msg.startswith('session result: VICTORY')
+            put = msg.startswith(('you placed ', 'you joined '))
+            if (won or put) and day0 + s >= since:
+                beaten, placed = beaten + won, placed + put
+    return beaten, placed
+
+
+def with_tally(text, log_path, since=None, now=None):
+    """The wait line -> the same line with the tally since the counters started (none yet: unchanged). Every other
+    line is left as it is."""
+    if not text.startswith('watching for a gym you open'):
+        return text
+    since = since or counted_since() or log_start(os.path.basename(log_path), now)
+    if not since:
+        return text
+    b, p = tally(os.path.dirname(os.path.abspath(log_path)), since, now)
+    return text + (' | %d beaten, %d placed' % (b, p) if b or p else '')
+
+
 def end_reason(lines):
     """Why a runner that ended by itself ended, when its log says so (a crash, a game version it cannot read) -- else ''."""
     st = scan(lines)
@@ -316,6 +392,43 @@ def selftest():
     assert status_from_log(nr + L[2:]) == 'watching for a gym you open | 14/20 in gyms', 'an attach after it clears the note'
     for txt in (status_from_log(D), status_from_log(cap), status_from_log(H), status_from_log(C), status_from_log(nr)):
         assert txt == clean(txt) and len(txt) <= TEXT_MAX, txt
+    # --- the tally since the counters started: every --on-open log since then, past midnight, his own placement too
+    import tempfile
+    with tempfile.TemporaryDirectory() as td:
+        now = time.mktime((2026, 11, 19, 0, 30, 0, 0, 0, -1))
+        since = time.mktime((2026, 11, 18, 21, 10, 32, 0, 0, -1))
+        logs = {'onopen_1118_200000.log': ['20:05:00     session result: VICTORY (tonight: 1 won, 0 lost)',
+                                           '20:05:03   you placed Gyarados 3600 (1/20 in gyms now) -- next gym'],
+                'onopen_1118_232358.log': ['23:24:00   ON-OPEN mode (the AutoCatcher app...',
+                                           '23:28:20     session result: VICTORY (tonight: 1 won, 0 lost)',
+                                           '23:28:37   you placed a Pokemon (2/20 in gyms now; the game said Success) -- next gym',
+                                           '23:33:08     session result: VICTORY (tonight: 2 won, 0 lost)',
+                                           '23:33:11   you placed Gyarados 3757 (3/20 in gyms now) -- next gym'],
+                'onopen_1118_233915.log': ['23:39:15   ON-OPEN mode (the AutoCatcher app...',
+                                           '23:55:32     session result: VICTORY (tonight: 6 won, 0 lost)',
+                                           '23:55:35   you placed Gyarados 3647 (7/20 in gyms now) -- next gym',
+                                           '00:10:00     session result: VICTORY (tonight: 7 won, 0 lost)',
+                                           '00:10:03   you joined 1234abcd (Pier 5) with Gyarados 3630 (8/20 in gyms now) -- next gym',
+                                           '00:20:00   COUNTERS vs 1234abcd: you placed nothing here'],
+                'gym_1118.log': ['23:30:00     session result: VICTORY (tonight: 1 won, 0 lost)']}
+        for name, body in logs.items():
+            with open(os.path.join(td, name), 'w', encoding='utf-8') as f:
+                f.write('\n'.join(body) + '\n')
+        os.utime(os.path.join(td, 'onopen_1118_200000.log'), (since - 3600, since - 3600))   # last written before the reset
+        b = os.path.join(td, 'onopen_1118_233915.log')
+        assert tally(td, since, now) == (4, 4), tally(td, since, now)
+        assert tally(td, time.mktime((2026, 11, 19, 0, 0, 0, 0, 0, -1)), now) == (1, 1), 'past midnight: the 00:10 lines are the 19th'
+        assert tally(os.path.join(td, 'none'), since, now) == (0, 0)
+        w = with_tally('watching for a gym you open | 6/20 in gyms', b, since, now)
+        assert w == 'watching for a gym you open | 6/20 in gyms | 4 beaten, 4 placed' and clean(w) == w and len(w) <= TEXT_MAX, w
+        assert with_tally('battling Bartholdi: 2 of 6 left', b, since, now) == 'battling Bartholdi: 2 of 6 left'
+        assert with_tally('watching for a gym you open', b, time.mktime((2026, 11, 19, 0, 25, 0, 0, 0, -1)), now) == \
+            'watching for a gym you open', 'nothing since the counters started: no tally'
+        assert log_start('onopen_1118_233915.log', now) == time.mktime((2026, 11, 18, 23, 39, 15, 0, 0, -1))
+        assert log_start('onopen_1231_235900.log', time.mktime((2027, 1, 1, 0, 5, 0, 0, 0, -1))) == \
+            time.mktime((2026, 12, 31, 23, 59, 0, 0, 0, -1)) and log_start('gym_1118.log') is None
+        assert len('watching for a gym you open | 20/20 in gyms | 999 beaten, 999 placed') <= TEXT_MAX
+    assert counted_since(os.path.join(HERE, 'no such file.json')) is None
     # --- real runner logs, when this machine has some: every prefix of every tail gives one clean line (never a throw)
     n_real = 0
     if os.path.isdir(LOGS):
@@ -340,7 +453,12 @@ def main(argv):
         print(__doc__)
         return 2
     t = time.localtime()
-    print(clean(status_from_log(tail(argv[0]), t.tm_hour * 3600 + t.tm_min * 60 + t.tm_sec)))
+    text = status_from_log(tail(argv[0]), t.tm_hour * 3600 + t.tm_min * 60 + t.tm_sec)
+    try:
+        text = with_tally(text, argv[0])
+    except Exception:                                        # the tally is extra: the line itself always goes out
+        pass
+    print(clean(text))
     return 0
 
 
