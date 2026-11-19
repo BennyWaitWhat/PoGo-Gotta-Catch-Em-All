@@ -976,6 +976,7 @@ function onCatchReq(s) {   /* CatchPokemonProto: encounterId @0x10 (ours and man
   LASTREQ = {enc: enc, t: now};
   var mine = E[enc] && (E[enc].st === 'thrown' || E[enc].st === 'fed' || E[enc].st === 'ready');
   if (!mine) { REQQ.push({enc: enc, t: now}); if (REQQ.length > 50) REQQ.shift(); }   /* a manual throw */
+  else reqSeen(enc);   /* a probe: counts, changes nothing */
   if (CFG.perfect) {   /* Perfect Throw for MANUAL throws: the server scores the throw from these fields */
     s.add(0x20).writeDouble(1.90 + Math.random() * 0.08);   /* normalized_reticle_size -> Excellent */
     s.add(0x30).writeU8(1);                                  /* hit_pokemon */
@@ -1016,9 +1017,23 @@ function onCatchOut(s) {
      other  it names another species, and a throw of THAT species is in the air: a crossing the field would undo
      none   it names a species no throw in the air has (a Ditto, or a field that does not mean what its name says)
      unset  the field is empty
-   One REPLYDEX line a minute after the first counted reply, then one every 5 minutes. A failure in here is counted
-   (err) and never reaches the catch. */
-var RDEX = {head: 0, other: 0, none: 0, unset: 0, err: 0, next: 0, nofield: false};
+   FIRST ANSWER (19:47, 22 catches): unset 21, head 1 -- the reply does not name its species. So two more counts:
+     disp   caught replies that carry a PokemonDisplay object (a form would tell most species apart), of all counted
+     req    our own throws whose REQUEST the game wrote while their queue entry existed, in the queue's order (in) or
+            ahead of an older one (out: the queue order is then not the send order); none = written before the entry
+            existed, that is inside TryCapture itself, where the two orders cannot differ
+   One REPLYDEX line a minute after the first counted reply, then one every 5 minutes; the first 5 replies that DO
+   name a species say which. A failure in here is counted (err) and never reaches the catch. */
+var RDEX = {head: 0, other: 0, none: 0, unset: 0, err: 0, next: 0, nofield: false, disp: 0, nodisp: 0, reqIn: 0, reqOut: 0, reqNone: 0, seq: 0, said: 0};
+function reqSeen(enc) {   /* the game is writing the request of one of OUR throws */
+  try {
+    var i, first = -1, at = -1;
+    for (i = 0; i < REQQ.length; i++) { if (REQQ[i].ser) continue; if (first < 0) first = i; if (REQQ[i].enc === enc) { at = i; break; } }
+    if (at < 0) { RDEX.reqNone++; return; }
+    REQQ[at].ser = ++RDEX.seq;
+    if (at === first) RDEX.reqIn++; else RDEX.reqOut++;
+  } catch (x) { RDEX.err++; }
+}
 function replyDex(s, st, enc, now) {
   try {
     var e = E[enc], rd, k, hit = 0;
@@ -1029,12 +1044,17 @@ function replyDex(s, st, enc, now) {
     }
     rd = s.add(OFF.cDex).readS32();
     if (!(rd > 0 && rd < 100000)) RDEX.unset++;
-    else if (e.pid === rd) RDEX.head++;
-    else { for (k in E) if (k !== enc && E[k].st === 'thrown' && E[k].pid === rd) hit++; if (hit) RDEX.other++; else RDEX.none++; }
+    else {
+      if (e.pid === rd) RDEX.head++;
+      else { for (k in E) if (k !== enc && E[k].st === 'thrown' && E[k].pid === rd) hit++; if (hit) RDEX.other++; else RDEX.none++; }
+      if (RDEX.said < 5) { RDEX.said++; log('REPLYDEX set: the reply names #' + rd + ', it was handed to a throw at #' + e.pid); }
+    }
+    if (OFF.cDisp >= 0) { if (s.add(OFF.cDisp).readPointer().isNull()) RDEX.nodisp++; else RDEX.disp++; }
     if (!RDEX.next) RDEX.next = now + 60000;
     if (now >= RDEX.next) {
       RDEX.next = now + 300000;
-      log('REPLYDEX head=' + RDEX.head + ' other=' + RDEX.other + ' none=' + RDEX.none + ' unset=' + RDEX.unset + ' err=' + RDEX.err);
+      log('REPLYDEX head=' + RDEX.head + ' other=' + RDEX.other + ' none=' + RDEX.none + ' unset=' + RDEX.unset
+          + ' disp=' + RDEX.disp + '/' + (RDEX.disp + RDEX.nodisp) + ' req in=' + RDEX.reqIn + ' out=' + RDEX.reqOut + ' none=' + RDEX.reqNone + ' err=' + RDEX.err);
     }
   } catch (x) { RDEX.err++; }
 }
@@ -1447,6 +1467,7 @@ rpc.exports = {
     OFF.cCaptured = off1(K.CatchPokemonOutProto, ['CapturedPokemonId', 'capturedPokemonId_']); if (OFF.cCaptured < 0) OFF.cCaptured = 0x20;
     OFF.cAward = off1(K.CatchPokemonOutProto, ['Scores', 'CaptureAward', 'captureAward_']);
     OFF.cDex = off1(K.CatchPokemonOutProto, ['DisplayPokedexId', 'displayPokedexId_']);   /* replyDex(): a probe, read only */
+    OFF.cDisp = off1(K.CatchPokemonOutProto, ['PokemonDisplay', 'pokemonDisplay_']);
     var AW = K.CaptureScoreProto || K.CaptureAwardProto;
     OFF.aDust = AW ? off1(AW, ['Stardust', 'stardust_']) : -1;
     OFF.aCandy = AW ? off1(AW, ['Candy', 'candy_']) : -1;
