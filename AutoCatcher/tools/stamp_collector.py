@@ -148,6 +148,8 @@ function seen(f,pre){ A.fortAt=pre?Math.min(now(),f.t):now(); A.flat=f.lat; A.fl
 /* ---- the six steps: each one starts from the game's own signal that the step before is finished ---- */
 function onOpen(a){ if(A.st==='tap')st('open'); }
 function onClose(a){ if(A.st==='fail'||A.st==='idle'||A.st==='done')out('closed',{}); }
+function onPage(a){ out('page',{open:true}); }
+function onPageClose(a){ out('page',{open:false}); }
 function onGame(a){ if(!(A.st==='tap'||A.st==='open'))return; A.gui=a[0]; st('game'); var g=a[0]; later(G.introMax,function(){press(g);}); }
 function onIntro(a){ if(A.st==='game')press(a[0]); }
 /* A game method called from here never fires the hooks of the methods IT calls (Frida does not trap calls made by its own
@@ -164,10 +166,13 @@ function press(g){ if(A.st!=='game'||A.pressing)return; A.pressing=true;
 function onSaveCall(a){ A.saveCalled=true; }
 function onHaptic(a){ if(!(A.st==='saving'||A.st==='press'))return; st('stamped'); var g=a[0]; later(G.exitLag,function(){exitNow(g);}); }
 function exitNow(g){ if(A.st!=='stamped'||A.pulse)return; A.exits++; inv0(g,'OnExit'); A.at=now();
+   if(G.noClaim){ A.st='done'; out('done',{caught:null,noclaim:true,save:A.saveResult,marks:A.marks,taps:A.taps,d:Math.round(A.fd||0)}); return; }
    later(G.pulseMax,function(){ if(A.st!=='stamped'||A.pulse)return; claim(g); }); }      /* no pulse seen: press claim anyway (a second OnExit could close the screen) */
 function onPulse(a){ if(A.st!=='stamped'||A.pulse)return; A.pulse=true; var g=a[0]; later(G.claimLag,function(){claim(g);}); }
 function claim(g){ if(A.st!=='stamped')return; A.claims++; if(A.claims>3){ fail('no reward after 3 claim presses'); return; }
-   inv0(g,'OnClaimRewardPressed'); st('claim'); A.at=now(); var mine=A.claims;
+   /* no claim button at this stop (11-18 22:29 PokéXciting! Singapore: NullReference): the rally pays on its own page */
+   if(inv0(g,'OnClaimRewardPressed')==='EXC'){ A.st='done'; out('done',{caught:null,noclaim:true,save:A.saveResult,marks:A.marks,taps:A.taps,d:Math.round(A.fd||0)}); return; }
+   st('claim'); A.at=now(); var mine=A.claims;
    later(G.claimMax,function(){ if(A.st!=='claim'||A.claims!==mine)return; A.st='stamped'; out('note',{m:'no reward '+G.claimMax+' ms after the claim -- pressing it again'}); claim(g); }); }
 function onClaimCall(a){ A.claimCalled=true; }
 function onSpawn(a){ A.mon=a[1]; if(A.st==='claim'||A.st==='stamped')st('spawn'); }
@@ -260,6 +265,7 @@ rpc.exports.install=function(){ var h=H_(); var got={}; function add(n,c){ got[n
      add('StampMiniGameGuiController.PlayStampCollectHaptic',hook(k,'PlayStampCollectHaptic',0,onHaptic)); add('StampMiniGameGuiController.PlayRewardPulse',hook(k,'PlayRewardPulse',0,onPulse));
      ['OnButtonDown','OnButtonUp','OnExit','OnClaimRewardPressed'].forEach(function(n){ if(mOf(k,n,0))add('StampMiniGameGuiController.'+n,1); }); });
   each('StampCollectionService',function(k){ add('StampCollectionService.SaveStamp',hook(k,'SaveStamp',4,onSaveCall)); add('StampCollectionService.ClaimReward',hook(k,'ClaimReward',1,onClaimCall)); add('StampCollectionService.RewardPokemonSpawned',hook(k,'RewardPokemonSpawned',1,onSpawn)); });
+  each('StampCollectionGuiState',function(k){ add('StampCollectionGuiState.EnterState',hook(k,'EnterState',2,onPage)); add('StampCollectionGuiState.ExitState',hook(k,'ExitState',0,onPageClose)); });
   each('EncounterInteractionState',function(k){ add('EncounterInteractionState.EnterState',hook(k,'EnterState',0,onEnc)); });
   each('EncounterState',function(k){ add('EncounterState.ExitState',hook(k,'ExitState',0,onEncExit)); });
   each('MapPokemon',function(k){ if(mOf(k,'TryCapture',2))add('MapPokemon.TryCapture',1); });
@@ -406,6 +412,8 @@ class MapWatch:
 
 def verdict(ev):
     """One line for a finished stop from the tapper's `done` / `fail` message."""
+    if ev["k"] == "done" and ev.get("noclaim"):
+        return True, "stamped (this rally pays on its own page, not at the stop)"
     if ev["k"] == "done":
         c = ev.get("catch")
         if ev.get("caught"):
@@ -548,6 +556,16 @@ class Game:
         """The joystick's free TELEPORT. No wait here: the game's own map request for the new place is the proof it
         arrived (run_stop sends the jump once more when none came in 8 s)."""
         self.ch.api("TELEPORT", "--ef lat %.6f --ef lng %.6f" % (at[0], at[1]))
+
+    def screen(self):
+        if not getattr(self, "_wh", None):
+            try:
+                out = self.ch.adb("wm size") or ""
+                w, h = out.strip().split(":")[-1].strip().split("x")
+                self._wh = (int(w), int(h))
+            except Exception:  # noqa: BLE001
+                self._wh = (1280, 2856)
+        return self._wh
 
     def bag_count(self):
         """Pokemon in the bag, from the live bag object (one heap scan + one game getter). None when it cannot be told."""
@@ -741,6 +759,36 @@ def save_bad(state, bad):
 GUI_STEPS = ("open", "game", "press", "saving", "stamped", "claim", "spawn")
 
 
+def close_page(g, wait_s=3.0):
+    """After a no-claim stamp the game opens the rally's own page (StampCollectionGuiState). Its X (bottom centre) closes
+    it. Taps only when the page is known to be open: on the map that spot is the main menu button."""
+    t0, opened = time.time(), False
+    while time.time() - t0 < wait_s:
+        try:
+            ev = g.q.get(timeout=0.2)
+        except queue.Empty:
+            continue
+        if ev.get("k") == "page" and ev.get("open"):
+            opened = True
+            break
+    if not opened:
+        return False
+    time.sleep(0.6)
+    w, h = g.screen()
+    for _ in range(3):
+        g.ch.adb("input tap %d %d" % (w // 2, int(h * 0.9395)))
+        t0 = time.time()
+        while time.time() - t0 < 2.0:
+            try:
+                ev = g.q.get(timeout=0.2)
+            except queue.Empty:
+                continue
+            if ev.get("k") == "page" and not ev.get("open"):
+                time.sleep(0.5)
+                return True
+    return False
+
+
 def close_gui(g, detail):
     """After a failed stop a screen may still be open: Android BACK closes it (the stop screen answers with ExitState).
     True when the map is back. An open ENCOUNTER is never backed out of."""
@@ -825,6 +873,7 @@ def run(a):
         order = order[:a.max_stops]
     opt = dict(SAFE if a.safe else FAST)
     opt["hold"] = hold_ms(a.ink)
+    opt["noClaim"] = bool(a.no_claim)
     log("stamp press: %.1f s (ink %.2f of 1.00)" % (opt["hold"] / 1000, a.ink))
     stamp = time.strftime("%Y-%m-%d_%H%M")
     jpath = os.path.join(OUT_DIR, "stamp_collector_%s.jsonl" % stamp)
@@ -934,6 +983,8 @@ def run(a):
             i -= 1
             pre = False
             continue
+        if detail.get("noclaim"):
+            close_page(g)
         secs = time.time() - t_s
         if ok:
             got += 1
@@ -1063,6 +1114,7 @@ def main(argv=None):
     ap.add_argument("--minutes", type=float, default=0)
     ap.add_argument("--safe", action="store_true")
     ap.add_argument("--ink", type=float, default=0.54, help="stamp ink strength 0.1 .. 1.0 (the press length); 0.54 = the 1.9 s press of 11-18")
+    ap.add_argument("--no-claim", action="store_true", help="rallies that pay on their own page: stamp, close the page, next")
     ap.add_argument("--north-america", action="store_true", help="only the stops in North America (Canada, the US, Mexico)")
     ap.add_argument("--east-west", action="store_true", help="the order: east to west (by longitude), not the shortest route")
     ap.add_argument("--selftest", action="store_true")
