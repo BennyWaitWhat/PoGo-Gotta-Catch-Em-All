@@ -40,3 +40,27 @@ the mechanism suspected since 10-29 (`docs/memory/pogo-crash-kinds-2026-10-29.md
   (tombstone_17, no abort message). Once in 32 records; looks like a race in ZygiskFrida's remap, not ours.
 - A `SIGNALED` / status 9 exit followed by a new game process is Pokemod's own restart (`HALService`: "Attempting to kill
   game and injector blocking"), not a crash. `tools/cull_now.sh` now labels it so.
+
+## 2026-11-19: two more of the same, and the game was not even on screen
+Benny asked "ok" to "find what keeps connecting to the gadget and crashing the game (read-only)". Still read-only: nothing on
+the phone was changed or restarted.
+- **02:52:32** (tombstone_31, game pid 6692) and **10:54:24** (tombstone_00, pid 13283): thread `gdbus`, SIGSEGV fault 0x78,
+  the same libsoup abort `soup-server-connection.c:716: could not get remote address: Transport endpoint is not connected`.
+  No cull ran between 01:02 and 12:15.
+- `catch_loop.log`: 02:32:57, 02:37:38, 02:42:18, 02:46:59, 02:51:39 `SUPERVISOR catcher silent 24x s -> restarting it`, each
+  followed ~34 s later by `catcher exited (rc=137)` (SIGTERM did not end it in 3 s); last `catcher start` 02:52:17, the game
+  died 15 s later. 10:51:43 `silent 256s`, 10:52:51 rc=137, 10:52:55 start, the game died 89 s later.
+- **The game was in the background both times.** `dumpsys usagestats` has no `com.nianticlabs.pokemongo` ACTIVITY_RESUMED
+  after 01:40:48 (Benny closed it at 01:40:49; it was started again in the background). The night: screen off. The morning:
+  WhatsApp, Instagram, LinkedIn; the screen went off at 10:54:22, 2 s before the crash. Android's cached-app freezer works
+  on the game there: exit-info 02:16:48 `FREEZER BINDER ASYNC FULL` (pid 16327).
+- My reading (NOT proven): in the background the game is frozen, so the gadget answers nothing; the catcher's call hangs,
+  its log goes silent, the supervisor kills it (-9) and starts another, whose connect also waits unanswered. When Android
+  thaws the game, the gadget accepts a connection whose client is already gone, `getpeername` fails, and libsoup aborts the
+  game. The same "connect-and-hang-up" crash as the old port probe (#60), made by the catcher itself.
+
+### Asked (new, first)
+6. **Run the catcher only while the game is on screen**: `dumpsys activity activities | grep -m1 topResumedActivity` names
+   `com.nianticlabs.pokemongo` (the cull attaches only then since #158). When the game leaves the screen, end the catcher
+   with SIGTERM while it still answers, and count the silence that follows as idle, not a hang. Then the catcher never sits
+   in a call to a frozen game, and the supervisor's -9 (ask 2) has nothing left to cut off.
