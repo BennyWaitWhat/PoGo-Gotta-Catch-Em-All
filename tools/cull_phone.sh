@@ -18,7 +18,8 @@ BOOT=40-pogo-cull
 
 phone_env() {
   export PREFIX=/data/data/com.termux/files/usr HOME=/data/data/com.termux/files/home
-  export LD_LIBRARY_PATH=$HOME/applibs:$PREFIX/lib
+  unset LD_LIBRARY_PATH        # Termux's programs find their libraries themselves (RUNPATH); ~/applibs (the app's old
+                               # copies) has a libreadline that stops Termux's bash: "cannot locate symbol" (11-18)
   export PATH=$R/tools/phone:$PREFIX/bin:/system/bin
   export POGO_ON_PHONE=1 PYTHONIOENCODING=utf-8 ADB_TARGET=phone POGO_BUSY_NAME=PokemonInventoryPhone POGO_AUDIT_JOBS=3 DASH_HOST=127.0.0.1
   [ -n "${TZ:-}" ] || export TZ=$(/system/bin/getprop persist.sys.timezone 2>/dev/null)
@@ -76,6 +77,7 @@ selfcheck() {
   [ "$("${A[@]}" -s phone shell 'echo $((1+2))')" = 3 ] || bad "shell"
   [ "$("${A[@]}" -s phone shell -T echo one two)" = "one two" ] || bad "shell options and words"
   out=$(LD_LIBRARY_PATH=/termux/lib "${A[@]}" -s phone shell 'echo "[${LD_LIBRARY_PATH:-}]"'); [ "$out" = "[]" ] || bad "Termux's libraries reach the root shell: $out"
+  ( LD_LIBRARY_PATH=/x; phone_env; [ -z "${LD_LIBRARY_PATH+x}" ] ) || bad "a pass would run with LD_LIBRARY_PATH set"
   "${A[@]}" -s phone shell 'exit 7'; [ $? -eq 7 ] || bad "the command's exit status"
   [ "$(echo hi | "${A[@]}" -s phone shell cat)" = hi ] || bad "stdin"
   [ "$("${A[@]}" -s phone exec-out 'printf "a\000b"' | od -An -c | tr -d ' \n')" = 'a\0b' ] || bad "exec-out is not byte-exact"
