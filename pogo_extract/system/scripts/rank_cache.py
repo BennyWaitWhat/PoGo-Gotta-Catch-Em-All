@@ -85,12 +85,29 @@ from form_overrides_complete import FORM_OVERRIDES
 # DO NOT paste a literal table back in here -- import it.
 from cpm_table import MAX_LEVEL_IDX, LL_CAP, GL_CAP, UL_CAP, ML_CAP, cpm_list
 import evolvable_forms
+import pokemod_rank
 
 CPM = cpm_list()
 
 # Cache file lives next to this module (in system/scripts/), not in the project root, so
 # it does not collide with the project's many top-level artifacts.
 RANK_TABLES_PKL = os.path.join(_SCRIPT_DIR, 'rank_tables.pkl')
+
+# WHOSE NUMBERS (2026-11-18, Benny: "i need you to align with pokemods numbers"). 'native' = this file's own math, as
+# always. 'pokemod' = the Little / Great / Ultra League ranks are numbered exactly as Pokemod prints them (pokemod_rank.py:
+# its level table, its product, tied spreads numbered one after another). Master League stays native: Pokemod prints no
+# Master League number. The switch is rules.pokemod_rank_numbering in keep_config; OFF = native, and nothing changes: not
+# a rank, not a table, not the pickle's hash.
+POKEMOD_CAPS = (LL_CAP, GL_CAP, UL_CAP)
+
+
+def numbering_mode():
+    """'pokemod' when rules.pokemod_rank_numbering is on, else 'native'. Read from keep_config each time it is asked."""
+    try:
+        import keep_config
+        return 'pokemod' if keep_config.rule_enabled('pokemod_rank_numbering') else 'native'
+    except Exception:
+        return 'native'
 
 # FORM_OVERRIDES imported from form_overrides_complete.py (160 entries, all 1400 forms covered)
 
@@ -159,7 +176,16 @@ def all_combos_sorted(ba, bd, bs, cap, shadow=False):
     return sps, sorted_sp
 
 
-def _content_hash(gm_bytes):
+def build_table(ba, bd, bs, cap, shadow=False, numbering='native'):
+    """(sps, sorted_sp) for one species and cap: all_combos_sorted, or -- numbering 'pokemod', a league Pokemod prints --
+    Pokemod's own products. A shadow gets the numbers of its normal form there (Pokemod's rank does not know shadows)."""
+    if numbering == 'pokemod' and cap in POKEMOD_CAPS:
+        sps = pokemod_rank.products(ba, bd, bs, cap) or [0] * 4096      # None = a spread over the cap at level 1: no rank
+        return sps, sorted(sps, reverse=True)
+    return all_combos_sorted(ba, bd, bs, cap, shadow)
+
+
+def _content_hash(gm_bytes, numbering=None):
     """Invalidation key: gamemaster bytes + the CPM list + MAX_LEVEL_IDX.
 
     The stat-product tables are a pure function of these three inputs, so any change to
@@ -176,6 +202,10 @@ def _content_hash(gm_bytes):
     h.update(gm_bytes)                         # (compute_cp/stat_product/find_max_idx) so
     h.update(repr(CPM).encode('utf-8'))        # stale cached tables can never survive a fix.
     h.update(str(MAX_LEVEL_IDX).encode('utf-8'))
+    if (numbering or numbering_mode()) == 'pokemod':     # other tables, so another key; the native key above is untouched
+        h.update(b'numbering=pokemod')
+        h.update(inspect.getsource(pokemod_rank).encode('utf-8'))
+        h.update(inspect.getsource(build_table).encode('utf-8'))
     return h.hexdigest()
 
 
@@ -190,10 +220,11 @@ class RankTableCache:
     compute_rank_for_iv bisects sorted_sp with a negating key, so a lookup stays O(log n) per mon.
     """
 
-    def __init__(self, pokemon_db, content_hash, pkl_path=RANK_TABLES_PKL):
+    def __init__(self, pokemon_db, content_hash, pkl_path=RANK_TABLES_PKL, numbering=None):
         self.pokemon_db = pokemon_db
         self.content_hash = content_hash
         self.pkl_path = pkl_path
+        self.numbering = numbering or numbering_mode()      # must be the mode content_hash was made for
         # tables: key -> None | (sps, sorted_sp, base_stats)
         self.tables = {}
         self._dirty = False
@@ -235,7 +266,7 @@ class RankTableCache:
             self._dirty = True
             return None
         bs = p['baseStats']
-        sps, sorted_sp = all_combos_sorted(bs['atk'], bs['def'], bs['hp'], cap, shadow)
+        sps, sorted_sp = build_table(bs['atk'], bs['def'], bs['hp'], cap, shadow, self.numbering)
         self.tables[key] = (sps, sorted_sp, bs)
         self._dirty = True
         return self.tables[key]
@@ -255,6 +286,10 @@ def compute_rank_for_iv(cache, species_id, ia, idf, ista, cap, shadow):
     target_sp = sps[iv_idx]
     if target_sp == 0:
         return None
+    if getattr(cache, 'numbering', 'native') == 'pokemod' and cap in POKEMOD_CAPS:
+        # Pokemod's number: a tied spread comes after the tied spreads with a lower IV index (pokemod_rank.rank)
+        return {'rank': pokemod_rank.rank(sps, sorted_sp, iv_idx), 'pct': pokemod_rank.pct(target_sp, sorted_sp[0]),
+                'sp': target_sp}
     # Original: rank = sorted_sp.index(target_sp) + 1  (leftmost match, O(n))
     # Behavior-preserving O(log n): sorted_sp is descending, so under key=neg it is ascending and bisect_left finds the
     # leftmost -target_sp -- the same index the memoized negated copy gave, without building one per table (2026-10-29:
@@ -265,7 +300,7 @@ def compute_rank_for_iv(cache, species_id, ia, idf, ista, cap, shadow):
 
 
 def _table(args):
-    return all_combos_sorted(*args)
+    return build_table(*args)
 
 
 def prefill(cache, keys, workers=8):
@@ -275,7 +310,7 @@ def prefill(cache, keys, workers=8):
     if len(todo) < 2 * workers:
         return
     from concurrent.futures import ProcessPoolExecutor
-    args = [(b['atk'], b['def'], b['hp'], cap, shadow)
+    args = [(b['atk'], b['def'], b['hp'], cap, shadow, cache.numbering)
             for sid, cap, shadow in todo for b in (cache.pokemon_db[sid]['baseStats'],)]
     with ProcessPoolExecutor(max_workers=workers) as ex:
         for k, (sps, sorted_sp) in zip(todo, ex.map(_table, args, chunksize=4)):
@@ -408,6 +443,8 @@ def compute_ranks(conn, gm=None, verbose=True):
         iv_atk, iv_def, iv_sta, fresh_alignment, fresh_form, gender FROM pokemon WHERE in_bag=1""").fetchall()
     if verbose:
         print(f'Computing ranks for {len(rows)} pokemon...')
+        if cache.numbering == 'pokemod':
+            print("  rank numbers: Pokemod's (rules.pokemod_rank_numbering) for Little / Great / Ultra League")
 
     unknown_species = set()
     done = 0
