@@ -226,8 +226,10 @@ def _rank_cache(gm_bytes, pokemon_db, pkl_dir):
     pipeline owns; this test must never rewrite it. The 4096-combo tables for ~20 species rebuild in
     well under a second, so the sandbox cache is simply thrown away with the rest of the tree.
     """
-    return rc.RankTableCache(pokemon_db, rc._content_hash(gm_bytes),
-                             pkl_path=os.path.join(pkl_dir, 'regress_rank_tables.pkl'))
+    # 'native' whatever rules.pokemod_rank_numbering says: every number recorded in this file is a native one. Pokemod's
+    # numbering has its own recorded line, check_pokemod_anchor().
+    return rc.RankTableCache(pokemon_db, rc._content_hash(gm_bytes, 'native'),
+                             pkl_path=os.path.join(pkl_dir, 'regress_rank_tables.pkl'), numbering='native')
 
 
 def _best_rank(cache, pokemon_db, sid, ivs, cap):
@@ -415,6 +417,28 @@ def run_engine(sandbox, sb_db):
     if os.path.exists(rfile):
         reasons = json.load(open(rfile, encoding='utf-8'))
     return pile, reasons, buf.getvalue(), err
+
+
+# ---------------------------------------------------------------------------------------------
+# Pokemod's numbering (rules.pokemod_rank_numbering) -- the line his screen showed on 2026-09-08
+# ---------------------------------------------------------------------------------------------
+POKEMOD_LINE = (('tinkatink', ((rc.LL_CAP, 2500, 91.25), (GL_CAP, 13, 98.00), (UL_CAP, 13, 98.00))),
+                ('tinkatuff', ((GL_CAP, 11, 98.39), (UL_CAP, 11, 98.39))),
+                ('tinkaton', ((GL_CAP, 1568, 95.53), (UL_CAP, 1, 100.00))))
+
+
+def check_pokemod_anchor(gm_bytes, pokemon_db, pkl_dir):
+    """A 13/15/15 Tinkatink under the ranker's 'pokemod' numbering prints what Pokemod printed for it."""
+    cache = rc.RankTableCache(pokemon_db, rc._content_hash(gm_bytes, 'pokemod'),
+                              pkl_path=os.path.join(pkl_dir, 'regress_rank_tables_pokemod.pkl'), numbering='pokemod')
+    out = []
+    for stage, lines in POKEMOD_LINE:
+        for cap, want_rank, want_pct in lines:
+            r = rc.compute_rank_for_iv(cache, stage, 13, 15, 15, cap, False)
+            got = (r['rank'], r['pct']) if r else (None, None)
+            out.append(('Pokemod numbering: %s 13/15/15 @%d' % (stage, cap), got == (want_rank, want_pct),
+                        '#%s %s%%' % got, '#%d %.2f%%' % (want_rank, want_pct)))
+    return out
 
 
 # ---------------------------------------------------------------------------------------------
@@ -635,6 +659,10 @@ def main():
                 fails.append("FAIL anchor %s: got %s, expected %s -- this number was verified against "
                              "the user's own app and in-game screenshots; a change that breaks it is "
                              "wrong." % (name, got, want))
+        for name, ok, got, want in check_pokemod_anchor(gm_bytes, pokemon_db, sandbox):
+            if not ok:
+                fails.append("FAIL anchor %s: got %s, expected %s -- the line Pokemod printed on the user's screen on "
+                             "2026-09-08; the ranker's 'pokemod' numbering no longer reproduces it." % (name, got, want))
         ok, msg = check_cpm_split_brain(pokemon_db, derived)
         (notes if ok else fails).append(msg if ok else 'FAIL cpm: ' + msg)
 
